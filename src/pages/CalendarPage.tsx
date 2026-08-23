@@ -126,7 +126,7 @@ export default function CalendarPage() {
       return (
         <button
           onClick={() => openEdit(post)}
-          className={`w-full text-left rounded px-1.5 py-0.5 text-[11px] leading-tight truncate border-l-2 ${cfg.bgClass} ${cfg.borderClass} hover:opacity-80 transition-opacity`}
+          className={`w-full truncate rounded-ui-sm border-l-2 px-ui-2 py-ui-1 text-left text-ui-xs leading-tight transition-opacity hover:opacity-80 ${cfg.bgClass} ${cfg.borderClass}`}
         >
           <span className="font-medium">{time}</span>{" "}
           <span className="text-muted-foreground">{clientName}</span>{" "}
@@ -138,32 +138,32 @@ export default function CalendarPage() {
     return (
       <div
         onClick={() => setDetailPost(post)}
-        className={`rounded-lg border-l-4 p-3 cursor-pointer hover:shadow-md transition-shadow ${cfg.bgClass} ${cfg.borderClass}`}
+        className={`cursor-pointer rounded-ui-md border-l-4 p-ui-3 transition-shadow hover:shadow-md ${cfg.bgClass} ${cfg.borderClass}`}
       >
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start justify-between gap-ui-2">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-              <span className="text-sm font-semibold">{time}</span>
-              <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${cfg.dotClass} text-white font-medium`}>
+            <div className="mb-ui-1 flex items-center gap-ui-2">
+              <Clock className="size-icon-sm shrink-0 text-muted-foreground" />
+              <span className="text-ui-sm font-semibold">{time}</span>
+              <span className={`rounded-ui-full px-ui-2 py-ui-1 text-ui-xs font-medium text-white ${cfg.dotClass}`}>
                 {cfg.label}
               </span>
             </div>
-            <p className="font-medium text-sm truncate">{post.title}</p>
-            <p className="text-xs text-muted-foreground truncate">{clientName}</p>
+            <p className="truncate text-ui-sm font-medium">{post.title}</p>
+            <p className="truncate text-ui-xs text-muted-foreground">{clientName}</p>
           </div>
           {post.media_urls?.[0] && (
             <img src={post.media_urls[0]} alt="" className="h-12 w-12 rounded object-cover shrink-0" />
           )}
         </div>
-        <div className="flex gap-1 mt-2">
+        <div className="mt-ui-2 flex gap-ui-1">
           {post.status !== "published" && (
-            <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={(e) => { e.stopPropagation(); handleMarkPublished(post); }}>
-              <Check className="mr-1 h-3 w-3" /> Publicado
+            <Button size="sm" variant="outline" className="h-8 px-ui-2 text-ui-xs" onClick={(e) => { e.stopPropagation(); handleMarkPublished(post); }}>
+              <Check className="mr-ui-1 size-icon-xs" /> Publicado
             </Button>
           )}
           {post.status === "approved" && (
-            <Button size="sm" variant="outline" className="h-6 text-[10px] px-2" onClick={(e) => { e.stopPropagation(); handleSchedule(post); }}>
+            <Button size="sm" variant="outline" className="h-8 px-ui-2 text-ui-xs" onClick={(e) => { e.stopPropagation(); handleSchedule(post); }}>
               Agendar
             </Button>
           )}

@@ -38,7 +38,7 @@ interface InvoiceDetailProps {
 export function InvoiceDetail({ invoice, canDownloadInvoices = true, canViewAttachments = true, canDownloadAttachments = true }: InvoiceDetailProps) {
   const { items, loading } = useInvoiceItems(invoice.id);
   const { attachments } = useInvoiceAttachments(invoice.id);
-  const cur = invoice.clients?.billing_currency;
+  const cur = invoice.currency_code || invoice.clients?.billing_currency;
 
   const subtotal = items.reduce((sum, it) => sum + Number(it.total_price || 0), 0);
   const discount = Number(invoice.discount || 0);

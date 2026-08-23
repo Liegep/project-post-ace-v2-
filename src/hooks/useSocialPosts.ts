@@ -25,6 +25,9 @@ export interface SocialPost {
   approved_at: string | null;
   created_at: string;
   updated_at: string;
+  clients?: {
+    name: string;
+  } | null;
   meta_pages?: {
     page_name: string;
     platform: string;
@@ -68,14 +71,16 @@ export function useSocialPosts(clientId: string | null) {
   }, [clientId]);
 
   const fetchPages = useCallback(async () => {
-    if (!clientId) {
-      setPages([]);
-      return;
-    }
-    const { data } = await supabase
+    let query = supabase
       .from("meta_pages")
       .select("id, meta_account_id, client_id, page_id, page_name, instagram_account_id, instagram_username, platform, created_at, meta_accounts(meta_user_name, token_expires_at)")
-      .eq("client_id", clientId) as any;
+      .order("page_name", { ascending: true });
+
+    if (clientId) {
+      query = query.eq("client_id", clientId);
+    }
+
+    const { data } = await query as any;
     setPages(data || []);
   }, [clientId]);
 
@@ -86,10 +91,14 @@ export function useSocialPosts(clientId: string | null) {
 
   // Realtime subscription
   useEffect(() => {
-    if (!clientId) return;
     const channel = supabase
-      .channel(`social_posts_changes_${clientId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "social_posts", filter: `client_id=eq.${clientId}` }, () => {
+      .channel(`social_posts_changes_${clientId || "all"}`)
+      .on("postgres_changes", {
+        event: "*",
+        schema: "public",
+        table: "social_posts",
+        ...(clientId ? { filter: `client_id=eq.${clientId}` } : {}),
+      }, () => {
         fetchPosts();
       })
       .subscribe();

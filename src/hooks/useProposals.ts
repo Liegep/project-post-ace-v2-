@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { useUserRole } from "@/hooks/useUserRole";
+import { ProposalLocale } from "@/i18n/proposalTranslations";
 
 export interface ProposalService {
   name: string;
@@ -19,6 +20,7 @@ export interface Proposal {
   scope_description: string;
   investment_description: string;
   deadline_days: number;
+  locale: ProposalLocale;
   proposal_type: string;
   plan: string;
   pieces_quantity: number;

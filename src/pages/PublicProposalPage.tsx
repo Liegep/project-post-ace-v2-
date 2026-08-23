@@ -32,6 +32,9 @@ interface ProposalData {
   accepted_name: string;
   created_at: string;
   locale: ProposalLocale;
+  proposal_type?: string;
+  plan?: string;
+  pieces_quantity?: number;
 }
 
 export default function PublicProposalPage() {
@@ -251,6 +254,20 @@ export default function PublicProposalPage() {
               {proposal.client_name}
             </h1>
             <div className="mt-6 h-px w-24 bg-gradient-to-r from-amber-200/60 to-transparent" />
+            <div className="mt-8 grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-4 backdrop-blur-xl">
+                <p className="text-[10px] uppercase tracking-[0.24em] text-white/45">{t("total")}</p>
+                <p className="mt-2 text-2xl font-light text-white">{formatCurrency(proposal.total_value, proposal.currency)}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-4 backdrop-blur-xl">
+                <p className="text-[10px] uppercase tracking-[0.24em] text-white/45">{t("expiresIn")}</p>
+                <p className="mt-2 text-2xl font-light text-white">{getTimeRemaining()}</p>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/[0.05] px-5 py-4 backdrop-blur-xl">
+                <p className="text-[10px] uppercase tracking-[0.24em] text-white/45">{t("services")}</p>
+                <p className="mt-2 text-2xl font-light text-white">{proposal.services.length}</p>
+              </div>
+            </div>
           </div>
 
           {/* Scope */}

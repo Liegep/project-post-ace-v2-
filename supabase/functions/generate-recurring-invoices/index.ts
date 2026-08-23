@@ -19,7 +19,7 @@ Deno.serve(async (req) => {
     // Find clients with active recurring billing
     const { data: clients, error: cErr } = await supabase
       .from("clients")
-      .select("id, name, billing_type, billing_monthly_amount, billing_description, billing_due_day, billing_start_date")
+      .select("id, name, address, country, tax_id, locale, billing_currency, billing_type, billing_monthly_amount, billing_description, billing_due_day, billing_start_date")
       .eq("billing_type", "recurring")
       .eq("billing_recurrence_active", true);
 
@@ -74,6 +74,14 @@ Deno.serve(async (req) => {
         .insert({
           client_id: client.id,
           title,
+          currency_code: client.billing_currency || "BRL",
+          locale: client.locale || "pt",
+          recipient_name: client.name || "",
+          recipient_address: client.address || "",
+          recipient_country: client.country || "",
+          recipient_tax_id: client.tax_id || "",
+          is_recurring: true,
+          recurring_fixed_amount: amount > 0,
           period_start: monthStart,
           period_end: monthEnd,
           issue_date: now.toISOString().split("T")[0],
@@ -89,7 +97,7 @@ Deno.serve(async (req) => {
       }
 
       // Add recurring item
-      if (amount > 0 || client.billing_description) {
+      if (amount > 0) {
         await supabase.from("invoice_items").insert({
           invoice_id: inv.id,
           name: client.billing_description || "Mensalidade",

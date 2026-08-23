@@ -22,13 +22,64 @@ import {
 } from "@/components/ui/context-menu";
 import { LinkedText } from "@/components/LinkedText";
 import { MediaLightbox } from "@/components/MediaLightbox";
-import { Archive, Calendar, Copy, Download, MessageCircle, Pencil, Play, Send, SendHorizontal, Tag as TagIcon, Trash2, X, Check, ListChecks } from "lucide-react";
+import { Archive, Calendar, Copy, Download, Pencil, Play, Send, SendHorizontal, Tag as TagIcon, Trash2, X, Check, ListChecks } from "lucide-react";
 import { SendPostToClientDialog } from "@/components/SendPostToClientDialog";
 import { format } from "date-fns";
 import { isExternalLink } from "@/components/ExternalLinkCard";
 import { getContrastColor } from "@/lib/utils";
 import { toast } from "sonner";
 import { getArtTypeConfig } from "@/lib/artTypes";
+
+const STATUS_CHIP_STYLES: Record<PostStatus, string> = {
+  entrada: "border-slate-200 bg-slate-100 text-slate-700",
+  em_desenvolvimento: "border-sky-200 bg-sky-100 text-sky-700",
+  escrevendo_legenda: "border-sky-200 bg-sky-100 text-sky-700",
+  pronto: "border-emerald-200 bg-emerald-100 text-emerald-700",
+  finalizado: "border-emerald-200 bg-emerald-100 text-emerald-700",
+  alteracao_solicitada: "border-sky-200 bg-sky-100 text-sky-700",
+  agendado: "border-sky-200 bg-sky-100 text-sky-700",
+};
+
+const STATUS_DOT_STYLES: Record<PostStatus, string> = {
+  entrada: "bg-slate-400",
+  em_desenvolvimento: "bg-sky-500",
+  escrevendo_legenda: "bg-sky-500",
+  pronto: "bg-emerald-500",
+  finalizado: "bg-emerald-500",
+  alteracao_solicitada: "bg-sky-500",
+  agendado: "bg-sky-500",
+};
+
+function formatScheduledLabel(date: Date) {
+  return `Agendado: ${format(date, "dd/MM 'às' HH:mm")}`;
+}
+
+function splitEditorialTitle(title: string) {
+  const normalized = title.trim().replace(/\s+/g, " ");
+  const words = normalized.split(" ").filter(Boolean);
+  if (words.length < 3) return null;
+
+  const connectorIndex = words.findIndex((word, index) => {
+    if (index === 0 || index === words.length - 1) return false;
+    return ["que", "de", "do", "da", "dos", "das", "em", "com", "para", "pra", "por"].includes(word.toLowerCase());
+  });
+
+  if (connectorIndex > 0) {
+    return {
+      lead: words.slice(0, connectorIndex).join(" "),
+      accent: words.slice(connectorIndex).join(" "),
+    };
+  }
+
+  if (words.length >= 4) {
+    return {
+      lead: words.slice(0, words.length - 2).join(" "),
+      accent: words.slice(words.length - 2).join(" "),
+    };
+  }
+
+  return null;
+}
 
 const STATUS_KEYS: Record<PostStatus, string> = {
   entrada: "statusEntry",
@@ -129,6 +180,8 @@ export const PostCard = memo(
     const FALLBACK_CONFIG = { label: "—", color: "bg-muted text-muted-foreground" };
     const labelConfig = LABEL_CONFIG[post.clientLabel] ?? FALLBACK_CONFIG;
     const getStatusConfig = (s: PostStatus) => STATUS_CONFIG[s] ?? FALLBACK_CONFIG;
+    const primaryStatus = post.status[0] ?? "entrada";
+    const editorialTitle = splitEditorialTitle(post.title);
     const isOverdue = post.deadline ? new Date() > post.deadline && !post.status.includes("pronto") : false;
 
     // Cor customizada vinda da automação "Mudar cor do card" (formato: "color:#hex")
@@ -182,7 +235,7 @@ export const PostCard = memo(
 
     const cardEl = (
       <Card
-        className={`overflow-hidden transition-all duration-150 hover:shadow-md hover:translate-y-[-1px] cursor-pointer group ${
+        className={`group cursor-pointer overflow-hidden rounded-ui-lg border border-black/6 shadow-[0_2px_8px_rgba(0,0,0,0.06)] transition-all duration-150 hover:translate-y-[-1px] hover:shadow-[0_6px_18px_rgba(0,0,0,0.08)] ${
           selectionMode && isSelected ? "ring-2 ring-accent shadow-lg" : ""
         } ${showPautaTreatment ? "border-2 border-dashed border-amber-400" : ""}`}
         style={customColor ? { borderColor: customColor, borderWidth: 2, boxShadow: `0 0 0 1px ${customColor}40` } : undefined}
@@ -190,35 +243,48 @@ export const PostCard = memo(
       >
         {/* Faixa "PAUTA PARA APROVAÇÃO" */}
         {showPautaTreatment && (
-          <div className="flex items-center gap-1.5 bg-amber-500 text-white px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest">
-            <Pencil className="h-3 w-3" />
+          <div className="flex items-center gap-ui-2 bg-amber-500 px-ui-3 py-ui-1 text-ui-xs font-bold uppercase tracking-widest text-white">
+            <Pencil className="size-icon-xs" />
             Pauta para Aprovação
           </div>
         )}
         {/* Title above thumbnail */}
-        <div className="bg-muted/40 px-2.5 pt-2 pb-1.5 flex items-start gap-1.5">
+        <div className="flex items-start gap-ui-2 bg-muted/30 px-ui-4 pt-ui-4 pb-ui-3">
           {selectionMode && (
             <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
               <Checkbox checked={isSelected} onCheckedChange={() => onToggleSelect?.(post.id)} />
             </div>
           )}
           <div className="flex-1 min-w-0">
-            <h3 className="text-sm font-bold leading-snug text-foreground break-words">
-              {post.title}
+            <h3 className="break-words text-ui-base font-semibold leading-[1.25] text-foreground">
+              {editorialTitle ? (
+                <>
+                  <span>{editorialTitle.lead}</span>{" "}
+                  <span className="font-normal italic text-foreground/78">{editorialTitle.accent}</span>
+                </>
+              ) : (
+                post.title
+              )}
             </h3>
-            {(() => {
-              const cfg = getArtTypeConfig(post.artType);
-              const Icon = cfg.icon;
-              return (
-                <span className="mt-1 inline-flex items-center gap-1 rounded-full bg-background border border-border px-1.5 py-0.5 text-[9px] font-semibold text-foreground/80">
-                  <Icon className={`h-2.5 w-2.5 ${cfg.color}`} />
-                  {cfg.fallbackLabel}
-                </span>
-              );
-            })()}
+            <div className="mt-ui-2 flex flex-wrap items-center gap-ui-2">
+              <span className={`inline-flex items-center gap-ui-2 rounded-ui-full border px-ui-3 py-ui-1 text-ui-xs font-medium ${STATUS_CHIP_STYLES[primaryStatus]}`}>
+                <span className={`h-2 w-2 rounded-full ${STATUS_DOT_STYLES[primaryStatus]}`} />
+                {t((STATUS_KEYS[primaryStatus] ?? "statusEntrada") as any)}
+              </span>
+              {(() => {
+                const cfg = getArtTypeConfig(post.artType);
+                const Icon = cfg.icon;
+                return (
+                  <span className="inline-flex items-center gap-ui-1 rounded-ui-full border border-border bg-background px-ui-2 py-ui-1 text-ui-xs font-medium text-foreground/70">
+                    <Icon className={`size-icon-xs ${cfg.color}`} />
+                    {cfg.fallbackLabel}
+                  </span>
+                );
+              })()}
+            </div>
           </div>
           {isAdmin && (
-            <div className="flex items-center gap-0.5 pt-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+            <div className="flex shrink-0 items-center gap-ui-1 pt-ui-1 opacity-0 transition-opacity group-hover:opacity-100">
               {hasMedia && (
 
                 <button
@@ -232,7 +298,7 @@ export const PostCard = memo(
                   }}
                   title="Baixar mídia"
                 >
-                  <Download className="h-3.5 w-3.5" />
+                  <Download className="size-icon-sm" />
                 </button>
               )}
 
@@ -242,7 +308,7 @@ export const PostCard = memo(
                   onClick={(e) => { e.stopPropagation(); onDelete(); }}
                   title="Excluir"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
+                  <Trash2 className="size-icon-sm" />
                 </button>
               )}
             </div>
@@ -270,15 +336,15 @@ export const PostCard = memo(
                 );
               if (mediaError)
                 return (
-                  <div className="h-full w-full bg-muted flex flex-col items-center justify-center gap-2 text-muted-foreground p-3">
+                  <div className="flex h-full w-full flex-col items-center justify-center gap-ui-2 bg-muted p-ui-3 text-muted-foreground">
                     <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="opacity-60"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
-                    <span className="text-[10px] font-medium opacity-70">mídia indisponível</span>
+                    <span className="text-ui-xs font-medium opacity-70">mídia indisponível</span>
                     {isAdmin && (
                       <button
                         type="button"
                         disabled={reuploading}
                         onClick={(e) => { e.stopPropagation(); reuploadInputRef.current?.click(); }}
-                        className="inline-flex items-center gap-1 rounded-md bg-primary/90 hover:bg-primary text-primary-foreground text-[10px] font-semibold px-2 py-1 shadow-sm disabled:opacity-60"
+                        className="inline-flex items-center gap-ui-1 rounded-ui-md bg-primary/90 px-ui-2 py-ui-1 text-ui-xs font-semibold text-primary-foreground shadow-sm hover:bg-primary disabled:opacity-60"
                       >
                         {reuploading ? (
                           <>
@@ -386,7 +452,7 @@ export const PostCard = memo(
                   }
                 }}
                 title={allMedia.length > 1 ? "Baixar todas as mídias" : "Baixar mídia"}
-                className="absolute top-1.5 left-1.5 z-10 inline-flex items-center gap-1 overflow-hidden rounded-full bg-black/70 hover:bg-black/85 backdrop-blur px-2 py-1 text-[10px] font-semibold text-white shadow-md transition-colors disabled:cursor-not-allowed"
+                className="absolute left-ui-2 top-ui-2 z-10 inline-flex items-center gap-ui-1 overflow-hidden rounded-ui-full bg-black/70 px-ui-2 py-ui-1 text-ui-xs font-semibold text-white shadow-md backdrop-blur transition-colors hover:bg-black/85 disabled:cursor-not-allowed"
               >
                 {/* progress fill */}
                 {downloading && (
@@ -396,11 +462,11 @@ export const PostCard = memo(
                     style={{ width: `${Math.max(6, Math.round(downloadProgress * 100))}%` }}
                   />
                 )}
-                <span className="relative inline-flex items-center gap-1">
+                <span className="relative inline-flex items-center gap-ui-1">
                   {downloading ? (
                     <span className="h-3 w-3 animate-spin rounded-full border-2 border-white border-t-transparent" />
                   ) : (
-                    <Download className="h-3 w-3" />
+                    <Download className="size-icon-xs" />
                   )}
                   {downloading
                     ? `${Math.round(downloadProgress * 100)}%`
@@ -413,40 +479,34 @@ export const PostCard = memo(
 
             {/* Media count badge */}
             {allMedia.length > 1 && (
-              <div className="absolute top-1.5 right-1.5 bg-black/60 text-white text-[9px] font-bold px-1.5 py-0.5 rounded">
+              <div className="absolute right-ui-2 top-ui-2 rounded-ui-sm bg-black/60 px-ui-2 py-ui-1 text-ui-xs font-bold text-white">
                 {allMedia.length}
               </div>
             )}
 
             {/* Badges overlay at bottom of image */}
-            <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent pt-6 pb-2 px-2">
-              <div className="flex items-center gap-1 flex-wrap">
+            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 via-black/30 to-transparent px-ui-4 pt-ui-6 pb-ui-3">
+              <div className="flex flex-wrap items-center gap-ui-1">
                 {post.deadline && isAdmin && (
-                  <span className={`inline-flex items-center gap-0.5 text-[9px] font-semibold text-white/90 ${isOverdue ? "text-red-300" : ""}`} style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
-                    <Calendar className="h-2.5 w-2.5" />
-                    {format(post.deadline, "dd/MM")}
+                  <span className={`inline-flex items-center gap-ui-1 rounded-ui-full bg-black/35 px-ui-3 py-ui-1 text-ui-xs font-medium text-white/92 ${isOverdue ? "text-red-200" : ""}`} style={{ textShadow: '0 1px 2px rgba(0,0,0,0.5)' }}>
+                    <Calendar className="size-icon-xs" />
+                    {formatScheduledLabel(post.deadline)}
                   </span>
                 )}
                 {post.deadline && !isAdmin && (
-                  <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-bold bg-amber-400 text-black">
-                    <Calendar className="h-2.5 w-2.5" />
-                    {format(post.deadline, "dd/MM")}
+                  <span className="inline-flex items-center gap-ui-1 rounded-ui-full bg-amber-100/95 px-ui-3 py-ui-1 text-ui-xs font-medium text-amber-950">
+                    <Calendar className="size-icon-xs" />
+                    {formatScheduledLabel(post.deadline)}
                   </span>
                 )}
-                {post.status.slice(0, 1).map((s) => (
-                  <span key={s} className={`inline-flex rounded px-1.5 py-0.5 text-[8px] font-bold ${getStatusConfig(s).color}`}>
+                {post.status.slice(1, 2).map((s) => (
+                  <span key={s} className={`inline-flex rounded-ui-sm px-ui-2 py-ui-1 text-ui-xs font-bold ${getStatusConfig(s).color}`}>
                     {t((STATUS_KEYS[s] ?? "statusEntrada") as any)}
                   </span>
                 ))}
-                <span className={`inline-flex rounded px-1.5 py-0.5 text-[8px] font-bold ${labelConfig.color}`}>
+                <span className={`inline-flex rounded-ui-sm px-ui-2 py-ui-1 text-ui-xs font-bold ${labelConfig.color}`}>
                   {t(LABEL_KEYS[post.clientLabel] as any)}
                 </span>
-                {post.comments.length > 0 && (
-                  <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-bold bg-white/90 text-black" title={`${post.comments.length} comentário(s)`}>
-                    <MessageCircle className="h-2.5 w-2.5" />
-                    {post.comments.length}
-                  </span>
-                )}
               </div>
             </div>
           </div>
@@ -454,12 +514,12 @@ export const PostCard = memo(
 
         {/* Content */}
 
-        <div className="p-2.5 space-y-1.5">
+        <div className="space-y-ui-3 p-ui-4">
 
 
           {/* Tags row */}
           {postTags.length > 0 && (
-            <div className="flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-ui-1">
               {postTags.map((tag) => {
                 if (!tag) return null;
                 const translationKey = TAG_TRANSLATION_KEYS[tag.id];
@@ -467,7 +527,7 @@ export const PostCard = memo(
                 return (
                   <span
                     key={tag.id}
-                     className="inline-block rounded px-1.5 py-0.5 text-[9px] font-semibold"
+                     className="inline-block rounded-ui-sm px-ui-2 py-ui-1 text-ui-xs font-semibold"
                      style={{ backgroundColor: tag.color, color: getContrastColor(tag.color) }}
                   >
                     {displayName}
@@ -479,33 +539,27 @@ export const PostCard = memo(
 
           {/* No-media fallback: show badges inline */}
           {!hasMedia && (
-            <div className="flex items-center gap-1 flex-wrap">
+            <div className="flex flex-wrap items-center gap-ui-1">
               {post.deadline && isAdmin && (
-                <span className={`inline-flex items-center gap-1 text-[10px] font-medium ${isOverdue ? "text-destructive" : "text-muted-foreground"}`}>
-                  <Calendar className="h-3 w-3" />
-                  {format(post.deadline, "dd/MM")}
+                <span className={`inline-flex items-center gap-ui-1 rounded-ui-full border border-border bg-muted/40 px-ui-3 py-ui-1 text-ui-xs font-medium ${isOverdue ? "text-destructive" : "text-muted-foreground"}`}>
+                  <Calendar className="size-icon-xs" />
+                  {formatScheduledLabel(post.deadline)}
                 </span>
               )}
               {post.deadline && !isAdmin && (
-                <span className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold bg-amber-400 text-black">
-                  <Calendar className="h-3 w-3" />
-                  {format(post.deadline, "dd/MM")}
+                <span className="inline-flex items-center gap-ui-1 rounded-ui-full bg-amber-100 px-ui-3 py-ui-1 text-ui-xs font-medium text-amber-950">
+                  <Calendar className="size-icon-xs" />
+                  {formatScheduledLabel(post.deadline)}
                 </span>
               )}
-              {post.status.slice(0, 1).map((s) => (
-                <span key={s} className={`inline-flex rounded px-1.5 py-0.5 text-[9px] font-semibold ${getStatusConfig(s).color}`}>
+              {post.status.slice(1, 2).map((s) => (
+                <span key={s} className={`inline-flex rounded-ui-sm px-ui-2 py-ui-1 text-ui-xs font-semibold ${getStatusConfig(s).color}`}>
                   {t((STATUS_KEYS[s] ?? "statusEntrada") as any)}
                 </span>
               ))}
-              <span className={`inline-flex rounded px-1.5 py-0.5 text-[9px] font-semibold ${labelConfig.color}`}>
+              <span className={`inline-flex rounded-ui-sm px-ui-2 py-ui-1 text-ui-xs font-semibold ${labelConfig.color}`}>
                 {t(LABEL_KEYS[post.clientLabel] as any)}
               </span>
-              {post.comments.length > 0 && (
-                <span className="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[9px] font-bold bg-foreground/10 text-foreground" title={`${post.comments.length} comentário(s)`}>
-                  <MessageCircle className="h-3 w-3" />
-                  {post.comments.length}
-                </span>
-              )}
             </div>
           )}
 

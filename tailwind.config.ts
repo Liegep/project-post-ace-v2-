@@ -13,6 +13,21 @@ export default {
       },
     },
     extend: {
+      spacing: {
+        "ui-1": "var(--space-1)",
+        "ui-2": "var(--space-2)",
+        "ui-3": "var(--space-3)",
+        "ui-4": "var(--space-4)",
+        "ui-5": "var(--space-5)",
+        "ui-6": "var(--space-6)",
+        "ui-8": "var(--space-8)",
+        "icon-xs": "var(--icon-xs)",
+        "icon-sm": "var(--icon-sm)",
+        "icon-md": "var(--icon-md)",
+        "icon-lg": "var(--icon-lg)",
+        "icon-xl": "var(--icon-xl)",
+        widget: "var(--widget-size)",
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
@@ -74,6 +89,22 @@ export default {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        ui: "var(--radius-md)",
+        "ui-sm": "var(--radius-sm)",
+        "ui-md": "var(--radius-md)",
+        "ui-lg": "var(--radius-lg)",
+        "ui-full": "9999px",
+      },
+      fontSize: {
+        "ui-xs": ["var(--font-size-xs)", { lineHeight: "1.4" }],
+        "ui-sm": ["var(--font-size-sm)", { lineHeight: "1.45" }],
+        "ui-base": ["var(--font-size-base)", { lineHeight: "1.5" }],
+        "ui-lg": ["var(--font-size-lg)", { lineHeight: "1.35" }],
+        "ui-xl": ["var(--font-size-xl)", { lineHeight: "1.3" }],
+      },
+      zIndex: {
+        "floating-widget": "var(--z-floating-widget)",
+        "floating-panel": "var(--z-floating-panel)",
       },
       keyframes: {
         "accordion-down": {

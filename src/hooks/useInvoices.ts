@@ -6,6 +6,8 @@ export interface Invoice {
   client_id: string;
   invoice_number: number;
   title: string;
+  currency_code: string;
+  locale: string;
   period_start: string | null;
   period_end: string | null;
   issue_date: string;
@@ -21,6 +23,13 @@ export interface Invoice {
   payment_method: string;
   payment_details: string;
   client_visible: boolean;
+  recipient_name: string;
+  recipient_email: string;
+  recipient_address: string;
+  recipient_country: string;
+  recipient_tax_id: string;
+  is_recurring: boolean;
+  recurring_fixed_amount: boolean;
   clients?: {
     name: string;
     logo_url: string;
@@ -82,6 +91,35 @@ export function useInvoices(clientId?: string) {
   return { invoices, loading, refetch: fetchInvoices };
 }
 
+export function useInvoice(invoiceId?: string) {
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchInvoice = useCallback(async () => {
+    if (!invoiceId) {
+      setInvoice(null);
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    const { data } = await supabase
+      .from("invoices")
+      .select("*, clients(name, logo_url, slug, billing_currency, address, country, tax_id, locale)")
+      .eq("id", invoiceId)
+      .maybeSingle();
+
+    setInvoice((data as Invoice | null) || null);
+    setLoading(false);
+  }, [invoiceId]);
+
+  useEffect(() => {
+    fetchInvoice();
+  }, [fetchInvoice]);
+
+  return { invoice, loading, refetch: fetchInvoice };
+}
+
 export function useInvoiceItems(invoiceId: string) {
   const [items, setItems] = useState<InvoiceItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -125,6 +163,8 @@ export function useInvoiceAttachments(invoiceId: string) {
 export async function createInvoice(data: {
   client_id: string;
   title: string;
+  currency_code?: string;
+  locale?: string;
   period_start?: string;
   period_end?: string;
   issue_date: string;
@@ -132,6 +172,13 @@ export async function createInvoice(data: {
   notes?: string;
   created_by?: string;
   client_visible?: boolean;
+  recipient_name?: string;
+  recipient_email?: string;
+  recipient_address?: string;
+  recipient_country?: string;
+  recipient_tax_id?: string;
+  is_recurring?: boolean;
+  recurring_fixed_amount?: boolean;
 }) {
   const { data: inv, error } = await supabase.from("invoices").insert(data as any).select().single();
   if (error) throw error;

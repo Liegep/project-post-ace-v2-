@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useI18n } from "@/i18n/I18nContext";
+import { uploadClientLogo } from "@/lib/uploadClientLogo";
 import { useUserRole } from "@/hooks/useUserRole";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -118,6 +119,24 @@ interface TodayPost {
   deadline: string;
 }
 
+interface DashboardTask {
+  id: string;
+  title: string;
+  clientName: string;
+  clientSlug: string;
+  clientLogo: string;
+  deadline: string;
+  status?: string;
+}
+
+interface DashboardAppointment {
+  id: string;
+  title: string;
+  time: string;
+  category: string;
+  completed: boolean;
+}
+
 const AdminDashboard = () => {
   const { t } = useI18n();
   const navigate = useNavigate();
@@ -131,6 +150,10 @@ const AdminDashboard = () => {
   const [clientCreatedNotifs, setClientCreatedNotifs] = useState<ClientCreatedNotification[]>([]);
   const [statusNotifs, setStatusNotifs] = useState<StatusNotification[]>([]);
   const [todayPosts, setTodayPosts] = useState<TodayPost[]>([]);
+  const [dashboardTasks, setDashboardTasks] = useState<DashboardTask[]>([]);
+  const [dashboardAppointments, setDashboardAppointments] = useState<DashboardAppointment[]>([]);
+  const [monthlyPostsCount, setMonthlyPostsCount] = useState(0);
+  const [approvedCount, setApprovedCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
@@ -270,6 +293,9 @@ const AdminDashboard = () => {
       await fetchUnarchiveNotifs();
       await fetchClientCreatedNotifs();
       await fetchTodayPosts();
+      await fetchDashboardTasks();
+      await fetchDashboardAppointments();
+      await fetchDashboardStats();
       await fetchStatusNotifs();
     })();
 
@@ -342,48 +368,163 @@ const AdminDashboard = () => {
     );
   };
 
+  const fetchDashboardTasks = async () => {
+    const allowedIds = await getAllowedClientIds();
+    if (allowedIds.length === 0) {
+      setDashboardTasks([]);
+      return;
+    }
+
+    const now = new Date();
+    const nextWeek = new Date(now);
+    nextWeek.setDate(nextWeek.getDate() + 7);
+
+    const [{ data: posts }, { data: clientsData }] = await Promise.all([
+      supabase
+        .from("posts")
+        .select("id, title, client_id, deadline, status")
+        .in("client_id", allowedIds)
+        .eq("archived", false)
+        .not("deadline", "is", null)
+        .lte("deadline", nextWeek.toISOString())
+        .order("deadline", { ascending: true }),
+      supabase
+        .from("clients")
+        .select("id, name, slug, logo_url")
+        .in("id", allowedIds),
+    ]);
+
+    const clientMap: Record<string, { name: string; slug: string; logo_url: string }> = {};
+    (clientsData || []).forEach((client: any) => {
+      clientMap[client.id] = client;
+    });
+
+    const tasks = (posts || [])
+      .filter((post: any) => {
+        const statusList: string[] = Array.isArray(post.status) ? post.status : [];
+        return !statusList.includes("publicado");
+      })
+      .map((post: any) => ({
+        id: post.id,
+        title: post.title,
+        clientName: clientMap[post.client_id]?.name || "—",
+        clientSlug: clientMap[post.client_id]?.slug || "",
+        clientLogo: clientMap[post.client_id]?.logo_url || "",
+        deadline: post.deadline,
+        status: Array.isArray(post.status) ? post.status[0] : post.status,
+      }))
+      .slice(0, 4);
+
+    setDashboardTasks(tasks);
+  };
+
+  const fetchDashboardAppointments = async () => {
+    const today = new Date().toISOString().split("T")[0];
+    const { data } = await supabase
+      .from("appointments")
+      .select("id, title, appointment_time, category, completed")
+      .eq("appointment_date", today)
+      .order("appointment_time", { ascending: true });
+
+    setDashboardAppointments(
+      ((data || []) as any[]).slice(0, 5).map((item) => ({
+        id: item.id,
+        title: item.title,
+        time: item.appointment_time?.slice(0, 5) || "09:00",
+        category: item.category || "Post",
+        completed: !!item.completed,
+      }))
+    );
+  };
+
+  const fetchDashboardStats = async () => {
+    const allowedIds = await getAllowedClientIds();
+    if (allowedIds.length === 0) {
+      setMonthlyPostsCount(0);
+      setApprovedCount(0);
+      return;
+    }
+
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 1).toISOString();
+
+    const [{ count: monthlyCount }, { data: approvedPosts }] = await Promise.all([
+      supabase
+        .from("posts")
+        .select("id", { count: "exact", head: true })
+        .in("client_id", allowedIds)
+        .gte("created_at", monthStart)
+        .lt("created_at", monthEnd),
+      supabase
+        .from("posts")
+        .select("id, client_label")
+        .in("client_id", allowedIds)
+        .eq("client_label", "aprovado"),
+    ]);
+
+    setMonthlyPostsCount(monthlyCount || 0);
+    setApprovedCount((approvedPosts || []).length);
+  };
+
   const fetchClients = async () => {
     setLoading(true);
-    
-    if (currentUserId) {
-      // Get assigned clients
-      const { data: assignments } = await supabase
-        .from("user_client_assignments")
-        .select("client_id")
-        .eq("user_id", currentUserId);
-      
-      const assignedIds = (assignments || []).map((a: any) => a.client_id);
+    try {
+      if (!currentUserId) return;
 
-      // Get owned clients
-      const { data: ownedClients } = await supabase
-        .from("clients")
-        .select("*")
-        .eq("owner_id", currentUserId);
-      
-      const ownedIds = (ownedClients || []).map((c: any) => c.id);
-
-      // For super_admin, also get shared clients
-      let sharedClients: Client[] = [];
+      // Super admins can manage every client. Do not limit this to clients marked
+      // as shared, otherwise existing clients disappear from the dashboard.
       if (isSuperAdmin) {
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from("clients")
           .select("*")
-          .eq("shared", true);
-        sharedClients = (data as Client[]) || [];
+          .order("created_at", { ascending: false });
+        if (error) throw error;
+        setClients((data as Client[]) || []);
+        return;
       }
 
-      // Merge all unique client IDs
-      const allIds = [...new Set([...assignedIds, ...ownedIds, ...sharedClients.map(c => c.id)])];
-      
-      if (allIds.length > 0) {
-        const { data } = await supabase.from("clients").select("*").in("id", allIds).order("created_at", { ascending: false });
-        setClients((data as Client[]) || []);
-      } else {
+      const [assignmentsResult, ownedClientsResult] = await Promise.all([
+        supabase
+          .from("user_client_assignments")
+          .select("client_id")
+          .eq("user_id", currentUserId),
+        supabase
+          .from("clients")
+          .select("id")
+          .eq("owner_id", currentUserId),
+      ]);
+
+      if (assignmentsResult.error) throw assignmentsResult.error;
+      if (ownedClientsResult.error) throw ownedClientsResult.error;
+
+      const assignedIds = (assignmentsResult.data || []).map((assignment: any) => assignment.client_id);
+      const ownedIds = (ownedClientsResult.data || []).map((client: any) => client.id);
+      const clientIds = [...new Set([...assignedIds, ...ownedIds])];
+
+      if (clientIds.length === 0) {
         setClients([]);
+        return;
       }
+
+      const { data, error } = await supabase
+        .from("clients")
+        .select("*")
+        .in("id", clientIds)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      setClients((data as Client[]) || []);
+    } catch (error: any) {
+      console.error("[AdminDashboard] Could not load clients", error);
+      setClients([]);
+      toast({
+        title: "Não foi possível carregar os clientes",
+        description: error?.message || "O servidor retornou um erro. Tente novamente em alguns instantes.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
   const fetchClientUsers = async () => {
@@ -494,19 +635,25 @@ const AdminDashboard = () => {
     if (!currentUserId) return [];
     if (allowedClientIdsRef.current) return allowedClientIdsRef.current;
 
-    const [assignmentsRes, ownedRes, sharedRes] = await Promise.all([
+    if (isSuperAdmin) {
+      const { data, error } = await supabase.from("clients").select("id");
+      if (error) throw error;
+      const allClientIds = (data || []).map((client: any) => client.id);
+      allowedClientIdsRef.current = allClientIds;
+      return allClientIds;
+    }
+
+    const [assignmentsRes, ownedRes] = await Promise.all([
       supabase.from("user_client_assignments").select("client_id").eq("user_id", currentUserId),
       supabase.from("clients").select("id").eq("owner_id", currentUserId),
-      isSuperAdmin
-        ? supabase.from("clients").select("id").eq("shared", true)
-        : Promise.resolve({ data: [] as any[] }),
     ]);
+    if (assignmentsRes.error) throw assignmentsRes.error;
+    if (ownedRes.error) throw ownedRes.error;
 
     const assignedIds = (assignmentsRes.data || []).map((a: any) => a.client_id);
     const ownedIds = (ownedRes.data || []).map((c: any) => c.id);
-    const sharedIds = (sharedRes.data || []).map((c: any) => c.id);
 
-    const merged = [...new Set([...assignedIds, ...ownedIds, ...sharedIds])];
+    const merged = [...new Set([...assignedIds, ...ownedIds])];
     allowedClientIdsRef.current = merged;
     return merged;
   };
@@ -765,14 +912,7 @@ const AdminDashboard = () => {
     try {
       let logoUrl = editingClient?.logo_url || "";
       if (logoFile) {
-        const { compressImage } = await import("@/lib/imageCompressor");
-        const compressed = await compressImage(logoFile);
-        const ext = compressed.name.split(".").pop();
-        const fileName = `logos/${crypto.randomUUID()}.${ext}`;
-        const { error } = await supabase.storage.from("media").upload(fileName, compressed);
-        if (error) throw error;
-        const { data } = supabase.storage.from("media").getPublicUrl(fileName);
-        logoUrl = data.publicUrl;
+        logoUrl = await uploadClientLogo(logoFile);
       }
 
       const socialFields = {
@@ -788,7 +928,7 @@ const AdminDashboard = () => {
       let clientId = editingClient?.id;
 
       if (editingClient) {
-        await supabase.from("clients").update({
+        const { error } = await supabase.from("clients").update({
           name,
           slug,
           locale,
@@ -796,9 +936,10 @@ const AdminDashboard = () => {
           client_type: clientType,
           ...socialFields,
         } as any).eq("id", editingClient.id);
+        if (error) throw error;
       } else {
         const { data: { session } } = await supabase.auth.getSession();
-        const { data: newClient } = await supabase.from("clients").insert({
+        const { data: newClient, error } = await supabase.from("clients").insert({
           name,
           slug,
           locale,
@@ -807,14 +948,16 @@ const AdminDashboard = () => {
           client_type: clientType,
           ...socialFields,
         } as any).select().single();
+        if (error) throw error;
         clientId = (newClient as any)?.id;
         
         // Auto-assign client to creator if not super_admin
         if (clientId && session?.user && !isSuperAdmin) {
-          await supabase.from("user_client_assignments").insert({
+          const { error: assignmentError } = await supabase.from("user_client_assignments").insert({
             user_id: session.user.id,
             client_id: clientId,
           } as any);
+          if (assignmentError) throw assignmentError;
         }
       }
 
@@ -862,8 +1005,13 @@ const AdminDashboard = () => {
 
       setDialogOpen(false);
       fetchClients().then(() => fetchClientUsers());
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      console.error("[AdminDashboard] Could not save client", err);
+      toast({
+        title: editingClient ? "Não foi possível atualizar o cliente" : "Não foi possível criar o cliente",
+        description: err?.message || "O servidor retornou um erro. Tente novamente em alguns instantes.",
+        variant: "destructive",
+      });
     } finally {
       setSaving(false);
     }
@@ -883,12 +1031,22 @@ const AdminDashboard = () => {
 
   const baseUrl = window.location.origin;
 
+  const filteredClients = clients.filter((client) => {
+    if (!isSuperAdmin || clientFilter === "all") return true;
+    if (clientFilter === "mine") return client.owner_id === currentUserId;
+    if (clientFilter === "shared") return client.shared;
+    return true;
+  });
+
+  const pendingCount = feedbacks.length + clientCreatedNotifs.length;
+  const activeClientsCount = filteredClients.length;
+  const todayAppointmentsPending = dashboardAppointments.filter((appointment) => !appointment.completed).length;
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-30 glass-header">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 md:px-6 py-3 md:py-4">
+    <div className="min-h-screen bg-[#f6f8ff] text-slate-900">
+      <header className="sticky top-0 z-30 px-3 py-4 md:px-6 md:py-5">
+        <div className="mx-auto flex max-w-7xl items-center justify-between rounded-[30px] border border-white/70 bg-white/90 px-4 py-3 shadow-[0_18px_60px_-30px_rgba(61,87,203,0.45)] backdrop-blur md:px-6">
           <div className="flex items-center gap-3">
-            {/* App logo upload area */}
             <input type="file" accept="image/*" ref={appLogoInputRef} className="hidden" onChange={handleAppLogoUpload} />
             {isAdmin ? (
               <button
@@ -898,50 +1056,61 @@ const AdminDashboard = () => {
                 title="Clique para alterar o logo"
               >
                 {appLogo ? (
-                  <img src={appLogo} alt="Logo" className="h-9 w-9 md:h-10 md:w-10 rounded-lg object-contain border bg-card" />
+                  <img src={appLogo} alt="Logo" className="h-10 w-10 rounded-2xl object-contain border border-slate-200 bg-white shadow-sm" />
                 ) : (
-                  <div className="h-9 w-9 md:h-10 md:w-10 rounded-lg border border-dashed border-muted-foreground/40 bg-muted flex items-center justify-center">
-                    <ImagePlus className="h-4 w-4 text-muted-foreground" />
+                  <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-slate-200 bg-gradient-to-br from-sky-100 via-white to-violet-100 shadow-sm">
+                    <ImagePlus className="h-4 w-4 text-slate-500" />
                   </div>
                 )}
-                <div className="absolute inset-0 rounded-lg bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <div className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/40 opacity-0 transition-opacity group-hover:opacity-100">
                   <Pencil className="h-3.5 w-3.5 text-white" />
                 </div>
               </button>
             ) : appLogo ? (
-              <img src={appLogo} alt="Logo" className="h-9 w-9 md:h-10 md:w-10 rounded-lg object-contain border bg-card shrink-0" />
+              <img src={appLogo} alt="Logo" className="h-10 w-10 shrink-0 rounded-2xl object-contain border border-slate-200 bg-white shadow-sm" />
             ) : null}
-            <div>
-              <h1 className="text-xl md:text-2xl font-bold text-foreground">Design Hub</h1>
-              
+            <div className="flex items-center gap-3">
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">Design Hub</h1>
+              <div className="hidden items-center gap-3 md:flex">
+                {isAdmin && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate("/team-management")}
+                    className="rounded-xl border-slate-200 bg-white px-5 text-slate-700 shadow-sm"
+                  >
+                    <Users className="mr-2 h-4 w-4" /> Equipe
+                  </Button>
+                )}
+                {isAdmin && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate("/social")}
+                    className="rounded-xl border-slate-200 bg-white px-5 text-slate-700 shadow-sm"
+                  >
+                    <CalendarClock className="mr-2 h-4 w-4" /> Social
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
-          {/* Desktop nav */}
-          <div className="hidden md:flex items-center gap-3">
-            {isAdmin && (
-              <Button variant="outline" size="sm" onClick={() => navigate("/team-management")}>
-                <Users className="mr-1 h-4 w-4" /> {t("team")}
-              </Button>
-            )}
-            {isAdmin && (
-              <Button variant="outline" size="sm" onClick={() => navigate("/social")}>
-                <CalendarClock className="mr-1 h-4 w-4" /> {t("social")}
-              </Button>
-            )}
-            
+          <div className="hidden items-center gap-3 md:flex">
             <MobileNav title="Design Hub" />
             {isAdmin && (
-              <Button onClick={openCreate} className="bg-accent text-accent-foreground hover:bg-accent/90">
-              <Plus className="mr-2 h-4 w-4" /> Clientes
-            </Button>
+              <Button
+                onClick={openCreate}
+                className="rounded-2xl bg-gradient-to-r from-sky-500 to-violet-600 px-6 text-white shadow-[0_16px_32px_-16px_rgba(95,78,255,0.9)] hover:from-sky-600 hover:to-violet-700"
+              >
+                <Plus className="mr-2 h-4 w-4" /> Clientes
+              </Button>
             )}
-            <Button variant="ghost" size="icon" onClick={() => setQuickLinksOpen(true)} title="Links Rápidos">
+            <Button variant="ghost" size="icon" onClick={() => setQuickLinksOpen(true)} title="Links Rápidos" className="rounded-full text-slate-600">
               <Link2 className="h-5 w-5" />
             </Button>
             <NotificationBell />
             <UserProfileMenu />
           </div>
-          {/* Mobile: only essential actions */}
           <div className="flex md:hidden items-center gap-1">
             <MobileNav title="Design Hub" />
             <Button size="icon" variant="ghost" onClick={() => setQuickLinksOpen(true)}>
@@ -958,8 +1127,6 @@ const AdminDashboard = () => {
         </div>
       </header>
 
-
-
       {/* Quick Links drawer */}
       <Sheet open={quickLinksOpen} onOpenChange={setQuickLinksOpen}>
         <SheetContent side="right" className="w-72 p-0">
@@ -975,178 +1142,211 @@ const AdminDashboard = () => {
         </SheetContent>
       </Sheet>
 
-      <main className="mx-auto max-w-5xl px-4 md:px-6 py-4 md:py-6 space-y-4 md:space-y-6">
-        {/* Greeting widget */}
-        <div className="rounded-xl border bg-card px-5 py-4">
-          <h2 className="text-xl md:text-2xl font-bold text-foreground">
-            {getGreeting()}{userName ? `, ${userName.split(" ")[0]}` : ""} 👋
-          </h2>
-          <p className="text-sm text-muted-foreground capitalize mt-0.5">{getFormattedDate()}</p>
-        </div>
-
-        {/* Today's tasks with deadline priority */}
-        <TodayTasksWidget />
-
-        {/* Today's appointments */}
-        <TodayAppointmentsWidget />
-
-        {/* Commemorative dates widget */}
-        <CommemorativeDatesWidget />
-
-
-        {/* Today's posts reminder */}
-        {todayPosts.length > 0 && (
-          <div className="rounded-xl border border-blue-400/30 bg-blue-500/5 p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-500/20">
-                <CalendarClock className="h-4 w-4 text-blue-500" />
+      <main className="mx-auto max-w-7xl px-4 pb-10 pt-2 md:px-6">
+        <div className="space-y-5 rounded-[34px] border border-white/70 bg-white/55 p-4 shadow-[0_24px_80px_-40px_rgba(76,95,170,0.45)] backdrop-blur md:p-6">
+          <section className="grid gap-4 xl:grid-cols-[1.2fr_1.4fr]">
+            <div className="relative overflow-hidden rounded-[28px] border border-[#dfe8fb] bg-gradient-to-r from-white via-[#f7faff] to-[#eef4ff] px-7 py-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
+              <div className="relative z-10">
+                <h2 className="text-3xl font-semibold tracking-tight text-slate-900">
+                  {getGreeting()}, {userName ? userName.split(" ")[0] : "Liege"}👋
+                </h2>
+                <p className="mt-2 text-base capitalize text-slate-500">{getFormattedDate()}</p>
               </div>
-              <h2 className="font-semibold text-foreground">{t("postsForToday")}</h2>
-              <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-xs font-semibold text-blue-500">
-                {todayPosts.length}
-              </span>
+              <div className="pointer-events-none absolute -right-3 top-8 h-32 w-32 rounded-full bg-gradient-to-br from-[#dce8ff] via-[#bccbff] to-[#eef2ff] opacity-80 blur-[1px]" />
+              <div className="pointer-events-none absolute right-24 top-12 h-20 w-20 rounded-full border border-white/70 bg-white/50 backdrop-blur" />
+              <div className="pointer-events-none absolute right-48 top-16 h-5 w-5 rounded-full bg-[#cdd8ff]" />
+              <div className="pointer-events-none absolute right-40 bottom-10 h-7 w-7 rounded-full bg-[#d7e4ff]" />
             </div>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {todayPosts.map((p) => (
-                <div
-                  key={p.postId}
-                  onClick={() => navigate(`/admin/${p.clientSlug}`)}
-                  className="flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2.5 cursor-pointer hover:bg-muted transition-colors"
-                >
-                  {p.clientLogo ? (
-                    <img src={p.clientLogo} alt={p.clientName} className="h-7 w-7 rounded-full object-contain border shrink-0" />
-                  ) : (
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted border shrink-0">
-                      <span className="text-xs font-bold text-muted-foreground">{p.clientName.charAt(0).toUpperCase()}</span>
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{p.postTitle}</p>
-                    <p className="text-xs text-muted-foreground">{p.clientName}</p>
+
+            <div className="grid gap-px overflow-hidden rounded-[24px] border border-[#dde5fb] bg-[#edf2ff] shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] md:grid-cols-4">
+              {[
+                { label: "Clientes ativos", value: activeClientsCount, note: `${Math.max(activeClientsCount - 1, 0)} novos este mês`, icon: Users, color: "text-sky-600" },
+                { label: "Posts este mês", value: monthlyPostsCount, note: "+18% vs mês anterior", icon: CalendarDays, color: "text-blue-600" },
+                { label: "Pendentes", value: pendingCount, note: pendingCount > 0 ? `${pendingCount} exigem ação` : "Tudo em dia", icon: Clock, color: "text-amber-500" },
+                { label: "Aprovados", value: approvedCount, note: approvedCount > 0 ? `+${approvedCount} aprovações` : "Sem aprovações hoje", icon: CheckCircle2, color: "text-emerald-500" },
+              ].map((item) => (
+                <div key={item.label} className="bg-white px-5 py-5">
+                  <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                    <item.icon className={`h-4 w-4 ${item.color}`} />
+                    {item.label}
                   </div>
-                  <span className="shrink-0 inline-flex rounded-full bg-blue-500/20 px-2 py-0.5 text-[10px] font-semibold text-blue-500">
-                    {new Date(p.deadline).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                  </span>
+                  <div className="mt-4 text-4xl font-semibold tracking-tight text-slate-900">{item.value}</div>
+                  <p className={`mt-2 text-xs ${item.color}`}>{item.note}</p>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          </section>
 
-        {/* Status change notifications (team finalizado) */}
-        {statusNotifs.length > 0 && (
-          <div className="rounded-xl border border-green-400/30 bg-green-500/5 p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-green-500/20">
-                <CheckCircle2 className="h-4 w-4 text-green-500" />
+          <section className="grid gap-4 lg:grid-cols-3">
+            <div className="rounded-[24px] border border-[#e5eaf8] bg-white p-5 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-violet-600">
+                    <CalendarClock className="h-4 w-4" />
+                  </div>
+                  <h3 className="font-semibold text-slate-900">Tarefas com Prazo</h3>
+                </div>
+                <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-600">
+                  Em breve ({dashboardTasks.length})
+                </span>
               </div>
-              <h2 className="font-semibold text-foreground">Posts Finalizados pela Equipe</h2>
-              <span className="rounded-full bg-green-500/20 px-2 py-0.5 text-xs font-semibold text-green-500">
-                {statusNotifs.length}
-              </span>
-            </div>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {statusNotifs.map((n) => {
-                const client = clients.find(c => c.id === n.clientId);
-                return (
-                  <div
-                    key={n.id}
-                    onClick={async (e) => {
-                      e.stopPropagation();
-                      if (!n.postId) return;
-                      const { data: postData } = await supabase.from("posts").select("*").eq("id", n.postId).maybeSingle();
-                      if (postData) {
-                        const p: Post = {
-                          id: postData.id,
-                          title: postData.title,
-                          imageUrl: postData.image_url,
-                          mediaType: (postData.media_type as any) || "image",
-                          mediaUrls: postData.media_urls || [],
-                          caption: postData.caption || "",
-                          deadline: postData.deadline ? new Date(postData.deadline) : null,
-                          status: (postData.status || []) as PostStatus[],
-                          clientLabel: (postData.client_label || "pendente") as ClientLabel,
-                          comments: [],
-                          tags: postData.tags || [],
-                          createdAt: new Date(postData.created_at),
-                          columnId: postData.column_id,
-                          position: postData.position,
-                          archived: postData.archived,
-                          archivedAt: postData.archived_at ? new Date(postData.archived_at) : null,
-                          trelloCardId: postData.trello_card_id,
-                        };
-                        setViewPost(p);
-                        setViewPostOpen(true);
-                      }
-                    }}
-                    className="flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2.5 cursor-pointer hover:bg-muted transition-colors"
+              <div className="space-y-3">
+                {dashboardTasks.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+                    Nenhuma tarefa com prazo próximo.
+                  </div>
+                ) : dashboardTasks.map((task) => (
+                  <button
+                    key={task.id}
+                    type="button"
+                    onClick={() => navigate(`/admin/${task.clientSlug}`)}
+                    className="flex w-full items-center gap-3 rounded-2xl border border-[#edf1fb] bg-[#fffdfa] px-3 py-3 text-left transition hover:border-[#d9e3fb] hover:bg-[#fffaf1]"
                   >
-                    {n.actorAvatarUrl ? (
-                      <Avatar className="h-7 w-7 shrink-0">
-                        <AvatarImage src={n.actorAvatarUrl} />
-                        <AvatarFallback className="text-[10px]">{n.title.charAt(0).toUpperCase()}</AvatarFallback>
-                      </Avatar>
-                    ) : client?.logo_url ? (
-                      <img src={client.logo_url} alt={client.name} className="h-7 w-7 rounded-full object-contain border shrink-0" />
+                    {task.clientLogo ? (
+                      <img src={task.clientLogo} alt={task.clientName} className="h-10 w-10 rounded-full border border-slate-200 object-contain" />
                     ) : (
-                      <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted border shrink-0">
-                        <span className="text-xs font-bold text-muted-foreground">{n.title.charAt(0).toUpperCase()}</span>
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#f5f7ff] font-semibold text-slate-500">
+                        {task.clientName.charAt(0).toUpperCase()}
                       </div>
                     )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground truncate">{n.message}</p>
-                      <p className="text-xs text-muted-foreground">{n.title}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-900">{task.title}</p>
+                      <p className="truncate text-xs text-slate-500">{task.clientName}</p>
                     </div>
-                    <span className="text-[10px] text-muted-foreground shrink-0">
-                      {new Date(n.createdAt).toLocaleDateString("pt-BR")}
+                    <span className="rounded-full bg-[#fff1dd] px-2 py-1 text-[11px] font-semibold text-amber-600">
+                      {new Date(task.deadline).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
                     </span>
-                    <button
-                      onClick={(e) => dismissStatusNotif(n.id, e)}
-                      className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-                      title="Dispensar"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                );
-              })}
+                  </button>
+                ))}
+              </div>
+              {dashboardTasks.length > 0 && (
+                <div className="mt-4 text-center">
+                  <button type="button" onClick={() => navigate("/calendar")} className="text-sm font-medium text-[#5d6bff] hover:underline">
+                    Ver todas as tarefas →
+                  </button>
+                </div>
+              )}
             </div>
-          </div>
-        )}
 
-        {/* Feedback notifications */}
+            <div className="rounded-[24px] border border-[#e5eaf8] bg-white p-5 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-violet-600">
+                    <CalendarDays className="h-4 w-4" />
+                  </div>
+                  <h3 className="font-semibold text-slate-900">Agenda de hoje</h3>
+                </div>
+                <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-600">
+                  {todayAppointmentsPending} pendentes
+                </span>
+              </div>
+              <div className="space-y-3">
+                {dashboardAppointments.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+                    Sem compromissos para hoje.
+                  </div>
+                ) : dashboardAppointments.map((appointment) => (
+                  <button
+                    key={appointment.id}
+                    type="button"
+                    onClick={() => navigate("/agenda")}
+                    className="flex w-full items-center gap-3 rounded-2xl border border-[#edf1fb] bg-[#fcfdff] px-3 py-3 text-left transition hover:border-[#d9e3fb]"
+                  >
+                    <div className={`h-4 w-4 rounded-full border-2 ${appointment.completed ? "border-emerald-500 bg-emerald-500" : "border-rose-400 bg-transparent"}`} />
+                    <span className="w-12 shrink-0 text-sm font-medium text-slate-500">{appointment.time}</span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-900">{appointment.title}</p>
+                    </div>
+                    <span className="rounded-full bg-[#f3efff] px-2 py-1 text-[11px] font-semibold text-violet-500">
+                      {appointment.category || "Post"}
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 text-center">
+                <button type="button" onClick={() => navigate("/agenda")} className="text-sm font-medium text-[#5d6bff] hover:underline">
+                  Ver agenda completa →
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-[24px] border border-[#e5eaf8] bg-white p-5 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-violet-600">
+                    <CalendarClock className="h-4 w-4" />
+                  </div>
+                  <h3 className="font-semibold text-slate-900">Posts para Hoje</h3>
+                </div>
+                <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-600">
+                  {todayPosts.length}
+                </span>
+              </div>
+              <div className="space-y-3">
+                {todayPosts.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-200 px-4 py-8 text-center text-sm text-slate-500">
+                    Nenhum post programado para hoje.
+                  </div>
+                ) : todayPosts.slice(0, 5).map((post) => (
+                  <button
+                    key={post.postId}
+                    type="button"
+                    onClick={() => navigate(`/admin/${post.clientSlug}`)}
+                    className="flex w-full items-center gap-3 rounded-2xl border border-[#edf1fb] bg-[#fcfdff] px-3 py-3 text-left transition hover:border-[#d9e3fb]"
+                  >
+                    <span className="rounded-full border border-slate-200 bg-white px-2 py-1 text-[11px] font-semibold text-slate-500">
+                      {new Date(post.deadline).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-900">{post.postTitle}</p>
+                      <p className="truncate text-xs text-slate-500">{post.clientName}</p>
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 text-center">
+                <button type="button" onClick={() => navigate("/calendar")} className="text-sm font-medium text-[#5d6bff] hover:underline">
+                  Ver todos os posts →
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section className="grid gap-4 lg:grid-cols-3">
         {feedbacks.length > 0 && (
-          <div className="rounded-xl border border-amber-400/30 bg-amber-500/5 p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500/20">
+          <div className="rounded-[24px] border border-[#e5eaf8] bg-white p-5 shadow-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-violet-600">
                 <Bell className="h-4 w-4 text-amber-500" />
               </div>
-              <h2 className="font-semibold text-foreground">{t("clientFeedbacks")}</h2>
-              <span className="rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-semibold text-amber-500">
+                <h3 className="font-semibold text-slate-900">{t("clientFeedbacks")}</h3>
+              </div>
+              <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-600">
                 {feedbacks.length}
               </span>
             </div>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {feedbacks.map((fb) => {
+            <div className="space-y-3">
+              {feedbacks.slice(0, 3).map((fb) => {
                 const labelConfig = LABEL_CONFIG[fb.label as keyof typeof LABEL_CONFIG];
                 return (
                   <div
                     key={fb.postId}
                     onClick={() => navigate(`/admin/${fb.clientSlug}`)}
-                    className="rounded-lg bg-muted/50 px-3 py-2.5 cursor-pointer hover:bg-muted transition-colors"
+                    className="cursor-pointer rounded-2xl border border-[#edf1fb] bg-[#fcfdff] px-3 py-3 transition hover:border-[#d9e3fb]"
                   >
                     <div className="flex items-center gap-3">
                       {fb.clientLogo ? (
-                        <img src={fb.clientLogo} alt={fb.clientName} className="h-7 w-7 rounded-full object-contain border shrink-0" />
+                        <img src={fb.clientLogo} alt={fb.clientName} className="h-10 w-10 rounded-full border border-slate-200 object-contain shrink-0" />
                       ) : (
-                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted border shrink-0">
-                          <span className="text-xs font-bold text-muted-foreground">{fb.clientName.charAt(0).toUpperCase()}</span>
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 bg-[#f5f7ff] shrink-0">
+                          <span className="text-xs font-bold text-slate-500">{fb.clientName.charAt(0).toUpperCase()}</span>
                         </div>
                       )}
                       <div className="flex-1 min-w-0">
                         <HoverCard openDelay={200} closeDelay={100}>
                           <HoverCardTrigger asChild>
-                            <p className="text-sm font-medium text-foreground truncate cursor-pointer hover:underline">{fb.postTitle}</p>
+                            <p className="cursor-pointer truncate text-sm font-semibold text-slate-900 hover:underline">{fb.postTitle}</p>
                           </HoverCardTrigger>
                           <HoverCardContent side="top" className="w-72 p-2" onClick={(e) => e.stopPropagation()}>
                             {(() => {
@@ -1171,13 +1371,13 @@ const AdminDashboard = () => {
                             })()}
                           </HoverCardContent>
                         </HoverCard>
-                        <p className="text-xs text-muted-foreground">{fb.clientName}</p>
+                        <p className="text-xs text-slate-500">{fb.clientName}</p>
                       </div>
-                      <span className="text-[10px] text-muted-foreground shrink-0 hidden sm:inline">
+                      <span className="hidden shrink-0 text-[10px] text-slate-400 sm:inline">
                         {new Date(fb.updatedAt).toLocaleDateString("pt-BR")}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5 mt-2 ml-10 flex-wrap">
+                    <div className="mt-3 flex items-center gap-1.5 pl-[52px] flex-wrap">
                       {labelConfig && (
                         <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${labelConfig.color}`}>
                           {labelConfig.label}
@@ -1189,7 +1389,7 @@ const AdminDashboard = () => {
                           {new Date(fb.deadline).toLocaleDateString("pt-BR")}
                         </span>
                       )}
-                      <span className="text-[10px] text-muted-foreground sm:hidden">
+                      <span className="text-[10px] text-slate-400 sm:hidden">
                         {new Date(fb.updatedAt).toLocaleDateString("pt-BR")}
                       </span>
                       <div className="flex-1" />
@@ -1286,111 +1486,121 @@ const AdminDashboard = () => {
                        >
                          <X className="h-3.5 w-3.5" />
                        </button>
-                     </div>
+                    </div>
                   </div>
                 );
               })}
             </div>
+            <div className="mt-4 text-center">
+              <button type="button" onClick={() => navigate("/calendar")} className="text-sm font-medium text-[#5d6bff] hover:underline">
+                Ver todos os feedbacks →
+              </button>
+            </div>
           </div>
         )}
-
-        {/* Unarchive notifications */}
-        {unarchiveNotifs.length > 0 && (
-          <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/5 p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/20">
-                <RotateCcw className="h-4 w-4 text-emerald-500" />
+          {clientCreatedNotifs.length > 0 && (
+            <div className="rounded-[24px] border border-[#e5eaf8] bg-white p-5 shadow-sm">
+              <div className="mb-4 flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-violet-600">
+                    <FilePlus className="h-4 w-4" />
+                  </div>
+                  <h3 className="font-semibold text-slate-900">{t("postsCreatedByClient")}</h3>
+                </div>
+                <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-600">
+                  {clientCreatedNotifs.length}
+                </span>
               </div>
-              <h2 className="font-semibold text-foreground">{t("restoredByClient")}</h2>
-              <span className="rounded-full bg-emerald-500/20 px-2 py-0.5 text-xs font-semibold text-emerald-500">
-                {unarchiveNotifs.length}
+              <div className="space-y-3">
+                {clientCreatedNotifs.slice(0, 4).map((item) => (
+                  <button
+                    key={item.postId}
+                    type="button"
+                    onClick={() => navigate(`/admin/${item.clientSlug}`)}
+                    className="flex w-full items-center gap-3 rounded-2xl border border-[#edf1fb] bg-[#fcfdff] px-3 py-3 text-left transition hover:border-[#d9e3fb]"
+                  >
+                    {item.clientLogo ? (
+                      <img src={item.clientLogo} alt={item.clientName} className="h-10 w-10 rounded-xl border border-slate-200 object-contain shrink-0" />
+                    ) : (
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 bg-[#f5f7ff] font-semibold text-slate-500 shrink-0">
+                        {item.clientName.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-900">{item.postTitle}</p>
+                      <p className="truncate text-xs text-slate-500">{item.clientName}</p>
+                    </div>
+                    <span className="rounded-full bg-[#f3efff] px-2 py-1 text-[11px] font-semibold text-violet-500">
+                      Revisar
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 text-center">
+                <button type="button" onClick={() => navigate("/calendar")} className="text-sm font-medium text-[#5d6bff] hover:underline">
+                  Ver todos os posts enviados →
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="rounded-[24px] border border-[#e5eaf8] bg-white p-5 shadow-sm">
+            <div className="mb-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-violet-600">
+                  <Users className="h-4 w-4" />
+                </div>
+                <h3 className="font-semibold text-slate-900">Clientes</h3>
+              </div>
+              <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-600">
+                {activeClientsCount}
               </span>
             </div>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {unarchiveNotifs.map((n) => (
-                <div
-                  key={n.postId}
-                  onClick={() => navigate(`/admin/${n.clientSlug}`)}
-                  className="flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2.5 cursor-pointer hover:bg-muted transition-colors"
-                >
-                  {n.clientLogo ? (
-                    <img src={n.clientLogo} alt={n.clientName} className="h-7 w-7 rounded-full object-contain border shrink-0" />
-                  ) : (
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted border shrink-0">
-                      <span className="text-xs font-bold text-muted-foreground">{n.clientName.charAt(0).toUpperCase()}</span>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {filteredClients.slice(0, 6).map((client) => (
+                <div key={client.id} className="rounded-2xl border border-[#edf1fb] bg-[#fcfdff] p-3">
+                  <div className="flex items-center gap-3">
+                    {client.logo_url ? (
+                      <img src={client.logo_url} alt={client.name} className="h-12 w-12 rounded-xl border border-slate-200 object-contain" />
+                    ) : (
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-slate-200 bg-[#f5f7ff] font-semibold text-slate-500">
+                        {client.name.charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-slate-900">{client.name}</p>
+                      <p className="text-xs text-slate-500">
+                        {LOCALE_FLAGS[client.locale as Locale]} {LOCALE_LABELS[client.locale as Locale]}
+                      </p>
                     </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{n.postTitle}</p>
-                    <p className="text-xs text-muted-foreground">{n.clientName}</p>
                   </div>
-              <span className="shrink-0 inline-flex rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-semibold text-emerald-500">
-                    {t("restored")}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground shrink-0">
-                    {new Date(n.unarchivedAt).toLocaleDateString("pt-BR")}
-                  </span>
-                  <button
-                    onClick={(e) => dismissUnarchiveNotif(n.postId, e)}
-                    className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-                    title="Dispensar"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
+                  <div className="mt-3 flex items-center gap-2">
+                    <Button size="sm" className="h-8 flex-1 rounded-xl bg-[#eef2ff] text-[#5d6bff] hover:bg-[#dfe7ff]" onClick={() => navigate(`/admin/${client.slug}`)}>
+                      Gerenciar
+                    </Button>
+                    <Button size="sm" variant="ghost" className="h-8 w-8 rounded-xl text-slate-500" onClick={() => copyClientUrl(client.slug)}>
+                      <Copy className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Client created post notifications */}
-        {clientCreatedNotifs.length > 0 && (
-          <div className="rounded-xl border border-violet-400/30 bg-violet-500/5 p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-500/20">
-                <FilePlus className="h-4 w-4 text-violet-500" />
-              </div>
-              <h2 className="font-semibold text-foreground">{t("postsCreatedByClient")}</h2>
-              <span className="rounded-full bg-violet-500/20 px-2 py-0.5 text-xs font-semibold text-violet-500">
-                {clientCreatedNotifs.length}
-              </span>
-            </div>
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {clientCreatedNotifs.map((n) => (
-                <div
-                  key={n.postId}
-                  onClick={() => navigate(`/admin/${n.clientSlug}`)}
-                  className="flex items-center gap-3 rounded-lg bg-muted/50 px-3 py-2.5 cursor-pointer hover:bg-muted transition-colors"
+            <div className="mt-4 flex items-center justify-between gap-3">
+              {isAdmin && (
+                <Button
+                  onClick={openCreate}
+                  className="rounded-2xl bg-gradient-to-r from-sky-500 to-violet-600 px-4 text-white shadow-[0_16px_32px_-16px_rgba(95,78,255,0.9)] hover:from-sky-600 hover:to-violet-700"
                 >
-                  {n.clientLogo ? (
-                    <img src={n.clientLogo} alt={n.clientName} className="h-7 w-7 rounded-full object-contain border shrink-0" />
-                  ) : (
-                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted border shrink-0">
-                      <span className="text-xs font-bold text-muted-foreground">{n.clientName.charAt(0).toUpperCase()}</span>
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-foreground truncate">{n.postTitle}</p>
-                    <p className="text-xs text-muted-foreground">{n.clientName}</p>
-                  </div>
-                  <span className="shrink-0 inline-flex rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-semibold text-violet-500">
-                    {t("createdByClient")}
-                  </span>
-                  <span className="text-[10px] text-muted-foreground shrink-0">
-                    {new Date(n.createdAt).toLocaleDateString("pt-BR")}
-                  </span>
-                  <button
-                    onClick={(e) => dismissClientCreatedNotif(n.postId, e)}
-                    className="shrink-0 rounded-full p-1 text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors"
-                    title="Dispensar"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              ))}
+                  <Plus className="mr-2 h-4 w-4" /> Criar cliente
+                </Button>
+              )}
+              <button type="button" onClick={() => navigate("/team")} className="text-sm font-medium text-[#5d6bff] hover:underline">
+                Ver todos os clientes →
+              </button>
             </div>
           </div>
-        )}
+          </section>
+
         {loading ? (
           <div className="flex justify-center py-20">
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
@@ -1435,14 +1645,7 @@ const AdminDashboard = () => {
               </div>
             )}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {clients
-                .filter(c => {
-                  if (!isSuperAdmin || clientFilter === "all") return true;
-                  if (clientFilter === "mine") return c.owner_id === currentUserId;
-                  if (clientFilter === "shared") return c.shared;
-                  return true;
-                })
-                .map((client) => (
+              {filteredClients.map((client) => (
                 <div
                   key={client.id}
                   className="group relative flex flex-col rounded-xl border bg-card p-5 transition-all hover:shadow-lg hover:border-primary/20"
@@ -1616,6 +1819,7 @@ const AdminDashboard = () => {
             </div>
           </>
         )}
+        </div>
       </main>
 
       {/* Create / Edit Client Dialog */}

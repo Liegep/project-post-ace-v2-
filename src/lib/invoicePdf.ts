@@ -91,7 +91,7 @@ export async function generateInvoicePDF(
 ) {
   const issuer = issuerOverride ?? (await fetchIssuerDetails());
 
-  const rawLocale = (invoice.clients?.locale || "pt") as Locale;
+  const rawLocale = (invoice.locale || invoice.clients?.locale || "pt") as Locale;
   const locale: Locale = (["pt", "en", "it", "es", "sv"] as Locale[]).includes(rawLocale) ? rawLocale : "pt";
   const t = T[locale];
   const dfLocale = DATE_FN_LOCALES[locale];
@@ -102,15 +102,15 @@ export async function generateInvoicePDF(
     open: t.statusOpen, paid: t.statusPaid, overdue: t.statusOverdue, cancelled: t.statusCancelled,
   };
 
-  const clientName = invoice.clients?.name || "Cliente";
-  const clientAddress = invoice.clients?.address || "";
-  const clientCountry = invoice.clients?.country || "";
-  const clientTaxId = invoice.clients?.tax_id || "";
+  const clientName = invoice.recipient_name || invoice.clients?.name || "Cliente";
+  const clientAddress = invoice.recipient_address || invoice.clients?.address || "";
+  const clientCountry = invoice.recipient_country || invoice.clients?.country || "";
+  const clientTaxId = invoice.recipient_tax_id || invoice.clients?.tax_id || "";
   const issuerLogoData = await imageUrlToDataUrl(issuerLogo);
 
   const discount = Number(invoice.discount || 0);
   const surcharge = Number(invoice.surcharge || 0);
-  const fmt = (v: number) => formatCurrency(v, currencyCode);
+  const fmt = (v: number) => formatCurrency(v, currencyCode || invoice.currency_code || invoice.clients?.billing_currency);
 
   const paymentMethod = invoice.payment_method || issuer.payment_method || "";
   const paymentDetails = invoice.payment_details || issuer.payment_details || "";

@@ -55,10 +55,30 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { email, password, full_name, client_ids } = await req.json();
+    const { data: isSuperAdmin } = await supabaseAdmin.rpc("has_role", {
+      _user_id: userId,
+      _role: "super_admin",
+    });
+
+    const { email, password, full_name, client_ids, role = "admin" } = await req.json();
     if (!email || !password || !full_name) {
       return new Response(JSON.stringify({ error: "email, password, and full_name are required" }), {
         status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const validRoles = ["super_admin", "admin", "colaborador", "client"];
+    if (!validRoles.includes(role)) {
+      return new Response(JSON.stringify({ error: `Invalid role. Must be: ${validRoles.join(", ")}` }), {
+        status: 400,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    if (role === "super_admin" && !isSuperAdmin) {
+      return new Response(JSON.stringify({ error: "Only super_admin can create another super_admin" }), {
+        status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
@@ -100,10 +120,10 @@ Deno.serve(async (req) => {
       targetUserId = newUser.user.id;
     }
 
-    // Assign admin (carteira) role
+    // Assign requested role
     await supabaseAdmin.from("user_roles").insert({
       user_id: targetUserId,
-      role: "admin",
+      role,
     });
 
     // Create profile
@@ -111,12 +131,19 @@ Deno.serve(async (req) => {
       id: targetUserId,
       full_name,
       email,
-      role: "admin",
+      role,
     });
 
     // Assign clients if provided
-    if (client_ids && Array.isArray(client_ids) && client_ids.length > 0) {
-      const assignments = client_ids.map((client_id: string) => ({
+    const normalizedClientIds =
+      role === "super_admin"
+        ? []
+        : role === "client"
+          ? (Array.isArray(client_ids) ? client_ids.slice(0, 1) : [])
+          : (Array.isArray(client_ids) ? client_ids : []);
+
+    if (normalizedClientIds.length > 0) {
+      const assignments = normalizedClientIds.map((client_id: string) => ({
         user_id: targetUserId,
         client_id,
         assigned_by: userId,

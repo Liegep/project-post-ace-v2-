@@ -181,7 +181,7 @@ export const ClientNewsWidget = ({ clientId, showInvoices, locale }: ClientNewsW
     const itemsList = (items as any[]) || [];
     const subtotal = itemsList.reduce((s, i) => s + Number(i.total_price || 0), 0);
     const total = subtotal - Number(inv.discount || 0) + Number(inv.surcharge || 0);
-    generateInvoicePDF(inv, itemsList, total, subtotal, inv.clients?.billing_currency);
+    generateInvoicePDF(inv, itemsList, total, subtotal, inv.currency_code || inv.clients?.billing_currency);
 
     if (userId) {
       const { data: profile } = await supabase.from("profiles").select("full_name, email").eq("id", userId).maybeSingle();

@@ -136,7 +136,7 @@ export default function InvoiceDetailDialog({ invoice, open, onOpenChange, onUpd
 
   const subtotal = items.reduce((sum, i) => sum + Number(i.total_price || 0), 0);
   const total = subtotal - Number(invDiscount || 0) + Number(invSurcharge || 0);
-  const cur = invoice.clients?.billing_currency;
+  const cur = invoice.currency_code || invoice.clients?.billing_currency;
 
   const resetItemForm = () => {
     setItemName("");

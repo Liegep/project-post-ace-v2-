@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
-import { StickyNote, Link as LinkIcon, X, Copy, ExternalLink, NotebookPen } from "lucide-react";
+import { ReactNode, useState, useEffect, useCallback } from "react";
+import { StickyNote, Link as LinkIcon, X, Copy, ExternalLink, NotebookPen, SlidersHorizontal, Lightbulb } from "lucide-react";
 import { GradientHeartIcon } from "@/components/GradientHeartIcon";
 import { cn } from "@/lib/utils";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
@@ -7,11 +7,13 @@ import { ClientNotes } from "@/components/ClientNotes";
 import { ClientLinksPanel } from "@/components/ClientLinksPanel";
 import { QuickLinksPanel } from "@/components/QuickLinksPanel";
 import { QuickDraftNotes } from "@/components/QuickDraftNotes";
+import { ClientIdeasPanel } from "@/components/ClientIdeasPanel";
 
-type Tab = "notes" | "drafts" | "links" | "quick" | null;
+type Tab = "notes" | "drafts" | "links" | "quick" | "tracker" | "ideas" | null;
 
 interface Props {
   clientId: string;
+  trackerPanel?: ReactNode;
 }
 
 // Use Sheet (drawer) on anything below desktop (lg = 1024px) to avoid the
@@ -29,11 +31,12 @@ function useUseSheet() {
   return useSheet;
 }
 
-export function ClientRightSidebar({ clientId }: Props) {
+export function ClientRightSidebar({ clientId, trackerPanel }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>(null);
   const [notesCount, setNotesCount] = useState(0);
   const [draftsCount, setDraftsCount] = useState(0);
   const [linksCount, setLinksCount] = useState(0);
+  const [ideasCount, setIdeasCount] = useState(0);
   const isMobile = useUseSheet();
 
   const open = activeTab !== null;
@@ -86,6 +89,16 @@ export function ClientRightSidebar({ clientId }: Props) {
       bgLight: "bg-blue-50 dark:bg-blue-500/10",
     },
     {
+      id: "ideas" as const,
+      label: "Ideias de Pauta",
+      icon: Lightbulb,
+      count: ideasCount,
+      color: "bg-amber-500",
+      hoverColor: "hover:bg-amber-400",
+      textColor: "text-amber-600",
+      bgLight: "bg-amber-50 dark:bg-amber-500/10",
+    },
+    {
       id: "quick" as const,
       label: "Rápidos",
       icon: GradientHeartIcon,
@@ -95,6 +108,16 @@ export function ClientRightSidebar({ clientId }: Props) {
       textColor: "text-foreground",
       bgLight: "bg-muted/40",
     },
+    ...(trackerPanel ? [{
+      id: "tracker" as const,
+      label: "Tracker",
+      icon: SlidersHorizontal,
+      count: 0,
+      color: "bg-emerald-500",
+      hoverColor: "hover:bg-emerald-400",
+      textColor: "text-emerald-600",
+      bgLight: "bg-emerald-50 dark:bg-emerald-500/10",
+    }] : []),
   ];
 
   const headerBg = activeTab === "notes"
@@ -103,6 +126,10 @@ export function ClientRightSidebar({ clientId }: Props) {
     ? "bg-yellow-50 dark:bg-yellow-500/10"
     : activeTab === "links"
     ? "bg-blue-50 dark:bg-blue-500/10"
+    : activeTab === "ideas"
+    ? "bg-amber-50 dark:bg-amber-500/10"
+    : activeTab === "tracker"
+    ? "bg-emerald-50 dark:bg-emerald-500/10"
     : "opacity-60 bg-lime-100";
 
   const headerIcon = activeTab === "notes"
@@ -111,6 +138,10 @@ export function ClientRightSidebar({ clientId }: Props) {
     ? <NotebookPen className="h-5 w-5 text-yellow-600" />
     : activeTab === "links"
     ? <LinkIcon className="h-5 w-5 text-blue-500" />
+    : activeTab === "ideas"
+    ? <Lightbulb className="h-5 w-5 text-amber-600" />
+    : activeTab === "tracker"
+    ? <SlidersHorizontal className="h-5 w-5 text-emerald-500" />
     : <GradientHeartIcon className="h-5 w-5" />;
 
   const headerTitle = activeTab === "notes"
@@ -119,6 +150,10 @@ export function ClientRightSidebar({ clientId }: Props) {
     ? "Rascunhos"
     : activeTab === "links"
     ? "Links do Cliente"
+    : activeTab === "ideas"
+    ? "Ideias de Pauta"
+    : activeTab === "tracker"
+    ? "Tracker"
     : "Links Rápidos";
 
   // Mobile: use Sheet
@@ -126,23 +161,23 @@ export function ClientRightSidebar({ clientId }: Props) {
     return (
       <>
         {/* Floating tabs on the right edge */}
-        <div className="fixed right-0 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-1.5">
+        <div className="fixed right-ui-4 top-1/2 z-floating-widget flex -translate-y-1/2 flex-col gap-ui-2">
           {tabs.map(tab => (
             <button
               key={tab.id}
               onClick={() => handleTabClick(tab.id)}
               className={cn(
-                "flex items-center gap-1 rounded-l-xl px-2 py-3 shadow-lg transition-all duration-200",
+                "flex items-center gap-ui-1 rounded-ui-lg px-ui-2 py-ui-3 shadow-lg transition-all duration-200",
                 "border border-r-0 border-border/50 backdrop-blur-sm",
                 activeTab === tab.id
                   ? `${tab.color} text-white`
                   : "bg-card/95 text-muted-foreground hover:text-foreground hover:shadow-xl"
               )}
             >
-              <tab.icon className="h-4 w-4" />
+              <tab.icon className="size-icon-sm" />
               {tab.count > 0 && (
                 <span className={cn(
-                  "rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none",
+                  "rounded-ui-full px-ui-2 py-ui-1 text-ui-xs font-bold leading-none",
                   activeTab === tab.id ? "bg-white/30 text-white" : `${tab.color} text-white`
                 )}>
                   {tab.count}
@@ -153,16 +188,16 @@ export function ClientRightSidebar({ clientId }: Props) {
         </div>
 
         <Sheet open={open} onOpenChange={(v) => !v && close()}>
-          <SheetContent side="right" className="w-full sm:w-[380px] p-0 bg-card">
+          <SheetContent side="right" className="w-full bg-card p-0 sm:w-[380px]">
             <div className="flex h-full flex-col">
               {/* Header */}
-              <div className={cn("flex items-center justify-between px-5 py-4 border-b", headerBg)}>
-                <div className="flex items-center gap-2">
+              <div className={cn("flex items-center justify-between border-b px-ui-5 py-ui-4", headerBg)}>
+                <div className="flex items-center gap-ui-2">
                   {headerIcon}
                   <h2 className="font-semibold text-foreground">{headerTitle}</h2>
                 </div>
-                <button onClick={close} className="rounded-full p-1.5 hover:bg-black/10 transition-colors">
-                  <X className="h-4 w-4" />
+                <button onClick={close} className="rounded-ui-full p-ui-2 transition-colors hover:bg-black/10">
+                  <X className="size-icon-sm" />
                 </button>
               </div>
 
@@ -173,17 +208,17 @@ export function ClientRightSidebar({ clientId }: Props) {
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id)}
                     className={cn(
-                      "flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors",
+                      "flex flex-1 items-center justify-center gap-ui-2 py-ui-3 text-ui-sm font-medium transition-colors",
                       activeTab === tab.id
                         ? `border-b-2 ${tab.textColor}`
                         : "text-muted-foreground hover:text-foreground"
                     )}
                     style={activeTab === tab.id ? { borderColor: "currentColor" } : undefined}
                   >
-                    <tab.icon className="h-3.5 w-3.5" />
+                    <tab.icon className="size-icon-sm" />
                     {tab.label}
                     {tab.count > 0 && (
-                      <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white", tab.color)}>
+                      <span className={cn("rounded-ui-full px-ui-2 py-ui-1 text-ui-xs font-bold text-white", tab.color)}>
                         {tab.count}
                       </span>
                     )}
@@ -192,7 +227,7 @@ export function ClientRightSidebar({ clientId }: Props) {
               </div>
 
               {/* Content */}
-              <div className="flex-1 overflow-y-auto p-4">
+              <div className="flex-1 overflow-y-auto p-ui-4">
                 {activeTab === "notes" && (
                   <ClientNotes clientId={clientId} onCountChange={setNotesCount} />
                 )}
@@ -202,7 +237,9 @@ export function ClientRightSidebar({ clientId }: Props) {
                 {activeTab === "links" && (
                   <ClientLinksPanel clientId={clientId} onCountChange={setLinksCount} />
                 )}
+                {activeTab === "ideas" && <ClientIdeasPanel clientId={clientId} onCountChange={setIdeasCount} />}
                 {activeTab === "quick" && <QuickLinksPanel />}
+                {activeTab === "tracker" && trackerPanel}
               </div>
             </div>
           </SheetContent>
@@ -223,29 +260,29 @@ export function ClientRightSidebar({ clientId }: Props) {
       )}
 
       {/* Fixed tabs on the right edge */}
-      <div className="fixed right-0 top-1/2 -translate-y-1/2 z-50 flex flex-col gap-1">
+      <div className="fixed right-ui-4 top-1/2 z-floating-widget flex -translate-y-1/2 flex-col gap-ui-1">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => handleTabClick(tab.id)}
             className={cn(
-              "group flex items-center gap-2 rounded-l-xl pl-3 pr-2 py-3 shadow-lg transition-all duration-200",
+              "group flex items-center gap-ui-2 rounded-ui-lg pl-ui-3 pr-ui-2 py-ui-3 shadow-lg transition-all duration-200",
               "border border-r-0 border-border/50",
               activeTab === tab.id
                 ? `${tab.color} text-white shadow-xl`
                 : `bg-card text-muted-foreground ${tab.hoverColor} hover:text-white hover:shadow-xl`
             )}
           >
-            <tab.icon className="h-4 w-4" />
+            <tab.icon className="size-icon-sm" />
             <span className={cn(
-              "text-xs font-medium whitespace-nowrap transition-all duration-200 overflow-hidden",
+              "overflow-hidden whitespace-nowrap text-ui-xs font-medium transition-all duration-200",
               activeTab === tab.id ? "max-w-24 opacity-100" : "max-w-0 opacity-0 group-hover:max-w-24 group-hover:opacity-100"
             )}>
               {tab.label}
             </span>
             {tab.count > 0 && (
               <span className={cn(
-                "rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none",
+                "rounded-ui-full px-ui-2 py-ui-1 text-ui-xs font-bold leading-none",
                 activeTab === tab.id ? "bg-white/30 text-white" : `${tab.color} text-white`
               )}>
                 {tab.count}
@@ -258,20 +295,20 @@ export function ClientRightSidebar({ clientId }: Props) {
       {/* Panel */}
       <div
         className={cn(
-          "fixed right-0 top-0 z-50 h-full w-[380px] bg-card border-l shadow-2xl",
+          "fixed right-ui-4 top-ui-4 z-floating-panel h-[calc(100vh-2rem)] w-[380px] rounded-ui-lg border bg-card shadow-2xl",
           "transition-transform duration-250 ease-out",
-          open ? "translate-x-0" : "translate-x-full"
+          open ? "translate-x-0" : "translate-x-[calc(100%+1rem)]"
         )}
       >
         <div className="flex h-full flex-col">
           {/* Header */}
-          <div className={cn("flex items-center justify-between px-5 py-4 border-b", headerBg)}>
-            <div className="flex items-center gap-2">
+          <div className={cn("flex items-center justify-between border-b px-ui-5 py-ui-4", headerBg)}>
+            <div className="flex items-center gap-ui-2">
               {headerIcon}
               <h2 className="font-semibold text-foreground">{headerTitle}</h2>
             </div>
-            <button onClick={close} className="rounded-full p-1.5 hover:bg-muted transition-colors">
-              <X className="h-4 w-4" />
+            <button onClick={close} className="rounded-ui-full p-ui-2 transition-colors hover:bg-muted">
+              <X className="size-icon-sm" />
             </button>
           </div>
 
@@ -282,17 +319,17 @@ export function ClientRightSidebar({ clientId }: Props) {
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
                 className={cn(
-                  "flex-1 flex items-center justify-center gap-1.5 py-2.5 text-sm font-medium transition-colors",
+                  "flex flex-1 items-center justify-center gap-ui-2 py-ui-3 text-ui-sm font-medium transition-colors",
                   activeTab === tab.id
                     ? `border-b-2 ${tab.textColor}`
                     : "text-muted-foreground hover:text-foreground"
                 )}
                 style={activeTab === tab.id ? { borderColor: "currentColor" } : undefined}
               >
-                <tab.icon className="h-3.5 w-3.5" />
+                <tab.icon className="size-icon-sm" />
                 {tab.label}
                 {tab.count > 0 && (
-                  <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white", tab.color)}>
+                  <span className={cn("rounded-ui-full px-ui-2 py-ui-1 text-ui-xs font-bold text-white", tab.color)}>
                     {tab.count}
                   </span>
                 )}
@@ -301,7 +338,7 @@ export function ClientRightSidebar({ clientId }: Props) {
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-ui-4">
             {activeTab === "notes" && (
               <ClientNotes clientId={clientId} onCountChange={setNotesCount} />
             )}
@@ -311,7 +348,9 @@ export function ClientRightSidebar({ clientId }: Props) {
             {activeTab === "links" && (
               <ClientLinksPanel clientId={clientId} onCountChange={setLinksCount} />
             )}
+            {activeTab === "ideas" && <ClientIdeasPanel clientId={clientId} onCountChange={setIdeasCount} />}
             {activeTab === "quick" && <QuickLinksPanel />}
+            {activeTab === "tracker" && trackerPanel}
           </div>
         </div>
       </div>

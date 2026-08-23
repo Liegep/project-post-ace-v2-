@@ -96,18 +96,18 @@ function SortableProjectGroup({
       ref={setNodeRef}
       style={style}
       className={cn(
-        "rounded-xl border bg-card p-3 shadow-sm transition-all",
+        "rounded-ui-lg border bg-card p-ui-3 shadow-sm transition-all",
         allDone && "border-success/30 bg-success/5"
       )}
     >
       {/* Project header */}
-      <div className="flex items-center gap-2 mb-2">
+      <div className="mb-ui-2 flex items-center gap-ui-2">
         <button
           {...attributes}
           {...listeners}
           className="cursor-grab touch-none text-muted-foreground hover:text-foreground shrink-0"
         >
-          <GripVertical className="h-3.5 w-3.5" />
+          <GripVertical className="size-icon-sm" />
         </button>
         <div className="flex-1 min-w-0">
           <h4
@@ -118,8 +118,8 @@ function SortableProjectGroup({
           >
             {group.projectTitle}
           </h4>
-          <div className="flex items-center gap-2 mt-1">
-            <div className="flex-1 h-1.5 rounded-full bg-muted overflow-hidden">
+          <div className="mt-ui-1 flex items-center gap-ui-2">
+            <div className="flex-1 overflow-hidden rounded-ui-full bg-muted h-2">
               <div
                 className={cn(
                   "h-full rounded-full transition-all duration-500",
@@ -128,7 +128,7 @@ function SortableProjectGroup({
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
-            <span className="text-[10px] font-medium text-muted-foreground shrink-0">
+            <span className="shrink-0 text-ui-xs font-medium text-muted-foreground">
               {doneItems}/{totalItems}
             </span>
           </div>
@@ -136,7 +136,7 @@ function SortableProjectGroup({
       </div>
 
       {/* Deliverables list */}
-      <div className="space-y-1 pl-5">
+      <div className="space-y-ui-1 pl-ui-5">
         {group.posts.map((post) => {
           const finished = isPostFinished(post, tags);
           const postTags = post.tags
@@ -146,24 +146,24 @@ function SortableProjectGroup({
             <div
               key={post.id}
               className={cn(
-                "flex items-start gap-2 rounded-lg px-2 py-1.5 transition-colors",
+                "flex items-start gap-ui-2 rounded-ui-md px-ui-2 py-ui-2 transition-colors",
                 finished ? "opacity-50" : "hover:bg-muted/50"
               )}
             >
               <div
                 className={cn(
-                  "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border-2 transition-colors",
+                  "mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-ui-sm border-2 transition-colors",
                   finished
                     ? "border-success bg-success"
                     : "border-muted-foreground/40 bg-transparent"
                 )}
               >
-                {finished && <Check className="h-2.5 w-2.5 text-success-foreground" />}
+                {finished && <Check className="size-icon-xs text-success-foreground" />}
               </div>
               <div className="flex-1 min-w-0">
                 <span
                   className={cn(
-                    "text-xs font-medium block truncate",
+                    "block truncate text-ui-xs font-medium",
                     finished
                       ? "line-through text-muted-foreground"
                       : "text-foreground"
@@ -172,11 +172,11 @@ function SortableProjectGroup({
                   {post.title}
                 </span>
                 {postTags.length > 0 && (
-                  <div className="mt-1 flex flex-wrap gap-1">
+                  <div className="mt-ui-1 flex flex-wrap gap-ui-1">
                     {postTags.map((t) => (
                       <span
                         key={t.id}
-                        className="inline-flex items-center rounded px-1.5 py-0.5 text-[9px] font-bold uppercase leading-tight tracking-wide"
+                        className="inline-flex items-center rounded-ui-sm px-ui-2 py-ui-1 text-ui-xs font-bold uppercase leading-tight tracking-wide"
                         style={{
                           backgroundColor: t.color,
                           color: getContrastText(t.color),
@@ -192,7 +192,7 @@ function SortableProjectGroup({
               {!finished && (
                 <Circle
                   className={cn(
-                    "mt-1 h-2 w-2 shrink-0 fill-current",
+                    "mt-ui-1 h-2 w-2 shrink-0 fill-current",
                     post.status.includes("em_desenvolvimento")
                       ? "text-warning"
                       : post.status.includes("alteracao_solicitada")

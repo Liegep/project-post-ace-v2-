@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS client_reports (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  client_account_id CHAR(36) NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  period_start DATE NOT NULL,
+  period_end DATE NOT NULL,
+  status ENUM('draft', 'published') NOT NULL DEFAULT 'draft',
+  metrics_json JSON NOT NULL,
+  highlights_json JSON NULL,
+  evidence_urls_json JSON NULL,
+  notes LONGTEXT NULL,
+  created_by_user_id CHAR(36) NULL,
+  published_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_client_reports_account_period (client_account_id, period_end),
+  KEY idx_client_reports_account_status (client_account_id, status),
+  CONSTRAINT fk_client_reports_client FOREIGN KEY (client_account_id) REFERENCES client_accounts(id) ON DELETE CASCADE,
+  CONSTRAINT fk_client_reports_created_by FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL
+);

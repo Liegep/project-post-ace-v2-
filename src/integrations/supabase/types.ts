@@ -241,6 +241,8 @@ export type Database = {
           created_at: string
           description: string
           id: string
+          legacy_event_id: string | null
+          legacy_source: string | null
           tag_id: string | null
           title: string
           updated_at: string
@@ -257,6 +259,8 @@ export type Database = {
           created_at?: string
           description?: string
           id?: string
+          legacy_event_id?: string | null
+          legacy_source?: string | null
           tag_id?: string | null
           title: string
           updated_at?: string
@@ -273,6 +277,8 @@ export type Database = {
           created_at?: string
           description?: string
           id?: string
+          legacy_event_id?: string | null
+          legacy_source?: string | null
           tag_id?: string | null
           title?: string
           updated_at?: string
@@ -1013,6 +1019,75 @@ export type Database = {
             columns: ["client_id"]
             isOneToOne: false
             referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_pauta_ideas: {
+        Row: {
+          caption: string
+          client_id: string
+          comment: string
+          converted_at: string | null
+          converted_post_id: string | null
+          created_at: string
+          created_by: string | null
+          description: string
+          id: string
+          image_urls: string[]
+          internal_comment: string
+          reference_link: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          caption?: string
+          client_id: string
+          comment?: string
+          converted_at?: string | null
+          converted_post_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          image_urls?: string[]
+          internal_comment?: string
+          reference_link?: string
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          caption?: string
+          client_id?: string
+          comment?: string
+          converted_at?: string | null
+          converted_post_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string
+          id?: string
+          image_urls?: string[]
+          internal_comment?: string
+          reference_link?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_pauta_ideas_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_pauta_ideas_converted_post_id_fkey"
+            columns: ["converted_post_id"]
+            isOneToOne: false
+            referencedRelation: "posts"
             referencedColumns: ["id"]
           },
         ]

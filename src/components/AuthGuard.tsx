@@ -1,18 +1,44 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 
 interface AuthGuardProps {
   children: React.ReactNode;
   allowedRoles?: ("super_admin" | "admin" | "colaborador" | "client")[];
+  temporaryAccess?: "billing_preview";
 }
 
-const AuthGuard = ({ children, allowedRoles = ["super_admin", "admin"] }: AuthGuardProps) => {
+const BILLING_PREVIEW_KEY = "billing_preview_expires_at";
+const BILLING_PREVIEW_USED_KEY = "billing_preview_used";
+const BILLING_PREVIEW_DURATION_MS = 5 * 60 * 1000;
+
+const getBillingPreviewExpiry = () => {
+  if (typeof window === "undefined") return null;
+
+  const params = new URLSearchParams(window.location.search);
+  const existingExpiry = Number(sessionStorage.getItem(BILLING_PREVIEW_KEY) || 0);
+  if (existingExpiry > Date.now()) return existingExpiry;
+
+  // The preview link can only start one short-lived session in this browser.
+  if (params.get("preview") === "faturamento-5min" && !localStorage.getItem(BILLING_PREVIEW_USED_KEY)) {
+    const expiresAt = Date.now() + BILLING_PREVIEW_DURATION_MS;
+    sessionStorage.setItem(BILLING_PREVIEW_KEY, String(expiresAt));
+    localStorage.setItem(BILLING_PREVIEW_USED_KEY, "true");
+    return expiresAt;
+  }
+
+  return null;
+};
+
+const AuthGuard = ({ children, allowedRoles = ["super_admin", "admin"], temporaryAccess }: AuthGuardProps) => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [checking, setChecking] = useState(true);
   const [authorized, setAuthorized] = useState(false);
 
   useEffect(() => {
+    let previewTimeout: ReturnType<typeof setTimeout> | undefined;
+
     const checkAuth = async (userId: string) => {
       // Get user roles
       const { data: roles } = await supabase
@@ -34,10 +60,22 @@ const AuthGuard = ({ children, allowedRoles = ["super_admin", "admin"] }: AuthGu
 
       // Check if any allowed role matches
       const hasAccess = allowedRoles.some(r => effectiveRoles.has(r));
+      const canUseBillingPreview = temporaryAccess === "billing_preview"
+        && (effectiveRoles.has("admin") || effectiveRoles.has("colaborador"))
+        && getBillingPreviewExpiry();
       
-      if (hasAccess) {
+      if (hasAccess || canUseBillingPreview) {
         setAuthorized(true);
         setChecking(false);
+
+        if (canUseBillingPreview) {
+          const remaining = canUseBillingPreview - Date.now();
+          previewTimeout = setTimeout(() => {
+            sessionStorage.removeItem(BILLING_PREVIEW_KEY);
+            setAuthorized(false);
+            navigate("/admin", { replace: true });
+          }, Math.max(remaining, 0));
+        }
         return;
       }
 
@@ -95,8 +133,11 @@ const AuthGuard = ({ children, allowedRoles = ["super_admin", "admin"] }: AuthGu
       }
     });
 
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+    return () => {
+      subscription.unsubscribe();
+      if (previewTimeout) clearTimeout(previewTimeout);
+    };
+  }, [location.search, navigate, temporaryAccess]);
 
   if (checking) {
     return (

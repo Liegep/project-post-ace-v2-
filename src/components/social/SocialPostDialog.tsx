@@ -20,13 +20,16 @@ interface SocialPostDialogProps {
   onOpenChange: (open: boolean) => void;
   post: SocialPost | null;
   pages: MetaPage[];
+  clients: Array<{ id: string; name: string }>;
   clientId: string;
   onSave: (data: Partial<SocialPost>) => Promise<any>;
   onPublishNow?: (id: string) => void;
 }
 
-export function SocialPostDialog({ open, onOpenChange, post, pages, clientId, onSave, onPublishNow }: SocialPostDialogProps) {
+export function SocialPostDialog({ open, onOpenChange, post, pages, clients, clientId, onSave, onPublishNow }: SocialPostDialogProps) {
+  const allowClientSelection = clientId === "all";
   const [platform, setPlatform] = useState<string>("facebook");
+  const [selectedClientId, setSelectedClientId] = useState<string>(clientId === "all" ? "" : clientId);
   const [pageId, setPageId] = useState<string>("");
   const [caption, setCaption] = useState("");
   const [notes, setNotes] = useState("");
@@ -38,11 +41,16 @@ export function SocialPostDialog({ open, onOpenChange, post, pages, clientId, on
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const filteredPages = pages.filter((p) => p.platform === platform);
+  const filteredPages = pages.filter((p) => {
+    const matchesPlatform = p.platform === platform;
+    const matchesClient = selectedClientId ? p.client_id === selectedClientId : true;
+    return matchesPlatform && matchesClient;
+  });
 
   useEffect(() => {
     if (post) {
       setPlatform(post.platform);
+      setSelectedClientId(post.client_id);
       setPageId(post.meta_page_id || "");
       setCaption(post.caption);
       setNotes(post.notes);
@@ -58,6 +66,7 @@ export function SocialPostDialog({ open, onOpenChange, post, pages, clientId, on
       }
     } else {
       setPlatform("facebook");
+      setSelectedClientId(clientId === "all" ? "" : clientId);
       setPageId("");
       setCaption("");
       setNotes("");
@@ -66,7 +75,7 @@ export function SocialPostDialog({ open, onOpenChange, post, pages, clientId, on
       setScheduledDate(undefined);
       setScheduledTime("12:00");
     }
-  }, [post, open]);
+  }, [post, open, clientId]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
@@ -102,12 +111,17 @@ export function SocialPostDialog({ open, onOpenChange, post, pages, clientId, on
   };
 
   const handleSave = async (asDraft: boolean) => {
+    if (!selectedClientId) {
+      toast({ title: "Selecione um cliente", variant: "destructive" });
+      return;
+    }
     if (!pageId) {
       toast({ title: "Selecione uma página", variant: "destructive" });
       return;
     }
     setSaving(true);
     const data: Partial<SocialPost> = {
+      client_id: selectedClientId,
       platform,
       meta_page_id: pageId,
       caption,
@@ -133,6 +147,10 @@ export function SocialPostDialog({ open, onOpenChange, post, pages, clientId, on
   };
 
   const handleSchedule = async () => {
+    if (!selectedClientId) {
+      toast({ title: "Selecione um cliente", variant: "destructive" });
+      return;
+    }
     if (!scheduledDate) {
       toast({ title: "Selecione data e hora", variant: "destructive" });
       return;
@@ -158,6 +176,7 @@ export function SocialPostDialog({ open, onOpenChange, post, pages, clientId, on
 
     setSaving(true);
     const data: Partial<SocialPost> = {
+      client_id: selectedClientId,
       platform,
       meta_page_id: pageId,
       caption,
@@ -201,11 +220,35 @@ export function SocialPostDialog({ open, onOpenChange, post, pages, clientId, on
         </DialogHeader>
 
         <div className="space-y-5 py-2">
+          {allowClientSelection && (
+            <div className="space-y-2">
+              <Label className="text-white/80">Cliente</Label>
+              <Select
+                value={selectedClientId}
+                onValueChange={(value) => {
+                  setSelectedClientId(value);
+                  setPageId("");
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecione o cliente" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clients.map((client) => (
+                    <SelectItem key={client.id} value={client.id}>
+                      {client.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
           {/* Platform & Page */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label className="text-white/80">Plataforma</Label>
-              <Select value={platform} onValueChange={(v) => { setPlatform(v); setPageId(""); }}>
+              <Select value={platform} onValueChange={(value) => { setPlatform(value); setPageId(""); }}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>

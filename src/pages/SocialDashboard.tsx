@@ -57,10 +57,16 @@ export default function SocialDashboard() {
   const fetchScheduledKanban = async () => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const { data } = await supabase
+    let query = supabase
       .from("posts")
       .select("id, title, caption, image_url, media_urls, deadline, status, archived, client_id, clients(name)")
-      .not("deadline", "is", null) as any;
+      .not("deadline", "is", null);
+
+    if (selectedClientId !== "all") {
+      query = query.eq("client_id", selectedClientId);
+    }
+
+    const { data } = await query as any;
 
     if (data) {
       const filtered = data.filter((p: any) => {
@@ -85,7 +91,7 @@ export default function SocialDashboard() {
 
   useEffect(() => {
     fetchScheduledKanban();
-  }, []);
+  }, [selectedClientId]);
 
   const filteredPosts = useMemo(() => {
     let filtered = posts;
@@ -226,7 +232,14 @@ export default function SocialDashboard() {
                 ))}
               </SelectContent>
             </Select>
-            <Button variant="outline" size="icon" className="h-8 w-8 md:h-9 md:w-9" onClick={() => setShowSettings(!showSettings)} title="Configurar Contas">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 md:h-9 md:w-9"
+              onClick={() => setShowSettings(!showSettings)}
+              title={selectedClientId === "all" ? "Selecione um cliente para configurar contas" : "Configurar Contas"}
+              disabled={selectedClientId === "all"}
+            >
               <Settings className="h-4 w-4" />
             </Button>
             <Button size="sm" onClick={() => { setEditingPost(null); setDialogOpen(true); }}>
@@ -250,7 +263,7 @@ export default function SocialDashboard() {
 
       <main className="mx-auto max-w-6xl p-4 md:p-6 space-y-4 md:space-y-6">
         {/* Meta accounts panel */}
-        {showSettings && selectedClientId && (
+        {showSettings && selectedClientId !== "all" && (
           <MetaConnectPanel clientId={selectedClientId} pages={pages} onRefresh={fetchPages} />
         )}
 
@@ -365,6 +378,7 @@ export default function SocialDashboard() {
         onOpenChange={setDialogOpen}
         post={editingPost}
         pages={pages}
+        clients={clients}
         clientId={selectedClientId}
         onSave={handleSave}
         onPublishNow={handlePublishNow}

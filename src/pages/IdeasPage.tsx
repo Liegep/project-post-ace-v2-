@@ -304,14 +304,14 @@ const IdeasPage = () => {
                 </div>
 
                 {/* Ideas */}
-                <div className="space-y-2 mb-3">
+                <div className="mb-ui-3 space-y-ui-2">
                   {colIdeas.map((idea) => (
                     <Card
                       key={idea.id}
                       className={`hover:shadow-md transition-shadow ${idea.converted_to_brief ? "border-primary/20 bg-primary/5" : ""}`}
                     >
-                      <CardContent className="p-3">
-                        <div className="flex items-start justify-between gap-2">
+                      <CardContent className="flex h-full flex-col p-ui-3">
+                        <div className="flex items-start justify-between gap-ui-2">
                           <div
                             className="flex-1 min-w-0 cursor-pointer"
                             onClick={() => { setEditingIdea(idea); setEditTitle(idea.title); setEditDesc(idea.description); }}
@@ -321,9 +321,9 @@ const IdeasPage = () => {
                               <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{idea.description}</p>
                             )}
                             {idea.converted_to_brief && (
-                              <div className="flex items-center gap-1 mt-1.5">
-                                <CheckCircle2 className="h-3 w-3 text-primary" />
-                                <span className="text-[10px] font-medium text-primary">
+                              <div className="mt-ui-2 flex items-center gap-ui-1">
+                                <CheckCircle2 className="size-icon-xs text-primary" />
+                                <span className="text-ui-xs font-medium text-primary">
                                   Transformada em pauta
                                 </span>
                               </div>
@@ -331,8 +331,8 @@ const IdeasPage = () => {
                           </div>
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-6 w-6 flex-shrink-0">
-                                <MoreVertical className="h-3 w-3" />
+                              <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0">
+                                <MoreVertical className="size-icon-xs" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
@@ -357,10 +357,10 @@ const IdeasPage = () => {
                         <Button
                           variant={idea.converted_to_brief ? "outline" : "secondary"}
                           size="sm"
-                          className="w-full mt-2 h-7 text-xs gap-1.5"
+                          className="mt-ui-2 w-full gap-ui-2 text-ui-xs"
                           onClick={() => setConvertingIdea(idea)}
                         >
-                          <FileText className="h-3 w-3" />
+                          <FileText className="size-icon-xs" />
                           {idea.converted_to_brief ? "Criar pauta novamente" : "Criar pauta"}
                         </Button>
                       </CardContent>

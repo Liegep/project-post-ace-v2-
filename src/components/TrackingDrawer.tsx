@@ -90,19 +90,19 @@ export const TrackingDrawer = (props: TrackingDrawerProps) => {
               </button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-64 p-3 z-[60]">
-              <div className="mb-2 text-xs font-semibold text-foreground">
+              <div className="mb-ui-2 text-ui-xs font-semibold text-foreground">
                 {td.visibleColumns}
               </div>
-              <div className="mb-2 text-[11px] text-muted-foreground">
+              <div className="mb-ui-2 text-ui-xs text-muted-foreground">
                 {td.visibleColumnsHelp}
               </div>
-              <div className="space-y-1.5 max-h-60 overflow-y-auto">
+              <div className="max-h-60 space-y-ui-2 overflow-y-auto">
                 {(props.columns || []).map((col) => {
                   const selected = (props.trackingColumnIds || []).includes(col.id);
                   return (
                     <label
                       key={col.id}
-                      className="flex items-center gap-2 cursor-pointer rounded px-1.5 py-1 hover:bg-muted"
+                      className="flex cursor-pointer items-center gap-ui-2 rounded-ui-sm px-ui-2 py-ui-1 hover:bg-muted"
                     >
                       <Checkbox
                         checked={selected}
@@ -114,7 +114,7 @@ export const TrackingDrawer = (props: TrackingDrawerProps) => {
                           props.onChangeTrackingColumnIds?.(next);
                         }}
                       />
-                      <span className="text-xs text-foreground truncate">{col.name}</span>
+                      <span className="truncate text-ui-xs text-foreground">{col.name}</span>
                     </label>
                   );
                 })}
@@ -143,61 +143,52 @@ export const TrackingDrawer = (props: TrackingDrawerProps) => {
   // Floating trigger button
 
   const TriggerButton = () => (
-    <button
-      onClick={() => setOpen(true)}
-      className={cn(
-        "fixed z-40 flex items-center gap-2 shadow-lg transition-all duration-200",
-        "bg-card border rounded-l-xl px-3 py-3 hover:px-4 hover:shadow-xl group",
-        "right-0 top-1/3",
-      )}
-      title={td.tracking}
-    >
-      <BarChart3 className="h-4 w-4 text-primary" />
-      <span className="text-xs font-semibold text-foreground hidden sm:inline">
-        {td.tracking}
-      </span>
-      {itemCount > 0 && (
-        <span className="absolute -top-2 -left-2 flex h-5 w-5 items-center justify-center rounded-full bg-primary text-[10px] font-bold text-primary-foreground shadow">
-          {itemCount}
-        </span>
-      )}
-    </button>
+    <div className="widget-fab-shell">
+      <button onClick={() => setOpen(true)} className="widget-fab-button relative" title={td.tracking}>
+        <BarChart3 className="size-icon-lg text-primary" />
+        {itemCount > 0 && (
+          <span className="absolute right-ui-1 top-ui-1 flex h-6 w-6 items-center justify-center rounded-ui-full bg-primary text-ui-xs font-bold text-primary-foreground shadow">
+            {itemCount}
+          </span>
+        )}
+      </button>
+    </div>
   );
 
   // Pinned mode: inline panel on the right
   if (effectivePinned) {
     return (
-      <div className="fixed right-0 top-16 z-30 flex h-[calc(100vh-4rem)] w-80 flex-col border-l bg-card shadow-lg animate-in slide-in-from-right duration-200">
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <h3 className="flex items-center gap-2 text-sm font-bold text-foreground">
-            <BarChart3 className="h-4 w-4 text-primary" />
+      <div className="fixed right-ui-4 top-16 z-floating-panel flex h-[calc(100vh-5rem)] w-80 flex-col overflow-hidden rounded-ui-lg border bg-card shadow-lg animate-in slide-in-from-right duration-200">
+        <div className="flex items-center justify-between border-b px-ui-4 py-ui-3">
+          <h3 className="flex items-center gap-ui-2 text-ui-sm font-bold text-foreground">
+            <BarChart3 className="size-icon-sm text-primary" />
             {td.tracking}
             {itemCount > 0 && (
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+              <span className="rounded-ui-full bg-primary/10 px-ui-2 py-ui-1 text-ui-xs font-semibold text-primary">
                 {itemCount}
               </span>
             )}
           </h3>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-ui-1">
             <AdminHeaderControls />
             <button
               onClick={togglePin}
-              className="rounded-md p-1.5 text-primary hover:bg-primary/10 transition-colors"
+              className="rounded-ui-md p-ui-2 text-primary transition-colors hover:bg-primary/10"
               title={td.unpin}
             >
-              <PinOff className="h-3.5 w-3.5" />
+              <PinOff className="size-icon-sm" />
             </button>
             <button
               onClick={() => { setPinned(false); setOpen(false); }}
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              className="rounded-ui-md p-ui-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               title={td.close}
             >
-              <X className="h-4 w-4" />
+              <X className="size-icon-sm" />
             </button>
           </div>
 
         </div>
-        <div className="flex-1 overflow-y-auto p-4">
+        <div className="flex-1 overflow-y-auto p-ui-4">
           <TrackingPanelInline {...effectiveProps} />
         </div>
       </div>
@@ -216,33 +207,33 @@ export const TrackingDrawer = (props: TrackingDrawerProps) => {
             isMobile ? "w-[340px] max-w-[85vw]" : "w-[360px]"
           )}
         >
-          <SheetHeader className="px-4 pt-4 pb-3 border-b">
+          <SheetHeader className="border-b px-ui-4 pt-ui-4 pb-ui-3">
             <div className="flex items-center justify-between">
-              <SheetTitle className="flex items-center gap-2 text-sm font-bold">
-                <BarChart3 className="h-4 w-4 text-primary" />
+              <SheetTitle className="flex items-center gap-ui-2 text-ui-sm font-bold">
+                <BarChart3 className="size-icon-sm text-primary" />
                 {td.tracking}
                 {itemCount > 0 && (
-                  <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">
+                  <span className="rounded-ui-full bg-primary/10 px-ui-2 py-ui-1 text-ui-xs font-semibold text-primary">
                     {itemCount}
                   </span>
                 )}
               </SheetTitle>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-ui-1">
                 <AdminHeaderControls />
                 {!isMobile && (
                   <button
                     onClick={togglePin}
-                    className="rounded-md p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                    className="rounded-ui-md p-ui-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                     title={td.pin}
                   >
-                    <Pin className="h-3.5 w-3.5" />
+                    <Pin className="size-icon-sm" />
                   </button>
                 )}
               </div>
 
             </div>
           </SheetHeader>
-          <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex-1 overflow-y-auto p-ui-4">
             <TrackingPanelInline {...effectiveProps} />
           </div>
         </SheetContent>

@@ -1,0 +1,20 @@
+.invoice-paper .invoice-footer {
+  display: grid;
+  gap: 18px;
+  margin-top: 46px;
+  padding-top: 20px;
+  border-top: 1px solid #d8d1c8;
+}
+
+.invoice-paper .invoice-footer .invoice-payment {
+  padding: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+
+.invoice-paper .invoice-footer > span {
+  color: #5048b9;
+  font-size: .77rem;
+  text-align: center;
+}

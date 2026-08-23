@@ -61,15 +61,15 @@ export const QuickAddCard = ({ columnId }: QuickAddCardProps) => {
           setActive(true);
           requestAnimationFrame(() => inputRef.current?.focus());
         }}
-        className="mt-2 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-muted-foreground/30 py-2 text-xs text-muted-foreground hover:border-accent hover:text-accent transition-colors"
+        className="mt-ui-2 flex w-full items-center justify-center gap-ui-2 rounded-ui-md border border-dashed border-muted-foreground/30 py-ui-2 text-ui-xs text-muted-foreground transition-colors hover:border-accent hover:text-accent"
       >
-        <Plus className="h-3.5 w-3.5" /> Adicionar card
+        <Plus className="size-icon-sm" /> Adicionar card
       </button>
     );
   }
 
   return (
-    <div className="mt-2 rounded-lg border border-accent/40 bg-card/70 p-2 shadow-sm">
+    <div className="mt-ui-2 rounded-ui-md border border-accent/40 bg-card/70 p-ui-2 shadow-sm">
       <input
         ref={inputRef}
         value={title}
@@ -88,11 +88,11 @@ export const QuickAddCard = ({ columnId }: QuickAddCardProps) => {
         }}
         placeholder="Título do card e Enter…"
         disabled={saving}
-        className="w-full bg-transparent text-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
+        className="w-full bg-transparent text-ui-sm text-foreground placeholder:text-muted-foreground focus:outline-none"
       />
       {saving && (
-        <div className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
-          <Loader2 className="h-3 w-3 animate-spin" /> Criando…
+        <div className="mt-ui-1 flex items-center gap-ui-1 text-ui-xs text-muted-foreground">
+          <Loader2 className="size-icon-xs animate-spin" /> Criando…
         </div>
       )}
     </div>

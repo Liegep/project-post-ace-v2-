@@ -27,6 +27,7 @@ import ReportsPage from "./pages/ReportsPage.tsx";
 import CreateReportPage from "./pages/CreateReportPage.tsx";
 import ReportViewPage from "./pages/ReportViewPage.tsx";
 import BillingPage from "./pages/BillingPage.tsx";
+import BillingInvoicePage from "./pages/BillingInvoicePage.tsx";
 import ProposalsPage from "./pages/ProposalsPage.tsx";
 import PublicProposalPage from "./pages/PublicProposalPage.tsx";
 import NotFound from "./pages/NotFound.tsx";
@@ -69,7 +70,8 @@ const App = () => (
               <Route path="/reports/new" element={<AuthGuard allowedRoles={["super_admin"]}><CreateReportPage /></AuthGuard>} />
               <Route path="/reports/:id/edit" element={<AuthGuard allowedRoles={["super_admin"]}><CreateReportPage /></AuthGuard>} />
               <Route path="/reports/:id" element={<AuthGuard allowedRoles={["super_admin", "admin", "colaborador", "client"]}><ReportViewPage /></AuthGuard>} />
-              <Route path="/billing" element={<AuthGuard allowedRoles={["super_admin"]}><BillingPage /></AuthGuard>} />
+              <Route path="/billing/:id" element={<AuthGuard allowedRoles={["super_admin"]} temporaryAccess="billing_preview"><BillingInvoicePage /></AuthGuard>} />
+              <Route path="/billing" element={<AuthGuard allowedRoles={["super_admin"]} temporaryAccess="billing_preview"><BillingPage /></AuthGuard>} />
               <Route path="/proposals" element={<AuthGuard allowedRoles={["super_admin"]}><ProposalsPage /></AuthGuard>} />
               <Route path="/contracts" element={<AuthGuard allowedRoles={["super_admin"]}><ContractsPage /></AuthGuard>} />
               <Route path="/design-briefs" element={<AuthGuard allowedRoles={["super_admin", "admin", "colaborador"]}><DesignBriefsPage /></AuthGuard>} />

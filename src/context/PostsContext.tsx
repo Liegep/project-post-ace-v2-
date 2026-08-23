@@ -41,6 +41,7 @@ interface PostsContextType {
   deleteTag: (id: string) => void;
   uploadMedia: (file: File) => Promise<string>;
   addColumn: (name: string) => Promise<Column>;
+  ensurePautaColumn: () => Promise<Column>;
   renameColumn: (id: string, name: string) => void;
   deleteColumn: (id: string) => void;
   reorderColumns: (columns: Column[]) => void;
@@ -781,6 +782,28 @@ export const PostsProvider: React.FC<PostsProviderProps> = ({ clientId, clientLo
     return col;
   }, [clientId, columns.length]);
 
+  const ensurePautaColumn = useCallback(async (): Promise<Column> => {
+    const existing = columns.find((column) => column.name.toLocaleLowerCase() === "pauta");
+    if (existing) {
+      if (!existing.visibleToClient) {
+        await supabase.from("columns").update({ visible_to_client: true } as any).eq("id", existing.id);
+        setColumns((prev) => prev.map((column) => column.id === existing.id ? { ...column, visibleToClient: true } : column));
+      }
+      return { ...existing, visibleToClient: true };
+    }
+
+    const position = columns.reduce((highest, column) => Math.max(highest, column.position), -1) + 1;
+    const { data, error } = await supabase
+      .from("columns")
+      .insert({ client_id: clientId, name: "Pauta", position, visible_to_client: true } as any)
+      .select()
+      .single();
+    if (error || !data) throw error ?? new Error("Não foi possível criar a coluna Pauta.");
+    const column: Column = { id: (data as any).id, clientId, name: "Pauta", position, visibleToClient: true, color: (data as any).color ?? null };
+    setColumns((prev) => [...prev, column]);
+    return column;
+  }, [clientId, columns]);
+
   const renameColumn = useCallback(async (id: string, name: string) => {
     setColumns((prev) => prev.map((c) => (c.id === id ? { ...c, name } : c)));
     await supabase.from("columns").update({ name } as any).eq("id", id);
@@ -938,7 +961,7 @@ export const PostsProvider: React.FC<PostsProviderProps> = ({ clientId, clientLo
     <PostsContext.Provider value={{
       clientId, posts: activePosts, archivedPosts, tags, columns, postingPeriod, companyLogo, commentAuthors, setPostingPeriod, setCompanyLogo,
       addPost, updatePostStatus, updateClientLabel, addComment, deleteComment, updateComment, deletePost, updatePost,
-      addTag, updateTag, deleteTag, uploadMedia, addColumn, renameColumn, deleteColumn, reorderColumns, toggleColumnVisibility, setColumnColor,
+      addTag, updateTag, deleteTag, uploadMedia, addColumn, ensurePautaColumn, renameColumn, deleteColumn, reorderColumns, toggleColumnVisibility, setColumnColor,
       movePostToColumn, reorderPostsInColumn, unarchivePost, bulkUpdateStatus, bulkDeletePosts, bulkMoveToColumn, loading,
     }}>
       {children}

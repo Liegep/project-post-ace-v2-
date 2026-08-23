@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { useParams, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { ActivityTimeline } from "@/components/ActivityTimeline";
+import { ClientTrackerPanel } from "@/components/ClientTrackerPanel";
 import { ClientBillingConfig } from "@/components/billing/ClientBillingConfig";
 import { BillingPermissionsPanel } from "@/components/billing/BillingPermissionsPanel";
 import { useActivityLogs } from "@/hooks/useActivityLogs";
@@ -21,7 +22,7 @@ import { LanguageSelector } from "@/components/LanguageSelector";
 import { useI18n } from "@/i18n/I18nContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Plus, LayoutGrid, List, Pencil, ImagePlus, ArrowLeft, Trash2, GripVertical, Archive, RotateCcw, CheckSquare, X, Eye, EyeOff, ClipboardList, StickyNote, LinkIcon, ExternalLink, UserPlus, Settings, History, Download, CalendarClock, FileText, Search, Sparkles, MoreVertical, Paintbrush, Receipt } from "lucide-react";
+import { Plus, LayoutGrid, List, Pencil, ImagePlus, Trash2, GripVertical, Archive, RotateCcw, CheckSquare, X, Eye, EyeOff, ClipboardList, StickyNote, LinkIcon, ExternalLink, UserPlus, Settings, History, Download, CalendarClock, FileText, Search, Sparkles, MoreVertical, Paintbrush, Receipt, BarChart3, Check, ChevronDown } from "lucide-react";
 import { invoiceColumnAuto } from "@/hooks/useInvoices";
 import { InvoiceColumnDialog } from "@/components/billing/InvoiceColumnDialog";
 import { ClientRightSidebar } from "@/components/ClientRightSidebar";
@@ -53,6 +54,8 @@ import { toast } from "@/hooks/use-toast";
 import { DndContext, DragOverlay, closestCorners, pointerWithin, rectIntersection, getFirstCollision, PointerSensor, TouchSensor, useSensor, useSensors, DragStartEvent, DragEndEvent, DragOverEvent, useDroppable, CollisionDetection } from "@dnd-kit/core";
 import { useSortable, SortableContext, verticalListSortingStrategy, horizontalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { Locale } from "@/i18n/translations";
+import { uploadClientLogo } from "@/lib/uploadClientLogo";
 
 const UNASSIGNED_COLUMN_ID = "__unassigned__";
 
@@ -134,6 +137,13 @@ interface ClientData {
   website_url: string;
 }
 
+interface ClientMenuItem {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string | null;
+}
+
 interface KanbanBoardProps {
   posts: Post[];
   columns: { id: string; name: string; position: number; visibleToClient: boolean; color?: string | null }[];
@@ -170,6 +180,11 @@ interface KanbanBoardProps {
   billingCurrency?: string;
 }
 
+type InvoiceColumnTarget = {
+  id: string;
+  name: string;
+};
+
 const SortableColumn = ({ col, children }: { col: { id: string }; children: React.ReactNode }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: `col-${col.id}`,
@@ -181,16 +196,16 @@ const SortableColumn = ({ col, children }: { col: { id: string }; children: Reac
     opacity: isDragging ? 0.5 : 1,
   };
   return (
-    <div ref={setNodeRef} style={style} className="w-80 shrink-0 rounded-xl border bg-card/50 p-4 flex flex-col h-full min-h-0">
-      <div {...attributes} {...listeners} className="cursor-grab active:cursor-grabbing mb-1 flex justify-center shrink-0">
-        <GripVertical className="h-4 w-4 text-muted-foreground/50 rotate-90" />
+    <div ref={setNodeRef} style={style} className="board-column-shell">
+      <div {...attributes} {...listeners} className="mb-ui-1 flex shrink-0 justify-center cursor-grab active:cursor-grabbing">
+        <GripVertical className="size-icon-sm rotate-90 text-muted-foreground/50" />
       </div>
       {children}
     </div>
   );
 };
 
-const KanbanBoard = ({
+export const KanbanBoard = ({
   posts, columns, unassignedPosts, editingColumnId, editingColumnName,
   setEditingColumnId, setEditingColumnName, editColumnInputRef, handleRenameColumn,
   handleDeleteColumn, updatePostStatus, deletePost, setDetailPost, setCreateInColumnId,
@@ -205,7 +220,7 @@ const KanbanBoard = ({
 }: KanbanBoardProps) => {
   const [activePost, setActivePost] = useState<Post | null>(null);
   const [activeColumnId, setActiveColumnId] = useState<string | null>(null);
-  const [invoiceColumnTarget, setInvoiceColumnTarget] = useState<string | null>(null);
+  const [invoiceColumnTarget, setInvoiceColumnTarget] = useState<InvoiceColumnTarget | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
     useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 6 } })
@@ -341,7 +356,7 @@ const KanbanBoard = ({
                       className="h-7 text-sm font-semibold bg-white/90 text-black"
                     />
                   ) : (
-                    <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       <span
                         className="h-2.5 w-2.5 rounded-full shrink-0 ring-1"
                         style={{
@@ -351,10 +366,20 @@ const KanbanBoard = ({
                         }}
                       />
                       <span className="text-sm font-semibold break-words whitespace-normal" style={{ color: textColor }}>{col.name}</span>
+                      <span
+                        className="inline-flex h-6 min-w-[28px] items-center justify-center rounded-full px-2.5 text-[11px] font-semibold shrink-0"
+                        style={{
+                          backgroundColor: isLight ? "rgba(255,255,255,0.72)" : "rgba(255,255,255,0.88)",
+                          color: "#6b7280",
+                        }}
+                      >
+                        {columnPosts.length}
+                      </span>
                     </div>
                   )}
                   <div className="flex items-center gap-1">
                     <button
+                      type="button"
                       onClick={() => toggleColumnVisibility(col.id, !col.visibleToClient)}
                       className="rounded p-1 transition-colors"
                       style={{ color: col.visibleToClient ? textColor : mutedColor }}
@@ -364,39 +389,66 @@ const KanbanBoard = ({
                     >
                       {col.visibleToClient ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                     </button>
-                    <span className="text-xs shrink-0" style={{ color: mutedColor }}>({columnPosts.length})</span>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <button
+                          type="button"
                           className="rounded p-1 transition-colors"
                           style={{ color: mutedColor }}
+                          title={`Mais ações da coluna ${col.name}`}
+                          aria-label={`Mais ações da coluna ${col.name}`}
+                          onPointerDown={(e) => {
+                            e.stopPropagation();
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                          }}
                           onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = hoverBg)}
                           onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "transparent")}
                         >
                           <MoreVertical className="h-3.5 w-3.5" />
                         </button>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48">
-                        <DropdownMenuItem onClick={() => { setCreateInColumnId(col.id); setCreateOpen(true); }}>
+                      <DropdownMenuContent
+                        align="end"
+                        sideOffset={8}
+                        className="w-56 border-slate-200 !bg-white !text-slate-900 shadow-2xl"
+                        style={{ backgroundColor: "#ffffff", color: "#111827", opacity: 1 }}
+                      >
+                        <DropdownMenuItem
+                          className="text-slate-900 focus:bg-slate-100 focus:text-slate-950"
+                          style={{ color: "#111827" }}
+                          onClick={() => { setCreateInColumnId(col.id); setCreateOpen(true); }}
+                        >
                           <Plus className="h-4 w-4 mr-2" />
                           {t("addPost")}
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => { setEditingColumnId(col.id); setEditingColumnName(col.name); }}>
+                        <DropdownMenuItem
+                          className="text-slate-900 focus:bg-slate-100 focus:text-slate-950"
+                          style={{ color: "#111827" }}
+                          onClick={() => { setEditingColumnId(col.id); setEditingColumnName(col.name); }}
+                        >
                           <Pencil className="h-4 w-4 mr-2" />
                           Editar
                         </DropdownMenuItem>
                         <DropdownMenuItem
-                          onClick={() => setInvoiceColumnTarget(col.name)}
+                          className="text-slate-900 focus:bg-slate-100 focus:text-slate-950"
+                          style={{ color: "#111827" }}
+                          onClick={() => setInvoiceColumnTarget({ id: col.id, name: col.name })}
                         >
                           <Receipt className="h-4 w-4 mr-2" />
                           Faturar
                         </DropdownMenuItem>
                         <DropdownMenuSub>
-                          <DropdownMenuSubTrigger>
+                          <DropdownMenuSubTrigger className="text-slate-900 focus:bg-slate-100" style={{ color: "#111827" }}>
                             <Paintbrush className="h-4 w-4 mr-2" />
                             {t("color")}
                           </DropdownMenuSubTrigger>
-                          <DropdownMenuSubContent className="w-56 p-2" sideOffset={6}>
+                          <DropdownMenuSubContent
+                            className="w-56 border-slate-200 !bg-white !text-slate-900 p-2 shadow-2xl"
+                            sideOffset={6}
+                            style={{ backgroundColor: "#ffffff", color: "#111827", opacity: 1 }}
+                          >
                             <div className="grid grid-cols-6 gap-1.5">
                               {PRESET_COLORS.map((c) => (
                                 <button
@@ -477,7 +529,7 @@ const KanbanBoard = ({
 
         {/* Unassigned posts column */}
         {unassignedPosts.length > 0 && (
-          <div className="w-80 shrink-0 rounded-xl border bg-muted/30 p-4 flex flex-col h-full min-h-0">
+          <div className="board-column-shell bg-muted/30">
             <div className="mb-4 flex items-center gap-2 shrink-0">
               <span className="text-sm font-semibold text-muted-foreground">{t("noColumn")}</span>
               <span className="text-xs text-muted-foreground">({unassignedPosts.length})</span>
@@ -505,7 +557,7 @@ const KanbanBoard = ({
         {/* Add column button */}
         <div className="w-80 shrink-0">
           {addingColumn ? (
-            <div className="rounded-xl border bg-card/50 p-4">
+            <div className="rounded-ui-lg border bg-card/50 p-ui-4">
               <Input
                 ref={newColumnInputRef}
                 value={newColumnName}
@@ -546,8 +598,8 @@ const KanbanBoard = ({
           </div>
         )}
         {activeColumnId && (
-          <div className="w-80 rotate-1 opacity-80 rounded-xl border bg-card/50 p-4 shadow-lg">
-            <span className="text-sm font-semibold text-foreground">
+          <div className="w-80 rotate-1 rounded-ui-lg border bg-card/50 p-ui-4 opacity-80 shadow-lg">
+            <span className="text-ui-sm font-semibold text-foreground">
               {columns.find((c) => c.id === activeColumnId)?.name}
             </span>
           </div>
@@ -557,7 +609,7 @@ const KanbanBoard = ({
     <InvoiceColumnDialog
       open={!!invoiceColumnTarget}
       onOpenChange={(o) => { if (!o) setInvoiceColumnTarget(null); }}
-      columnName={invoiceColumnTarget || ""}
+      columnName={invoiceColumnTarget?.name || ""}
       currency={billingCurrency}
       onConfirm={async ({ name, quantity, unit_price, description }) => {
         try {
@@ -611,7 +663,7 @@ const ArchivedView = ({ archivedPosts, columns, unarchivePost, deletePost, selec
   return (
     <div className="flex gap-4 overflow-x-auto pb-4 h-full">
       {months.map((month) => (
-        <div key={month} className="w-80 shrink-0 rounded-xl border bg-card/50 p-4 flex flex-col h-full">
+        <div key={month} className="board-column-shell">
           <div className="mb-4 flex items-center gap-2">
             <span className="text-sm font-semibold text-foreground capitalize">{month}</span>
             <span className="text-xs text-muted-foreground">({grouped[month].length})</span>
@@ -687,7 +739,7 @@ const ArchivedView = ({ archivedPosts, columns, unarchivePost, deletePost, selec
 const AdminPageInner = ({ clientData }: { clientData: ClientData }) => {
   const {
     posts, archivedPosts, columns, tags, updatePostStatus, deletePost, updatePost, postingPeriod, setPostingPeriod,
-    companyLogo, setCompanyLogo, uploadMedia, addColumn, renameColumn, deleteColumn, toggleColumnVisibility, setColumnColor,
+    companyLogo, setCompanyLogo, addColumn, renameColumn, deleteColumn, toggleColumnVisibility, setColumnColor,
     movePostToColumn, reorderPostsInColumn, unarchivePost, bulkUpdateStatus, bulkDeletePosts, bulkMoveToColumn, reorderColumns,
     clientId: ctxClientId,
   } = usePosts();
@@ -740,8 +792,52 @@ const AdminPageInner = ({ clientData }: { clientData: ClientData }) => {
   const [trackingColumnIds, setTrackingColumnIds] = useState<string[]>(((clientData as any).tracking_column_ids as string[]) ?? []);
   const [showUpcomingPosts, setShowUpcomingPosts] = useState((clientData as any).show_upcoming_posts ?? false);
   const [allowClientEditBrandBrain, setAllowClientEditBrandBrain] = useState((clientData as any).allow_client_edit_brand_brain ?? false);
+  const [clientLocale, setClientLocale] = useState<Locale>((clientData.locale as Locale) || "pt");
+  const [availableClients, setAvailableClients] = useState<ClientMenuItem[]>([]);
 
   const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    const loadAvailableClients = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: roles } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", user.id);
+      const isSuperAdmin = (roles || []).some((role: any) => role.role === "super_admin");
+
+      if (isSuperAdmin) {
+        const { data } = await supabase
+          .from("clients")
+          .select("id, name, slug, logo_url")
+          .order("name");
+        setAvailableClients((data || []) as ClientMenuItem[]);
+        return;
+      }
+
+      const [assignmentsResult, ownedClientsResult] = await Promise.all([
+        supabase.from("user_client_assignments").select("client_id").eq("user_id", user.id),
+        supabase.from("clients").select("id").eq("owner_id", user.id),
+      ]);
+      const clientIds = [...new Set([
+        ...(assignmentsResult.data || []).map((assignment: any) => assignment.client_id),
+        ...(ownedClientsResult.data || []).map((client: any) => client.id),
+      ])];
+
+      if (clientIds.length === 0) return;
+
+      const { data } = await supabase
+        .from("clients")
+        .select("id, name, slug, logo_url")
+        .in("id", clientIds)
+        .order("name");
+      setAvailableClients((data || []) as ClientMenuItem[]);
+    };
+
+    loadAvailableClients();
+  }, []);
 
   // Auto-open post from query param (e.g. from dashboard notification)
   useEffect(() => {
@@ -779,7 +875,8 @@ const AdminPageInner = ({ clientData }: { clientData: ClientData }) => {
   // Activity logs for this client
   const activityLogs = useActivityLogs({ clientId: ctxClientId, enabled: activeTab === "activity" });
 
-    const toggleShowArchivedToClient = async (checked: boolean) => {
+  const toggleShowArchivedToClient = async (checked: boolean) => {
+    setShowArchivedToClient(checked);
     await supabase.from("clients").update({ show_archived_to_client: checked } as any).eq("id", clientData.id);
   };
 
@@ -801,6 +898,11 @@ const AdminPageInner = ({ clientData }: { clientData: ClientData }) => {
   const toggleAllowClientCreateTags = async (checked: boolean) => {
     setAllowClientCreateTags(checked);
     await supabase.from("clients").update({ allow_client_create_tags: checked } as any).eq("id", clientData.id);
+  };
+
+  const updateClientLocale = async (nextLocale: Locale) => {
+    setClientLocale(nextLocale);
+    await supabase.from("clients").update({ locale: nextLocale } as any).eq("id", clientData.id);
   };
 
   const enableTracking = async () => {
@@ -879,10 +981,18 @@ const AdminPageInner = ({ clientData }: { clientData: ClientData }) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const url = await uploadMedia(file);
+      const url = await uploadClientLogo(file);
       setCompanyLogo(url);
+      toast({ title: "Logo atualizado com sucesso" });
     } catch (err) {
       console.error("Logo upload failed", err);
+      toast({
+        title: "Erro ao enviar logo",
+        description: err instanceof Error ? err.message : "Não foi possível enviar o logo do cliente.",
+        variant: "destructive",
+      });
+    } finally {
+      e.target.value = "";
     }
   };
 
@@ -955,8 +1065,10 @@ const AdminPageInner = ({ clientData }: { clientData: ClientData }) => {
             <button
               onClick={() => navigate("/admin")}
               className="rounded-lg p-2 transition-colors shrink-0 group bg-white hover:bg-foreground shadow-md border border-border/40 transition-colors"
+              title="Dashboard"
+              aria-label="Ir para o dashboard"
             >
-              <ArrowLeft className="h-5 w-5 text-black group-hover:text-white transition-colors" strokeWidth={2.5} />
+              <LayoutGrid className="h-5 w-5 text-black group-hover:text-white transition-colors" strokeWidth={2.5} />
             </button>
             <button
               onClick={() => logoInputRef.current?.click()}
@@ -974,9 +1086,51 @@ const AdminPageInner = ({ clientData }: { clientData: ClientData }) => {
               )}
             </button>
             <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
-            <div className="min-w-0">
-              <h1 className="text-lg sm:text-2xl font-bold text-foreground cursor-pointer hover:text-primary transition-colors truncate" onClick={() => navigate(`/client/${clientData.slug}`)}>{clientData.name}</h1>
-              <p className="text-xs sm:text-sm text-muted-foreground hidden lg:block truncate">{t("adminSubtitle")}</p>
+            <div className="flex min-w-0 items-center gap-1">
+              <button
+                onClick={() => navigate(`/client/${clientData.slug}`)}
+                className="group min-w-0 rounded-lg px-1 py-0.5 text-left transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label="Abrir área do cliente"
+              >
+                <span className="block truncate text-lg font-bold text-foreground group-hover:text-primary sm:text-2xl">{clientData.name}</span>
+                <span className="hidden truncate text-xs text-muted-foreground lg:block">{t("adminSubtitle")}</span>
+              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className="group shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label="Trocar cliente"
+                  >
+                    <ChevronDown className="h-4 w-4 transition-transform group-data-[state=open]:rotate-180" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-64 p-1">
+                  {availableClients.map((client) => {
+                    const isCurrentClient = client.id === clientData.id;
+                    const destination = isCurrentClient ? `/client/${client.slug}` : `/admin/${client.slug}`;
+                    return (
+                      <DropdownMenuItem key={client.id} asChild>
+                        <Link to={destination} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-md bg-muted text-xs font-bold text-muted-foreground">
+                            {client.logo_url ? (
+                              <img src={client.logo_url} alt="" className="h-full w-full object-contain" />
+                            ) : (
+                              client.name.charAt(0).toUpperCase()
+                            )}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate font-medium">{client.name}</span>
+                            <span className="block text-xs text-muted-foreground">
+                              {isCurrentClient ? "Abrir área do cliente" : "Abrir Kanban"}
+                            </span>
+                          </span>
+                          {isCurrentClient && <Check className="h-4 w-4 shrink-0 text-primary" />}
+                        </Link>
+                      </DropdownMenuItem>
+                    );
+                  })}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 
@@ -985,8 +1139,10 @@ const AdminPageInner = ({ clientData }: { clientData: ClientData }) => {
             <LanguageSelector />
             <div className="flex rounded-lg border bg-muted p-1">
               <button
-                onClick={() => setView("kanban")}
+                onClick={() => navigate("/admin")}
                 className={`rounded-md px-3 py-1.5 text-sm transition-colors ${view === "kanban" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
+                title="Ir para o dashboard"
+                aria-label="Ir para o dashboard"
               >
                 <LayoutGrid className="h-4 w-4" />
               </button>
@@ -1028,9 +1184,10 @@ const AdminPageInner = ({ clientData }: { clientData: ClientData }) => {
           <div className="hidden md:flex lg:hidden items-center gap-1.5 shrink-0">
             <div className="flex rounded-lg border bg-muted p-0.5">
               <button
-                onClick={() => setView("kanban")}
+                onClick={() => navigate("/admin")}
                 className={`rounded-md px-2 py-1.5 transition-colors ${view === "kanban" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
-                title="Kanban"
+                title="Ir para o dashboard"
+                aria-label="Ir para o dashboard"
               >
                 <LayoutGrid className="h-4 w-4" />
               </button>
@@ -1087,8 +1244,9 @@ const AdminPageInner = ({ clientData }: { clientData: ClientData }) => {
               <p className="text-xs font-medium text-muted-foreground mb-2">Visualização</p>
               <div className="flex rounded-lg border bg-muted p-1">
                 <button
-                  onClick={() => setView("kanban")}
+                  onClick={() => { navigate("/admin"); setSettingsDrawerOpen(false); }}
                   className={`flex-1 rounded-md px-3 py-1.5 text-sm transition-colors ${view === "kanban" ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
+                  aria-label="Ir para o dashboard"
                 >
                   <LayoutGrid className="h-4 w-4 mx-auto" />
                 </button>
@@ -1267,7 +1425,95 @@ const AdminPageInner = ({ clientData }: { clientData: ClientData }) => {
       </Sheet>
 
       {/* Right Sidebar for Notes & Links */}
-      <ClientRightSidebar clientId={clientData.id} />
+      <ClientRightSidebar
+        clientId={clientData.id}
+        trackerPanel={
+          <ClientTrackerPanel
+            locale={clientLocale}
+            onLocaleChange={updateClientLocale}
+            trackingEnabled={trackingEnabled}
+            onTrackingEnabledChange={(checked) => {
+              if (checked && !trackingEnabled) return enableTracking();
+              if (!checked && trackingEnabled) return disableTracking();
+            }}
+            viewItems={[
+              {
+                key: "tracking",
+                label: "Tracking visível",
+                checked: trackingVisibleToClient,
+                onCheckedChange: async (checked) => {
+                  setTrackingVisibleToClient(checked);
+                  await supabase.from("clients").update({ tracking_visible_to_client: checked }).eq("id", clientData.id);
+                },
+                icon: <BarChart3 className="h-4 w-4" />,
+              },
+              {
+                key: "archived",
+                label: "Arquivados",
+                checked: showArchivedToClient,
+                onCheckedChange: toggleShowArchivedToClient,
+                icon: <Archive className="h-4 w-4" />,
+              },
+              {
+                key: "upcoming-posts",
+                label: "Próximos posts",
+                checked: showUpcomingPosts,
+                onCheckedChange: async (checked) => {
+                  setShowUpcomingPosts(checked);
+                  await supabase.from("clients").update({ show_upcoming_posts: checked } as any).eq("id", clientData.id);
+                },
+                icon: <CalendarClock className="h-4 w-4" />,
+              },
+            ]}
+            actionItems={[
+              {
+                key: "edit-caption",
+                label: "Editar legenda",
+                checked: allowClientEditCaption,
+                onCheckedChange: toggleAllowClientEditCaption,
+                icon: <Pencil className="h-4 w-4" />,
+              },
+              {
+                key: "create-posts",
+                label: "Criar posts",
+                checked: allowClientCreatePost,
+                onCheckedChange: toggleAllowClientCreatePost,
+                icon: <Plus className="h-4 w-4" />,
+              },
+              {
+                key: "download-content",
+                label: "Baixar conteúdo",
+                checked: allowClientDownload,
+                onCheckedChange: toggleAllowClientDownload,
+                icon: <Download className="h-4 w-4" />,
+              },
+              {
+                key: "create-tags",
+                label: "Criar tags",
+                checked: allowClientCreateTags,
+                onCheckedChange: toggleAllowClientCreateTags,
+                icon: <ClipboardList className="h-4 w-4" />,
+              },
+              {
+                key: "edit-brand-brain",
+                label: "Editar Brand Brain",
+                checked: allowClientEditBrandBrain,
+                onCheckedChange: async (checked) => {
+                  setAllowClientEditBrandBrain(checked);
+                  await supabase.from("clients").update({ allow_client_edit_brand_brain: checked } as any).eq("id", clientData.id);
+                },
+                icon: <Sparkles className="h-4 w-4" />,
+              },
+            ]}
+            columns={columns.map((column) => ({
+              id: column.id,
+              name: column.name,
+              visibleToClient: column.visibleToClient,
+            }))}
+            onToggleColumn={toggleColumnVisibility}
+          />
+        }
+      />
 
       <main className="mx-auto max-w-full p-4 sm:p-6">
         {/* Tab switcher */}

@@ -64,28 +64,20 @@ const LoginPage = () => {
       }
 
       const userId = data.user.id;
-      const [{ data: isAdmin }, { data: isTeamMember }, { data: isClient }] = await Promise.all([
-        supabase.rpc("has_role" as any, {
-          _user_id: userId,
-          _role: "admin",
-        }),
-        supabase.rpc("has_role" as any, {
-          _user_id: userId,
-          _role: "team_member",
-        }),
-        supabase.rpc("has_role" as any, {
-          _user_id: userId,
-          _role: "client",
-        }),
-      ]);
+      const { data: roleRows, error: rolesError } = await supabase
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", userId);
 
-      if (isAdmin) {
-        navigate("/", { replace: true });
-        return;
-      }
+      if (rolesError) throw rolesError;
 
-      if (isTeamMember) {
-        navigate("/team", { replace: true });
+      const roles = new Set((roleRows || []).map((row: any) => row.role as string));
+      const canAccessDashboard = roles.has("super_admin") || roles.has("admin") || roles.has("colaborador");
+      const isClient = roles.has("client");
+
+      // Keep the login routing aligned with the dashboard's AuthGuard roles.
+      if (canAccessDashboard) {
+        navigate("/admin", { replace: true });
         return;
       }
 

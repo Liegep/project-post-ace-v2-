@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useInvoices, Invoice, createInvoice, updateInvoice, deleteInvoice } from "@/hooks/useInvoices";
 import { MobileNav } from "@/components/MobileNav";
@@ -17,7 +17,6 @@ import { toast } from "@/hooks/use-toast";
 import { Plus, Search, ArrowLeft, FileText, DollarSign, AlertCircle, CheckCircle2, XCircle, Clock, TrendingUp, Eye, EyeOff, Building2 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import InvoiceDetailDialog from "@/components/billing/InvoiceDetailDialog";
 import IssuerSettingsPanel from "@/components/billing/IssuerSettingsPanel";
 import { formatCurrency } from "@/lib/currency";
 
@@ -37,12 +36,12 @@ interface Client {
 
 const BillingPage = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { userId } = useUserRole();
   const { invoices, loading, refetch } = useInvoices();
   const [clients, setClients] = useState<Client[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [issuerOpen, setIssuerOpen] = useState(false);
-  const [detailInvoice, setDetailInvoice] = useState<Invoice | null>(null);
   
   // Filters
   const [filterClient, setFilterClient] = useState("all");
@@ -80,13 +79,28 @@ const BillingPage = () => {
     fetchClients();
   }, [userId]);
 
+  useEffect(() => {
+    if (searchParams.get("create") === "1") {
+      setCreateOpen(true);
+    }
+  }, [searchParams]);
+
   const handleCreate = async () => {
     if (!formClientId || !formTitle) return;
     setSaving(true);
     try {
-      await createInvoice({
+      const client = clients.find((entry) => entry.id === formClientId);
+      const { data: clientDetails } = await supabase
+        .from("clients")
+        .select("name, address, country, tax_id, locale, billing_currency")
+        .eq("id", formClientId)
+        .maybeSingle();
+
+      const created = await createInvoice({
         client_id: formClientId,
         title: formTitle,
+        currency_code: (clientDetails as any)?.billing_currency || "BRL",
+        locale: (clientDetails as any)?.locale || "pt",
         period_start: formPeriodStart || undefined,
         period_end: formPeriodEnd || undefined,
         issue_date: formIssueDate,
@@ -94,11 +108,17 @@ const BillingPage = () => {
         notes: formNotes,
         created_by: userId || undefined,
         client_visible: formClientVisible,
+        recipient_name: (clientDetails as any)?.name || client?.name || "",
+        recipient_address: (clientDetails as any)?.address || "",
+        recipient_country: (clientDetails as any)?.country || "",
+        recipient_tax_id: (clientDetails as any)?.tax_id || "",
       });
       toast({ title: "Fatura criada com sucesso" });
       setCreateOpen(false);
+      setSearchParams({});
       resetForm();
       refetch();
+      navigate(`/billing/${(created as Invoice).id}`);
     } catch (err: any) {
       toast({ title: "Erro", description: err.message, variant: "destructive" });
     } finally {
@@ -375,7 +395,7 @@ const BillingPage = () => {
                 <Card
                   key={inv.id}
                   className="p-4 cursor-pointer hover:shadow-md transition-all hover:border-primary/20"
-                  onClick={() => setDetailInvoice(inv)}
+                  onClick={() => navigate(`/billing/${inv.id}`)}
                 >
                   <div className="flex items-center gap-3">
                     {inv.clients?.logo_url ? (
@@ -408,9 +428,7 @@ const BillingPage = () => {
                       </div>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-sm font-bold">
-                        {formatCurrency(total, inv.clients?.billing_currency)}
-                      </p>
+                      <p className="text-sm font-bold">{formatCurrency(total, inv.currency_code || inv.clients?.billing_currency)}</p>
                       <Badge variant="outline" className={`text-[10px] mt-1 ${cfg.color}`}>
                         <Icon className="h-3 w-3 mr-1" />
                         {cfg.label}
@@ -425,7 +443,13 @@ const BillingPage = () => {
       </main>
 
       {/* Create Invoice Dialog */}
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog
+        open={createOpen}
+        onOpenChange={(open) => {
+          setCreateOpen(open);
+          if (!open && searchParams.get("create") === "1") setSearchParams({});
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Nova Fatura</DialogTitle>
@@ -481,16 +505,6 @@ const BillingPage = () => {
           </div>
         </DialogContent>
       </Dialog>
-
-      {/* Invoice Detail */}
-      {detailInvoice && (
-        <InvoiceDetailDialog
-          invoice={detailInvoice}
-          open={!!detailInvoice}
-          onOpenChange={open => { if (!open) setDetailInvoice(null); }}
-          onUpdate={() => { refetch(); }}
-        />
-      )}
 
       <IssuerSettingsPanel open={issuerOpen} onOpenChange={setIssuerOpen} />
     </div>

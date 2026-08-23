@@ -1,0 +1,362 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createClient } from "@supabase/supabase-js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const projectRoot = path.resolve(__dirname, "..");
+
+const DEFAULT_CLIENT_NAMES = [
+  "Aplikasi",
+  "Podcast Elite Leader",
+  "Podcast Lider de Elite",
+  "Minas Home",
+  "Doutora Patricia",
+];
+
+function parseEnvFile(text) {
+  const env = {};
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+    const eq = line.indexOf("=");
+    if (eq === -1) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    env[key] = value;
+  }
+  return env;
+}
+
+async function loadEnv() {
+  const envPath = path.join(projectRoot, ".env");
+  const env = { ...process.env };
+  try {
+    const text = await fs.readFile(envPath, "utf8");
+    Object.assign(env, parseEnvFile(text));
+  } catch {
+    // Ignore missing .env; process.env may still be enough.
+  }
+  return env;
+}
+
+function parseArgs(argv) {
+  const options = {
+    outDir: path.join(projectRoot, "migration-export", "priority-clients"),
+    clients: [...DEFAULT_CLIENT_NAMES],
+    dryRun: false,
+  };
+
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--out-dir" && argv[i + 1]) {
+      options.outDir = path.resolve(projectRoot, argv[i + 1]);
+      i += 1;
+      continue;
+    }
+    if (arg === "--clients" && argv[i + 1]) {
+      options.clients = argv[i + 1]
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      i += 1;
+      continue;
+    }
+    if (arg === "--dry-run") {
+      options.dryRun = true;
+    }
+  }
+
+  return options;
+}
+
+function uniqueMediaUrls(rows, extractors) {
+  const seen = new Map();
+  for (const row of rows) {
+    for (const extractor of extractors) {
+      const items = extractor(row) || [];
+      for (const item of items) {
+        if (!item?.url) continue;
+        if (!seen.has(item.url)) seen.set(item.url, item);
+      }
+    }
+  }
+  return [...seen.values()];
+}
+
+async function fetchAll(query, pageSize = 1000) {
+  const rows = [];
+  let from = 0;
+
+  while (true) {
+    const to = from + pageSize - 1;
+    const { data, error } = await query.range(from, to);
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    rows.push(...data);
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return rows;
+}
+
+function pickAllowedProfiles(profiles, assignments) {
+  const allowedUserIds = new Set(assignments.map((item) => item.user_id));
+  return profiles.filter((profile) => allowedUserIds.has(profile.id));
+}
+
+async function ensureDir(dir) {
+  await fs.mkdir(dir, { recursive: true });
+}
+
+async function writeJson(filePath, data) {
+  await fs.writeFile(filePath, JSON.stringify(data, null, 2), "utf8");
+}
+
+async function main() {
+  const options = parseArgs(process.argv.slice(2));
+  const env = await loadEnv();
+
+  const supabaseUrl = env.VITE_SUPABASE_URL || env.SUPABASE_URL;
+  const supabaseKey =
+    env.VITE_SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_PUBLISHABLE_KEY;
+
+  if (!supabaseUrl || !supabaseKey) {
+    throw new Error("Supabase URL/chave publishable nao encontrados no ambiente.");
+  }
+
+  const supabase = createClient(supabaseUrl, supabaseKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+  const adminEmail = env.EXPORT_ADMIN_EMAIL || env.MIGRATION_ADMIN_EMAIL;
+  const adminPassword =
+    env.EXPORT_ADMIN_PASSWORD || env.MIGRATION_ADMIN_PASSWORD;
+
+  let role = "anon";
+  let currentUserId = null;
+
+  if (adminEmail && adminPassword) {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: adminEmail,
+      password: adminPassword,
+    });
+    if (error) {
+      throw new Error(`Falha ao autenticar com login admin: ${error.message}`);
+    }
+
+    currentUserId = data.user?.id ?? null;
+    if (currentUserId) {
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, role, full_name, email")
+        .eq("id", currentUserId)
+        .maybeSingle();
+      if (profileError) throw profileError;
+      role = profile?.role ?? "authenticated";
+    } else {
+      role = "authenticated";
+    }
+  }
+
+  const { data: clients, error: clientError } = await supabase
+    .from("clients")
+    .select(
+      [
+        "id",
+        "name",
+        "slug",
+        "logo_url",
+        "locale",
+        "client_portal_title",
+        "tracking_enabled",
+        "tracking_visible_to_client",
+        "tracking_column_ids",
+        "show_archived_to_client",
+        "show_upcoming_posts",
+        "allow_client_edit_caption",
+        "allow_client_create_post",
+        "allow_client_create_tags",
+        "allow_client_download",
+        "allow_client_edit_brand_brain",
+        "require_login",
+        "link_expiration_days",
+        "calendar_color",
+        "calendar_legend",
+        "owner_id",
+        "shared",
+      ].join(","),
+    )
+    .in("name", options.clients)
+    .order("name");
+
+  if (clientError) throw clientError;
+
+  const foundClients = clients ?? [];
+  const foundClientIds = foundClients.map((client) => client.id);
+
+  const missingClients = options.clients.filter(
+    (name) => !foundClients.some((client) => client.name === name),
+  );
+
+  const assignmentsQuery = supabase
+    .from("user_client_assignments")
+    .select("id, user_id, client_id, assigned_by, created_at")
+    .in("client_id", foundClientIds);
+  const assignments = foundClientIds.length ? await fetchAll(assignmentsQuery) : [];
+
+  const profileIds = [...new Set(assignments.map((item) => item.user_id))];
+  const profilesQuery = supabase
+    .from("profiles")
+    .select("id, full_name, email, avatar_url, role")
+    .in("id", profileIds);
+  const profiles = profileIds.length ? await fetchAll(profilesQuery) : [];
+
+  const columnsQuery = supabase
+    .from("columns")
+    .select("id, client_id, name, position, color, visible_to_client, trello_list_id")
+    .in("client_id", foundClientIds)
+    .order("position");
+  const columns = foundClientIds.length ? await fetchAll(columnsQuery) : [];
+
+  const postsQuery = supabase
+    .from("posts")
+    .select(
+      [
+        "id",
+        "client_id",
+        "column_id",
+        "title",
+        "caption",
+        "image_url",
+        "media_type",
+        "media_urls",
+        "art_type",
+        "tags",
+        "status",
+        "position",
+        "deadline",
+        "archived",
+        "archived_at",
+        "published_at",
+        "event_color",
+        "client_label",
+        "retain_files",
+        "created_at",
+        "updated_at",
+        "client_created_at",
+        "client_unarchived_at",
+        "is_pauta",
+        "content_pillar_id",
+        "trello_card_id",
+      ].join(","),
+    )
+    .in("client_id", foundClientIds)
+    .order("position");
+  const posts = foundClientIds.length ? await fetchAll(postsQuery) : [];
+
+  const postIds = posts.map((post) => post.id);
+  const commentsQuery = supabase
+    .from("comments")
+    .select("id, post_id, author, text, user_id, created_at")
+    .in("post_id", postIds)
+    .order("created_at");
+  const comments = postIds.length ? await fetchAll(commentsQuery) : [];
+
+  const calendarPostsQuery = supabase
+    .from("calendar_posts")
+    .select(
+      "id, client_id, title, caption, media_type, media_urls, publish_date, publish_time, status, event_color, created_by, created_at, updated_at",
+    )
+    .in("client_id", foundClientIds)
+    .order("publish_date");
+  const calendarPosts = foundClientIds.length ? await fetchAll(calendarPostsQuery) : [];
+
+  const mediaManifest = uniqueMediaUrls(
+    [...posts, ...calendarPosts],
+    [
+      (row) =>
+        row.image_url
+          ? [
+              {
+                url: row.image_url,
+                source: "posts.image_url",
+                client_id: row.client_id,
+                post_id: row.id,
+              },
+            ]
+          : [],
+      (row) =>
+        Array.isArray(row.media_urls)
+          ? row.media_urls.map((url) => ({
+              url,
+              source: row.publish_date ? "calendar_posts.media_urls" : "posts.media_urls",
+              client_id: row.client_id,
+              post_id: row.publish_date ? null : row.id,
+              calendar_post_id: row.publish_date ? row.id : null,
+            }))
+          : [],
+    ],
+  );
+
+  const summary = {
+    generated_at: new Date().toISOString(),
+    mode: options.dryRun ? "dry-run" : "export",
+    authenticated_as: currentUserId,
+    detected_role: role,
+    requested_clients: options.clients,
+    found_clients: foundClients.map((client) => ({
+      id: client.id,
+      name: client.name,
+      slug: client.slug,
+    })),
+    missing_clients: missingClients,
+    counts: {
+      clients: foundClients.length,
+      profiles: profiles.length,
+      assignments: assignments.length,
+      columns: columns.length,
+      posts: posts.length,
+      archived_posts: posts.filter((post) => post.archived).length,
+      active_posts: posts.filter((post) => !post.archived).length,
+      comments: comments.length,
+      calendar_posts: calendarPosts.length,
+      media_manifest: mediaManifest.length,
+    },
+  };
+
+  if (options.dryRun) {
+    console.log(JSON.stringify(summary, null, 2));
+    return;
+  }
+
+  await ensureDir(options.outDir);
+  await writeJson(path.join(options.outDir, "summary.json"), summary);
+  await writeJson(path.join(options.outDir, "clients.json"), foundClients);
+  await writeJson(
+    path.join(options.outDir, "profiles.json"),
+    pickAllowedProfiles(profiles, assignments),
+  );
+  await writeJson(path.join(options.outDir, "user_client_assignments.json"), assignments);
+  await writeJson(path.join(options.outDir, "columns.json"), columns);
+  await writeJson(path.join(options.outDir, "posts.json"), posts);
+  await writeJson(path.join(options.outDir, "comments.json"), comments);
+  await writeJson(path.join(options.outDir, "calendar_posts.json"), calendarPosts);
+  await writeJson(path.join(options.outDir, "media-manifest.json"), mediaManifest);
+
+  console.log(`Export concluido em: ${options.outDir}`);
+  console.log(JSON.stringify(summary, null, 2));
+}
+
+main().catch((error) => {
+  console.error("[export-priority-clients] Falha:", error?.message || error);
+  process.exitCode = 1;
+});
