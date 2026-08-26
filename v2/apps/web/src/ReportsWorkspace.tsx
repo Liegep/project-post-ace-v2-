@@ -122,12 +122,12 @@ async function downloadReportPdf(report: ClientReport, clientName: string, local
 
   pdf.setTextColor(79, 91, 122);
   pdf.setFontSize(9);
-  pdf.text(copy.reachByChannel, contentX, 357);
+  pdf.text(copy.reachByChannel, contentX, 397);
   pdf.setTextColor(39, 51, 87);
   pdf.setFontSize(16);
-  pdf.text(copy.comparison, contentX, 380);
+  pdf.text(copy.comparison, contentX, 420);
   (["instagram", "facebook"] as const).forEach((channel, index) => {
-    const y = 412 + index * 42;
+    const y = 461 + index * 42;
     const value = report.metrics[channel].reach;
     const fill = channel === "instagram" ? [229, 83, 153] : [54, 133, 233];
     pdf.setTextColor(84, 97, 128);
@@ -143,23 +143,23 @@ async function downloadReportPdf(report: ClientReport, clientName: string, local
   });
 
   pdf.setFillColor(247, 249, 253);
-  pdf.roundedRect(contentX, 510, 511, 142, 14, 14, "F");
+  pdf.roundedRect(contentX, 545, 511, 142, 14, 14, "F");
   pdf.setTextColor(79, 91, 122);
   pdf.setFontSize(9);
-  pdf.text(copy.periodView, contentX + 15, 534);
+  pdf.text(copy.periodView, contentX + 15, 569);
   pdf.setTextColor(39, 51, 87);
   pdf.setFontSize(17);
-  pdf.text(`${number(totalReach, language)} ${copy.reached}`, contentX + 15, 560);
+  pdf.text(`${number(totalReach, language)} ${copy.reached}`, contentX + 15, 595);
   pdf.setTextColor(100, 113, 143);
   pdf.setFontSize(10);
-  pdf.text(copy.consolidated, contentX + 15, 581);
+  pdf.text(copy.consolidated, contentX + 15, 616);
   if (report.highlights[0]) {
     pdf.setTextColor(79, 91, 122);
     pdf.setFontSize(9);
-    pdf.text(copy.topContent, contentX + 15, 613);
+    pdf.text(copy.topContent, contentX + 15, 648);
     pdf.setTextColor(39, 51, 87);
     pdf.setFontSize(11);
-    pdf.text(report.highlights[0].title, contentX + 15, 634, { maxWidth: 430 });
+    pdf.text(report.highlights[0].title, contentX + 15, 669, { maxWidth: 430 });
   }
 
   pdf.setTextColor(255, 255, 255);
