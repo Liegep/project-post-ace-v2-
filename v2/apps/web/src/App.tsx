@@ -1327,6 +1327,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
   const [managedUsers, setManagedUsers] = useState<ManagedUser[]>([]);
   const [clientActionError, setClientActionError] = useState("");
   const [clientActionSaving, setClientActionSaving] = useState(false);
+  const [clientCardsRevision, setClientCardsRevision] = useState(0);
   const [editForm, setEditForm] = useState<EditClientForm>({ name: "", slug: "", locale: "pt", greetingName: "", portalTitle: "", email: "", password: "", clientUserId: "", instagram: "", facebook: "", tiktok: "", youtube: "", linkedin: "", x: "", website: "" });
   const [editLogoFile, setEditLogoFile] = useState<File | null>(null);
   const [editDrawerData, setEditDrawerData] = useState<Record<string, unknown>>({});
@@ -1485,6 +1486,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
         await resetManagedUserPassword(editForm.clientUserId, editForm.password);
       }
       await refreshClients();
+      setClientCardsRevision((value) => value + 1);
       setEditClient(null);
     } catch (caught) { setClientActionError(caught instanceof Error ? caught.message : "Não foi possível salvar o cliente."); }
     finally { setClientActionSaving(false); }
@@ -1580,7 +1582,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
               <button className={clientFilter === "shared" ? "active" : ""} onClick={() => setClientFilter("shared")}>⌯ Compartilhados <span>({sharedClients.length})</span></button>
             </div>
             {loading ? <p className="dashboard-empty">Carregando clientes...</p> : visibleClients.length === 0 ? <p className="dashboard-empty">Não há clientes neste filtro.</p> : <div className="dashboard-clients">
-              {visibleClients.map((client) => <DashboardClientCard key={client.id} client={client} onEdit={() => void openEditClient(client)} onDelete={() => void removeClient(client)} onShare={() => void openShareClient(client)} />)}
+              {visibleClients.map((client) => <DashboardClientCard key={client.id} client={client} socialRevision={clientCardsRevision} onEdit={() => void openEditClient(client)} onDelete={() => void removeClient(client)} onShare={() => void openShareClient(client)} />)}
             </div>}
           </section>
           {scheduledNotice ? <div className="dashboard-scheduled-notice" role="status" aria-live="polite"><span className="dashboard-scheduled-calendar"><UiIcon name="calendar" /><i>✓</i></span><div><strong>Post agendado!</strong><small>{scheduledNotice.title} · {scheduledNotice.clientName}</small></div><span className="dashboard-scheduled-spark one" /><span className="dashboard-scheduled-spark two" /><span className="dashboard-scheduled-spark three" /></div> : null}
@@ -1866,12 +1868,12 @@ function DashboardScheduleModal({ activity, onClose, onScheduled }: { activity: 
   </div>;
 }
 
-function DashboardClientCard({ client, onEdit, onDelete, onShare }: { client: AdminClientOption; onEdit: () => void; onDelete: () => void; onShare: () => void }) {
+function DashboardClientCard({ client, socialRevision, onEdit, onDelete, onShare }: { client: AdminClientOption; socialRevision: number; onEdit: () => void; onDelete: () => void; onShare: () => void }) {
   const localeLabel = client.locale === "en" ? "English" : client.locale === "es" ? "Español" : client.locale === "it" ? "Italiano" : "Português";
   const localeFlag = client.locale === "en" ? "🇺🇸" : client.locale === "es" ? "🇪🇸" : client.locale === "it" ? "🇮🇹" : "🇧🇷";
   const [copied, setCopied] = useState(false);
   const [socialLinks, setSocialLinks] = useState<Record<string, string>>({});
-  useEffect(() => { let active = true; void loadAdminWorkspaceDrawerBySlug(client.slug).then((result) => { const data = result.data as { socialLinks?: Record<string, unknown> } | null; const links = data?.socialLinks ?? {}; if (active) setSocialLinks(Object.fromEntries(Object.entries(links).filter(([, value]) => typeof value === "string" && value.trim()).map(([key, value]) => [key, String(value)]))); }).catch(() => undefined); return () => { active = false; }; }, [client.slug]);
+  useEffect(() => { let active = true; void loadAdminWorkspaceDrawerBySlug(client.slug).then((result) => { const data = result.data as { socialLinks?: Record<string, unknown> } | null; const links = data?.socialLinks ?? {}; if (active) setSocialLinks(Object.fromEntries(Object.entries(links).filter(([, value]) => typeof value === "string" && value.trim()).map(([key, value]) => [key, String(value)]))); }).catch(() => undefined); return () => { active = false; }; }, [client.slug, socialRevision]);
   const copyPortalLink = async () => {
     const portalUrl = `${window.location.origin}${window.location.pathname}#/portal/${encodeURIComponent(client.slug)}`;
     try {
