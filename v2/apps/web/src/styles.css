@@ -3333,6 +3333,10 @@ button {
 .dashboard-submission-copy strong { display: block; overflow: hidden; color: #2d3958; font-size: .7rem; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
 .dashboard-client-submissions .dashboard-submission-copy p { margin-top: 3px; overflow: hidden; color: #71809c; font-size: .64rem; font-weight: 600; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
 .dashboard-client-submissions .dashboard-submission-list small { flex: none; }
+.dashboard-submission-dismiss { display: grid; width: 25px; height: 25px; flex: 0 0 25px; place-items: center; padding: 0; border: 0; border-radius: 8px; color: #929bb0; background: transparent; font: inherit; font-size: 1rem; line-height: 1; cursor: pointer; transition: color .16s ease, background-color .16s ease, transform .16s ease; }
+.dashboard-submission-dismiss:hover { color: #dd4d5b; background: #fff0f2; transform: scale(1.06); }
+.dashboard-submission-dismiss:focus-visible { outline: 2px solid #7569e7; outline-offset: 2px; }
+.dashboard-client-submissions .dashboard-submissions-more { margin-top: 10px; color: #695dde; font-weight: 800; }
 .dashboard-submissions-head > div > small { display: block; margin-top: 3px; color: #929bb0; font-size: .59rem; font-weight: 650; }
 .dashboard-activity-list { display: grid; gap: 7px; }
 .dashboard-client-activities .dashboard-activity-row { display: grid; grid-template-columns: 36px minmax(0, 1fr) minmax(118px, auto); width: 100%; box-sizing: border-box; align-items: center; gap: 12px; min-height: 64px; padding: 7px 12px; border: 1px solid #e9edf5; border-radius: 11px; color: inherit; background: rgba(255,255,255,.72); transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }

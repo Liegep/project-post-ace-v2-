@@ -1607,7 +1607,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
             <DashboardList title="Posts para Hoje" items={["02:00  EP. 237 - ÁUDIOS - Spotify", "02:00  EP. 237 - VÍDEOS - EP Youtube", "11:00  3 - Piccoli assaggi", "22:00  Viagem & Cia"]} action="Ver todos os posts" />
             {clientActivities.length > 0 ? <DashboardClientActivitiesWidget items={clientActivities} onSchedule={setScheduleActivity} /> : null}
             {internalMessages.length > 0 ? <DashboardInternalMessagesWidget items={internalMessages} onOpen={(item) => { if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; }} /> : null}
-            {clientSubmissions.length > 0 ? <DashboardClientSubmissionsWidget items={clientSubmissions} /> : null}
+            {clientSubmissions.length > 0 ? <DashboardClientSubmissionsWidget items={clientSubmissions} userId={session.id} /> : null}
           </div>
           <section className="dashboard-clients-panel dashboard-clients-full">
             <div className="dashboard-section-head"><div><p className="eyebrow">Projetos</p><h2>Clientes</h2></div></div>
@@ -1820,7 +1820,16 @@ function DashboardList({ title, items, action, compact = false }: { title: strin
   return <section className={`dashboard-list ${compact ? "compact" : ""}`}><h3>{title}</h3><div>{items.map((item) => <article key={item}><span className="dashboard-list-dot" /><p>{item}</p><small>Hoje</small></article>)}</div><button className="dashboard-link">{action} →</button></section>;
 }
 
-function DashboardClientSubmissionsWidget({ items }: { items: DashboardSubmission[] }) {
+function DashboardClientSubmissionsWidget({ items, userId }: { items: DashboardSubmission[]; userId: string }) {
+  const storageKey = `designhub-v2-dismissed-client-suggestions:${userId}`;
+  const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem(storageKey) ?? "[]") as string[];
+    } catch {
+      return [];
+    }
+  });
+  const [expanded, setExpanded] = useState(false);
   const formatSubmissionDate = (value: string) => {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "Hoje";
@@ -1829,16 +1838,34 @@ function DashboardClientSubmissionsWidget({ items }: { items: DashboardSubmissio
       ? "Hoje"
       : new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(date).replace(".", "");
   };
+  const visibleItems = items.filter((item) => !dismissedIds.includes(item.id));
+  const displayedItems = expanded ? visibleItems : visibleItems.slice(0, 3);
+  const hiddenCount = Math.max(0, visibleItems.length - displayedItems.length);
+  const dismissSuggestion = (id: string) => {
+    setDismissedIds((current) => {
+      const next = current.includes(id) ? current : [...current, id];
+      try {
+        window.localStorage.setItem(storageKey, JSON.stringify(next));
+      } catch {
+        // Keep the dismissal working for the current visit if storage is unavailable.
+      }
+      return next;
+    });
+  };
+
+  if (visibleItems.length === 0) return null;
 
   return <section className="dashboard-list dashboard-client-submissions compact">
-    <header className="dashboard-submissions-head"><h3>Sugestões dos clientes</h3><span>{items.length}</span></header>
-    <div className="dashboard-submission-list">{items.map((item) => <article key={item.id}>
+    <header className="dashboard-submissions-head"><h3>Sugestões dos clientes</h3><span>{visibleItems.length}</span></header>
+    <div className="dashboard-submission-list">{displayedItems.map((item) => <article key={item.id}>
       <span className="dashboard-submission-avatar">
         {item.clientLogoUrl ? <img src={item.clientLogoUrl} alt={`Logo de ${item.clientName}`} /> : item.clientName.slice(0, 2).toUpperCase()}
       </span>
       <div className="dashboard-submission-copy"><strong>{item.clientName}</strong><p>Sugeriu “{item.title}”</p></div>
       <small>{formatSubmissionDate(item.createdAt)}</small>
+      <button className="dashboard-submission-dismiss" type="button" onClick={() => dismissSuggestion(item.id)} aria-label={`Remover sugestão de ${item.clientName}`} title="Já vi esta sugestão">×</button>
     </article>)}</div>
+    {hiddenCount > 0 ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded(true)}>Ver mais sugestões ({hiddenCount})…</button> : expanded && visibleItems.length > 3 ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded(false)}>Ver menos sugestões</button> : null}
     <button className="dashboard-link">Ver sugestões no quadro →</button>
   </section>;
 }
