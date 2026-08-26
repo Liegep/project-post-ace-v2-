@@ -1,6 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import type { RowDataPacket } from "mysql2/promise";
-import { ensureClientStarterColumns, findClientAccountById } from "../clients/clients.repository.js";
+import { findClientAccountById } from "../clients/clients.repository.js";
 import { findColumnById, listColumnsByClientAccountId } from "../columns/columns.repository.js";
 import { listClientTags } from "../tags/tags.repository.js";
 import {
@@ -218,7 +218,7 @@ export async function getKanbanBoard(
   }
 
   const archived = parseArchivedValue(query.archived) ?? false;
-  let [columns, cards, tags] = await Promise.all([
+  const [columns, cards, tags] = await Promise.all([
     listColumnsByClientAccountId(app.db, clientAccountId),
     listCardsByClientAccountId(app.db, clientAccountId, {
       archived,
@@ -226,11 +226,6 @@ export async function getKanbanBoard(
     }),
     listClientTags(app.db, clientAccountId),
   ]);
-
-  if (columns.length === 0) {
-    await ensureClientStarterColumns(app.db, clientAccountId);
-    columns = await listColumnsByClientAccountId(app.db, clientAccountId);
-  }
 
   const grouped = groupCardsByColumn(columns, cards);
 

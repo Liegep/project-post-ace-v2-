@@ -5,14 +5,6 @@ import type {
   UpsertClientMembershipInput,
 } from "./clients.schemas.js";
 
-const starterColumns = [
-  { name: "Ideias", color: "#7a86a9", visibleToClient: false },
-  { name: "Em criação", color: "#24a7e8", visibleToClient: false },
-  { name: "Em aprovação", color: "#f7a31a", visibleToClient: true },
-  { name: "Agendados", color: "#12bf83", visibleToClient: true },
-  { name: "Publicados", color: "#7b61ff", visibleToClient: true },
-] as const;
-
 type UserLookupRow = RowDataPacket & {
   id: string;
   full_name: string;
@@ -225,25 +217,6 @@ export async function createClientAccountWithDefaults(
       );
     }
 
-    // Every new account starts with a usable board instead of an empty canvas.
-    for (const [position, column] of starterColumns.entries()) {
-      await connection.query(
-        [
-          "INSERT INTO kanban_columns",
-          "(id, client_account_id, name, color, position, visible_to_client, auto_created)",
-          "VALUES (?, ?, ?, ?, ?, ?, 1)",
-        ].join(" "),
-        [
-          crypto.randomUUID(),
-          clientAccountId,
-          column.name,
-          column.color,
-          position,
-          column.visibleToClient ? 1 : 0,
-        ],
-      );
-    }
-
     await connection.commit();
   } catch (error) {
     await connection.rollback();
@@ -253,50 +226,6 @@ export async function createClientAccountWithDefaults(
   }
 
   return findClientAccountById(db, clientAccountId);
-}
-
-export async function ensureClientStarterColumns(db: Pool, clientAccountId: string) {
-  const connection = await db.getConnection();
-
-  try {
-    await connection.beginTransaction();
-    const [existingColumns] = await connection.query<RowDataPacket[]>(
-      "SELECT id FROM kanban_columns WHERE client_account_id = ? LIMIT 1 FOR UPDATE",
-      [clientAccountId],
-    );
-
-    if (existingColumns.length > 0) {
-      await connection.commit();
-      return false;
-    }
-
-    // Restore a usable board only for legacy accounts that have no columns at all.
-    for (const [position, column] of starterColumns.entries()) {
-      await connection.query(
-        [
-          "INSERT INTO kanban_columns",
-          "(id, client_account_id, name, color, position, visible_to_client, auto_created)",
-          "VALUES (?, ?, ?, ?, ?, ?, 1)",
-        ].join(" "),
-        [
-          crypto.randomUUID(),
-          clientAccountId,
-          column.name,
-          column.color,
-          position,
-          column.visibleToClient ? 1 : 0,
-        ],
-      );
-    }
-
-    await connection.commit();
-    return true;
-  } catch (error) {
-    await connection.rollback();
-    throw error;
-  } finally {
-    connection.release();
-  }
 }
 
 export async function listClientAccesses(db: Pool, clientAccountId: string) {
