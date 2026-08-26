@@ -1444,6 +1444,10 @@ button {
 }
 
 .tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
   padding: 0 6px;
   background: transparent;
   color: #717c97;
@@ -1453,6 +1457,25 @@ button {
   font-weight: 600;
   font-size: 0.95rem;
   min-height: 72px;
+}
+
+.tab-count {
+  display: inline-grid;
+  min-width: 23px;
+  height: 23px;
+  padding: 0 7px;
+  place-items: center;
+  color: #6e7891;
+  background: #eef1f7;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.tab.active .tab-count {
+  color: #fff;
+  background: #3975ff;
 }
 
 .tab.active {

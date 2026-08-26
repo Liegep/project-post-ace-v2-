@@ -799,7 +799,7 @@ type KanbanAutomation = { id: string; name: string; enabled: boolean; triggerTyp
 
 const EMPTY_DRAWER: WorkspaceDrawerData = { notes: [], links: [], quick: [], draftsByUser: {}, pautaIdeas: [] };
 
-function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags }: { slug: string; userId: string; initialQuickLinks: Array<{ label: string; href: string }>; columns: BoardColumn[]; tags: ClientTagDefinition[] }) {
+function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, onPautaCountChange }: { slug: string; userId: string; initialQuickLinks: Array<{ label: string; href: string }>; columns: BoardColumn[]; tags: ClientTagDefinition[]; onPautaCountChange?: (count: number) => void }) {
   const [tab, setTab] = useState<"notes" | "drafts" | "links" | "quick" | "ideas" | "tracker" | "progress">("quick");
   const [isOpen, setIsOpen] = useState(false);
   const [drawer, setDrawer] = useState<WorkspaceDrawerData>(EMPTY_DRAWER);
@@ -830,6 +830,7 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags }: { s
     const saved = result.data as Partial<WorkspaceDrawerData> | null;
     setDrawer({ ...EMPTY_DRAWER, ...saved, quick: saved?.quick ?? initialQuickLinks.map((link) => ({ id: crypto.randomUUID(), type: "link" as const, title: link.label, url: link.href })), draftsByUser: saved?.draftsByUser ?? {}, pautaIdeas: saved?.pautaIdeas ?? [] }); setLoaded(true);
   }).catch(() => setLoaded(true)); return () => { active = false; }; }, [slug]);
+  useEffect(() => { if (loaded) onPautaCountChange?.(drawer.pautaIdeas.length); }, [drawer.pautaIdeas.length, loaded, onPautaCountChange]);
   useEffect(() => { loadAdminKanbanAutomationsBySlug(slug).then((result) => setAutomations((result.items as KanbanAutomation[]) ?? [])).catch(() => setAutomations([])); }, [slug]);
   useEffect(() => { loadAdminTrackerSettingsBySlug(slug).then((result) => setTrackingActive(result.settings.trackingEnabled)).catch(() => setTrackingActive(false)); }, [slug]);
   const persist = (next: WorkspaceDrawerData) => {
@@ -2060,6 +2061,26 @@ function AdminWorkspacePage({
   const [tagQuery, setTagQuery] = useState("");
   const [selectedTagFilters, setSelectedTagFilters] = useState<string[]>([]);
   const [clientOptions, setClientOptions] = useState<AdminClientOption[]>([]);
+  const [sectionCounts, setSectionCounts] = useState({ archived: 0, texts: 0, pautas: 0 });
+  const updateTextsCount = useCallback((texts: number) => setSectionCounts((current) => current.texts === texts ? current : { ...current, texts }), []);
+  const updatePautasCount = useCallback((pautas: number) => setSectionCounts((current) => current.pautas === pautas ? current : { ...current, pautas }), []);
+  useEffect(() => {
+    let active = true;
+    void Promise.all([
+      loadAdminWorkspaceBySlug(slug, { archived: true }),
+      listAdminTextsBySlug(slug),
+      loadAdminWorkspaceDrawerBySlug(slug),
+    ]).then(([archivedWorkspace, textsResult, drawerResult]) => {
+      if (!active) return;
+      const drawer = drawerResult.data as Partial<WorkspaceDrawerData> | null;
+      setSectionCounts({
+        archived: flattenWorkspaceCards(archivedWorkspace).length,
+        texts: textsResult.items.length,
+        pautas: drawer?.pautaIdeas?.length ?? 0,
+      });
+    }).catch(() => undefined);
+    return () => { active = false; };
+  }, [slug, refreshKey]);
   useEffect(() => {
     const cardId = new URLSearchParams(location.search).get("card");
     if (!cardId) return;
@@ -2217,12 +2238,12 @@ function AdminWorkspacePage({
             <div className="board-topbar">
               <div className="tab-strip">
                 <button className={boardView === "board" ? "tab active" : "tab"} onClick={() => setBoardView("board")}>Quadro</button>
-                <button className={boardView === "archived" ? "tab active" : "tab"} onClick={() => setBoardView("archived")}>Arquivados</button>
-                <button className={boardView === "texts" ? "tab active" : "tab"} onClick={() => setBoardView("texts")}>Textos</button>
+                <button className={boardView === "archived" ? "tab active" : "tab"} onClick={() => setBoardView("archived")}>Arquivados <span className="tab-count">{sectionCounts.archived}</span></button>
+                <button className={boardView === "texts" ? "tab active" : "tab"} onClick={() => setBoardView("texts")}>Textos <span className="tab-count">{sectionCounts.texts}</span></button>
                 <button className={boardView === "calendar" ? "tab active" : "tab"} onClick={() => setBoardView("calendar")}>Calendário</button>
                 <button className={boardView === "activities" ? "tab active" : "tab"} onClick={() => setBoardView("activities")}>Atividades</button>
                 <button className={boardView === "brand" ? "tab active" : "tab"} onClick={() => setBoardView("brand")}>Brand Brain</button>
-                <button className={boardView === "pautas" ? "tab active" : "tab"} onClick={() => setBoardView("pautas")}>Pautas</button>
+                <button className={boardView === "pautas" ? "tab active" : "tab"} onClick={() => setBoardView("pautas")}>Pautas <span className="tab-count">{sectionCounts.pautas}</span></button>
               </div>
               {boardView === "board" ? <div className="board-actions">
                 <button className={selectionMode ? "ghost-button active" : "ghost-button"} onClick={() => {
@@ -2248,7 +2269,7 @@ function AdminWorkspacePage({
             </div>
 
             <div className="board-layout">
-              {boardView === "texts" ? <AdminTextsView clientName={data.clientName} slug={slug} /> : boardView === "calendar" ? <ClientKanbanCalendar slug={slug} /> : boardView === "activities" ? <KanbanActivities slug={slug} /> : boardView === "brand" ? <BrandBrainWorkspaceV2 slug={slug} clientName={data.clientName} /> : boardView === "pautas" ? <PautasWorkspace slug={slug} clientName={data.clientName} columns={data.columns} onSent={() => setRefreshKey((value) => value + 1)} /> : boardView === "archived" && resource.loading ? <div className="archived-empty">Carregando cards arquivados...</div> : boardView === "archived" ? <ArchivedCardsView
+              {boardView === "texts" ? <AdminTextsView clientName={data.clientName} slug={slug} onCountChange={updateTextsCount} /> : boardView === "calendar" ? <ClientKanbanCalendar slug={slug} /> : boardView === "activities" ? <KanbanActivities slug={slug} /> : boardView === "brand" ? <BrandBrainWorkspaceV2 slug={slug} clientName={data.clientName} /> : boardView === "pautas" ? <PautasWorkspace slug={slug} clientName={data.clientName} columns={data.columns} onSent={() => setRefreshKey((value) => value + 1)} onCountChange={updatePautasCount} /> : boardView === "archived" && resource.loading ? <div className="archived-empty">Carregando cards arquivados...</div> : boardView === "archived" ? <ArchivedCardsView
                 cards={archivedCards}
                 onOpenCard={setSelectedCardId}
                 onPreviewMedia={openMediaPreview}
@@ -2439,7 +2460,7 @@ function AdminWorkspacePage({
                 </section>
               </div>}
 
-              <WorkspaceDrawer slug={slug} userId={session.id} initialQuickLinks={data.quickLinks} columns={data.columns} tags={data.tagDefinitions} />
+              <WorkspaceDrawer slug={slug} userId={session.id} initialQuickLinks={data.quickLinks} columns={data.columns} tags={data.tagDefinitions} onPautaCountChange={updatePautasCount} />
               {/*
               <aside className="drawer glass-subtle">
                 <div className="drawer-tabs">
@@ -3459,7 +3480,7 @@ function RestoreCardDialog({ card, columns, onClose, onConfirm }: { card: BoardC
   </div>;
 }
 
-function AdminTextsView({ clientName, slug }: { clientName: string; slug: string }) {
+function AdminTextsView({ clientName, slug, onCountChange }: { clientName: string; slug: string; onCountChange?: (count: number) => void }) {
   const contentTypes: TextDocument["contentType"][] = ["Blog", "Artigo", "Texto", "Copy", "Documento"];
   const [documents, setDocuments] = useState<TextDocument[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -3478,6 +3499,7 @@ function AdminTextsView({ clientName, slug }: { clientName: string; slug: string
   const studioRef = useRef<HTMLElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  useEffect(() => { onCountChange?.(documents.length); }, [documents.length, onCountChange]);
   const selected = documents.find((item) => item.id === selectedId) ?? null;
   const initials = (name: string) => name.split(" ").slice(0, 2).map((part) => part[0]).join("").toUpperCase();
   const refreshTexts = async (selectId?: string) => {
@@ -5452,11 +5474,12 @@ function KanbanActivities({ slug }: { slug: string }) {
 }
 
 const EMPTY_BRAND_BRAIN: BrandBrain = { mission: "", vision: "", positioning: "", brandPromise: "", audience: "", audiencePains: [], audienceDesires: [], voice: "", personalityTraits: [], voiceExamples: [], voiceAvoidExamples: [], visualNotes: "", typographyDisplay: "", typographyBody: "", typographyAccent: "", typographySample: "A identidade ganha voz quando cada detalhe fala a mesma língua.", approvedWords: [], avoidWords: [], expressions: [], colors: ["#5b5ce2", "#18b98b", "#f5a41a"], differentiators: [], proofPoints: [], references: [], pillars: [] };
-function PautasWorkspace({ slug, clientName, columns, onSent }: { slug: string; clientName: string; columns: BoardColumn[]; onSent: () => void }) {
+function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: { slug: string; clientName: string; columns: BoardColumn[]; onSent: () => void; onCountChange?: (count: number) => void }) {
   const [ideas, setIdeas] = useState<PautaIdea[]>([]); const [query, setQuery] = useState(""); const [filter, setFilter] = useState<"all" | "draft" | "sent">("all"); const [sending, setSending] = useState<string | null>(null);
   const [editing, setEditing] = useState<PautaIdea | null>(null); const [brainOpen, setBrainOpen] = useState(false); const [brain, setBrain] = useState<BrandBrain>(EMPTY_BRAND_BRAIN);
   const save = (next: PautaIdea[]) => { setIdeas(next); void saveAdminWorkspaceDrawerBySlug(slug, { ...EMPTY_DRAWER, pautaIdeas: next }); };
   useEffect(() => { loadAdminWorkspaceDrawerBySlug(slug).then((result) => { const data = result.data as Partial<WorkspaceDrawerData> | null; setIdeas(data?.pautaIdeas ?? []); }).catch(() => setIdeas([])); }, [slug]);
+  useEffect(() => { onCountChange?.(ideas.length); }, [ideas.length, onCountChange]);
   useEffect(() => { loadBrandBrainBySlug(slug).then((result) => setBrain({ ...EMPTY_BRAND_BRAIN, ...(result.data ?? {}) })).catch(() => setBrain(EMPTY_BRAND_BRAIN)); }, [slug]);
   const visible = ideas.filter((idea) => (filter === "all" || (idea.status ?? "draft") === filter) && idea.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   const send = async (idea: PautaIdea) => { const columnId = columns.find((column) => column.name.toLocaleLowerCase() === "pauta")?.id ?? columns[0]?.id ?? null; setSending(idea.id); try { await createAdminCardBySlug(slug, { columnId, title: idea.title, caption: idea.caption || idea.description || null, primaryMediaUrl: null, externalLinkUrl: null, artType: "Post", status: ["Entrada"], tags: [], clientLabel: "Pendente", isBriefApproval: true }); save(ideas.map((item) => item.id === idea.id ? { ...item, status: "sent" } : item)); onSent(); } finally { setSending(null); } };
