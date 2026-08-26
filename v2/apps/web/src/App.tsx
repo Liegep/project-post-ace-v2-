@@ -21,6 +21,7 @@ import {
   updateAdminCardBySlug,
   createAdminApprovalLinkBySlug,
   moveAdminCardBySlug,
+  reorderAdminColumnsBySlug,
   archiveAdminCardBySlug,
   setAdminCardArchivedBySlug,
   listAdminClients,
@@ -2029,6 +2030,8 @@ function AdminWorkspacePage({
   const [restoreDialog, setRestoreDialog] = useState<BoardCard | null>(null);
   const [draggedCard, setDraggedCard] = useState<{ cardId: string; columnId: string | null } | null>(null);
   const [dropTarget, setDropTarget] = useState<{ columnId: string | null; index: number } | null>(null);
+  const [draggedColumnId, setDraggedColumnId] = useState<string | null>(null);
+  const [columnDropIndex, setColumnDropIndex] = useState<number | null>(null);
   const [previewMedia, setPreviewMedia] = useState<{ urls: string[]; title: string; index: number } | null>(null);
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
   const [tagQuery, setTagQuery] = useState("");
@@ -2116,6 +2119,40 @@ function AdminWorkspacePage({
     }
   };
 
+  const getColumnDropIndex = (event: React.DragEvent<HTMLDivElement>) => {
+    const columnSlots = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("[data-column-drag-slot]"));
+    const nextIndex = columnSlots.findIndex((slot) => {
+      const bounds = slot.getBoundingClientRect();
+      return event.clientX < bounds.left + bounds.width / 2;
+    });
+    return nextIndex === -1 ? columnSlots.length : nextIndex;
+  };
+
+  const moveDraggedColumn = async (index: number) => {
+    if (!draggedColumnId) return;
+    const sourceIndex = data.columns.findIndex((column) => column.id === draggedColumnId);
+    if (sourceIndex < 0) return;
+    const position = sourceIndex < index ? index - 1 : index;
+    if (sourceIndex === position) {
+      setDraggedColumnId(null);
+      setColumnDropIndex(null);
+      return;
+    }
+
+    const orderedColumns = data.columns.filter((column) => column.id !== draggedColumnId);
+    const movedColumn = data.columns[sourceIndex];
+    orderedColumns.splice(position, 0, movedColumn);
+    resource.setData((current) => ({ ...current, columns: orderedColumns }));
+    setDraggedColumnId(null);
+    setColumnDropIndex(null);
+
+    try {
+      await reorderAdminColumnsBySlug(slug, orderedColumns.map((column) => column.id));
+    } catch {
+      setRefreshKey((value) => value + 1);
+    }
+  };
+
   const createQuickCard = async (columnId: string, title: string) => {
     await createAdminCardBySlug(slug, {
       columnId,
@@ -2193,10 +2230,28 @@ function AdminWorkspacePage({
                     deleteAdminCardBySlug(slug, cardId).then(() => setRefreshKey((value) => value + 1));
                   }
                 }}
-              /> : <div className="columns-scroll">
-                {data.columns.map((column) => (
-                  <BoardColumnView
+              /> : <div
+                className={draggedColumnId ? "columns-scroll columns-reordering" : "columns-scroll"}
+                onDragOver={(event) => {
+                  if (!draggedColumnId) return;
+                  event.preventDefault();
+                  event.dataTransfer.dropEffect = "move";
+                  setColumnDropIndex(getColumnDropIndex(event));
+                }}
+                onDrop={(event) => {
+                  if (!draggedColumnId) return;
+                  event.preventDefault();
+                  void moveDraggedColumn(getColumnDropIndex(event));
+                }}
+              >
+                {data.columns.map((column, columnIndex) => (
+                  <div
                     key={column.id}
+                    data-column-drag-slot
+                    className={draggedColumnId === column.id ? "column-drag-slot dragging" : "column-drag-slot"}
+                  >
+                    {columnDropIndex === columnIndex ? <div className="column-drop-indicator"><span>Soltar coluna aqui</span></div> : null}
+                    <BoardColumnView
                     column={{ ...column, cards: filterCardsByTags(column.cards) }}
                     onOpenCard={setSelectedCardId}
                     onBill={() => { setOpenColumnMenuId(null); setInvoiceLineDialog({ clientName: data.clientName, description: `👉 ${column.name}`, quantity: 1, unitPrice: 0, notes: "" }); }}
@@ -2258,11 +2313,25 @@ function AdminWorkspacePage({
                     }}
                     onDrop={(index) => void moveDraggedCard(column.id, index)}
                     onDragEnd={() => { setDraggedCard(null); setDropTarget(null); }}
+                    columnDragEnabled={!selectionMode && selectedTagFilters.length === 0}
+                    onColumnDragStart={(event) => {
+                      event.dataTransfer.effectAllowed = "move";
+                      event.dataTransfer.setData("text/plain", column.id);
+                      setDraggedColumnId(column.id);
+                      setDraggedCard(null);
+                      setDropTarget(null);
+                    }}
+                    onColumnDragEnd={() => {
+                      setDraggedColumnId(null);
+                      setColumnDropIndex(null);
+                    }}
                     onCardContextMenu={(event, card) => {
                       event.preventDefault();
                       setCardMenu({ card, columnId: column.id, x: event.clientX, y: event.clientY });
                     }}
-                  />
+                    />
+                    {columnIndex === data.columns.length - 1 && columnDropIndex === data.columns.length ? <div className="column-drop-indicator column-drop-indicator-after"><span>Soltar coluna aqui</span></div> : null}
+                  </div>
                 ))}
 
                 {unassignedCards.length > 0 || draggedCard ? (
@@ -2282,6 +2351,7 @@ function AdminWorkspacePage({
                         setDropTarget({ columnId: null, index: unassignedCards.length });
                       }}
                       onDrop={(event) => {
+                        if (!draggedCard) return;
                         event.preventDefault();
                         void moveDraggedCard(null, unassignedCards.length);
                       }}
@@ -2300,6 +2370,7 @@ function AdminWorkspacePage({
                             setDropTarget({ columnId: null, index: event.clientY > cardBounds.top + cardBounds.height / 2 ? index + 1 : index });
                           }}
                           onDrop={(event) => {
+                            if (!draggedCard) return;
                             event.preventDefault();
                             event.stopPropagation();
                             const cardBounds = event.currentTarget.querySelector<HTMLElement>(".content-card")?.getBoundingClientRect()
@@ -2640,6 +2711,9 @@ function BoardColumnView({
   onDragOver,
   onDrop,
   onDragEnd,
+  columnDragEnabled,
+  onColumnDragStart,
+  onColumnDragEnd,
 }: {
   column: BoardColumn;
   onOpenCard: (cardId: string) => void;
@@ -2665,6 +2739,9 @@ function BoardColumnView({
   onDragOver: (event: React.DragEvent, index: number) => void;
   onDrop: (index: number) => void;
   onDragEnd: () => void;
+  columnDragEnabled: boolean;
+  onColumnDragStart: (event: React.DragEvent<HTMLDivElement>) => void;
+  onColumnDragEnd: () => void;
 }) {
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [colorMenuOpen, setColorMenuOpen] = useState(false);
@@ -2710,7 +2787,14 @@ function BoardColumnView({
   return (
     <section className={dropIndex !== null ? "kanban-column card-drop-column-active" : "kanban-column"}>
       <header className="column-head" style={{ color: column.color }}>
-        <div className="column-title-row">
+        <div
+          className="column-title-row column-drag-handle"
+          draggable={columnDragEnabled}
+          onDragStart={onColumnDragStart}
+          onDragEnd={onColumnDragEnd}
+          title="Arraste para reorganizar a coluna"
+        >
+          <span className="column-grip" aria-hidden="true">⠿</span>
           <span className="column-dot" />
           <h3>{column.name}</h3>
         </div>
@@ -2776,9 +2860,9 @@ function BoardColumnView({
         </div>
       </header>
 
-      <div className="column-cards-scroll" onDragOver={(event) => onDragOver(event, column.cards.length)} onDrop={(event) => { event.preventDefault(); onDrop(column.cards.length); }}>
+      <div className="column-cards-scroll" onDragOver={(event) => { if (draggedCardId) onDragOver(event, column.cards.length); }} onDrop={(event) => { if (!draggedCardId) return; event.preventDefault(); onDrop(column.cards.length); }}>
         {column.cards.map((card, index) => (
-          <div key={card.id} className={draggedCardId === card.id ? "card-drag-wrap dragging" : "card-drag-wrap"} onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); const cardBounds = event.currentTarget.querySelector<HTMLElement>(".content-card")?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect(); onDragOver(event, event.clientY > cardBounds.top + cardBounds.height / 2 ? index + 1 : index); }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); const cardBounds = event.currentTarget.querySelector<HTMLElement>(".content-card")?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect(); onDrop(event.clientY > cardBounds.top + cardBounds.height / 2 ? index + 1 : index); }}>
+          <div key={card.id} className={draggedCardId === card.id ? "card-drag-wrap dragging" : "card-drag-wrap"} onDragOver={(event) => { if (!draggedCardId) return; event.preventDefault(); event.stopPropagation(); const cardBounds = event.currentTarget.querySelector<HTMLElement>(".content-card")?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect(); onDragOver(event, event.clientY > cardBounds.top + cardBounds.height / 2 ? index + 1 : index); }} onDrop={(event) => { if (!draggedCardId) return; event.preventDefault(); event.stopPropagation(); const cardBounds = event.currentTarget.querySelector<HTMLElement>(".content-card")?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect(); onDrop(event.clientY > cardBounds.top + cardBounds.height / 2 ? index + 1 : index); }}>
             {dropIndex === index ? <div className="card-drop-indicator"><span>Soltar aqui</span></div> : null}
             <CardView card={card} onOpen={() => selectionMode ? onToggleCardSelection(card.id) : onOpenCard(card.id)} onContextMenu={(event) => onCardContextMenu(event, card)} selectionMode={selectionMode} selected={selectedCardIds.includes(card.id)} onToggleSelection={() => onToggleCardSelection(card.id)} onPreviewMedia={onPreviewMedia} onRemoveTag={onRemoveTag} draggable={dragEnabled && !selectionMode} onDragStart={() => onDragStart(card.id)} onDragEnd={onDragEnd} />
           </div>

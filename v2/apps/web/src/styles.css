@@ -1579,6 +1579,23 @@ button {
   flex: 1 1 auto;
 }
 
+.column-drag-handle[draggable="true"] {
+  cursor: grab;
+  user-select: none;
+}
+
+.column-drag-handle[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.column-grip {
+  flex: 0 0 auto;
+  margin-right: -2px;
+  color: #9ba6bd;
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
 .column-title-row h3 {
   white-space: nowrap;
   overflow: hidden;
@@ -2206,6 +2223,65 @@ button {
   font-weight: 800;
   line-height: 1.4;
   text-align: center;
+}
+
+.column-drag-slot {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.column-drag-slot > .kanban-column {
+  height: 100%;
+}
+
+.column-drag-slot.dragging > .kanban-column {
+  opacity: .45;
+  transform: scale(.985);
+}
+
+.column-drag-slot > .kanban-column {
+  transition: opacity .18s ease, transform .18s ease;
+}
+
+.column-drop-indicator {
+  position: absolute;
+  z-index: 60;
+  top: 4px;
+  bottom: 12px;
+  left: -10px;
+  width: 7px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #32c6ff, #6b55ee 52%, #8b45dd);
+  box-shadow: 0 0 0 4px rgba(107, 85, 238, .12), 0 8px 20px rgba(72, 61, 185, .24);
+  animation: column-drop-pulse .8s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+.column-drop-indicator-after {
+  right: -11px;
+  left: auto;
+}
+
+.column-drop-indicator span {
+  position: absolute;
+  top: 14px;
+  left: 50%;
+  width: max-content;
+  padding: 6px 9px;
+  border-radius: 999px;
+  color: #fff;
+  background: #5d49d7;
+  box-shadow: 0 7px 16px rgba(67, 57, 166, .22);
+  font-size: .68rem;
+  font-weight: 900;
+  transform: translateX(-50%);
+}
+
+@keyframes column-drop-pulse {
+  from { opacity: .72; transform: scaleY(.98); }
+  to { opacity: 1; transform: scaleY(1); }
 }
 
 @keyframes drop-pulse {

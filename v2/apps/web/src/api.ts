@@ -762,6 +762,14 @@ export async function deleteAdminColumnBySlug(slug: string, columnId: string) {
   });
 }
 
+export async function reorderAdminColumnsBySlug(slug: string, orderedColumnIds: string[]) {
+  const matchedClient = await findAdminClientBySlug(slug);
+  return sendJson(`/api/clients/${matchedClient.id}/columns/reorder`, {
+    method: "POST",
+    body: JSON.stringify({ orderedColumnIds }),
+  });
+}
+
 export async function createAdminCardBySlug(
   slug: string,
   input: {
