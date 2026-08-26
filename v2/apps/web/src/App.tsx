@@ -2131,6 +2131,7 @@ function AdminWorkspacePage({
   };
 
   const kanbanCards = [...data.columns.flatMap((column) => column.cards), ...data.withoutColumn];
+  const unassignedCards = filterCardsByTags(data.withoutColumn);
   const pendingPosts = kanbanCards.filter((card) => {
     const statusText = [card.clientLabel, ...card.statusBadges]
       .join(" ")
@@ -2249,7 +2250,12 @@ function AdminWorkspacePage({
                     draggedCardId={draggedCard?.cardId ?? null}
                     dropIndex={dropTarget?.columnId === column.id ? dropTarget.index : null}
                     onDragStart={(cardId) => setDraggedCard({ cardId, columnId: column.id })}
-                    onDragOver={(event, index) => { event.preventDefault(); setDropTarget({ columnId: column.id, index }); }}
+                    onDragOver={(event, index) => {
+                      if (!draggedCard) return;
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                      setDropTarget({ columnId: column.id, index });
+                    }}
                     onDrop={(index) => void moveDraggedCard(column.id, index)}
                     onDragEnd={() => { setDraggedCard(null); setDropTarget(null); }}
                     onCardContextMenu={(event, card) => {
@@ -2259,31 +2265,69 @@ function AdminWorkspacePage({
                   />
                 ))}
 
-                {filterCardsByTags(data.withoutColumn).length > 0 ? (
-                  <section className="kanban-column">
+                {unassignedCards.length > 0 || draggedCard ? (
+                  <section className={dropTarget?.columnId === null ? "kanban-column card-drop-column-active" : "kanban-column"}>
                     <header className="column-head" style={{ color: "#7a86a9" }}>
                       <div>
                         <p className="column-kicker">Área solta</p>
                         <h3>Sem coluna</h3>
                       </div>
                     </header>
-                    <div className="column-cards-scroll">
-                      {filterCardsByTags(data.withoutColumn).map((card) => (
-                        <CardView
+                    <div
+                      className="column-cards-scroll"
+                      onDragOver={(event) => {
+                        if (!draggedCard) return;
+                        event.preventDefault();
+                        event.dataTransfer.dropEffect = "move";
+                        setDropTarget({ columnId: null, index: unassignedCards.length });
+                      }}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        void moveDraggedCard(null, unassignedCards.length);
+                      }}
+                    >
+                      {unassignedCards.map((card, index) => (
+                        <div
                           key={card.id}
-                          card={card}
-                          onOpen={() => setSelectedCardId(card.id)}
-                          onContextMenu={(event) => {
+                          className={draggedCard?.cardId === card.id ? "card-drag-wrap dragging" : "card-drag-wrap"}
+                          onDragOver={(event) => {
+                            if (!draggedCard) return;
                             event.preventDefault();
-                            setCardMenu({ card, columnId: null, x: event.clientX, y: event.clientY });
+                            event.stopPropagation();
+                            event.dataTransfer.dropEffect = "move";
+                            const cardBounds = event.currentTarget.querySelector<HTMLElement>(".content-card")?.getBoundingClientRect()
+                              ?? event.currentTarget.getBoundingClientRect();
+                            setDropTarget({ columnId: null, index: event.clientY > cardBounds.top + cardBounds.height / 2 ? index + 1 : index });
                           }}
-                          selectionMode={selectionMode}
-                          selected={selectedCardIds.includes(card.id)}
-                          onToggleSelection={() => toggleCardSelection(card.id)}
-                          onPreviewMedia={openMediaPreview}
-                          onRemoveTag={removeTagFromCard}
-                        />
+                          onDrop={(event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            const cardBounds = event.currentTarget.querySelector<HTMLElement>(".content-card")?.getBoundingClientRect()
+                              ?? event.currentTarget.getBoundingClientRect();
+                            void moveDraggedCard(null, event.clientY > cardBounds.top + cardBounds.height / 2 ? index + 1 : index);
+                          }}
+                        >
+                          {dropTarget?.columnId === null && dropTarget.index === index ? <div className="card-drop-indicator"><span>Soltar aqui</span></div> : null}
+                          <CardView
+                            card={card}
+                            onOpen={() => selectionMode ? toggleCardSelection(card.id) : setSelectedCardId(card.id)}
+                            onContextMenu={(event) => {
+                              event.preventDefault();
+                              setCardMenu({ card, columnId: null, x: event.clientX, y: event.clientY });
+                            }}
+                            selectionMode={selectionMode}
+                            selected={selectedCardIds.includes(card.id)}
+                            onToggleSelection={() => toggleCardSelection(card.id)}
+                            onPreviewMedia={openMediaPreview}
+                            onRemoveTag={removeTagFromCard}
+                            draggable={selectedTagFilters.length === 0 && !selectionMode}
+                            onDragStart={() => setDraggedCard({ cardId: card.id, columnId: null })}
+                            onDragEnd={() => { setDraggedCard(null); setDropTarget(null); }}
+                          />
+                        </div>
                       ))}
+                      {dropTarget?.columnId === null && dropTarget.index === unassignedCards.length ? <div className="card-drop-indicator"><span>Soltar aqui</span></div> : null}
+                      {unassignedCards.length === 0 && draggedCard ? <p className="card-drop-empty-hint">Arraste para cá para deixar o card sem coluna</p> : null}
                     </div>
                   </section>
                 ) : null}
@@ -2664,7 +2708,7 @@ function BoardColumnView({
   };
 
   return (
-    <section className="kanban-column">
+    <section className={dropIndex !== null ? "kanban-column card-drop-column-active" : "kanban-column"}>
       <header className="column-head" style={{ color: column.color }}>
         <div className="column-title-row">
           <span className="column-dot" />
@@ -2734,12 +2778,12 @@ function BoardColumnView({
 
       <div className="column-cards-scroll" onDragOver={(event) => onDragOver(event, column.cards.length)} onDrop={(event) => { event.preventDefault(); onDrop(column.cards.length); }}>
         {column.cards.map((card, index) => (
-          <div key={card.id} className={draggedCardId === card.id ? "card-drag-wrap dragging" : "card-drag-wrap"} onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); const bounds = event.currentTarget.getBoundingClientRect(); onDragOver(event, event.clientY > bounds.top + bounds.height / 2 ? index + 1 : index); }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); const bounds = event.currentTarget.getBoundingClientRect(); onDrop(event.clientY > bounds.top + bounds.height / 2 ? index + 1 : index); }}>
-            {dropIndex === index ? <div className="card-drop-indicator" /> : null}
+          <div key={card.id} className={draggedCardId === card.id ? "card-drag-wrap dragging" : "card-drag-wrap"} onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); const cardBounds = event.currentTarget.querySelector<HTMLElement>(".content-card")?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect(); onDragOver(event, event.clientY > cardBounds.top + cardBounds.height / 2 ? index + 1 : index); }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); const cardBounds = event.currentTarget.querySelector<HTMLElement>(".content-card")?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect(); onDrop(event.clientY > cardBounds.top + cardBounds.height / 2 ? index + 1 : index); }}>
+            {dropIndex === index ? <div className="card-drop-indicator"><span>Soltar aqui</span></div> : null}
             <CardView card={card} onOpen={() => selectionMode ? onToggleCardSelection(card.id) : onOpenCard(card.id)} onContextMenu={(event) => onCardContextMenu(event, card)} selectionMode={selectionMode} selected={selectedCardIds.includes(card.id)} onToggleSelection={() => onToggleCardSelection(card.id)} onPreviewMedia={onPreviewMedia} onRemoveTag={onRemoveTag} draggable={dragEnabled && !selectionMode} onDragStart={() => onDragStart(card.id)} onDragEnd={onDragEnd} />
           </div>
         ))}
-        {dropIndex === column.cards.length ? <div className="card-drop-indicator" /> : null}
+        {dropIndex === column.cards.length ? <div className="card-drop-indicator"><span>Soltar aqui</span></div> : null}
         {quickAddOpen ? (
           <form className="quick-card-form" onSubmit={submitQuickCard}>
             <input
@@ -3512,7 +3556,7 @@ function CardView({ card, onOpen, onContextMenu, selectionMode = false, selected
   const primaryBadge = card.statusBadges[0] ?? null;
 
   return (
-    <button className={selected ? "content-card glass-subtle card-button selected" : "content-card glass-subtle card-button"} onClick={onOpen} onContextMenu={onContextMenu} draggable={draggable} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; onDragStart?.(); }} onDragEnd={onDragEnd}>
+    <button className={selected ? "content-card glass-subtle card-button selected" : "content-card glass-subtle card-button"} onClick={onOpen} onContextMenu={onContextMenu} draggable={draggable} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", card.id); onDragStart?.(); }} onDragEnd={onDragEnd}>
       {selectionMode ? <span className={selected ? "card-select-checkbox checked" : "card-select-checkbox"} onClick={(event) => { event.stopPropagation(); onToggleSelection?.(); }}>{selected ? "✓" : ""}</span> : null}
       <div className="card-title-block">
         <h4>{card.title}</h4>
