@@ -2,10 +2,14 @@ import crypto from "node:crypto";
 import type { Pool, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import type { CreateReportInput, UpdateReportInput } from "./reports.schemas.js";
 
-type ReportRow = RowDataPacket & { id: string; client_account_id: string; title: string; period_start: string; period_end: string; status: "draft" | "published"; metrics_json: unknown; highlights_json: unknown; evidence_urls_json: unknown; notes: string | null; published_at: string | null; created_at: string; updated_at: string };
+type ReportRow = RowDataPacket & { id: string; client_account_id: string; title: string; period_start: string | Date; period_end: string | Date; status: "draft" | "published"; metrics_json: unknown; highlights_json: unknown; evidence_urls_json: unknown; notes: string | null; published_at: string | null; created_at: string; updated_at: string };
 const columns = "id, client_account_id, title, period_start, period_end, status, metrics_json, highlights_json, evidence_urls_json, notes, published_at, created_at, updated_at";
 const parse = <T>(value: unknown, fallback: T): T => { if (typeof value === "string") { try { return JSON.parse(value) as T; } catch { return fallback; } } return (value as T) ?? fallback; };
-const map = (row: ReportRow) => ({ id: row.id, clientAccountId: row.client_account_id, title: row.title, periodStart: row.period_start, periodEnd: row.period_end, status: row.status, metrics: parse(row.metrics_json, { instagram: {}, facebook: {} }), highlights: parse(row.highlights_json, []), evidenceUrls: parse(row.evidence_urls_json, []), notes: row.notes, publishedAt: row.published_at, createdAt: row.created_at, updatedAt: row.updated_at });
+const dateOnly = (value: string | Date) => {
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  return value.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? value;
+};
+const map = (row: ReportRow) => ({ id: row.id, clientAccountId: row.client_account_id, title: row.title, periodStart: dateOnly(row.period_start), periodEnd: dateOnly(row.period_end), status: row.status, metrics: parse(row.metrics_json, { instagram: {}, facebook: {} }), highlights: parse(row.highlights_json, []), evidenceUrls: parse(row.evidence_urls_json, []), notes: row.notes, publishedAt: row.published_at, createdAt: row.created_at, updatedAt: row.updated_at });
 
 export async function listReports(db: Pool, clientAccountId: string, publishedOnly = false) { const [rows] = await db.query<ReportRow[]>(`SELECT ${columns} FROM client_reports WHERE client_account_id = ?${publishedOnly ? " AND status = 'published'" : ""} ORDER BY period_end DESC, created_at DESC`, [clientAccountId]); return rows.map(map); }
 export async function findReport(db: Pool, id: string) { const [rows] = await db.query<ReportRow[]>(`SELECT ${columns} FROM client_reports WHERE id = ? LIMIT 1`, [id]); return rows[0] ? map(rows[0]) : null; }
