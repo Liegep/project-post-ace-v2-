@@ -1817,7 +1817,11 @@ function agendaViewRange(anchor: Date, view: "day" | "week" | "month") { const f
 function expandAgendaEvents(events: AgendaEvent[], from: string, to: string) { const rangeStart = new Date(from); const rangeEnd = new Date(to); const items: AgendaEvent[] = []; for (const event of events) { const start = new Date(event.startsAt); const until = event.repeatUntil ? new Date(`${event.repeatUntil}T23:59:59`) : new Date(start.getFullYear() + 1, start.getMonth(), start.getDate()); const recurring = event.recurrenceType && event.recurrenceType !== "none"; for (let day = new Date(start); day < rangeEnd && day <= until; day.setDate(day.getDate() + 1)) { const eligible = !recurring ? day.getTime() === start.getTime() : event.recurrenceType === "weekdays" ? day.getDay() >= 1 && day.getDay() <= 5 : event.recurrenceType === "weekly" ? day.getDay() === start.getDay() : day.getDay() === start.getDay() && Math.ceil(day.getDate() / 7) === Math.ceil(start.getDate() / 7); if (eligible && day >= rangeStart) { const occurrence = new Date(day); occurrence.setHours(start.getHours(), start.getMinutes(), 0, 0); items.push({ ...event, id: `${event.id}:${localDateKey(day)}`, sourceEventId: event.id, startsAt: occurrence.toISOString() }); } if (!recurring) break; } } return items; }
 
 function DashboardList({ title, items, action, compact = false }: { title: string; items: string[]; action: string; compact?: boolean }) {
-  return <section className={`dashboard-list ${compact ? "compact" : ""}`}><h3>{title}</h3><div>{items.map((item) => <article key={item}><span className="dashboard-list-dot" /><p>{item}</p><small>Hoje</small></article>)}</div><button className="dashboard-link">{action} →</button></section>;
+  const [expanded, setExpanded] = useState(false);
+  const initialLimit = 3;
+  const displayedItems = expanded ? items : items.slice(0, initialLimit);
+  const hasMore = items.length > initialLimit;
+  return <section className={`dashboard-list ${compact ? "compact" : ""}`}><h3>{title}</h3><div>{displayedItems.map((item) => <article key={item}><span className="dashboard-list-dot" /><p>{item}</p><small>Hoje</small></article>)}</div>{hasMore ? <button type="button" className="dashboard-link" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>{expanded ? "Ver menos posts" : action} →</button> : null}</section>;
 }
 
 function DashboardClientSubmissionsWidget({ items, userId }: { items: DashboardSubmission[]; userId: string }) {
