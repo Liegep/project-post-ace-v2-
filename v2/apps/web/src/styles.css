@@ -3950,6 +3950,21 @@ button {
 .editor-media-thumb button { position: absolute; top: 7px; right: 7px; width: 32px; height: 32px; border: 0; border-radius: 50%; background: #fff; color: #12151c; font-size: 25px; cursor: pointer; }
 .editor-add-media { display: grid; place-items: center; min-width: 190px; min-height: 160px; padding: 18px; color: #c3c5ca; border: 2px dashed #60646c; border-radius: 8px; cursor: pointer; text-align: center; text-transform: none; letter-spacing: normal; }
 .editor-add-media input { display: none; }
+.media-editor-stack { display: grid; gap: 12px; }
+.reorderable-media-grid { position: relative; }
+.media-order-slot { position: relative; min-width: 0; }
+.media-order-slot .editor-media-thumb { width: 100%; height: 100%; box-sizing: border-box; }
+.media-order-item { cursor: grab; transition: opacity .18s ease, transform .18s ease, box-shadow .18s ease; }
+.media-order-item:active { cursor: grabbing; }
+.media-order-item.dragging { opacity: .42; transform: scale(.97); }
+.media-order-grip { position: absolute; top: 10px; left: 10px; display: grid; width: 30px; height: 30px; place-items: center; border-radius: 8px; color: #fff; background: rgba(20, 24, 34, .72); font-size: 20px; font-style: normal; line-height: 1; pointer-events: none; }
+.media-order-indicator { position: absolute; z-index: 5; top: 4px; bottom: 4px; left: -8px; width: 6px; border-radius: 999px; background: linear-gradient(180deg, #35c4ec, #6d51e2, #a24cda); box-shadow: 0 0 0 4px rgba(109, 81, 226, .13); pointer-events: none; }
+.media-order-indicator span { position: absolute; z-index: 2; top: 8px; left: 50%; width: max-content; padding: 5px 8px; border-radius: 999px; color: #fff; background: #6048d4; font-size: 10px; font-weight: 900; transform: translateX(-50%); }
+.media-order-indicator-end { position: relative; top: auto; bottom: auto; left: auto; min-height: 150px; align-self: stretch; }
+.media-order-indicator-end span { left: 0; transform: translateX(-42%); }
+.media-order-help { color: #bfc4ce; font-size: 12px; font-weight: 600; letter-spacing: normal; line-height: 1.4; text-transform: none; }
+.carousel-upload-button { display: grid; place-items: center; min-height: 54px; padding: 12px; border: 2px dashed #8ea2c8; border-radius: 10px; color: #50648d; background: rgba(248, 250, 255, .8); cursor: pointer; text-align: center; }
+.carousel-upload-button input { display: none; }
 .editor-comments { margin-top: 14px; }
 .editor-comments h4 { margin: 0 0 14px; color: #c8c8ca; font-size: 15px; letter-spacing: .04em; text-transform: uppercase; }
 .editor-comment { padding: 18px 22px; margin-bottom: 12px; color: #15171b; background: #f4f6fa; border-radius: 8px; }

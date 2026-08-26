@@ -2904,6 +2904,66 @@ function BoardColumnView({
   );
 }
 
+function reorderMediaItems<T>(items: T[], from: number, dropIndex: number) {
+  const position = from < dropIndex ? dropIndex - 1 : dropIndex;
+  if (from === position) return items;
+  const next = [...items];
+  const [moved] = next.splice(from, 1);
+  next.splice(position, 0, moved);
+  return next;
+}
+
+function ReorderableMediaGrid({
+  items,
+  onReorder,
+  onRemove,
+}: {
+  items: Array<{ id: string; url: string; isVideo: boolean }>;
+  onReorder: (from: number, dropIndex: number) => void;
+  onRemove: (index: number) => void;
+}) {
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
+  const finishDrop = (index: number) => {
+    if (draggedIndex !== null) onReorder(draggedIndex, index);
+    setDraggedIndex(null);
+    setDropIndex(null);
+  };
+
+  return <div className="editor-media-grid reorderable-media-grid">
+    {items.map((item, index) => <div className="media-order-slot" key={item.id}>
+      {dropIndex === index ? <div className="media-order-indicator"><span>Soltar aqui</span></div> : null}
+      <article
+        className={draggedIndex === index ? "editor-media-thumb media-order-item dragging" : "editor-media-thumb media-order-item"}
+        draggable
+        onDragStart={(event) => {
+          event.dataTransfer.effectAllowed = "move";
+          event.dataTransfer.setData("text/plain", item.id);
+          setDraggedIndex(index);
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "move";
+          const bounds = event.currentTarget.getBoundingClientRect();
+          setDropIndex(event.clientX > bounds.left + bounds.width / 2 ? index + 1 : index);
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          const bounds = event.currentTarget.getBoundingClientRect();
+          finishDrop(event.clientX > bounds.left + bounds.width / 2 ? index + 1 : index);
+        }}
+        onDragEnd={() => { setDraggedIndex(null); setDropIndex(null); }}
+      >
+        {item.isVideo ? <video src={item.url} muted /> : <img src={item.url} alt={`Slide ${index + 1}`} />}
+        <span>{index === 0 ? "1 · Capa" : `Slide ${index + 1}`}</span>
+        <i className="media-order-grip" aria-hidden="true">⠿</i>
+        <button type="button" aria-label={`Remover slide ${index + 1}`} onClick={(event) => { event.stopPropagation(); onRemove(index); }}>×</button>
+      </article>
+    </div>)}
+    {dropIndex === items.length ? <div className="media-order-indicator media-order-indicator-end"><span>Soltar aqui</span></div> : null}
+  </div>;
+}
+
 function CardEditorModal({
   columns,
   target,
@@ -2918,6 +2978,8 @@ function CardEditorModal({
     title: string;
     caption: string | null;
     primaryMediaUrl: string | null;
+    mediaUrls?: string[];
+    mediaType?: string;
     externalLinkUrl: string | null;
     artType: string;
     status: string[];
@@ -2927,7 +2989,7 @@ function CardEditorModal({
   const [columnId, setColumnId] = useState("");
   const [title, setTitle] = useState("");
   const [caption, setCaption] = useState("");
-  const [mediaFile, setMediaFile] = useState<File | null>(null);
+  const [mediaFiles, setMediaFiles] = useState<Array<{ id: string; file: File; previewUrl: string }>>([]);
   const [externalLinkUrl, setExternalLinkUrl] = useState("");
   const [artType, setArtType] = useState("Post único");
   const [statusText, setStatusText] = useState("Pendente");
@@ -2940,7 +3002,10 @@ function CardEditorModal({
     setColumnId(target.columnId ?? "");
     setTitle("");
     setCaption("");
-    setMediaFile(null);
+    setMediaFiles((current) => {
+      current.forEach((item) => URL.revokeObjectURL(item.previewUrl));
+      return [];
+    });
     setExternalLinkUrl("");
     setArtType("Post único");
     setStatusText("Pendente");
@@ -2957,12 +3022,12 @@ function CardEditorModal({
       return;
     }
 
-    const fileLimit = mediaFile?.type.startsWith("video/")
-      ? MAX_VIDEO_FILE_SIZE
-      : MAX_MEDIA_FILE_SIZE;
-    if (mediaFile && mediaFile.size > fileLimit) {
+    const invalidMedia = mediaFiles.find(({ file }) => file.size > (file.type.startsWith("video/") ? MAX_VIDEO_FILE_SIZE : MAX_MEDIA_FILE_SIZE));
+    if (invalidMedia) {
+      const { file } = invalidMedia;
+      const fileLimit = file.type.startsWith("video/") ? MAX_VIDEO_FILE_SIZE : MAX_MEDIA_FILE_SIZE;
       setError(
-        `“${mediaFile.name}” tem ${formatFileSize(mediaFile.size)}. O limite para ${mediaFile.type.startsWith("video/") ? "vídeos e 20 MB" : "imagens e 12 MB"}.`,
+        `“${file.name}” tem ${formatFileSize(file.size)}. O limite para ${file.type.startsWith("video/") ? "vídeos e 20 MB" : "imagens e 12 MB"}.`,
       );
       return;
     }
@@ -2970,11 +3035,15 @@ function CardEditorModal({
     setSaving(true);
     setError("");
     try {
+      const mediaUrls: string[] = [];
+      for (const { file } of mediaFiles) mediaUrls.push(await uploadAdminMedia(file));
       await onSave({
         columnId: columnId || null,
         title: title.trim(),
         caption: caption.trim() || null,
-        primaryMediaUrl: mediaFile ? await uploadAdminMedia(mediaFile) : null,
+        primaryMediaUrl: mediaUrls[0] ?? null,
+        mediaUrls,
+        mediaType: mediaFiles.some(({ file }) => file.type.startsWith("video/")) ? "video" : "image",
         externalLinkUrl: externalLinkUrl.trim() || null,
         artType,
         status: splitLabels(statusText),
@@ -3027,40 +3096,39 @@ function CardEditorModal({
             </label>
           </div>
 
-          <label className="art-upload-field">
-            <span>Arte do post <em>opcional</em></span>
+          <div className="art-upload-field">
+            <span>Slides do post <em>opcional</em></span>
+            {mediaFiles.length ? <ReorderableMediaGrid
+              items={mediaFiles.map((item) => ({ id: item.id, url: item.previewUrl, isVideo: item.file.type.startsWith("video/") }))}
+              onReorder={(from, to) => setMediaFiles((current) => reorderMediaItems(current, from, to))}
+              onRemove={(index) => setMediaFiles((current) => {
+                const removed = current[index];
+                if (removed) URL.revokeObjectURL(removed.previewUrl);
+                return current.filter((_, itemIndex) => itemIndex !== index);
+              })}
+            /> : null}
+            <label className="carousel-upload-button">
+              {mediaFiles.length ? "+ Adicionar outros slides" : "+ Escolher imagens ou vídeos"}
             <input
               type="file"
+              multiple
               accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
               onChange={(event) => {
-                const selectedFile = event.target.files?.[0] ?? null;
-                setMediaFile(selectedFile);
-
-                if (!selectedFile) {
-                  setError("");
+                const selectedFiles = Array.from(event.target.files ?? []);
+                const invalidFile = selectedFiles.find((file) => (!file.type.startsWith("image/") && !file.type.startsWith("video/")) || file.size > (file.type.startsWith("video/") ? MAX_VIDEO_FILE_SIZE : MAX_MEDIA_FILE_SIZE));
+                if (invalidFile) {
+                  setError(`“${invalidFile.name}” não pôde ser adicionado. Confira o formato e o tamanho do arquivo.`);
+                  event.target.value = "";
                   return;
                 }
-
-                const isImage = selectedFile.type.startsWith("image/");
-                const isVideo = selectedFile.type.startsWith("video/");
-                if (!isImage && !isVideo) {
-                  setError(`“${selectedFile.name}” não é um formato aceito. Envie imagem ou vídeo.`);
-                  return;
-                }
-
-                const sizeLimit = isVideo ? MAX_VIDEO_FILE_SIZE : MAX_MEDIA_FILE_SIZE;
-                if (selectedFile.size > sizeLimit) {
-                  setError(
-                    `“${selectedFile.name}” tem ${formatFileSize(selectedFile.size)}. O limite para ${isVideo ? "vídeos e 20 MB" : "imagens e 12 MB"}.`,
-                  );
-                  return;
-                }
-
+                setMediaFiles((current) => [...current, ...selectedFiles.map((file) => ({ id: crypto.randomUUID(), file, previewUrl: URL.createObjectURL(file) }))]);
                 setError("");
+                event.target.value = "";
               }}
             />
-            <small>{mediaFile ? `${mediaFile.name} (${mediaFile.type.startsWith("video/") ? "máximo 20 MB" : "máximo 12 MB"})` : "Imagens viram WebP automaticamente. Sem arte, o card ficará vazio."}</small>
-          </label>
+            </label>
+            <small>{mediaFiles.length ? "Arraste os slides para definir a ordem. O slide 1 será a capa." : "Você pode escolher vários arquivos. Imagens viram WebP automaticamente."}</small>
+          </div>
 
           <label className="field-stack">
             <span>Link externo <em>opcional</em></span>
@@ -4975,18 +5043,17 @@ ${internalMessage.trim()}`, isInternal: true });
               </EditorField>
               <EditorField label="Mídia">
                 {mediaUrls.length > 1 ? <div className="admin-artwork-carousel"><ArtworkCarousel urls={mediaUrls} title={title || card.title} /></div> : null}
-                <div className="editor-media-grid">
-                  {mediaUrls.map((url, index) => (
-                    <article className="editor-media-thumb" key={url}>
-                      {url.match(/\.(mp4|webm|mov)(\?|$)/i) ? <video src={url} /> : <img src={url} alt={`Mídia ${index + 1}`} />}
-                      {index === 0 ? <span>Capa</span> : null}
-                      <button onClick={() => setMediaUrls((items) => items.filter((item) => item !== url))}>×</button>
-                    </article>
-                  ))}
+                <div className="media-editor-stack">
+                  {mediaUrls.length ? <ReorderableMediaGrid
+                    items={mediaUrls.map((url, index) => ({ id: `${url}-${index}`, url, isVideo: /\.(mp4|webm|mov)(\?|$)/i.test(url) }))}
+                    onReorder={(from, to) => setMediaUrls((current) => reorderMediaItems(current, from, to))}
+                    onRemove={(index) => setMediaUrls((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                  /> : null}
                   <label className="editor-add-media">
                     <input multiple type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" onChange={(event) => handleUpload(event.target.files)} />
-                    {uploading ? "Enviando..." : "+ Adicionar arquivos"}
+                    {uploading ? "Enviando..." : mediaUrls.length ? "+ Adicionar outros slides" : "+ Adicionar arquivos"}
                   </label>
+                  {mediaUrls.length > 1 ? <small className="media-order-help">Arraste os slides para mudar a ordem. O primeiro será usado como capa.</small> : null}
                 </div>
               </EditorField>
               <EditorField label="Ou usar link externo">
