@@ -1872,12 +1872,12 @@ function DashboardClientCard({ client, onEdit, onDelete, onShare }: { client: Ad
   const [socialLinks, setSocialLinks] = useState<Record<string, string>>({});
   useEffect(() => { let active = true; void loadAdminWorkspaceDrawerBySlug(client.slug).then((result) => { const data = result.data as { socialLinks?: Record<string, unknown> } | null; const links = data?.socialLinks ?? {}; if (active) setSocialLinks(Object.fromEntries(Object.entries(links).filter(([, value]) => typeof value === "string" && value.trim()).map(([key, value]) => [key, String(value)]))); }).catch(() => undefined); return () => { active = false; }; }, [client.slug]);
   const copyPortalLink = async () => {
-    const slug = client.slug;
+    const portalUrl = `${window.location.origin}${window.location.pathname}#/portal/${encodeURIComponent(client.slug)}`;
     try {
-      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(slug);
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(portalUrl);
       else {
         const helper = document.createElement("textarea");
-        helper.value = slug;
+        helper.value = portalUrl;
         document.body.appendChild(helper);
         helper.select();
         document.execCommand("copy");
@@ -1885,14 +1885,14 @@ function DashboardClientCard({ client, onEdit, onDelete, onShare }: { client: Ad
       }
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
-    } catch { window.prompt("Copie o slug do cliente:", slug); }
+    } catch { window.prompt("Copie o endereço do portal do cliente:", portalUrl); }
   };
   return <article className="client-showcase-card">
     <div className="client-showcase-head">
       <div className="client-showcase-logo">{client.logo_url ? <img src={client.logo_url} alt={`Logo ${client.name}`} /> : client.name.slice(0, 2).toUpperCase()}</div>
       <div><h3>{client.name}</h3><p>{localeFlag} {localeLabel} <span>♙ {Number(client.access_count ?? 0)}</span></p></div>
     </div>
-    <div className="client-showcase-social">{(["instagram", "facebook", "tiktok", "youtube", "linkedin", "x", "website"] as const).filter((network) => socialLinks[network]).map((network) => <a key={network} className={`client-social-link ${network}`} href={socialLinks[network]} target="_blank" rel="noreferrer" title={`Abrir ${network === "website" ? "site" : network}`} aria-label={`Abrir ${network === "website" ? "site" : network}`}>{network === "instagram" ? "◎" : network === "facebook" ? "f" : network === "tiktok" ? "♪" : network === "youtube" ? "▶" : network === "linkedin" ? "in" : network === "x" ? "𝕏" : "↗"}</a>)}<button type="button" title={copied ? "Slug copiado" : "Copiar slug do cliente"} aria-label={copied ? "Slug copiado" : "Copiar slug do cliente"} onClick={() => void copyPortalLink()}>{copied ? <UiIcon name="check" /> : <UiIcon name="copy" />}</button></div>
+    <div className="client-showcase-social">{(["instagram", "facebook", "tiktok", "youtube", "linkedin", "x", "website"] as const).filter((network) => socialLinks[network]).map((network) => <a key={network} className={`client-social-link ${network}`} href={socialLinks[network]} target="_blank" rel="noreferrer" title={`Abrir ${network === "website" ? "site" : network}`} aria-label={`Abrir ${network === "website" ? "site" : network}`}>{network === "instagram" ? "◎" : network === "facebook" ? "f" : network === "tiktok" ? "♪" : network === "youtube" ? "▶" : network === "linkedin" ? "in" : network === "x" ? "𝕏" : "↗"}</a>)}<button type="button" title={copied ? "Endereço copiado" : "Copiar endereço do portal"} aria-label={copied ? "Endereço copiado" : "Copiar endereço do portal"} onClick={() => void copyPortalLink()}>{copied ? <UiIcon name="check" /> : <UiIcon name="copy" />}</button></div>
     <div className="client-showcase-actions">
       <NavLink to={`/admin/${client.slug}`} className="gradient-button">Gerenciar</NavLink>
       <NavLink to={`/portal/${client.slug}`} className="client-icon-action" title="Ver portal"><UiIcon name="eye" /></NavLink>
