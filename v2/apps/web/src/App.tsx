@@ -721,6 +721,13 @@ function Sidebar({ session }: { session: SessionUser }) {
 }
 
 function AdminRail({ session }: { session: SessionUser }) {
+  const [isCollapsed, setIsCollapsed] = useState(() => {
+    try {
+      return window.localStorage.getItem("designhub-v2-admin-rail-collapsed") === "1";
+    } catch {
+      return false;
+    }
+  });
   const items = [
     { icon: "grid" as const, to: "/dashboard", label: "Dashboard" },
     { icon: "file" as const, to: "/area/relatorios", label: "Relatórios" },
@@ -735,8 +742,20 @@ function AdminRail({ session }: { session: SessionUser }) {
     { icon: "users" as const, to: "/area/equipe", label: "Equipe" },
   ];
 
+  const toggleRail = () => {
+    setIsCollapsed((current) => {
+      const next = !current;
+      try {
+        window.localStorage.setItem("designhub-v2-admin-rail-collapsed", next ? "1" : "0");
+      } catch {
+        // The control still works when browser storage is unavailable.
+      }
+      return next;
+    });
+  };
+
   return (
-    <aside className="admin-rail glass">
+    <aside className={isCollapsed ? "admin-rail glass collapsed" : "admin-rail glass"}>
       <div className="admin-rail-stack">
         {items.map((item) => (
           (
@@ -753,7 +772,14 @@ function AdminRail({ session }: { session: SessionUser }) {
         ))}
       </div>
       <div className="admin-rail-foot">
-        <button className="admin-rail-button">
+        <button
+          type="button"
+          className="admin-rail-button admin-rail-toggle"
+          onClick={toggleRail}
+          aria-label={isCollapsed ? "Abrir barra lateral" : "Recolher barra lateral"}
+          title={isCollapsed ? "Abrir barra lateral" : "Recolher barra lateral"}
+          aria-expanded={!isCollapsed}
+        >
           <UiIcon name="chevron-left" className="admin-rail-glyph" />
         </button>
       </div>

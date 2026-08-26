@@ -495,6 +495,11 @@ button {
   min-height: calc(100vh - 28px);
   height: auto;
   overflow: visible;
+  transition: grid-template-columns .22s ease;
+}
+
+.admin-layout:has(> .admin-rail.collapsed) {
+  grid-template-columns: 32px minmax(0, 1fr);
 }
 
 .admin-rail {
@@ -513,6 +518,20 @@ button {
   flex-direction: column;
   justify-content: space-between;
   background: rgba(255, 255, 255, 0.9);
+  transition: width .22s ease, padding .22s ease, border-radius .22s ease;
+}
+
+.admin-rail.collapsed {
+  box-sizing: border-box;
+  width: 32px;
+  padding-inline: 2px;
+  border-radius: 18px;
+}
+
+.admin-rail.collapsed .admin-rail-stack {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .admin-rail-stack,
@@ -546,6 +565,18 @@ button {
 .admin-rail-button:not(.active):hover {
   color: #5043d7;
   background: rgba(101, 91, 242, 0.1);
+}
+
+.admin-rail-toggle .admin-rail-glyph {
+  transition: transform .22s ease;
+}
+
+.admin-rail.collapsed .admin-rail-toggle {
+  width: 28px;
+}
+
+.admin-rail.collapsed .admin-rail-toggle .admin-rail-glyph {
+  transform: rotate(180deg);
 }
 
 .admin-rail-glyph {
