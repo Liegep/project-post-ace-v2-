@@ -1799,13 +1799,28 @@ function DashboardClientActivitiesWidget({ items, onSchedule }: { items: Dashboa
     if (Number.isNaN(date.getTime())) return "Agora";
     return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date).replace(",", " ·");
   };
+  const decisionCardIds = new Set(items.filter((item) => item.cardId && (item.activityType === "approved" || item.activityType === "changes_requested")).map((item) => item.cardId));
+  const latestCommentByCard = new Map<string, DashboardClientActivity>();
+  items.forEach((item) => {
+    if (item.cardId && item.activityType === "comment" && !latestCommentByCard.has(item.cardId)) latestCommentByCard.set(item.cardId, item);
+  });
+  const mergedItems = items
+    .filter((item) => !(item.activityType === "comment" && item.cardId && decisionCardIds.has(item.cardId)))
+    .map((item) => {
+      if (!item.cardId || (item.activityType !== "approved" && item.activityType !== "changes_requested")) return item;
+      return { ...item, detail: latestCommentByCard.get(item.cardId)?.detail ?? "" };
+    });
+  const openCard = (item: DashboardClientActivity) => {
+    if (!item.cardId) return;
+    window.location.hash = `/admin/${encodeURIComponent(item.clientSlug)}?card=${encodeURIComponent(item.cardId)}`;
+  };
 
   return <section className="dashboard-list dashboard-client-activities compact">
-    <header className="dashboard-submissions-head"><div><h3>Retornos dos clientes</h3><small>Aprovações, alterações e feedbacks</small></div><span>{items.length}</span></header>
-    <div className="dashboard-activity-list">{items.map((item) => <article key={item.id} className={`dashboard-activity-row ${item.activityType}`}>
+    <header className="dashboard-submissions-head"><div><h3>Feedback dos clientes</h3><small>Comentários, aprovações e alterações</small></div><span>{mergedItems.length}</span></header>
+    <div className="dashboard-activity-list">{mergedItems.map((item) => <article key={item.id} className={`dashboard-activity-row ${item.activityType}`}>
       <span className="dashboard-submission-avatar">{item.clientLogoUrl ? <img src={item.clientLogoUrl} alt={`Logo de ${item.clientName}`} /> : item.clientName.slice(0, 2).toUpperCase()}</span>
-      <div className="dashboard-activity-copy"><span className="dashboard-activity-kind">{item.activityType === "approved" ? "✓" : item.activityType === "changes_requested" ? "↻" : item.activityType === "brand_brain" ? "✦" : "💬"} {activityLabel(item)}</span><strong>{item.title}</strong><small>{item.clientName}{item.activityType === "comment" || item.activityType === "brand_brain" ? ` · “${item.detail}”` : ""}</small></div>
-      <div className="dashboard-activity-actions"><time title="Data do retorno do cliente">{activityTime(item.occurredAt)}</time>{item.activityType === "brand_brain" ? <button type="button" onClick={() => { window.location.hash = `/admin/${item.clientSlug}?view=brand`; }}><UiIcon name="spark" />Revisar</button> : <button type="button" onClick={() => onSchedule(item)}><UiIcon name="calendar" />Agendar</button>}</div>
+      <div className="dashboard-activity-copy"><span className="dashboard-activity-kind">{item.activityType === "approved" ? "✓" : item.activityType === "changes_requested" ? "↻" : item.activityType === "brand_brain" ? "✦" : "💬"} {activityLabel(item)}</span><strong>{item.title}</strong><small>{item.clientName}{item.detail ? ` · “${item.detail}”` : ""}</small></div>
+      <div className="dashboard-activity-actions"><time title="Data do retorno do cliente">{activityTime(item.occurredAt)}</time>{item.activityType === "brand_brain" ? <button type="button" onClick={() => { window.location.hash = `/admin/${item.clientSlug}?view=brand`; }}><UiIcon name="spark" />Revisar</button> : item.activityType === "changes_requested" ? <button type="button" onClick={() => openCard(item)}><UiIcon name="eye" />Ver</button> : <button type="button" onClick={() => onSchedule(item)}><UiIcon name="calendar" />Agendar</button>}</div>
     </article>)}</div>
     <span className="dashboard-link">Abrir o quadro do cliente →</span>
   </section>;
@@ -2002,6 +2017,7 @@ function AdminWorkspacePage({
   onLogout: () => void;
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [refreshKey, setRefreshKey] = useState(0);
   const [boardView, setBoardView] = useState<"board" | "archived" | "texts" | "calendar" | "activities" | "brand" | "pautas">(() => window.location.hash.includes("view=brand") ? "brand" : "board");
   const resource = usePreviewResource(emptyAdminWorkspace, () => loadAdminWorkspaceBySlug(slug, { archived: boardView === "archived" }), [
@@ -2023,7 +2039,7 @@ function AdminWorkspacePage({
     const interval = window.setInterval(refreshScheduledCards, 5_000);
     return () => window.clearInterval(interval);
   }, [boardView, scheduledCardIds]);
-  const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [selectedCardId, setSelectedCardId] = useState<string | null>(() => new URLSearchParams(location.search).get("card"));
   const [editingColumn, setEditingColumn] = useState<BoardColumn | "new" | null>(null);
   const [invoiceLineDialog, setInvoiceLineDialog] = useState<BillingLineRequest | null>(null);
   const [openColumnMenuId, setOpenColumnMenuId] = useState<string | null>(null);
@@ -2044,6 +2060,12 @@ function AdminWorkspacePage({
   const [tagQuery, setTagQuery] = useState("");
   const [selectedTagFilters, setSelectedTagFilters] = useState<string[]>([]);
   const [clientOptions, setClientOptions] = useState<AdminClientOption[]>([]);
+  useEffect(() => {
+    const cardId = new URLSearchParams(location.search).get("card");
+    if (!cardId) return;
+    setBoardView("board");
+    setSelectedCardId(cardId);
+  }, [location.search, slug]);
   useEffect(() => {
     listAdminClients().then((result) => setClientOptions(result.items)).catch(() => setClientOptions([]));
   }, []);
@@ -2526,7 +2548,7 @@ function AdminWorkspacePage({
           })
         }
         onRefresh={() => setRefreshKey((value) => value + 1)}
-        onClose={() => setSelectedCardId(null)}
+        onClose={() => { setSelectedCardId(null); if (location.search) navigate(`/admin/${slug}`, { replace: true }); }}
         adminContext={{ slug, columns: data.columns }}
       />
 
