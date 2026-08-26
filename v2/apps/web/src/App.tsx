@@ -6105,6 +6105,37 @@ export function App() {
   }, [globalSuccess]);
 
   useEffect(() => {
+    const closeTopModalOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      const overlays = Array.from(document.querySelectorAll<HTMLElement>('[class*="backdrop"]'))
+        .filter((element) => element.getClientRects().length > 0)
+        .map((element, index) => ({
+          element,
+          index,
+          zIndex: Number.parseInt(window.getComputedStyle(element).zIndex, 10) || 0,
+        }))
+        .sort((left, right) => left.zIndex - right.zIndex || left.index - right.index);
+      const overlay = overlays[overlays.length - 1]?.element;
+      if (!overlay) return;
+
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const closeButton = overlay.querySelector<HTMLButtonElement>(
+        '[data-modal-close], button[aria-label^="Fechar"], .icon-close, .card-column-modal-close, .media-preview-close, header button',
+      );
+      if (closeButton) {
+        closeButton.click();
+        return;
+      }
+      overlay.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      overlay.click();
+    };
+
+    window.addEventListener("keydown", closeTopModalOnEscape, true);
+    return () => window.removeEventListener("keydown", closeTopModalOnEscape, true);
+  }, []);
+
+  useEffect(() => {
     let active = true;
     const accessToken = readStoredAccessToken();
     const storedSession = readStoredSession();
