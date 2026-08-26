@@ -15,6 +15,7 @@
     "build:api": "npm --workspace @design-hub-v2/api run build",
     "build:web": "npm --workspace @design-hub-v2/web run build",
     "build": "npm run build:api && npm run build:web",
+    "postinstall": "npm run build",
     "prepare:staging": "npm run check && npm run build",
     "start": "npm run start:api",
     "start:api": "npm --workspace @design-hub-v2/api run start",
