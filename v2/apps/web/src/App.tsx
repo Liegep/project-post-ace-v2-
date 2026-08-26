@@ -1069,10 +1069,15 @@ function useCardDetail<T extends AdminWorkspacePreview | ClientPortalPreview>(
       return;
     }
 
-    setState({
-      data: fallbackCard ? buildFallbackCardDetail(fallbackCard) : null,
-      loading: true,
-      source: "backend",
+    setState((current) => {
+      // Background refreshes must not replace an already-open card with the
+      // comment-free list preview while its full detail is being requested.
+      if (current.data?.card.id === selectedCardId) return current;
+      return {
+        data: fallbackCard ? buildFallbackCardDetail(fallbackCard) : null,
+        loading: true,
+        source: "backend",
+      };
     });
 
     loader(selectedCardId)
@@ -1086,11 +1091,13 @@ function useCardDetail<T extends AdminWorkspacePreview | ClientPortalPreview>(
       })
       .catch(() => {
         if (!active) return;
-        setState({
-          data: fallbackCard ? buildFallbackCardDetail(fallbackCard) : null,
+        setState((current) => ({
+          data: current.data?.card.id === selectedCardId
+            ? current.data
+            : fallbackCard ? buildFallbackCardDetail(fallbackCard) : null,
           loading: false,
           source: "error",
-        });
+        }));
       });
 
     return () => {
