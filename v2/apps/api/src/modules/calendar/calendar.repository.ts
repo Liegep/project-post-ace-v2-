@@ -9,7 +9,8 @@ type CalendarEventRow = RowDataPacket & {
   title: string;
   caption: string | null;
   media_type: string;
-  media_urls_json: string | null;
+  media_urls_json: unknown;
+  primary_media_url: string | null;
   publish_date: string;
   publish_time: string | null;
   status: "draft" | "in_review" | "approved" | "scheduled" | "published";
@@ -20,17 +21,19 @@ type CalendarEventRow = RowDataPacket & {
   updated_at: Date | string;
 };
 
-function parseJsonArray(value: string | null) {
+function parseJsonArray(value: unknown) {
   if (!value) return [];
+  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string" && Boolean(item));
   try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? parsed : [];
+    const parsed = JSON.parse(String(value));
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string" && Boolean(item)) : [];
   } catch {
     return [];
   }
 }
 
 function mapCalendarEventRow(row: CalendarEventRow) {
+  const mediaUrls = parseJsonArray(row.media_urls_json);
   return {
     id: row.id,
     clientAccountId: row.client_account_id,
@@ -40,7 +43,7 @@ function mapCalendarEventRow(row: CalendarEventRow) {
     title: row.title,
     caption: row.caption,
     mediaType: row.media_type,
-    mediaUrls: parseJsonArray(row.media_urls_json),
+    mediaUrls: mediaUrls.length ? mediaUrls : row.primary_media_url ? [row.primary_media_url] : [],
     publishDate: row.publish_date,
     publishTime: row.publish_time,
     status: row.status,
@@ -72,8 +75,9 @@ export async function listCalendarEvents(
     "e.card_id,",
     "e.title,",
     "e.caption,",
-    "e.media_type,",
-    "e.media_urls_json,",
+    "COALESCE(kc.media_type, e.media_type) AS media_type,",
+    "CASE WHEN kc.media_urls_json IS NOT NULL AND kc.media_urls_json <> '[]' THEN kc.media_urls_json ELSE e.media_urls_json END AS media_urls_json,",
+    "kc.primary_media_url,",
     "e.publish_date,",
     "e.publish_time,",
     "e.status,",
