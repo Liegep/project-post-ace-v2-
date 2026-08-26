@@ -65,6 +65,8 @@ export type CardDetail = {
 export type CalendarEvent = {
   id: string;
   title: string;
+  mediaType?: string;
+  mediaUrls?: string[];
   publishDate: string;
   publishTime?: string | null;
   status: string;

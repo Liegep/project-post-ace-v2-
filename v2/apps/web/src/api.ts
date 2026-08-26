@@ -197,6 +197,8 @@ type ApiPortalBoardResponse = {
 type ApiCalendarEvent = {
   id: string;
   title: string;
+  mediaType?: string;
+  mediaUrls?: string[];
   publishDate: string;
   publishTime: string | null;
   status: string;
@@ -454,6 +456,8 @@ function mapCalendarEvent(event: ApiCalendarEvent): CalendarEvent {
   return {
     id: event.id,
     title: event.title,
+    mediaType: event.mediaType,
+    mediaUrls: event.mediaUrls ?? [],
     publishDate: event.publishDate,
     publishTime: event.publishTime,
     status: event.status,

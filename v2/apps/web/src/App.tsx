@@ -1632,6 +1632,24 @@ function formatDashboardDate(value: string) {
 }
 function formatAgendaTime(value: string) { const date = new Date(value); return Number.isNaN(date.getTime()) ? "--:--" : new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(date); }
 
+function useCalendarArtworkHover() {
+  const [artwork, setArtwork] = useState<{ url: string; title: string; x: number; y: number } | null>(null);
+  const position = (event: React.MouseEvent<HTMLElement>, url: string, title: string) => {
+    if (!url) return;
+    const width = 270;
+    const height = 245;
+    const x = Math.max(12, Math.min(event.clientX + 18, window.innerWidth - width - 12));
+    const y = event.clientY + height + 18 > window.innerHeight ? Math.max(12, event.clientY - height - 14) : event.clientY + 18;
+    setArtwork({ url, title, x, y });
+  };
+  return {
+    show: position,
+    move: position,
+    hide: () => setArtwork(null),
+    preview: artwork ? createPortal(<figure className="calendar-artwork-preview" style={{ left: artwork.x, top: artwork.y }}><img src={artwork.url} alt={`Prévia de ${artwork.title}`} /><figcaption>{artwork.title}</figcaption></figure>, document.body) : null,
+  };
+}
+
 function AgendaPage({ session, onLogout }: { session: SessionUser | null; onLogout: () => void }) {
   const [month, setMonth] = useState(() => new Date());
   const [calendarView, setCalendarView] = useState<"day" | "week" | "month">("month");
@@ -1666,6 +1684,12 @@ function AgendaPage({ session, onLogout }: { session: SessionUser | null; onLogo
     void listAdminClients().then((result) => { setClients(result.items); setClientsError(""); }).catch((cause) => setClientsError(cause instanceof Error ? cause.message : "Não foi possível carregar a lista de clientes."));
     void loadAgendaLabels().then((result) => setLabels(result.items)).catch(() => setLabels([]));
   }, [range.from, range.to, refresh, session]);
+  useEffect(() => {
+    if (!createOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setCreateOpen(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [createOpen]);
 
   if (!session || session.role === "client") return <Navigate to="/login" replace />;
 
@@ -1740,8 +1764,8 @@ function AgendaPage({ session, onLogout }: { session: SessionUser | null; onLogo
           })}</div>
         </section>
       </section>
-      {createOpen ? <div className="modal-backdrop" onClick={() => setCreateOpen(false)}>
-        <form className="agenda-create-modal" onClick={(event) => event.stopPropagation()} onSubmit={submitAgendaEvent}>
+      {createOpen ? <div className="modal-backdrop" onMouseDown={() => setCreateOpen(false)}>
+        <form className="agenda-create-modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={submitAgendaEvent}>
           <div className="column-editor-head"><div><p className="eyebrow">Agenda</p><h3>Novo compromisso</h3></div><button type="button" className="icon-close" onClick={() => setCreateOpen(false)}>×</button></div>
           <label className="field-stack">Compromisso<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Reunião com cliente" /></label>
           <label className="field-stack">Tarefa a realizar<textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} placeholder="Ex.: Preparar pauta, revisar design e enviar para aprovação." rows={4} /></label>
@@ -5356,6 +5380,7 @@ function DesignBriefsWorkspace() {
 function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards: BoardCard[]; appointments: AgendaEvent[]; onSelectCard: (id: string) => void }) {
   const [monthDate, setMonthDate] = useState(() => new Date());
   const [selectedEvent, setSelectedEvent] = useState<AgendaEvent | null>(null);
+  const artworkHover = useCalendarArtworkHover();
 
   const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
   const gridStart = new Date(monthStart);
@@ -5414,7 +5439,7 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
             <div key={key} className={muted ? "social-calendar-day muted" : "social-calendar-day"}>
               <time>{day.getDate()}</time>
               {visiblePosts.map((card) => (
-                <button key={card.id} type="button" className="social-calendar-event" style={{ "--calendar-event-color": "#3c8ee9" } as CSSProperties} onClick={() => onSelectCard(card.id)}>
+                <button key={card.id} type="button" className="social-calendar-event" style={{ "--calendar-event-color": "#3c8ee9" } as CSSProperties} onMouseEnter={(event) => artworkHover.show(event, portalCardAssets(card)[0] ?? "", card.title)} onMouseMove={(event) => artworkHover.move(event, portalCardAssets(card)[0] ?? "", card.title)} onMouseLeave={artworkHover.hide} onClick={() => onSelectCard(card.id)}>
                   <span>{card.title}</span>
                 </button>
               ))}
@@ -5439,6 +5464,7 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
           </section>
         </div>
       ) : null}
+      {artworkHover.preview}
     </div>
   );
 }
@@ -5452,16 +5478,17 @@ function ClientKanbanCalendar({ slug }: { slug: string }) {
   const [eventTitle, setEventTitle] = useState("");
   const [eventColor, setEventColor] = useState("#7c6cf2");
   const [savingEvent, setSavingEvent] = useState(false);
+  const artworkHover = useCalendarArtworkHover();
   const range = agendaViewRange(month, "month");
   const refresh = () => { const from = range.from.slice(0, 10); const to = range.to.slice(0, 10); return Promise.all([loadAdminClientCalendarBySlug(slug, from, to), loadAgendaEvents(from, to)]).then(([calendar, agenda]) => { setClientAccountId(calendar.clientAccountId); setPosts(calendar.events); setManualEvents(agenda.items.filter((item) => item.clientAccountId === calendar.clientAccountId)); }).catch(() => { setPosts([]); setManualEvents([]); }); };
   useEffect(() => { void refresh(); }, [slug, range.from, range.to]);
-  const eventsByDay = new Map<string, Array<{ id: string; title: string; type: "post" | "manual"; color?: string }>>();
-  posts.forEach((post) => { const key = post.publishDate.slice(0, 10); eventsByDay.set(key, [...(eventsByDay.get(key) ?? []), { id: post.id, title: post.title, type: "post", color: post.color }]); });
+  const eventsByDay = new Map<string, Array<{ id: string; title: string; type: "post" | "manual"; color?: string; imageUrl?: string }>>();
+  posts.forEach((post) => { const key = post.publishDate.slice(0, 10); eventsByDay.set(key, [...(eventsByDay.get(key) ?? []), { id: post.id, title: post.title, type: "post", color: post.color, imageUrl: post.mediaUrls?.[0] }]); });
   const uniqueManualEvents = manualEvents.filter((event, index, items) => items.findIndex((item) => item.title === event.title && localDateKey(new Date(item.startsAt)) === localDateKey(new Date(event.startsAt))) === index);
   uniqueManualEvents.forEach((event) => { const key = localDateKey(new Date(event.startsAt)); eventsByDay.set(key, [...(eventsByDay.get(key) ?? []), { id: event.id, title: event.title, type: "manual", color: event.color }]); });
   const columnLegend = Array.from(new Map(posts.filter((post) => post.columnName).map((post) => [post.columnName as string, post.color ?? "#8278ef"])).entries());
   const saveManualEvent = async () => { if (savingEvent || !eventDay || !eventTitle.trim() || !clientAccountId) return; setSavingEvent(true); try { await createAgendaEvent({ title: eventTitle.trim(), startsAt: `${localDateKey(eventDay)}T09:00`, color: eventColor, clientAccountId }); setEventDay(null); setEventTitle(""); await refresh(); } finally { setSavingEvent(false); } };
-  return <section className="client-kanban-calendar"><header><button onClick={() => setMonth((value) => new Date(value.getFullYear(), value.getMonth() - 1, 1))}>‹</button><h2>{new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(month)}</h2><button onClick={() => setMonth((value) => new Date(value.getFullYear(), value.getMonth() + 1, 1))}>›</button></header>{columnLegend.length ? <div className="client-calendar-column-legend">{columnLegend.map(([name, color]) => <span key={name}><i style={{ backgroundColor: color }} />{name}</span>)}</div> : null}<div className="client-calendar-weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}</div><div className="client-calendar-grid">{range.days.map((day) => { const key = localDateKey(day); const events = eventsByDay.get(key) ?? []; return <button key={key} className={day.getMonth() === month.getMonth() ? "client-calendar-day" : "client-calendar-day muted"} onClick={() => setEventDay(day)}><strong>{day.getDate()}</strong>{events.map((event) => <span key={event.id} className={event.type} style={{ backgroundColor: event.color, color: calendarTextColor(event.color) }}>{event.title}</span>)}</button>; })}</div><p><i /> Post agendado <i className="manual" /> Evento manual. Clique em um dia para adicionar um evento deste cliente.</p>{eventDay ? <div className="modal-backdrop" onClick={() => setEventDay(null)}><section className="client-calendar-event-modal" onClick={(event) => event.stopPropagation()}><h3>Novo evento</h3><p>{eventDay.toLocaleDateString("pt-BR", { dateStyle: "full" })}</p><input autoFocus value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} placeholder="Nome do evento" /><label>Cor <input type="color" value={eventColor} onChange={(event) => setEventColor(event.target.value)} /></label><button className="gradient-button" disabled={savingEvent} onClick={() => void saveManualEvent()}>{savingEvent ? "Adicionando..." : "Adicionar evento"}</button></section></div> : null}</section>;
+  return <section className="client-kanban-calendar"><header><button onClick={() => setMonth((value) => new Date(value.getFullYear(), value.getMonth() - 1, 1))}>‹</button><h2>{new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(month)}</h2><button onClick={() => setMonth((value) => new Date(value.getFullYear(), value.getMonth() + 1, 1))}>›</button></header>{columnLegend.length ? <div className="client-calendar-column-legend">{columnLegend.map(([name, color]) => <span key={name}><i style={{ backgroundColor: color }} />{name}</span>)}</div> : null}<div className="client-calendar-weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}</div><div className="client-calendar-grid">{range.days.map((day) => { const key = localDateKey(day); const events = eventsByDay.get(key) ?? []; return <button key={key} className={day.getMonth() === month.getMonth() ? "client-calendar-day" : "client-calendar-day muted"} onClick={() => setEventDay(day)}><strong>{day.getDate()}</strong>{events.map((event) => <span key={event.id} className={event.type} style={{ backgroundColor: event.color, color: calendarTextColor(event.color) }} onMouseEnter={(mouseEvent) => event.imageUrl ? artworkHover.show(mouseEvent, event.imageUrl, event.title) : undefined} onMouseMove={(mouseEvent) => event.imageUrl ? artworkHover.move(mouseEvent, event.imageUrl, event.title) : undefined} onMouseLeave={artworkHover.hide}>{event.title}</span>)}</button>; })}</div><p><i /> Post agendado <i className="manual" /> Evento manual. Clique em um dia para adicionar um evento deste cliente.</p>{eventDay ? <div className="modal-backdrop" onClick={() => setEventDay(null)}><section className="client-calendar-event-modal" onClick={(event) => event.stopPropagation()}><h3>Novo evento</h3><p>{eventDay.toLocaleDateString("pt-BR", { dateStyle: "full" })}</p><input autoFocus value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} placeholder="Nome do evento" /><label>Cor <input type="color" value={eventColor} onChange={(event) => setEventColor(event.target.value)} /></label><button className="gradient-button" disabled={savingEvent} onClick={() => void saveManualEvent()}>{savingEvent ? "Adicionando..." : "Adicionar evento"}</button></section></div> : null}{artworkHover.preview}</section>;
 }
 
 function calendarTextColor(color?: string) { const value = color?.replace("#", ""); if (!value || value.length !== 6) return "#17213d"; const [red, green, blue] = [value.slice(0, 2), value.slice(2, 4), value.slice(4, 6)].map((part) => Number.parseInt(part, 16)); return (red * 299 + green * 587 + blue * 114) / 1000 > 155 ? "#17213d" : "#ffffff"; }
@@ -5815,6 +5842,7 @@ function SocialCalendarWorkspace() {
   const [selectedClient, setSelectedClient] = useState("all");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const artworkHover = useCalendarArtworkHover();
   const range = agendaViewRange(month, "month");
 
   useEffect(() => {
@@ -5838,7 +5866,8 @@ function SocialCalendarWorkspace() {
     <div className="social-calendar-summary"><span><i className="scheduled" /> Post agendado</span><span><i className="pending" /> Em planejamento</span><strong>{loading ? "Carregando..." : `${visibleEvents.length} ${visibleEvents.length === 1 ? "post no período" : "posts no período"}`}</strong></div>
     {error ? <p className="form-feedback error-text">{error}</p> : null}
     <div className="social-calendar-weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}</div>
-    <div className="social-calendar-grid">{range.days.map((day) => { const key = localDateKey(day); const dayEvents = eventsByDay.get(key) ?? []; const inMonth = day.getMonth() === month.getMonth(); return <article key={key} className={inMonth ? "social-calendar-day" : "social-calendar-day muted"}><time>{day.getDate()}</time>{dayEvents.slice(0, 4).map((event) => <div key={event.id} className="social-calendar-event" style={{ "--calendar-event-color": event.color ?? "#6861e8" } as CSSProperties}><span>{event.title}</span><small>{event.clientName ?? "Cliente"}</small></div>)}{dayEvents.length > 4 ? <b className="social-calendar-more">+{dayEvents.length - 4} mais</b> : null}</article>; })}</div>
+    <div className="social-calendar-grid">{range.days.map((day) => { const key = localDateKey(day); const dayEvents = eventsByDay.get(key) ?? []; const inMonth = day.getMonth() === month.getMonth(); return <article key={key} className={inMonth ? "social-calendar-day" : "social-calendar-day muted"}><time>{day.getDate()}</time>{dayEvents.slice(0, 4).map((event) => <div key={event.id} className="social-calendar-event" style={{ "--calendar-event-color": event.color ?? "#6861e8" } as CSSProperties} onMouseEnter={(mouseEvent) => event.mediaUrls?.[0] ? artworkHover.show(mouseEvent, event.mediaUrls[0], event.title) : undefined} onMouseMove={(mouseEvent) => event.mediaUrls?.[0] ? artworkHover.move(mouseEvent, event.mediaUrls[0], event.title) : undefined} onMouseLeave={artworkHover.hide}><span>{event.title}</span><small>{event.clientName ?? "Cliente"}</small></div>)}{dayEvents.length > 4 ? <b className="social-calendar-more">+{dayEvents.length - 4} mais</b> : null}</article>; })}</div>
+    {artworkHover.preview}
   </section>;
 }
 
