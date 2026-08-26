@@ -364,14 +364,24 @@ export async function setCardArchived(
   cardId: string,
   archived: boolean,
 ) {
-  await db.query(
-    [
-      "UPDATE kanban_cards",
-      "SET archived = ?, archived_at = ?",
-      "WHERE id = ?",
-    ].join(" "),
-    [archived ? 1 : 0, archived ? new Date() : null, cardId],
-  );
+  if (archived) {
+    await db.query(
+      "UPDATE kanban_cards SET archived = 1, archived_at = ? WHERE id = ?",
+      [new Date(), cardId],
+    );
+  } else {
+    // A published card keeps its original publication timestamp for history, but
+    // its expired schedule must be cleared or the scheduler archives it again.
+    await db.query(
+      [
+        "UPDATE kanban_cards SET archived = 0, archived_at = NULL,",
+        "scheduled_at = CASE WHEN published_at IS NOT NULL THEN NULL ELSE scheduled_at END,",
+        "scheduled_timezone = CASE WHEN published_at IS NOT NULL THEN NULL ELSE scheduled_timezone END",
+        "WHERE id = ?",
+      ].join(" "),
+      [cardId],
+    );
+  }
 
   return findCardById(db, cardId);
 }

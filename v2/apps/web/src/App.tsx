@@ -2648,9 +2648,16 @@ function AdminWorkspacePage({
         columns={data.columns}
         onClose={() => setRestoreDialog(null)}
         onConfirm={async (columnId) => {
+          // Set the destination while the card is still archived, so a failure
+          // cannot leave an active card detached from the selected column.
+          await moveAdminCardBySlug(slug, restoreDialog.id, columnId);
           await setAdminCardArchivedBySlug(slug, restoreDialog.id, false);
           await moveAdminCardBySlug(slug, restoreDialog.id, columnId);
+          const restoredCardId = restoreDialog.id;
           setRestoreDialog(null);
+          setSelectedTagFilters([]);
+          setBoardView("board");
+          setSelectedCardId(restoredCardId);
           setRefreshKey((value) => value + 1);
         }}
       /> : null}
@@ -3431,6 +3438,7 @@ function BulkColumnDialog({ mode, columns, selectedCount, onClose, onConfirm }: 
 function RestoreCardDialog({ card, columns, onClose, onConfirm }: { card: BoardCard; columns: BoardColumn[]; onClose: () => void; onConfirm: (columnId: string | null) => Promise<void> }) {
   const [columnId, setColumnId] = useState(columns[0]?.id ?? "");
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     window.addEventListener("keydown", closeOnEscape);
@@ -3445,7 +3453,8 @@ function RestoreCardDialog({ card, columns, onClose, onConfirm }: { card: BoardC
         {columns.map((column) => <button key={column.id} className={columnId === column.id ? "selected" : ""} onClick={() => setColumnId(column.id)}><span style={{ backgroundColor: column.color }} />{column.name}{columnId === column.id ? <b>✓</b> : null}</button>)}
         <button className={columnId === "" ? "selected" : ""} onClick={() => setColumnId("")}><span className="without-column-dot" />Sem coluna{columnId === "" ? <b>✓</b> : null}</button>
       </div>
-      <div className="modal-actions"><button className="ghost-button" onClick={onClose} disabled={saving}>Cancelar</button><button className="gradient-button" disabled={saving} onClick={async () => { setSaving(true); try { await onConfirm(columnId || null); } finally { setSaving(false); } }}>{saving ? "Restaurando..." : "Restaurar"}</button></div>
+      {error ? <p className="form-feedback error-text">{error}</p> : null}
+      <div className="modal-actions"><button className="ghost-button" onClick={onClose} disabled={saving}>Cancelar</button><button className="gradient-button" disabled={saving} onClick={async () => { setSaving(true); setError(""); try { await onConfirm(columnId || null); } catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível restaurar o card."); } finally { setSaving(false); } }}>{saving ? "Restaurando..." : "Restaurar"}</button></div>
     </section>
   </div>;
 }
