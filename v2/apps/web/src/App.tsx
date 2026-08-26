@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
+import { zipSync } from "fflate";
 import {
   addAdminCardCommentBySlug,
   addPortalCardCommentBySlug,
@@ -11,6 +12,8 @@ import {
   loadAdminWorkspaceBySlug,
   loadClientPortalBySlug,
   loadPortalCardDetailBySlug,
+  loadPortalArchivedCardsBySlug,
+  searchPortalCardsBySlug,
   submitAdminCardDecisionBySlug,
   submitPortalCardDecisionBySlug,
   updateAdminColumnBySlug,
@@ -39,6 +42,7 @@ import {
   type HashtagGroup,
   loadDashboardOverview,
   type DashboardSubmission,
+  type DashboardClientActivity,
   type DashboardUpcomingPost,
   type AgendaEvent,
   type AgendaLabel,
@@ -53,7 +57,13 @@ import {
   type KanbanActivity,
   loadBrandBrainBySlug,
   saveBrandBrainBySlug,
+  decideBrandBrainRevisionBySlug,
+  addBrandBrainCommentBySlug,
+  loadPortalBrandBrainBySlug,
+  savePortalBrandBrainBySlug,
+  addPortalBrandBrainCommentBySlug,
   type BrandBrain,
+  type BrandBrainSnapshot,
   createAgendaLabel,
   deleteAgendaLabel,
   loadAgendaLabels,
@@ -62,6 +72,12 @@ import {
   type ManagedUser,
   type ClientTrackerSettings,
   uploadAdminMedia,
+  uploadPortalMediaBySlug,
+  createPortalPostBySlug,
+  updatePortalCardCaptionBySlug,
+  listPortalTagsBySlug,
+  createPortalTagBySlug,
+  updatePortalCardTagsBySlug,
   loadAdminWorkspaceDrawerBySlug,
   saveAdminWorkspaceDrawerBySlug,
   loadAdminKanbanAutomationsBySlug,
@@ -81,6 +97,7 @@ import {
   listPortalTextCommentsBySlug,
   addPortalTextCommentBySlug,
   submitPortalTextDecisionBySlug,
+  listPortalAppointmentsBySlug,
   listPortalReportsBySlug,
   type TextComment,
   type TextDocument,
@@ -195,6 +212,8 @@ const emptyAdminWorkspace: AdminWorkspacePreview = {
 const emptyClientPortal: ClientPortalPreview = {
   accountName: "",
   locale: "",
+  trackingEnabled: false,
+  showArchivedToClient: false,
   widgets: {
     upcomingPosts: false,
     tracking: false,
@@ -202,6 +221,18 @@ const emptyClientPortal: ClientPortalPreview = {
     reports: false,
     brandBrain: false,
     search: false,
+  },
+  permissions: {
+    allowClientEditCaption: false,
+    allowClientCreatePost: false,
+    allowClientCreateTags: false,
+    allowClientDownload: false,
+    allowClientEditBrandBrain: false,
+    allowClientSearch: false,
+    allowClientViewInvoices: false,
+    allowClientViewReports: false,
+    allowClientViewBrandBrain: false,
+    allowClientViewTracking: false,
   },
   boardColumns: [],
   withoutColumn: [],
@@ -343,12 +374,20 @@ function navClass(isActive: boolean) {
 type PageMetric = { label: string; value: string | number; note: string; icon: ReactNode; tone?: string };
 
 function WorkspaceNavbar({ session, onLogout, onCreateClient, clientKanban = false, workspaceContext }: { session: SessionUser; onLogout: () => void; onCreateClient?: () => void; clientKanban?: boolean; workspaceContext?: ReactNode }) {
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [messages, setMessages] = useState<InternalApprovalRecord[]>(() => loadInternalApprovalMessages(session.id));
+  const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => { try { return JSON.parse(window.localStorage.getItem(`designhub-v2-read-notifications:${session.id}`) ?? "[]") as string[]; } catch { return []; } });
+  const notificationMenuRef = useRef<HTMLDivElement>(null);
+  const unreadMessages = messages.filter((item) => !readNotificationIds.includes(item.id));
+  useEffect(() => { const sync = () => { setMessages(loadInternalApprovalMessages(session.id)); try { setReadNotificationIds(JSON.parse(window.localStorage.getItem(`designhub-v2-read-notifications:${session.id}`) ?? "[]") as string[]); } catch { setReadNotificationIds([]); } }; window.addEventListener("storage", sync); const timer = window.setInterval(sync, 5_000); return () => { window.removeEventListener("storage", sync); window.clearInterval(timer); }; }, [session.id]);
+  useEffect(() => { const close = (event: MouseEvent) => { if (!notificationMenuRef.current?.contains(event.target as Node)) setNotificationsOpen(false); }; const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setNotificationsOpen(false); }; document.addEventListener("mousedown", close); document.addEventListener("keydown", escape); return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", escape); }; }, []);
+  const markNotificationRead = (id: string) => { setReadNotificationIds((current) => { if (current.includes(id)) return current; const next = [...current, id]; window.localStorage.setItem(`designhub-v2-read-notifications:${session.id}`, JSON.stringify(next)); return next; }); };
   return <div className={`dashboard-nav workspace-navbar${clientKanban ? " client-kanban-navbar" : ""}`}>
     {!clientKanban ? <NavLink to="/dashboard" className="dashboard-nav-brand" aria-label="Abrir dashboard"><span className="brand-badge"><img src={designHubV2Logo} alt="Design Hub" /></span><strong>Design Hub</strong></NavLink> : null}
     {workspaceContext}
     <nav className="dashboard-nav-links" aria-label="Navegação da operação"><NavLink to="/area/equipe">Equipe</NavLink><NavLink to={`/admin/${session.assignedAdminSlugs[0] ?? "aplikasi"}`}>Social</NavLink></nav>
     {onCreateClient ? <button className="gradient-button dashboard-create-button" onClick={onCreateClient}>＋ Clientes</button> : <NavLink className="gradient-button dashboard-create-button" to="/dashboard">Clientes</NavLink>}
-    <div className="dashboard-user"><button className="dashboard-icon-button" type="button" aria-label="Links rápidos"><UiIcon name="link" /></button><button className="dashboard-icon-button has-notification" type="button" aria-label="Notificações"><UiIcon name="bell" /><span aria-hidden="true" /></button><ProfileMenu session={session} onLogout={onLogout} /></div>
+    <div className="dashboard-user"><button className="dashboard-icon-button" type="button" aria-label="Links rápidos"><UiIcon name="link" /></button><div className="notification-menu" ref={notificationMenuRef}><button className={`dashboard-icon-button ${unreadMessages.length ? "has-notification" : ""}`} type="button" aria-label="Notificações" onClick={() => setNotificationsOpen((open) => !open)}><UiIcon name="bell" />{unreadMessages.length ? <span aria-hidden="true">{unreadMessages.length > 9 ? "9+" : unreadMessages.length}</span> : null}</button>{notificationsOpen ? <div className="notification-popover"><header><strong>Notificações</strong><b>{unreadMessages.length}</b></header>{messages.length ? messages.slice(0, 5).map((item) => <button key={item.id} className={readNotificationIds.includes(item.id) ? "read" : ""} onClick={() => { markNotificationRead(item.id); if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; setNotificationsOpen(false); }}><span>♙</span><div><strong>{readNotificationIds.includes(item.id) ? "Aprovação interna" : "Nova aprovação interna"}</strong><small>{item.cardTitle}</small></div></button>) : <p>Nenhuma notificação nova.</p>}</div> : null}</div><ProfileMenu session={session} onLogout={onLogout} /></div>
   </div>;
 }
 
@@ -390,6 +429,7 @@ function UiIcon({
     | "grid"
     | "layers"
     | "file"
+    | "download"
     | "calendar"
     | "users"
     | "clock"
@@ -460,6 +500,14 @@ function UiIcon({
           <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z" />
           <path d="M14 3v5h5" />
           <path d="M9 13h6M9 17h6" />
+        </svg>
+      );
+    case "download":
+      return (
+        <svg {...common}>
+          <path d="M12 3v12" />
+          <path d="m7 10 5 5 5-5" />
+          <path d="M5 20h14" />
         </svg>
       );
     case "calendar":
@@ -642,11 +690,11 @@ function Sidebar({ session }: { session: SessionUser }) {
     "Equipe",
     "Social",
     "Ideias de pauta",
-    "Calendario",
+    "Calendário",
     "Pautas",
-    "Relatorios",
+    "Relatórios",
     "Faturamento",
-    session.role === "super_admin" ? "Visao global" : "Espaco pessoal",
+    session.role === "super_admin" ? "Visão global" : "Espaco pessoal",
   ];
 
   return (
@@ -661,10 +709,10 @@ function Sidebar({ session }: { session: SessionUser }) {
       </div>
       <p className="sidebar-hint">
         {session.role === "super_admin"
-          ? "Controle total da operacao."
+          ? "Controle total da operação."
           : session.role === "admin"
-            ? "Acesso aos clientes atribuidos e paginas pessoais."
-            : "Acesso apenas aos clientes atribuidos e sem criacao de clientes."}
+            ? "Acesso aos clientes atribuídos e páginas pessoais."
+            : "Acesso apenas aos clientes atribuídos e sem criação de clientes."}
       </p>
     </aside>
   );
@@ -720,7 +768,7 @@ function AdminUtilityBar() {
     { label: "Filtros", icon: "filter" as const },
     { label: "Buscar", icon: "search" as const },
     { label: "Etiquetas", icon: "tag" as const },
-    { label: "Midia", icon: "image" as const },
+    { label: "Mídia", icon: "image" as const },
     { label: "Bandeja", icon: "inbox" as const },
   ];
 
@@ -1010,7 +1058,7 @@ function useCardDetail<T extends AdminWorkspacePreview | ClientPortalPreview>(
   useEffect(() => {
     let active = true;
 
-    if (!selectedCardId || !fallbackCard) {
+    if (!selectedCardId) {
       setState({
         data: null,
         loading: false,
@@ -1020,7 +1068,7 @@ function useCardDetail<T extends AdminWorkspacePreview | ClientPortalPreview>(
     }
 
     setState({
-      data: buildFallbackCardDetail(fallbackCard),
+      data: fallbackCard ? buildFallbackCardDetail(fallbackCard) : null,
       loading: true,
       source: "backend",
     });
@@ -1037,7 +1085,7 @@ function useCardDetail<T extends AdminWorkspacePreview | ClientPortalPreview>(
       .catch(() => {
         if (!active) return;
         setState({
-          data: buildFallbackCardDetail(fallbackCard),
+          data: fallbackCard ? buildFallbackCardDetail(fallbackCard) : null,
           loading: false,
           source: "error",
         });
@@ -1243,12 +1291,30 @@ function CommemorativeDatesWorkspace() {
   </section>;
 }
 
+type InternalApprovalRecord = { id: string; cardId: string; clientSlug?: string; cardTitle: string; recipients: string[]; message: string; createdAt: string };
+const INTERNAL_APPROVALS_STORAGE_KEY = "designhub-v2-internal-approvals";
+const DISMISSED_INTERNAL_MESSAGES_KEY = "designhub-v2-dismissed-internal-messages";
+function loadInternalApprovalMessages(userId?: string) {
+  try { const records = JSON.parse(window.localStorage.getItem(INTERNAL_APPROVALS_STORAGE_KEY) ?? "[]") as InternalApprovalRecord[]; return userId ? records.filter((record) => record.recipients.includes(userId)) : records; } catch { return []; }
+}
+
+function DashboardInternalMessagesWidget({ items, onOpen }: { items: InternalApprovalRecord[]; onOpen: (item: InternalApprovalRecord) => void }) {
+  const [dismissedIds, setDismissedIds] = useState<string[]>(() => { try { return JSON.parse(window.localStorage.getItem(DISMISSED_INTERNAL_MESSAGES_KEY) ?? "[]") as string[]; } catch { return []; } });
+  const visibleItems = items.filter((item) => !dismissedIds.includes(item.id));
+  if (!visibleItems.length) return null;
+  return <section className="dashboard-widget dashboard-internal-messages"><header className="dashboard-widget-head"><div><p className="eyebrow">Equipe</p><h3>Mensagens internas</h3><small>Cards enviados para sua revisão</small></div><span>{visibleItems.length}</span></header>{visibleItems.length ? <div className="dashboard-internal-list">{visibleItems.slice(0, 5).map((item) => <div className="dashboard-internal-row" key={item.id}><button className="dashboard-internal-open" onClick={() => onOpen(item)}><span className="internal-message-icon">♙</span><div><strong>{item.cardTitle}</strong><small>{item.message}</small></div><time>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.createdAt))}</time></button><button className="dashboard-internal-dismiss" aria-label="Fechar mensagem" title="Fechar mensagem" onClick={() => setDismissedIds((current) => { const next = [...current, item.id]; window.localStorage.setItem(DISMISSED_INTERNAL_MESSAGES_KEY, JSON.stringify(next)); return next; })}>×</button></div>)}</div> : <div className="dashboard-internal-empty">Nenhuma mensagem interna por enquanto.</div>}</section>;
+}
+
 function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: () => void }) {
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [clients, setClients] = useState<AdminClientOption[]>([]);
   const [upcomingPosts, setUpcomingPosts] = useState<DashboardUpcomingPost[]>([]);
   const [agendaToday, setAgendaToday] = useState<AgendaEvent[]>([]);
   const [clientSubmissions, setClientSubmissions] = useState<DashboardSubmission[]>([]);
+  const [clientActivities, setClientActivities] = useState<DashboardClientActivity[]>([]);
+  const [internalMessages, setInternalMessages] = useState<InternalApprovalRecord[]>(() => loadInternalApprovalMessages(session.id));
+  const [scheduleActivity, setScheduleActivity] = useState<DashboardClientActivity | null>(null);
+  const [scheduledNotice, setScheduledNotice] = useState<{ title: string; clientName: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -1278,6 +1344,11 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
     const interval = window.setInterval(() => setCurrentTime(new Date()), 60_000);
     return () => window.clearInterval(interval);
   }, []);
+  useEffect(() => {
+    if (!scheduledNotice) return;
+    const timeout = window.setTimeout(() => setScheduledNotice(null), 2_300);
+    return () => window.clearTimeout(timeout);
+  }, [scheduledNotice]);
 
   const greeting = currentTime.getHours() < 12 ? "Bom dia" : currentTime.getHours() < 18 ? "Boa tarde" : "Boa noite";
 
@@ -1314,12 +1385,28 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
 
   useEffect(() => {
     let active = true;
-    Promise.all([listAdminClients(), loadDashboardOverview()])
-      .then(([{ items }, overview]) => { if (active) { setClients(items); setUpcomingPosts(overview.upcomingPosts); setAgendaToday(overview.agendaToday); setClientSubmissions(overview.clientSubmissions); } })
+    const refreshClients = () => listAdminClients()
+      .then(({ items }) => { if (active) setClients(items); })
       .catch(() => { if (active) setClients([]); })
       .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    const refreshOverview = () => loadDashboardOverview()
+      .then((overview) => {
+        if (!active) return;
+        setUpcomingPosts(overview.upcomingPosts);
+        setAgendaToday(overview.agendaToday);
+        setClientSubmissions(overview.clientSubmissions);
+        setClientActivities(overview.clientActivities ?? []);
+        setInternalMessages(loadInternalApprovalMessages(session.id));
+      })
+      .catch(() => undefined);
+    const refreshDashboard = () => Promise.all([refreshClients(), refreshOverview()]);
+    void refreshDashboard();
+    const interval = window.setInterval(() => void refreshDashboard(), 30_000);
+    const refreshOnFocus = () => void refreshDashboard();
+    window.addEventListener("focus", refreshOnFocus);
+    return () => { active = false; window.clearInterval(interval); window.removeEventListener("focus", refreshOnFocus); };
   }, []);
+  useEffect(() => { const sync = () => setInternalMessages(loadInternalApprovalMessages(session.id)); window.addEventListener("storage", sync); const timer = window.setInterval(sync, 5_000); return () => { window.removeEventListener("storage", sync); window.clearInterval(timer); }; }, [session.id]);
 
   const updateForm = (key: keyof typeof form, value: string) => {
     setForm((current) => ({
@@ -1330,7 +1417,9 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
   };
 
   const myClients = clients.filter((client) => client.owner_user_id === session.id);
-  const sharedClients = clients.filter((client) => client.owner_user_id !== session.id);
+  // A aba compartilhados inclui clientes recebidos e também clientes próprios
+  // que já foram compartilhados com pelo menos outro membro da equipe.
+  const sharedClients = clients.filter((client) => client.owner_user_id !== session.id || (client.access_count ?? 0) > 1);
   const visibleClients = clientFilter === "mine" ? myClients : clientFilter === "shared" ? sharedClients : clients;
 
   const closeCreate = () => {
@@ -1478,8 +1567,9 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
             {upcomingPosts.length > 0 ? <DashboardTasksWidget posts={upcomingPosts} /> : null}
             {agendaToday.length > 0 ? <DashboardAgendaWidget events={agendaToday} /> : null}
             <DashboardList title="Posts para Hoje" items={["02:00  EP. 237 - ÁUDIOS - Spotify", "02:00  EP. 237 - VÍDEOS - EP Youtube", "11:00  3 - Piccoli assaggi", "22:00  Viagem & Cia"]} action="Ver todos os posts" />
-            <DashboardList title="Feedbacks dos clientes" items={["Podcast Lider de Elite", "Mattia's Bar", "Dj Per Eventi"]} action="Ver todos os feedbacks" compact />
-            {clientSubmissions.length > 0 ? <DashboardList title="Posts enviados pelo cliente" items={clientSubmissions.map((item) => `${item.clientName} · ${item.title}`)} action="Ver todos os posts enviados" compact /> : null}
+            {clientActivities.length > 0 ? <DashboardClientActivitiesWidget items={clientActivities} onSchedule={setScheduleActivity} /> : null}
+            {internalMessages.length > 0 ? <DashboardInternalMessagesWidget items={internalMessages} onOpen={(item) => { if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; }} /> : null}
+            {clientSubmissions.length > 0 ? <DashboardClientSubmissionsWidget items={clientSubmissions} /> : null}
           </div>
           <section className="dashboard-clients-panel dashboard-clients-full">
             <div className="dashboard-section-head"><div><p className="eyebrow">Projetos</p><h2>Clientes</h2></div></div>
@@ -1492,10 +1582,12 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
               {visibleClients.map((client) => <DashboardClientCard key={client.id} client={client} onEdit={() => void openEditClient(client)} onDelete={() => void removeClient(client)} onShare={() => void openShareClient(client)} />)}
             </div>}
           </section>
+          {scheduledNotice ? <div className="dashboard-scheduled-notice" role="status" aria-live="polite"><span className="dashboard-scheduled-calendar"><UiIcon name="calendar" /><i>✓</i></span><div><strong>Post agendado!</strong><small>{scheduledNotice.title} · {scheduledNotice.clientName}</small></div><span className="dashboard-scheduled-spark one" /><span className="dashboard-scheduled-spark two" /><span className="dashboard-scheduled-spark three" /></div> : null}
         </section>
         {createOpen ? <CreateClientModal form={form} logoFile={logoFile} creating={creating} error={createError} onChange={updateForm} onLogoChange={setLogoFile} onClose={closeCreate} onSubmit={submitClient} /> : null}
         {editClient ? <EditClientModal client={editClient} form={editForm} logoFile={editLogoFile} accesses={clientAccesses} saving={clientActionSaving} error={clientActionError} onChange={(key, value) => setEditForm((current) => ({ ...current, [key]: value }))} onLogoChange={setEditLogoFile} onClose={() => setEditClient(null)} onSubmit={saveEditedClient} /> : null}
         {shareClient ? <ShareClientModal client={shareClient} accesses={clientAccesses} users={managedUsers} userId={shareUserId} role={shareRole} saving={clientActionSaving} error={clientActionError} onUserChange={setShareUserId} onRoleChange={setShareRole} onClose={() => setShareClient(null)} onShare={() => void shareSelectedClient()} /> : null}
+        {scheduleActivity ? <DashboardScheduleModal activity={scheduleActivity} onClose={() => setScheduleActivity(null)} onScheduled={() => { setClientActivities((current) => current.filter((item) => item.cardId !== scheduleActivity.cardId)); setScheduledNotice({ title: scheduleActivity.title, clientName: scheduleActivity.clientName }); setScheduleActivity(null); }} /> : null}
       </main>
     </div>
   );
@@ -1543,8 +1635,11 @@ function AgendaPage({ session, onLogout }: { session: SessionUser | null; onLogo
   const [color, setColor] = useState("#c9f7df");
   const [recurrenceType, setRecurrenceType] = useState<AgendaRecurrence>("none");
   const [repeatUntil, setRepeatUntil] = useState("");
+  const [meetLink, setMeetLink] = useState("");
   const [selectedEvent, setSelectedEvent] = useState<AgendaEvent | null>(null);
   const [rescheduleAt, setRescheduleAt] = useState("");
+  const [meetLinkEdit, setMeetLinkEdit] = useState("");
+  const [clientAccountIdEdit, setClientAccountIdEdit] = useState("");
   const [labelId, setLabelId] = useState("");
   const [newLabelName, setNewLabelName] = useState("");
   const [newLabelColor, setNewLabelColor] = useState("#4285f4");
@@ -1552,11 +1647,12 @@ function AgendaPage({ session, onLogout }: { session: SessionUser | null; onLogo
   const [refresh, setRefresh] = useState(0);
   const range = useMemo(() => agendaViewRange(month, calendarView), [month, calendarView]);
 
+  const [clientsError, setClientsError] = useState("");
   useEffect(() => {
     if (!session) return;
-    Promise.all([loadAgendaEvents(range.from, range.to), listAdminClients(), loadAgendaLabels()])
-      .then(([agenda, clientResult, labelResult]) => { setEvents(agenda.items); setClients(clientResult.items); setLabels(labelResult.items); })
-      .catch(() => setEvents([]));
+    void loadAgendaEvents(range.from, range.to).then((agenda) => setEvents(agenda.items)).catch(() => setEvents([]));
+    void listAdminClients().then((result) => { setClients(result.items); setClientsError(""); }).catch((cause) => setClientsError(cause instanceof Error ? cause.message : "Não foi possível carregar a lista de clientes."));
+    void loadAgendaLabels().then((result) => setLabels(result.items)).catch(() => setLabels([]));
   }, [range.from, range.to, refresh, session]);
 
   if (!session || session.role === "client") return <Navigate to="/login" replace />;
@@ -1573,12 +1669,12 @@ function AgendaPage({ session, onLogout }: { session: SessionUser | null; onLogo
       return;
     }
     try {
-      await createAgendaEvent({ title: title.trim(), taskDescription: taskDescription.trim() || null, startsAt, color, clientAccountId: clientAccountId || null, labelId: labelId || null, recurrenceType, repeatUntil: repeatUntil || null });
-      setTitle(""); setTaskDescription(""); setStartsAt(""); setClientAccountId(""); setLabelId(""); setRecurrenceType("none"); setRepeatUntil("");
+      await createAgendaEvent({ title: title.trim(), taskDescription: taskDescription.trim() || null, startsAt, color, clientAccountId: clientAccountId || null, labelId: labelId || null, recurrenceType, repeatUntil: repeatUntil || null, meetLink: meetLink.trim() || null });
+      setTitle(""); setTaskDescription(""); setStartsAt(""); setClientAccountId(""); setLabelId(""); setRecurrenceType("none"); setRepeatUntil(""); setMeetLink("");
       setCreateOpen(false); setRefresh((value) => value + 1);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "Não foi possível criar o compromisso.";
-      setError(message === "Sessao obrigatoria." || message === "Token invalido ou expirado." ? "Sua sessão expirou. Saia e entre novamente para salvar no banco." : message);
+      setError(message === "Sessão obrigatória." || message === "Token inválido ou expirado." ? "Sua sessão expirou. Saia e entre novamente para salvar no banco." : message);
     }
   }
 
@@ -1586,7 +1682,7 @@ function AgendaPage({ session, onLogout }: { session: SessionUser | null; onLogo
     const selected = new Date(day);
     selected.setHours(9, 0, 0, 0);
     setStartsAt(toDateTimeLocal(selected.toISOString()));
-    setTitle(""); setTaskDescription(""); setClientAccountId(""); setLabelId(""); setColor("#c9f7df"); setRecurrenceType("none"); setRepeatUntil(""); setError("");
+    setTitle(""); setTaskDescription(""); setClientAccountId(""); setLabelId(""); setColor("#c9f7df"); setRecurrenceType("none"); setRepeatUntil(""); setMeetLink(""); setError("");
     setCreateOpen(true);
   }
 
@@ -1628,7 +1724,7 @@ function AgendaPage({ session, onLogout }: { session: SessionUser | null; onLogo
           {calendarView !== "day" ? <div className="agenda-weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => <strong key={day}>{day}</strong>)}</div> : null}
           <div className="agenda-month-grid">{range.days.map((day) => {
             const key = localDateKey(day); const dayEvents = eventsByDay.get(key) ?? []; const isCurrentMonth = calendarView !== "month" || day.getMonth() === month.getMonth();
-            return <article key={key} className={isCurrentMonth ? "agenda-day" : "agenda-day muted"} onClick={() => openAgendaDay(day)}><time>{day.getDate()}</time>{dayEvents.slice(0, 3).map((item) => <div className="agenda-event-pill" key={item.id} style={{ backgroundColor: item.color }} onClick={(event) => { event.stopPropagation(); setSelectedEvent(item); setRescheduleAt(toDateTimeLocal(item.startsAt)); }}><span>{formatAgendaTime(item.startsAt)}</span> {item.title}</div>)}{dayEvents.length > 3 ? <span className="agenda-more">+{dayEvents.length - 3} mais</span> : null}</article>;
+            return <article key={key} className={isCurrentMonth ? "agenda-day" : "agenda-day muted"} onClick={() => openAgendaDay(day)}><time>{day.getDate()}</time>{dayEvents.slice(0, 3).map((item) => <div className="agenda-event-pill" key={item.id} style={{ backgroundColor: item.color }} onClick={(event) => { event.stopPropagation(); setSelectedEvent(item); setRescheduleAt(toDateTimeLocal(item.startsAt)); setMeetLinkEdit(item.meetLink ?? ""); setClientAccountIdEdit(item.clientAccountId ?? ""); }}><span>{formatAgendaTime(item.startsAt)}</span> {item.title}</div>)}{dayEvents.length > 3 ? <span className="agenda-more">+{dayEvents.length - 3} mais</span> : null}</article>;
           })}</div>
         </section>
       </section>
@@ -1640,14 +1736,15 @@ function AgendaPage({ session, onLogout }: { session: SessionUser | null; onLogo
           <label className="field-stack">Data e horário<input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} /></label>
           <label className="field-stack">Repetição<select value={recurrenceType} onChange={(event) => setRecurrenceType(event.target.value as AgendaRecurrence)}><option value="none">Uma vez</option><option value="weekdays">De segunda a sexta</option><option value="weekly">Toda semana</option><option value="monthly_nth_weekday">Uma vez por mês, no mesmo dia da semana</option></select></label>
           {recurrenceType !== "none" ? <label className="field-stack">Repetir até<input type="date" value={repeatUntil} onChange={(event) => setRepeatUntil(event.target.value)} /></label> : null}
-          <label className="field-stack">Cliente<select value={clientAccountId} onChange={(event) => setClientAccountId(event.target.value)}><option value="">Sem cliente específico</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
+          <label className="field-stack">Cliente<select value={clientAccountId} onChange={(event) => setClientAccountId(event.target.value)}><option value="">Sem cliente específico</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>{clientsError ? <em>{clientsError}</em> : null}</label>
           <label className="field-stack">Etiqueta<select value={labelId} onChange={(event) => { const nextId = event.target.value; setLabelId(nextId); const label = labels.find((item) => item.id === nextId); if (label) setColor(label.color); }}><option value="">Sem etiqueta</option>{labels.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}</select></label>
           <label className="field-stack">Cor<input type="color" value={color} onChange={(event) => { setColor(event.target.value); setLabelId(""); }} /></label>
+          <label className="field-stack">Link do Google Meet (opcional)<input value={meetLink} onChange={(event) => setMeetLink(event.target.value)} placeholder="https://meet.google.com/..." /></label>
           {error ? <p className="form-feedback error-text">{error}</p> : null}<button className="gradient-button" type="submit">Criar compromisso</button>
         </form>
       </div> : null}
       {labelsOpen ? <div className="modal-backdrop" onClick={() => setLabelsOpen(false)}><section className="agenda-label-modal" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Agenda</p><h3>Gerenciar etiquetas</h3></div><button className="icon-close" onClick={() => setLabelsOpen(false)}>×</button></header><div className="agenda-label-create"><input value={newLabelName} onChange={(event) => setNewLabelName(event.target.value)} placeholder="Nome da etiqueta" onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void addAgendaLabel(); } }} /><input type="color" value={newLabelColor} onChange={(event) => setNewLabelColor(event.target.value)} /><button className="gradient-button" onClick={() => void addAgendaLabel()} aria-label="Criar etiqueta">＋</button></div><div className="agenda-label-list">{labels.length === 0 ? <p>Crie sua primeira etiqueta para usar em tarefas recorrentes.</p> : labels.map((label) => <article key={label.id} style={{ "--agenda-label-color": label.color } as CSSProperties}><span /><strong>{label.name}</strong><button onClick={() => void removeAgendaLabel(label.id)} aria-label={`Excluir ${label.name}`}>×</button></article>)}</div></section></div> : null}
-      {selectedEvent ? <div className="modal-backdrop" onClick={() => setSelectedEvent(null)}><section className="agenda-detail-modal" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Compromisso</p><h3>{selectedEvent.title}</h3></div><button className="icon-close" onClick={() => setSelectedEvent(null)}>×</button></header><p>{selectedEvent.taskDescription || "Sem tarefa detalhada."}</p><dl><div><dt>Quando</dt><dd>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(selectedEvent.startsAt))}</dd></div><div><dt>Etiqueta</dt><dd>{selectedEvent.labelName || "Sem etiqueta"}</dd></div><div><dt>Repetição</dt><dd>{selectedEvent.recurrenceType === "weekdays" ? "Segunda a sexta" : selectedEvent.recurrenceType === "weekly" ? "Toda semana" : selectedEvent.recurrenceType === "monthly_nth_weekday" ? "Mensal, no mesmo dia da semana" : "Uma vez"}</dd></div></dl>{selectedEvent.recurrenceType !== "none" ? <p className="agenda-series-note">Este é um compromisso recorrente: reagendar ou excluir altera toda a série.</p> : null}<label className="field-stack agenda-reschedule-field">Reagendar para<input type="datetime-local" value={rescheduleAt} onChange={(event) => setRescheduleAt(event.target.value)} /></label><div className="agenda-detail-actions"><button className="ghost-button" onClick={async () => { if (!rescheduleAt) return; await updateAgendaEvent(selectedEvent.sourceEventId ?? selectedEvent.id, { startsAt: rescheduleAt }); setSelectedEvent(null); setRefresh((value) => value + 1); }}>Salvar nova data</button><button className="danger-button" onClick={async () => { if (!window.confirm("Excluir este compromisso? Uma repetição excluirá a série inteira.")) return; await deleteAgendaEvent(selectedEvent.sourceEventId ?? selectedEvent.id); setSelectedEvent(null); setRefresh((value) => value + 1); }}>Excluir</button></div></section></div> : null}
+      {selectedEvent ? <div className="modal-backdrop" onClick={() => setSelectedEvent(null)}><section className="agenda-detail-modal" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Compromisso</p><h3>{selectedEvent.title}</h3></div><button className="icon-close" onClick={() => setSelectedEvent(null)}>×</button></header><p>{selectedEvent.taskDescription || "Sem tarefa detalhada."}</p><dl><div><dt>Quando</dt><dd>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(selectedEvent.startsAt))}</dd></div><div><dt>Cliente</dt><dd>{selectedEvent.clientName || "Sem cliente específico"}</dd></div><div><dt>Etiqueta</dt><dd>{selectedEvent.labelName || "Sem etiqueta"}</dd></div><div><dt>Repetição</dt><dd>{selectedEvent.recurrenceType === "weekdays" ? "Segunda a sexta" : selectedEvent.recurrenceType === "weekly" ? "Toda semana" : selectedEvent.recurrenceType === "monthly_nth_weekday" ? "Mensal, no mesmo dia da semana" : "Uma vez"}</dd></div></dl>{selectedEvent.meetLink ? <a className="ghost-button" href={selectedEvent.meetLink} target="_blank" rel="noreferrer"><UiIcon name="link" />Entrar no Google Meet</a> : null}{selectedEvent.recurrenceType !== "none" ? <p className="agenda-series-note">Este é um compromisso recorrente: reagendar ou excluir altera toda a série.</p> : null}<label className="field-stack agenda-reschedule-field">Reagendar para<input type="datetime-local" value={rescheduleAt} onChange={(event) => setRescheduleAt(event.target.value)} /></label><label className="field-stack">Cliente<select value={clientAccountIdEdit} onChange={(event) => setClientAccountIdEdit(event.target.value)}><option value="">Sem cliente específico</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label><label className="field-stack">Link do Google Meet<input value={meetLinkEdit} onChange={(event) => setMeetLinkEdit(event.target.value)} placeholder="https://meet.google.com/..." /></label><div className="agenda-detail-actions"><button className="ghost-button" onClick={async () => { if (!rescheduleAt) return; await updateAgendaEvent(selectedEvent.sourceEventId ?? selectedEvent.id, { startsAt: rescheduleAt }); setSelectedEvent(null); setRefresh((value) => value + 1); }}>Salvar nova data</button><button className="ghost-button" onClick={async () => { await updateAgendaEvent(selectedEvent.sourceEventId ?? selectedEvent.id, { clientAccountId: clientAccountIdEdit || null }); setSelectedEvent(null); setRefresh((value) => value + 1); }}>Salvar cliente</button><button className="ghost-button" onClick={async () => { await updateAgendaEvent(selectedEvent.sourceEventId ?? selectedEvent.id, { meetLink: meetLinkEdit.trim() || null }); setSelectedEvent(null); setRefresh((value) => value + 1); }}>Salvar link do Meet</button><button className="danger-button" onClick={async () => { if (!window.confirm("Excluir este compromisso? Uma repetição excluirá a série inteira.")) return; await deleteAgendaEvent(selectedEvent.sourceEventId ?? selectedEvent.id); setSelectedEvent(null); setRefresh((value) => value + 1); }}>Excluir</button></div></section></div> : null}
     </main>
   </div>;
 }
@@ -1661,17 +1758,126 @@ function DashboardList({ title, items, action, compact = false }: { title: strin
   return <section className={`dashboard-list ${compact ? "compact" : ""}`}><h3>{title}</h3><div>{items.map((item) => <article key={item}><span className="dashboard-list-dot" /><p>{item}</p><small>Hoje</small></article>)}</div><button className="dashboard-link">{action} →</button></section>;
 }
 
+function DashboardClientSubmissionsWidget({ items }: { items: DashboardSubmission[] }) {
+  const formatSubmissionDate = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Hoje";
+    const today = new Date();
+    return date.toDateString() === today.toDateString()
+      ? "Hoje"
+      : new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(date).replace(".", "");
+  };
+
+  return <section className="dashboard-list dashboard-client-submissions compact">
+    <header className="dashboard-submissions-head"><h3>Sugestões dos clientes</h3><span>{items.length}</span></header>
+    <div className="dashboard-submission-list">{items.map((item) => <article key={item.id}>
+      <span className="dashboard-submission-avatar">
+        {item.clientLogoUrl ? <img src={item.clientLogoUrl} alt={`Logo de ${item.clientName}`} /> : item.clientName.slice(0, 2).toUpperCase()}
+      </span>
+      <div className="dashboard-submission-copy"><strong>{item.clientName}</strong><p>Sugeriu “{item.title}”</p></div>
+      <small>{formatSubmissionDate(item.createdAt)}</small>
+    </article>)}</div>
+    <button className="dashboard-link">Ver sugestões no quadro →</button>
+  </section>;
+}
+
+function DashboardClientActivitiesWidget({ items, onSchedule }: { items: DashboardClientActivity[]; onSchedule: (item: DashboardClientActivity) => void }) {
+  const activityLabel = (item: DashboardClientActivity) => item.activityType === "approved" ? "Aprovou o conteúdo" : item.activityType === "changes_requested" ? "Solicitou alterações" : item.activityType === "brand_brain" ? "Sugeriu uma atualização da marca" : "Deixou um feedback";
+  const activityTime = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "Agora";
+    return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date).replace(",", " ·");
+  };
+
+  return <section className="dashboard-list dashboard-client-activities compact">
+    <header className="dashboard-submissions-head"><div><h3>Retornos dos clientes</h3><small>Aprovações, alterações e feedbacks</small></div><span>{items.length}</span></header>
+    <div className="dashboard-activity-list">{items.map((item) => <article key={item.id} className={`dashboard-activity-row ${item.activityType}`}>
+      <span className="dashboard-submission-avatar">{item.clientLogoUrl ? <img src={item.clientLogoUrl} alt={`Logo de ${item.clientName}`} /> : item.clientName.slice(0, 2).toUpperCase()}</span>
+      <div className="dashboard-activity-copy"><span className="dashboard-activity-kind">{item.activityType === "approved" ? "✓" : item.activityType === "changes_requested" ? "↻" : item.activityType === "brand_brain" ? "✦" : "💬"} {activityLabel(item)}</span><strong>{item.title}</strong><small>{item.clientName}{item.activityType === "comment" || item.activityType === "brand_brain" ? ` · “${item.detail}”` : ""}</small></div>
+      <div className="dashboard-activity-actions"><time title="Data do retorno do cliente">{activityTime(item.occurredAt)}</time>{item.activityType === "brand_brain" ? <button type="button" onClick={() => { window.location.hash = `/admin/${item.clientSlug}?view=brand`; }}><UiIcon name="spark" />Revisar</button> : <button type="button" onClick={() => onSchedule(item)}><UiIcon name="calendar" />Agendar</button>}</div>
+    </article>)}</div>
+    <span className="dashboard-link">Abrir o quadro do cliente →</span>
+  </section>;
+}
+
+function DashboardScheduleModal({ activity, onClose, onScheduled }: { activity: DashboardClientActivity; onClose: () => void; onScheduled: () => void }) {
+  const [detail, setDetail] = useState<CardDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    if (!activity.cardId) {
+      setError("Este retorno não está ligado a um post agendável.");
+      setLoading(false);
+      return () => { active = false; };
+    }
+    void loadAdminCardDetailBySlug(activity.clientSlug, activity.cardId)
+      .then((response) => {
+        if (!active) return;
+        setDetail(response);
+        const current = toDateTimeLocal(response.card.scheduledAt);
+        if (current) {
+          setScheduleDate(current.slice(0, 10));
+          setScheduleTime(current.slice(11, 16));
+        } else {
+          const nextHour = new Date();
+          nextHour.setHours(nextHour.getHours() + 1, 0, 0, 0);
+          const suggested = toDateTimeLocal(nextHour.toISOString());
+          setScheduleDate(suggested.slice(0, 10));
+          setScheduleTime(suggested.slice(11, 16));
+        }
+      })
+      .catch((cause) => { if (active) setError(cause instanceof Error ? cause.message : "Não foi possível carregar o post."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [activity]);
+
+  const saveSchedule = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!activity.cardId) { setError("Este retorno não está ligado a um post agendável."); return; }
+    if (!scheduleDate || !scheduleTime) { setError("Escolha a data e o horário."); return; }
+    setSaving(true); setError("");
+    try {
+      await updateAdminCardBySlug(activity.clientSlug, activity.cardId, { scheduledAt: `${scheduleDate}T${scheduleTime}`, scheduledTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone });
+      onScheduled();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível agendar o post.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return <div className="modal-backdrop dashboard-schedule-backdrop" onMouseDown={onClose}>
+    <form className="dashboard-schedule-modal" onSubmit={saveSchedule} onMouseDown={(event) => event.stopPropagation()}>
+      <header><div><p className="eyebrow">Agendamento pelo dashboard</p><h2>{activity.title}</h2><p>{activity.clientName} · feedback em {new Intl.DateTimeFormat("pt-BR", { dateStyle: "long", timeStyle: "short" }).format(new Date(activity.occurredAt))}</p></div><button type="button" className="icon-close" onClick={onClose}>×</button></header>
+      {loading ? <p className="dashboard-schedule-loading">Carregando conteúdo...</p> : detail ? <div className="dashboard-schedule-layout">
+        <section className="dashboard-schedule-preview"><h3>Prévia do post</h3>{portalCardAssets(detail.card).length ? <ClosedCardMedia card={detail.card} /> : <div className="dashboard-schedule-no-media"><UiIcon name="image" />Sem arte cadastrada</div>}</section>
+        <section className="dashboard-schedule-content"><div className="dashboard-schedule-caption portal-summary-card"><div className="portal-summary-heading"><span><UiIcon name="file" /></span><div><small>CONTEÚDO DO POST</small><h4>Legenda</h4></div></div><PortalFormattedCaption text={detail.card.subtitle ?? ""} /></div><div className="dashboard-schedule-feedback"><span>{activity.activityType === "approved" ? "✓" : activity.activityType === "changes_requested" ? "↻" : "💬"}</span><div><small>Retorno do cliente</small><strong>{activity.detail}</strong><time>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(activity.occurredAt))}</time></div></div><div className="dashboard-schedule-fields"><label>Data da publicação<input type="date" value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} required /></label><label>Horário<input type="time" value={scheduleTime} onChange={(event) => setScheduleTime(event.target.value)} required /></label></div></section>
+      </div> : null}
+      {error ? <p className="form-feedback error-text">{error}</p> : null}
+      <footer><NavLink to={`/admin/${activity.clientSlug}`} className="ghost-button">Abrir no Kanban</NavLink><button type="button" className="ghost-button" onClick={onClose}>Cancelar</button><button type="submit" className="gradient-button" disabled={saving || loading || !detail}><UiIcon name="calendar" />{saving ? "Agendando..." : "Confirmar agendamento"}</button></footer>
+    </form>
+  </div>;
+}
+
 function DashboardClientCard({ client, onEdit, onDelete, onShare }: { client: AdminClientOption; onEdit: () => void; onDelete: () => void; onShare: () => void }) {
   const localeLabel = client.locale === "en" ? "English" : client.locale === "es" ? "Español" : client.locale === "it" ? "Italiano" : "Português";
   const localeFlag = client.locale === "en" ? "🇺🇸" : client.locale === "es" ? "🇪🇸" : client.locale === "it" ? "🇮🇹" : "🇧🇷";
   const [copied, setCopied] = useState(false);
+  const [socialLinks, setSocialLinks] = useState<Record<string, string>>({});
+  useEffect(() => { let active = true; void loadAdminWorkspaceDrawerBySlug(client.slug).then((result) => { const data = result.data as { socialLinks?: Record<string, unknown> } | null; const links = data?.socialLinks ?? {}; if (active) setSocialLinks(Object.fromEntries(Object.entries(links).filter(([, value]) => typeof value === "string" && value.trim()).map(([key, value]) => [key, String(value)]))); }).catch(() => undefined); return () => { active = false; }; }, [client.slug]);
   const copyPortalLink = async () => {
-    const url = `${window.location.origin}/portal/${client.slug}`;
+    const slug = client.slug;
     try {
-      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(url);
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(slug);
       else {
         const helper = document.createElement("textarea");
-        helper.value = url;
+        helper.value = slug;
         document.body.appendChild(helper);
         helper.select();
         document.execCommand("copy");
@@ -1679,14 +1885,14 @@ function DashboardClientCard({ client, onEdit, onDelete, onShare }: { client: Ad
       }
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1800);
-    } catch { window.prompt("Copie o link do portal:", url); }
+    } catch { window.prompt("Copie o slug do cliente:", slug); }
   };
   return <article className="client-showcase-card">
     <div className="client-showcase-head">
       <div className="client-showcase-logo">{client.logo_url ? <img src={client.logo_url} alt={`Logo ${client.name}`} /> : client.name.slice(0, 2).toUpperCase()}</div>
       <div><h3>{client.name}</h3><p>{localeFlag} {localeLabel} <span>♙ {Number(client.access_count ?? 0)}</span></p></div>
     </div>
-    <div className="client-showcase-social"><span>◎</span><span>f</span><span>◎</span><button type="button" title={copied ? "Link copiado" : "Copiar link do portal"} aria-label={copied ? "Link copiado" : "Copiar link do portal"} onClick={() => void copyPortalLink()}><UiIcon name="copy" /></button></div>
+    <div className="client-showcase-social">{(["instagram", "facebook", "tiktok", "youtube", "linkedin", "x", "website"] as const).filter((network) => socialLinks[network]).map((network) => <a key={network} className={`client-social-link ${network}`} href={socialLinks[network]} target="_blank" rel="noreferrer" title={`Abrir ${network === "website" ? "site" : network}`} aria-label={`Abrir ${network === "website" ? "site" : network}`}>{network === "instagram" ? "◎" : network === "facebook" ? "f" : network === "tiktok" ? "♪" : network === "youtube" ? "▶" : network === "linkedin" ? "in" : network === "x" ? "𝕏" : "↗"}</a>)}<button type="button" title={copied ? "Slug copiado" : "Copiar slug do cliente"} aria-label={copied ? "Slug copiado" : "Copiar slug do cliente"} onClick={() => void copyPortalLink()}>{copied ? <UiIcon name="check" /> : <UiIcon name="copy" />}</button></div>
     <div className="client-showcase-actions">
       <NavLink to={`/admin/${client.slug}`} className="gradient-button">Gerenciar</NavLink>
       <NavLink to={`/portal/${client.slug}`} className="client-icon-action" title="Ver portal"><UiIcon name="eye" /></NavLink>
@@ -1726,8 +1932,8 @@ function AdminRoutePage({ session, onLogout }: { session: SessionUser | null; on
   if (!canAccessAdmin(session, slug)) {
     return (
       <AccessDenied
-        title="Essa conta nao esta atribuida a este perfil"
-        body="Admins e colaboradores so podem abrir os clientes ligados ao proprio usuario."
+        title="Essa conta não está atribuída a este perfil"
+        body="Admins e colaboradores só podem abrir os clientes ligados ao próprio usuário."
         backHref={getDefaultRoute(session)}
       />
     );
@@ -1786,7 +1992,7 @@ function AdminWorkspacePage({
 }) {
   const navigate = useNavigate();
   const [refreshKey, setRefreshKey] = useState(0);
-  const [boardView, setBoardView] = useState<"board" | "archived" | "texts" | "calendar" | "activities" | "brand" | "pautas">("board");
+  const [boardView, setBoardView] = useState<"board" | "archived" | "texts" | "calendar" | "activities" | "brand" | "pautas">(() => window.location.hash.includes("view=brand") ? "brand" : "board");
   const resource = usePreviewResource(emptyAdminWorkspace, () => loadAdminWorkspaceBySlug(slug, { archived: boardView === "archived" }), [
     slug,
     refreshKey,
@@ -1816,6 +2022,7 @@ function AdminWorkspacePage({
   const [bulkColumnDialog, setBulkColumnDialog] = useState<"copy" | "move" | null>(null);
   const [cardMenu, setCardMenu] = useState<{ card: BoardCard; columnId: string | null; x: number; y: number } | null>(null);
   const [cardColumnDialog, setCardColumnDialog] = useState<{ card: BoardCard; mode: "copy" | "move" } | null>(null);
+  const [cardClientDialog, setCardClientDialog] = useState<BoardCard | null>(null);
   const [restoreDialog, setRestoreDialog] = useState<BoardCard | null>(null);
   const [draggedCard, setDraggedCard] = useState<{ cardId: string; columnId: string | null } | null>(null);
   const [dropTarget, setDropTarget] = useState<{ columnId: string | null; index: number } | null>(null);
@@ -1971,7 +2178,7 @@ function AdminWorkspacePage({
             </div>
 
             <div className="board-layout">
-              {boardView === "texts" ? <AdminTextsView clientName={data.clientName} slug={slug} /> : boardView === "calendar" ? <ClientKanbanCalendar slug={slug} /> : boardView === "activities" ? <KanbanActivities slug={slug} /> : boardView === "brand" ? <BrandBrainWorkspace slug={slug} clientName={data.clientName} /> : boardView === "pautas" ? <PautasWorkspace slug={slug} clientName={data.clientName} columns={data.columns} onSent={() => setRefreshKey((value) => value + 1)} /> : boardView === "archived" ? <ArchivedCardsView
+              {boardView === "texts" ? <AdminTextsView clientName={data.clientName} slug={slug} /> : boardView === "calendar" ? <ClientKanbanCalendar slug={slug} /> : boardView === "activities" ? <KanbanActivities slug={slug} /> : boardView === "brand" ? <BrandBrainWorkspaceV2 slug={slug} clientName={data.clientName} /> : boardView === "pautas" ? <PautasWorkspace slug={slug} clientName={data.clientName} columns={data.columns} onSent={() => setRefreshKey((value) => value + 1)} /> : boardView === "archived" && resource.loading ? <div className="archived-empty">Carregando cards arquivados...</div> : boardView === "archived" ? <ArchivedCardsView
                 cards={archivedCards}
                 onOpenCard={setSelectedCardId}
                 onPreviewMedia={openMediaPreview}
@@ -2053,7 +2260,7 @@ function AdminWorkspacePage({
                   <section className="kanban-column">
                     <header className="column-head" style={{ color: "#7a86a9" }}>
                       <div>
-                        <p className="column-kicker">Area solta</p>
+                        <p className="column-kicker">Área solta</p>
                         <h3>Sem coluna</h3>
                       </div>
                     </header>
@@ -2097,7 +2304,7 @@ function AdminWorkspacePage({
                 </div>
 
                 <div className="drawer-section">
-                  <h3>Calendario da conta</h3>
+                  <h3>Calendário da conta</h3>
                   <div className="widget-list">
                     {data.calendarEvents.map((event) => (
                       <article key={event.id} className="list-item">
@@ -2223,25 +2430,12 @@ function AdminWorkspacePage({
             setCardColumnDialog({ card: cardMenu.card, mode: "move" });
             setCardMenu(null);
           }}
-          onCopyToClient={(targetSlug) => createAdminCardBySlug(targetSlug, {
-            columnId: null,
-            title: `${cardMenu.card.title} (copia)`,
-            caption: cardMenu.card.subtitle ?? null,
-            primaryMediaUrl: cardMenu.card.mediaUrl ?? null,
-            externalLinkUrl: cardMenu.card.externalLinkUrl ?? null,
-            artType: cardMenu.card.typeLabel,
-            status: cardMenu.card.statusBadges,
-            tags: cardMenu.card.tags,
-            mediaUrls: cardMenu.card.mediaUrls,
-            hashtags: cardMenu.card.hashtags,
-            deadlineAt: cardMenu.card.deadlineAt,
-            scheduledAt: cardMenu.card.scheduledAt,
-            clientLabel: cardMenu.card.clientLabel,
-          }).then(() => setRefreshKey((value) => value + 1))}
+          onCopyToClient={() => { setCardClientDialog(cardMenu.card); setCardMenu(null); }}
           onArchive={() => archiveAdminCardBySlug(slug, cardMenu.card.id).then(() => setRefreshKey((value) => value + 1))}
           onDelete={() => deleteAdminCardBySlug(slug, cardMenu.card.id).then(() => setRefreshKey((value) => value + 1))}
         />
       ) : null}
+      {cardClientDialog ? <CardClientDialog card={cardClientDialog} clients={clientOptions.filter((client) => client.slug !== slug)} onClose={() => setCardClientDialog(null)} onConfirm={async (targetSlug, mode, columnId) => { await createAdminCardBySlug(targetSlug, { columnId, title: `${cardClientDialog.title}${mode === "copy" ? " (copia)" : ""}`, caption: cardClientDialog.subtitle ?? null, primaryMediaUrl: cardClientDialog.mediaUrl ?? null, externalLinkUrl: cardClientDialog.externalLinkUrl ?? null, artType: cardClientDialog.typeLabel, status: cardClientDialog.statusBadges, tags: cardClientDialog.tags, mediaUrls: cardClientDialog.mediaUrls, hashtags: cardClientDialog.hashtags, deadlineAt: cardClientDialog.deadlineAt, scheduledAt: cardClientDialog.scheduledAt, clientLabel: cardClientDialog.clientLabel }); if (mode === "move") await deleteAdminCardBySlug(slug, cardClientDialog.id); setRefreshKey((value) => value + 1); }} /> : null}
 
       {selectionMode ? <BulkActionBar
         selectedCount={selectedCards.length}
@@ -2477,7 +2671,7 @@ function BoardColumnView({
           <button
             type="button"
             className={column.visibleToClient ? "column-visibility visible" : "column-visibility"}
-            title={column.visibleToClient ? "Visivel para o cliente" : "Oculta para o cliente"}
+            title={column.visibleToClient ? "Visível para o cliente" : "Oculta para o cliente"}
             aria-label={column.visibleToClient ? "Ocultar coluna do cliente" : "Mostrar coluna para o cliente"}
             aria-pressed={column.visibleToClient}
             onClick={onToggleVisibility}
@@ -2485,11 +2679,11 @@ function BoardColumnView({
             <UiIcon name="eye" className="column-action-icon" />
           </button>
           <span className="column-count" aria-label={`${column.cards.length} cards`}>({column.cards.length})</span>
-          <button className="column-menu" onClick={onToggleMenu} aria-label={`Opcoes de ${column.name}`}>
+          <button className="column-menu" onClick={onToggleMenu} aria-label={`Opções de ${column.name}`}>
             <UiIcon name="more" className="column-action-icon" />
           </button>
           {menuOpen ? (
-            <div className="column-popover" role="menu" aria-label={`Acoes da coluna ${column.name}`}>
+            <div className="column-popover" role="menu" aria-label={`Ações da coluna ${column.name}`}>
               <button role="menuitem" onClick={onAddCard}>
                 <UiIcon name="plus" />
                 <span>Adicionar post</span>
@@ -2621,7 +2815,7 @@ function CardEditorModal({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!title.trim()) {
-      setError("Coloque um titulo para o post.");
+      setError("Coloque um título para o post.");
       return;
     }
 
@@ -2630,7 +2824,7 @@ function CardEditorModal({
       : MAX_MEDIA_FILE_SIZE;
     if (mediaFile && mediaFile.size > fileLimit) {
       setError(
-        `“${mediaFile.name}” tem ${formatFileSize(mediaFile.size)}. O limite para ${mediaFile.type.startsWith("video/") ? "videos e 20 MB" : "imagens e 12 MB"}.`,
+        `“${mediaFile.name}” tem ${formatFileSize(mediaFile.size)}. O limite para ${mediaFile.type.startsWith("video/") ? "vídeos e 20 MB" : "imagens e 12 MB"}.`,
       );
       return;
     }
@@ -2649,7 +2843,7 @@ function CardEditorModal({
         tags: splitLabels(tagsText),
       });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Nao foi possivel criar o post agora.");
+      setError(caught instanceof Error ? caught.message : "Não foi possível criar o post agora.");
       setSaving(false);
     }
   }
@@ -2665,7 +2859,7 @@ function CardEditorModal({
       >
         <div className="column-editor-head">
           <div>
-            <p className="eyebrow">Conteudo da conta</p>
+            <p className="eyebrow">Conteúdo da conta</p>
             <h3 id="card-editor-title">Novo post</h3>
           </div>
           <button className="icon-close" onClick={onClose} aria-label="Fechar">×</button>
@@ -2673,7 +2867,7 @@ function CardEditorModal({
 
         <form className="card-editor-form" onSubmit={handleSubmit}>
           <label className="field-stack">
-            <span>Titulo</span>
+            <span>Título</span>
             <input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Hidratação que transforma" />
           </label>
 
@@ -2712,14 +2906,14 @@ function CardEditorModal({
                 const isImage = selectedFile.type.startsWith("image/");
                 const isVideo = selectedFile.type.startsWith("video/");
                 if (!isImage && !isVideo) {
-                  setError(`“${selectedFile.name}” nao e um formato aceito. Envie imagem ou video.`);
+                  setError(`“${selectedFile.name}” não é um formato aceito. Envie imagem ou vídeo.`);
                   return;
                 }
 
                 const sizeLimit = isVideo ? MAX_VIDEO_FILE_SIZE : MAX_MEDIA_FILE_SIZE;
                 if (selectedFile.size > sizeLimit) {
                   setError(
-                    `“${selectedFile.name}” tem ${formatFileSize(selectedFile.size)}. O limite para ${isVideo ? "videos e 20 MB" : "imagens e 12 MB"}.`,
+                    `“${selectedFile.name}” tem ${formatFileSize(selectedFile.size)}. O limite para ${isVideo ? "vídeos e 20 MB" : "imagens e 12 MB"}.`,
                   );
                   return;
                 }
@@ -2727,7 +2921,7 @@ function CardEditorModal({
                 setError("");
               }}
             />
-            <small>{mediaFile ? `${mediaFile.name} (${mediaFile.type.startsWith("video/") ? "maximo 20 MB" : "maximo 12 MB"})` : "Imagens viram WebP automaticamente. Sem arte, o card ficara vazio."}</small>
+            <small>{mediaFile ? `${mediaFile.name} (${mediaFile.type.startsWith("video/") ? "máximo 20 MB" : "máximo 12 MB"})` : "Imagens viram WebP automaticamente. Sem arte, o card ficará vazio."}</small>
           </label>
 
           <label className="field-stack">
@@ -2741,7 +2935,7 @@ function CardEditorModal({
           </label>
 
           <label className="field-stack">
-            <span>Legenda ou observacao</span>
+            <span>Legenda ou observação</span>
             <textarea value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="Escreva a legenda, briefing ou uma nota sobre este post." />
           </label>
 
@@ -2816,7 +3010,7 @@ function ColumnEditorModal({
     try {
       await onSave({ name: name.trim(), color, visibleToClient });
     } catch {
-      setError("Nao foi possivel salvar agora. Tente novamente.");
+      setError("Não foi possível salvar agora. Tente novamente.");
       setSaving(false);
     }
   }
@@ -2847,7 +3041,7 @@ function ColumnEditorModal({
               autoFocus
               value={name}
               onChange={(event) => setName(event.target.value)}
-              placeholder="Ex.: Em aprovacao"
+              placeholder="Ex.: Em aprovação"
             />
           </label>
 
@@ -2886,7 +3080,7 @@ function ColumnEditorModal({
               Cancelar
             </button>
             <button type="submit" className="gradient-button" disabled={saving}>
-              {saving ? "Salvando..." : column ? "Salvar alteracoes" : "Criar coluna"}
+              {saving ? "Salvando..." : column ? "Salvar alterações" : "Criar coluna"}
             </button>
           </div>
         </form>
@@ -2907,7 +3101,7 @@ function CardContextMenu({
   onToggleTag: (tag: string) => Promise<void>;
   onCopyToColumn: () => void;
   onMoveToColumn: () => void;
-  onCopyToClient: (targetSlug: string) => Promise<void>;
+  onCopyToClient: () => void;
   onArchive: () => Promise<void>;
   onDelete: () => Promise<void>;
 }) {
@@ -2916,7 +3110,7 @@ function CardContextMenu({
   return (
     <>
       <button className="card-menu-backdrop" aria-label="Fechar menu" onClick={onClose} />
-      <section className="card-context-menu" style={{ left: position.x, top: position.y }} aria-label={`Acoes para ${card.title}`} onMouseLeave={() => setPanel(null)}>
+      <section className="card-context-menu" style={{ left: position.x, top: position.y }} aria-label={`Ações para ${card.title}`} onMouseLeave={() => setPanel(null)}>
         <button className={panel === "status" ? "active" : ""} onMouseEnter={() => setPanel("status")}>☷ <span>Status</span><b>›</b></button>
         {panel === "status" ? <div className="card-menu-submenu status-submenu">{CARD_STATUS_OPTIONS.map((status) => <button key={status} onClick={() => run(() => onUpdateStatus(status))}>{card.statusBadges[0] === status ? "✓ " : ""}{status}</button>)}</div> : null}
         <button className={panel === "tags" ? "active" : ""} onMouseEnter={() => setPanel("tags")}>◇ <span>Etiquetas</span><b>›</b></button>
@@ -2924,11 +3118,10 @@ function CardContextMenu({
         <hr />
         <button onClick={onCopyToColumn}>▣ <span>Copiar card</span></button>
         <button onClick={onMoveToColumn}>⇄ <span>Mover para coluna</span></button>
-        <button className={panel === "clients" ? "active" : ""} onMouseEnter={() => setPanel("clients")}>➤ <span>Enviar para outro cliente</span><b>›</b></button>
-        {panel === "clients" ? <div className="card-menu-submenu clients-submenu">{clients.map((client) => <button key={client.id} onClick={() => run(() => onCopyToClient(client.slug))}>{client.name}</button>)}</div> : null}
+        <button onClick={onCopyToClient}>➤ <span>Enviar para outro cliente</span></button>
         <button onClick={() => run(onArchive)}>▱ <span>Arquivar</span></button>
         <hr />
-        <button className="danger" onClick={() => { if (window.confirm(`Excluir o card “${card.title}”? Esta acao nao pode ser desfeita.`)) run(onDelete); }}>♜ <span>Excluir</span></button>
+        <button className="danger" onClick={() => { if (window.confirm(`Excluir o card “${card.title}”? Esta ação não pode ser desfeita.`)) run(onDelete); }}>♜ <span>Excluir</span></button>
       </section>
     </>
   );
@@ -2969,6 +3162,16 @@ function CardColumnDialog({
       </section>
     </div>
   );
+}
+
+function CardClientDialog({ card, clients, onClose, onConfirm }: { card: BoardCard; clients: AdminClientOption[]; onClose: () => void; onConfirm: (targetSlug: string, mode: "copy" | "move", columnId: string | null) => Promise<void> }) {
+  const [targetSlug, setTargetSlug] = useState(clients[0]?.slug ?? "");
+  const [columns, setColumns] = useState<BoardColumn[]>([]);
+  const [columnId, setColumnId] = useState("");
+  const [mode, setMode] = useState<"copy" | "move">("copy");
+  const [saving, setSaving] = useState(false);
+  useEffect(() => { let active = true; setColumns([]); setColumnId(""); if (!targetSlug) return; void loadAdminWorkspaceBySlug(targetSlug).then((result) => { if (active) { setColumns(result.columns); setColumnId(result.columns[0]?.id ?? ""); } }).catch(() => { if (active) setColumns([]); }); return () => { active = false; }; }, [targetSlug]);
+  return <div className="card-column-modal-backdrop" role="presentation" onMouseDown={onClose}><section className="card-column-modal card-client-dialog" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><button className="card-column-modal-close" onClick={onClose} aria-label="Fechar">×</button><h3>Enviar card para outro cliente</h3><p>Escolha se deseja copiar ou transferir <strong>“{card.title}”</strong>.</p><fieldset className="card-transfer-options"><legend>Ação</legend><label><input type="radio" checked={mode === "copy"} onChange={() => setMode("copy")} />Copiar (duplicar)</label><label><input type="radio" checked={mode === "move"} onChange={() => setMode("move")} />Mover (transferir)</label></fieldset><label className="card-column-select-label">Cliente destino<select value={targetSlug} onChange={(event) => setTargetSlug(event.target.value)}>{clients.map((client) => <option key={client.id} value={client.slug}>{client.name}</option>)}</select></label><label className="card-column-select-label">Coluna destino<select value={columnId} onChange={(event) => setColumnId(event.target.value)}><option value="">Sem coluna</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select></label><div className="modal-actions"><button className="ghost-button" onClick={onClose} disabled={saving}>Cancelar</button><button className="gradient-button" disabled={saving || !targetSlug} onClick={async () => { setSaving(true); try { await onConfirm(targetSlug, mode, columnId || null); onClose(); } finally { setSaving(false); } }}>{saving ? "Enviando..." : mode === "copy" ? "Copiar card" : "Mover card"}</button></div></section></div>;
 }
 
 function BulkActionBar({ selectedCount, onCancel, onDelete, onArchive, onSendToClient, onStatus, onCopy, onMove }: {
@@ -3030,6 +3233,8 @@ function AdminTextsView({ clientName, slug }: { clientName: string; slug: string
   const [contentTypeOpen, setContentTypeOpen] = useState(false);
   const [commentDraft, setCommentDraft] = useState("");
   const [showPreview, setShowPreview] = useState(false);
+  const [coverImage, setCoverImage] = useState<string | null>(null);
+  const [pdfSaving, setPdfSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const commentsRef = useRef<HTMLElement>(null);
@@ -3042,8 +3247,15 @@ function AdminTextsView({ clientName, slug }: { clientName: string; slug: string
     setLoading(true);
     try {
       const response = await listAdminTextsBySlug(slug);
-      setDocuments(response.items);
-      setSelectedId((current) => selectId ?? (response.items.some((item) => item.id === current) ? current : response.items[0]?.id ?? null));
+      if (!response.items.length && !selectId) {
+        const created = await createAdminTextBySlug(slug, { title: "Novo texto", contentType: "Texto" });
+        setDocuments([created.text]);
+        setSelectedId(created.text.id);
+        setActionMessage("Novo texto pronto para edição.");
+      } else {
+        setDocuments(response.items);
+        setSelectedId((current) => selectId ?? (response.items.some((item) => item.id === current) ? current : response.items[0]?.id ?? null));
+      }
     } catch (error) { setActionMessage(error instanceof Error ? error.message : "Não foi possível carregar os textos."); }
     finally { setLoading(false); }
   };
@@ -3051,6 +3263,7 @@ function AdminTextsView({ clientName, slug }: { clientName: string; slug: string
   useEffect(() => {
     if (!selected) { setComments([]); return; }
     if (editorRef.current) editorRef.current.innerHTML = selected.contentHtml;
+    setCoverImage(window.localStorage.getItem(`designhub-text-cover:${slug}:${selected.id}`));
     void listAdminTextCommentsBySlug(slug, selected.id).then((result) => setComments(result.comments)).catch(() => setComments([]));
   }, [selected?.id, slug]);
   const updateLocal = (patch: Partial<TextDocument>) => selected && setDocuments((items) => items.map((item) => item.id === selected.id ? { ...item, ...patch } : item));
@@ -3074,10 +3287,38 @@ function AdminTextsView({ clientName, slug }: { clientName: string; slug: string
     try { const url = await uploadAdminMedia(file); const image = document.createElement("img"); image.src = url; image.alt = "Imagem inserida no texto"; image.className = "texts-inline-image"; editorRef.current?.append(image, document.createElement("p")); setActionMessage("Imagem adicionada. Salve o texto para publicar a alteração."); }
     catch (error) { setActionMessage(error instanceof Error ? error.message : "Não foi possível enviar a imagem."); }
   };
+  const addCoverImage = async (file: File | null) => {
+    if (!file || !file.type.startsWith("image/") || !selected) return;
+    try {
+      const url = await uploadAdminMedia(file);
+      window.localStorage.setItem(`designhub-text-cover:${slug}:${selected.id}`, url);
+      setCoverImage(url);
+      setActionMessage("Banner adicionado ao texto.");
+    } catch (error) { setActionMessage(error instanceof Error ? error.message : "Não foi possível enviar o banner."); }
+  };
   const downloadWord = () => {
     if (!selected) return;
-    const content = `<html><body><h1>${selected.title}</h1>${editorRef.current?.innerHTML ?? selected.contentHtml}</body></html>`;
+    const banner = coverImage ? `<img src="${coverImage}" alt="Banner" style="display:block;width:100%;max-height:220px;object-fit:cover;margin-bottom:24px;" />` : "";
+    const content = `<html><body>${banner}<h1>${selected.title}</h1>${editorRef.current?.innerHTML ?? selected.contentHtml}</body></html>`;
     const url = URL.createObjectURL(new Blob([content], { type: "application/msword" })); const link = document.createElement("a"); link.href = url; link.download = `${selected.title.slice(0, 55)}.doc`; link.click(); URL.revokeObjectURL(url); setActionMessage("Arquivo Word baixado.");
+  };
+  const downloadPdf = async () => {
+    if (!selected || pdfSaving) return;
+    setPdfSaving(true);
+    const printable = document.createElement("div");
+    printable.style.cssText = "position:fixed;left:-10000px;top:0;width:760px;padding:32px;background:#fff;color:#192342;font-family:Arial,sans-serif;line-height:1.55;";
+    printable.innerHTML = `${coverImage ? `<img src="${coverImage}" alt="Banner" style="display:block;width:100%;height:180px;object-fit:cover;border-radius:14px;margin-bottom:24px;" />` : ""}<h1 style="font-size:32px;margin:0 0 24px;">${selected.title}</h1><div>${editorRef.current?.innerHTML ?? selected.contentHtml}</div>`;
+    document.body.appendChild(printable);
+    try {
+      const { jsPDF } = await import("jspdf");
+      const pdf = new jsPDF({ unit: "pt", format: "a4" });
+      await pdf.html(printable, { margin: [36, 36, 36, 36], autoPaging: "text", width: 523, windowWidth: 760 });
+      pdf.save(`${selected.title.slice(0, 55)}.pdf`);
+      setActionMessage("PDF baixado com banner e imagens do artigo.");
+    } catch (error) {
+      window.print();
+      setActionMessage(error instanceof Error ? "A janela de impressão foi aberta para salvar o PDF." : "A janela de impressão foi aberta para salvar o PDF.");
+    } finally { printable.remove(); setPdfSaving(false); }
   };
   const sendToClient = async () => {
     if (!selected) return;
@@ -3117,9 +3358,16 @@ function AdminTextsView({ clientName, slug }: { clientName: string; slug: string
     <article className="texts-document">
         <header className="texts-breadcrumb">Textos <span>›</span> {selected.contentType}</header>
       <div className="texts-paper">
-        <div className="texts-rich-toolbar" role="toolbar" aria-label="Ferramentas de edição"><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("undo")} title="Desfazer">↶</button><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("redo")} title="Refazer">↷</button><i /><select aria-label="Estilo do texto" defaultValue="p" onChange={(event) => formatDocument("formatBlock", event.target.value)}><option value="p">Texto normal</option><option value="h2">Título</option><option value="h3">Subtítulo</option><option value="blockquote">Citação</option></select><i /><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("bold")} title="Negrito"><b>B</b></button><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("italic")} title="Itálico"><em>I</em></button><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("underline")} title="Sublinhado"><u>U</u></button><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("insertUnorderedList")} title="Lista">☷</button><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("createLink", window.prompt("Cole o link") ?? "")} title="Inserir link">⌁</button><label title="Adicionar imagem">▧<input type="file" accept="image/*" onChange={(event) => addEditorImage(event.target.files?.[0] ?? null)} /></label></div>
-        <header className="texts-paper-head"><div><span className="texts-status">{selected.status}</span><input className="texts-title-input" value={selected.title} onChange={(event) => updateLocal({ title: event.target.value })} aria-label="Título do texto" /><div className="texts-meta"><span>◇ {selected.contentType}</span><span>◷ Atualizado {new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(new Date(selected.updatedAt))}</span></div></div><div className="texts-presence"><span>LP</span><span>AM</span></div></header>
-        <div className="texts-cover" aria-hidden="true"><i /><b /></div>
+        <div className="texts-rich-toolbar" role="toolbar" aria-label="Ferramentas de edição"><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("undo")} title="Desfazer">↶</button><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("redo")} title="Refazer">↷</button><i /><select title="Estilo do texto" aria-label="Estilo do texto" defaultValue="p" onChange={(event) => formatDocument("formatBlock", event.target.value)}><option value="p">Texto normal</option><option value="h2">Título</option><option value="h3">Subtítulo</option><option value="blockquote">Citação</option></select><i /><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("bold")} title="Negrito"><b>B</b></button><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("italic")} title="Itálico"><em>I</em></button><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("underline")} title="Sublinhado"><u>U</u></button><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("insertUnorderedList")} title="Lista">☷</button><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("createLink", window.prompt("Cole o link") ?? "")} title="Inserir link">⌁</button><label title="Adicionar imagem">▧<input type="file" accept="image/*" onChange={(event) => addEditorImage(event.target.files?.[0] ?? null)} /></label></div>
+        <div className="texts-rich-toolbar texts-rich-toolbar-advanced" role="toolbar" aria-label="Formatação avançada"><select title="Tamanho da fonte" aria-label="Tamanho da fonte" defaultValue="1" onChange={(event) => formatDocument("fontSize", event.target.value)}><option value="1">Pequena</option><option value="5">Grande</option><option value="7">Muito grande</option></select><label className="texts-color-tool" title="Cor do texto">A<input type="color" defaultValue="#263451" onChange={(event) => formatDocument("foreColor", event.target.value)} /></label><label className="texts-color-tool highlight" title="Marca-texto">▰<input type="color" defaultValue="#fff1a8" onChange={(event) => formatDocument("hiliteColor", event.target.value)} /></label><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("justifyLeft")} title="Alinhar à esquerda">≡</button><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("justifyCenter")} title="Centralizar">≡</button><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("justifyRight")} title="Alinhar à direita">≡</button><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("outdent")} title="Diminuir recuo">⇤</button><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("indent")} title="Aumentar recuo">⇥</button><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("insertHorizontalRule")} title="Inserir separador">―</button><button onMouseDown={(event) => event.preventDefault()} onClick={() => formatDocument("insertHTML", "☐ ")} title="Checklist">☑</button></div>
+        <header className="texts-paper-head"><div><span className="texts-status">{selected.status}</span><input className="texts-title-input" value={selected.title} onChange={(event) => updateLocal({ title: event.target.value })} aria-label="Título do texto" /><div className="texts-meta"><span>◇ {selected.contentType}</span><span>◷ Atualizado {new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(new Date(selected.updatedAt))}</span></div></div></header>
+        <div className={`texts-cover${coverImage ? " has-image" : ""}`} style={coverImage ? { backgroundImage: `url(${coverImage})` } : undefined}>
+          {!coverImage ? <><i /><b /></> : null}
+          <label className="texts-cover-upload" title={coverImage ? "Trocar banner" : "Adicionar banner"}>
+            <span>{coverImage ? "Trocar banner" : "Adicionar banner"}</span>
+            <input type="file" accept="image/*" onChange={(event) => { void addCoverImage(event.target.files?.[0] ?? null); event.currentTarget.value = ""; }} />
+          </label>
+        </div>
         <div className="texts-copy texts-rich-editor" ref={editorRef} contentEditable suppressContentEditableWarning />
         <section className="texts-comments-section" ref={commentsRef}><header><div><span>Discussão</span><h2>Comentários ({comments.length})</h2></div></header><div className="texts-comment-list">{comments.map((comment) => <article key={comment.id}>{comment.authorAvatarUrl ? <span className="texts-comment-avatar"><img src={comment.authorAvatarUrl} alt="" /></span> : <span className="texts-comment-avatar">{initials(comment.authorName)}</span>}<div><strong>{comment.authorName}</strong><time>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(comment.createdAt))}</time><p>{comment.commentText}</p></div></article>)}</div><div className="texts-comment-compose"><textarea value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} placeholder="Escreva um comentário para o cliente e a equipe..." /><button className="gradient-button" disabled={!commentDraft.trim()} onClick={() => void submitComment()}>Comentar</button></div></section>
       </div>
@@ -3128,7 +3376,7 @@ function AdminTextsView({ clientName, slug }: { clientName: string; slug: string
       <section className="texts-content-type"><span>Tipo de conteúdo</span><div><button className="texts-content-type-trigger" onClick={() => setContentTypeOpen((open) => !open)} aria-expanded={contentTypeOpen}>{selected.contentType}<b>⌄</b></button>{contentTypeOpen ? <div className="texts-content-type-options">{contentTypes.map((type) => <button key={type} className={type === selected.contentType ? "selected" : ""} onClick={() => { updateLocal({ contentType: type }); setContentTypeOpen(false); }}>{type === selected.contentType ? <b>✓</b> : null}{type}</button>)}</div> : null}</div></section>
       <section className="texts-actions texts-admin-actions">
         <button className="gradient-button" onClick={() => setShowPreview(true)}>◉ Pré-visualizar</button>
-        <button className="ghost-button" onClick={() => { window.print(); setActionMessage("Use a janela de impressão para salvar em PDF."); }}>⇩ Baixar PDF</button>
+        <button className="ghost-button" disabled={pdfSaving} onClick={() => void downloadPdf()}>⇩ {pdfSaving ? "Gerando PDF..." : "Baixar PDF"}</button>
         <button className="ghost-button" onClick={downloadWord}>▣ Baixar Word</button>
         <button className="ghost-button" disabled={saving} onClick={() => void saveText()}>{saving ? "Salvando..." : "✎ Salvar rascunho"}</button>
         <button className="gradient-button texts-send-client" disabled={saving} onClick={() => void sendToClient()}>➤ Enviar para cliente</button>
@@ -3139,7 +3387,7 @@ function AdminTextsView({ clientName, slug }: { clientName: string; slug: string
       <section className="texts-info"><h3>Informações</h3><p><span>◷</span><b>Última revisão</b><small>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(new Date(selected.updatedAt))}</small></p><p><span>◉</span><b>Responsável</b><small>Equipe de conteúdo</small></p><p><span>◌</span><b>Visibilidade</b><small>{selected.isSentToClient ? `Enviado para ${clientName}` : `Somente equipe até enviar para ${clientName}`}</small></p></section>
     </aside>
     {showScrollTop ? <button className="texts-scroll-top" onClick={() => studioRef.current?.scrollTo({ top: 0, behavior: "smooth" })} aria-label="Voltar ao topo" title="Voltar ao topo">↑</button> : null}
-    {showPreview ? <div className="profile-modal-backdrop" onMouseDown={() => setShowPreview(false)}><section className="profile-modal texts-preview-modal" onMouseDown={(event) => event.stopPropagation()}><header><h3>Pré-visualização</h3><button onClick={() => setShowPreview(false)}>×</button></header><article><h1>{selected.title}</h1><div dangerouslySetInnerHTML={{ __html: editorRef.current?.innerHTML ?? selected.contentHtml }} /></article></section></div> : null}
+    {showPreview ? <div className="profile-modal-backdrop" onMouseDown={() => setShowPreview(false)}><section className="profile-modal texts-preview-modal" onMouseDown={(event) => event.stopPropagation()}><header><h3>Pré-visualização</h3><button onClick={() => setShowPreview(false)}>×</button></header><article>{coverImage ? <div className="texts-preview-cover" style={{ backgroundImage: `url(${coverImage})` }} aria-label="Banner do texto" /> : null}<h1>{selected.title}</h1><div dangerouslySetInnerHTML={{ __html: editorRef.current?.innerHTML ?? selected.contentHtml }} /></article></section></div> : null}
   </section>;
 }
 
@@ -3173,6 +3421,74 @@ function getArchiveGroupDate(card: BoardCard) {
   return Number.isNaN(date.getTime()) ? new Date(0) : date;
 }
 
+function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen = false, compact = false }: { urls: string[]; title: string; activeIndex?: number; onIndexChange?: (index: number) => void; fullscreen?: boolean; compact?: boolean }) {
+  const [internalIndex, setInternalIndex] = useState(0);
+  const [mediaRatios, setMediaRatios] = useState<Record<number, number>>({});
+  const pointerStart = useRef<number | null>(null);
+  const swiped = useRef(false);
+  const index = Math.max(0, Math.min(activeIndex ?? internalIndex, urls.length - 1));
+  const setIndex = (next: number) => {
+    const clamped = Math.max(0, Math.min(next, urls.length - 1));
+    if (onIndexChange) onIndexChange(clamped);
+    else setInternalIndex(clamped);
+  };
+  const rememberRatio = (itemIndex: number, width: number, height: number) => {
+    if (!width || !height) return;
+    const ratio = width / height;
+    setMediaRatios((current) => Math.abs((current[itemIndex] ?? 0) - ratio) < .001 ? current : { ...current, [itemIndex]: ratio });
+  };
+
+  useEffect(() => {
+    if (activeIndex === undefined) setInternalIndex((current) => Math.min(current, Math.max(0, urls.length - 1)));
+  }, [activeIndex, urls.length]);
+
+  if (urls.length === 0) return null;
+  const multiple = urls.length > 1;
+  return <div className={`artwork-carousel${multiple ? " has-multiple" : " single"}${fullscreen ? " fullscreen" : ""}${compact ? " compact" : ""}`} style={compact ? { "--artwork-aspect": mediaRatios[index] ?? 1 } as CSSProperties : undefined} aria-label={`${title}: ${urls.length} ${urls.length === 1 ? "arte" : "artes"}`}>
+    <div
+      className="artwork-carousel-viewport"
+      onPointerDown={(event) => { pointerStart.current = event.clientX; swiped.current = false; }}
+      onPointerUp={(event) => {
+        if (pointerStart.current === null) return;
+        const distance = event.clientX - pointerStart.current;
+        pointerStart.current = null;
+        if (Math.abs(distance) < 42) return;
+        swiped.current = true;
+        setIndex(index + (distance < 0 ? 1 : -1));
+      }}
+      onPointerCancel={() => { pointerStart.current = null; }}
+      onClick={(event) => { if (swiped.current) { event.stopPropagation(); swiped.current = false; } }}
+    >
+      <div className="artwork-carousel-track" style={{ "--artwork-index": index } as CSSProperties}>
+        {urls.map((url, itemIndex) => {
+          const isVideo = /\.(mp4|webm|mov)(\?.*)?$/i.test(url);
+          return <figure className={itemIndex === index ? "artwork-carousel-slide active" : "artwork-carousel-slide"} key={`${url}-${itemIndex}`} aria-hidden={itemIndex !== index}>
+            {isVideo ? <video src={url} controls={itemIndex === index} onLoadedMetadata={(event) => rememberRatio(itemIndex, event.currentTarget.videoWidth, event.currentTarget.videoHeight)} /> : <img src={url} alt={`${title} - arte ${itemIndex + 1}`} draggable={false} onLoad={(event) => rememberRatio(itemIndex, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />}
+          </figure>;
+        })}
+      </div>
+    </div>
+    {multiple ? <>
+      {compact ? <span role="button" tabIndex={index === 0 ? -1 : 0} className={`artwork-carousel-nav previous${index === 0 ? " disabled" : ""}`} onClick={(event) => { event.stopPropagation(); setIndex(index - 1); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setIndex(index - 1); } }} aria-label="Arte anterior" aria-disabled={index === 0}>‹</span> : <button className="artwork-carousel-nav previous" type="button" onClick={() => setIndex(index - 1)} disabled={index === 0} aria-label="Arte anterior">‹</button>}
+      {compact ? <span role="button" tabIndex={index === urls.length - 1 ? -1 : 0} className={`artwork-carousel-nav next${index === urls.length - 1 ? " disabled" : ""}`} onClick={(event) => { event.stopPropagation(); setIndex(index + 1); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); setIndex(index + 1); } }} aria-label="Próxima arte" aria-disabled={index === urls.length - 1}>›</span> : <button className="artwork-carousel-nav next" type="button" onClick={() => setIndex(index + 1)} disabled={index === urls.length - 1} aria-label="Próxima arte">›</button>}
+      <div className="artwork-carousel-progress" aria-live="polite">
+        <span>{index + 1} de {urls.length}</span>
+        <div>{urls.map((_, dotIndex) => compact ? <i key={dotIndex} className={dotIndex === index ? "active" : ""} onClick={(event) => { event.stopPropagation(); setIndex(dotIndex); }} /> : <button key={dotIndex} className={dotIndex === index ? "active" : ""} type="button" onClick={() => setIndex(dotIndex)} aria-label={`Ver arte ${dotIndex + 1}`} />)}</div>
+      </div>
+    </> : null}
+  </div>;
+}
+
+function ClosedCardMedia({ card, onPreview, showOverlay = false }: { card: BoardCard; onPreview?: () => void; showOverlay?: boolean }) {
+  const urls = portalCardAssets(card);
+  if (urls.length === 0) return null;
+  const multiple = urls.length > 1;
+  return <div className={`closed-card-media${onPreview ? " card-media-zoom" : ""}${multiple ? " carousel" : ""}`} onClick={(event) => { if (!onPreview) return; event.stopPropagation(); onPreview(); }}>
+    {showOverlay ? <div className="card-media-overlay"><span className="card-type">{card.typeLabel}</span><span className="card-media-menu">{onPreview ? "⌕" : "..."}</span></div> : null}
+    {multiple ? <ArtworkCarousel urls={urls} title={card.title} compact /> : <div className={`media-frame ${card.mediaAspect}`}><img src={urls[0]} alt={card.title} /></div>}
+  </div>;
+}
+
 function MediaPreviewModal({ media, onClose, onNavigate }: { media: { urls: string[]; title: string; index: number } | null; onClose: () => void; onNavigate: (direction: -1 | 1) => void }) {
   useEffect(() => {
     if (!media) return;
@@ -3186,11 +3502,7 @@ function MediaPreviewModal({ media, onClose, onNavigate }: { media: { urls: stri
   }, [media, onClose, onNavigate]);
 
   if (!media) return null;
-  const url = media.urls[media.index];
-  const isVideo = /\.(mp4|webm|mov)(\?.*)?$/i.test(url);
-  const hasPrevious = media.index > 0;
-  const hasNext = media.index < media.urls.length - 1;
-  return <div className="media-preview-backdrop" onMouseDown={onClose} role="presentation"><section className="media-preview-modal" role="dialog" aria-modal="true" aria-label={`Visualização de ${media.title}`} onMouseDown={(event) => event.stopPropagation()}><button className="media-preview-close" onClick={onClose} aria-label="Fechar visualização">×</button>{media.urls.length > 1 ? <><button className="media-preview-nav previous" onClick={() => onNavigate(-1)} disabled={!hasPrevious} aria-label="Arquivo anterior">‹</button><button className="media-preview-nav next" onClick={() => onNavigate(1)} disabled={!hasNext} aria-label="Próximo arquivo">›</button><span className="media-preview-count">{media.index + 1} de {media.urls.length}</span></> : null}{isVideo ? <video key={url} src={url} controls autoPlay /> : <img key={url} src={url} alt={`${media.title} - arquivo ${media.index + 1}`} />}</section></div>;
+  return <div className="media-preview-backdrop" onMouseDown={onClose} role="presentation"><section className="media-preview-modal" role="dialog" aria-modal="true" aria-label={`Visualização de ${media.title}`} onMouseDown={(event) => event.stopPropagation()}><button className="media-preview-close" onClick={onClose} aria-label="Fechar visualização">×</button><ArtworkCarousel urls={media.urls} title={media.title} activeIndex={media.index} onIndexChange={(next) => { if (next !== media.index) onNavigate(next > media.index ? 1 : -1); }} fullscreen /></section></div>;
 }
 
 function CardView({ card, onOpen, onContextMenu, selectionMode = false, selected = false, onToggleSelection, onPreviewMedia, onRemoveTag, draggable = false, onDragStart, onDragEnd }: { card: BoardCard; onOpen: () => void; onContextMenu?: (event: React.MouseEvent<HTMLButtonElement>) => void; selectionMode?: boolean; selected?: boolean; onToggleSelection?: () => void; onPreviewMedia?: (card: BoardCard) => void; onRemoveTag?: (card: BoardCard, tag: string) => void; draggable?: boolean; onDragStart?: () => void; onDragEnd?: () => void }) {
@@ -3208,16 +3520,7 @@ function CardView({ card, onOpen, onContextMenu, selectionMode = false, selected
           </span>
         ) : null}
       </div>
-      {card.mediaUrl ? (
-        <div className={onPreviewMedia ? `media-frame ${card.mediaAspect} card-media-zoom` : `media-frame ${card.mediaAspect}`} onClick={(event) => { if (!onPreviewMedia) return; event.stopPropagation(); onPreviewMedia(card); }}>
-          <div className="card-media-overlay">
-            <span className="card-type">{card.typeLabel}</span>
-            <span className="card-media-menu">{onPreviewMedia ? "⌕" : "..."}</span>
-          </div>
-          {card.mediaUrls && card.mediaUrls.length > 1 ? <span className="card-media-count">{card.mediaUrls.length}</span> : null}
-          <img src={card.mediaUrl} alt={card.title} />
-        </div>
-      ) : null}
+      <ClosedCardMedia card={card} onPreview={onPreviewMedia ? () => onPreviewMedia(card) : undefined} showOverlay />
 
       <div className="card-meta">
         <div className="card-inline">
@@ -3243,8 +3546,8 @@ function ClientPortalRoutePage({ session, onLogout }: { session: SessionUser | n
   if (!canAccessPortal(session, slug)) {
     return (
       <AccessDenied
-        title="Essa area do cliente nao pertence a este login"
-        body="O cliente entra apenas nas contas vinculadas ao proprio acesso. A equipe interna pode abrir a visao do cliente para conferencia."
+        title="Essa área do cliente não pertence a este login"
+        body="O cliente entra apenas nas contas vinculadas ao próprio acesso. A equipe interna pode abrir a visão do cliente para conferência."
         backHref={getDefaultRoute(session)}
       />
     );
@@ -3331,12 +3634,26 @@ function ClientProfileMenu({ session, slug, onLogout, clientLogoUrl, accountName
 function ClientPortalInvoicesView({ invoices, onViewInvoice }: { invoices: BillingInvoice[]; onViewInvoice?: (invoiceId: string) => void }) {
   const [previewInvoice, setPreviewInvoice] = useState<BillingInvoice | null>(null);
   const [printRequested, setPrintRequested] = useState(false);
+  const invoiceRef = useRef<HTMLDivElement>(null);
+  const printInvoice = () => {
+    const paper = invoiceRef.current?.querySelector(".invoice-paper");
+    if (!paper) return;
+    const headMarkup = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]')).map((el) => el.outerHTML).join("");
+    const printWindow = window.open("", "_blank", "width=880,height=1120");
+    if (!printWindow) return;
+    printWindow.document.open();
+    printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8" /><title>Fatura</title>${headMarkup}<style>html,body{margin:0;background:#fbfaf8;}body{display:flex;justify-content:center;padding:24px;}.invoice-paper{max-width:720px;min-height:0;margin:0;box-shadow:none;}@media print{@page{size:A4;margin:14mm;}body{padding:0;background:#fff;}.invoice-paper{max-width:none;}}</style></head><body>${paper.outerHTML}</body></html>`);
+    printWindow.document.close();
+    const triggerPrint = () => { printWindow.focus(); printWindow.print(); };
+    printWindow.onload = triggerPrint;
+    window.setTimeout(triggerPrint, 400);
+  };
   useEffect(() => {
     if (!previewInvoice || !printRequested) return;
     const timer = window.setTimeout(() => {
-      window.print();
+      printInvoice();
       setPrintRequested(false);
-    }, 120);
+    }, 150);
     return () => window.clearTimeout(timer);
   }, [previewInvoice, printRequested]);
   const downloadInvoice = (invoice: BillingInvoice) => {
@@ -3352,7 +3669,7 @@ function ClientPortalInvoicesView({ invoices, onViewInvoice }: { invoices: Billi
   return <section className="portal-invoices-view glass">
     <header className="portal-invoices-head"><div><p className="eyebrow">Financeiro</p><h1>Faturas</h1><p>Consulte os lançamentos disponibilizados para sua conta.</p></div><span>{invoices.length} {invoices.length === 1 ? "fatura" : "faturas"}</span></header>
     {invoices.length ? <div className="portal-invoices-list">{invoices.map((invoice) => <article key={invoice.id} className="portal-invoice-row"><div className="portal-invoice-number">#{invoice.number}</div><div className="portal-invoice-main"><strong>{invoice.title}</strong><span>Emitida em {formatBillingDate(invoice.issueDate)} · Vencimento {formatBillingDate(invoice.dueDate)}</span></div><div className="portal-invoice-value"><strong>{formatBillingMoney(getBillingInvoiceTotal(invoice), invoice.currency)}</strong><em className={`invoice-status ${invoice.status}`}>{invoice.status === "paid" ? "Paga" : invoice.status === "overdue" ? "Atrasada" : invoice.status === "cancelled" ? "Cancelada" : "Aberta"}</em></div><div className="portal-invoice-actions"><button className="ghost-button" onClick={() => previewInvoiceForClient(invoice)}><UiIcon name="eye" />Visualizar</button><button className="ghost-button" onClick={() => downloadInvoice(invoice)}><UiIcon name="file" />Baixar</button></div></article>)}</div> : <div className="portal-invoices-empty"><span>▣</span><h2>Nenhuma fatura disponível</h2><p>Quando uma fatura for liberada para esta conta, ela aparecerá aqui.</p></div>}
-    {previewInvoice ? <div className="modal-backdrop" onClick={() => setPreviewInvoice(null)}><section className="portal-invoice-preview-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Visualização da fatura</p><h2>{previewInvoice.title}</h2><span>Fatura #{previewInvoice.number}</span></div><button className="icon-close" onClick={() => setPreviewInvoice(null)} aria-label="Fechar">×</button></header><BillingInvoiceDocument invoice={previewInvoice} /><footer><button className="ghost-button" onClick={() => setPreviewInvoice(null)}>Fechar</button><button className="gradient-button" onClick={() => window.print()}><UiIcon name="file" />Baixar</button></footer></section></div> : null}
+    {previewInvoice ? <div className="modal-backdrop" onClick={() => setPreviewInvoice(null)}><section className="portal-invoice-preview-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Visualização da fatura</p><h2>{previewInvoice.title}</h2><span>Fatura #{previewInvoice.number}</span></div><button className="icon-close" onClick={() => setPreviewInvoice(null)} aria-label="Fechar">×</button></header><div ref={invoiceRef}><BillingInvoiceDocument invoice={previewInvoice} /></div><footer><button className="ghost-button" onClick={() => setPreviewInvoice(null)}>Fechar</button><button className="gradient-button" onClick={printInvoice}><UiIcon name="file" />Baixar</button></footer></section></div> : null}
   </section>;
 }
 
@@ -3367,46 +3684,188 @@ function awaitingApprovalLabel(locale: string) {
 
 function isPortalApproved(card: BoardCard) {
   const statusText = [card.clientLabel, ...card.statusBadges].join(" ").toLocaleLowerCase("pt-BR");
-  return /(aprov|finaliz|public)/.test(statusText);
+  return /(aprovad|finalizad|publicad)/.test(statusText);
+}
+
+function isPortalApprovedColumn(name: string) {
+  return /aprovados(?: pelo cliente)?/i.test(name.normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
 }
 
 function portalCardAssets(card: BoardCard) {
   return Array.from(new Set([...(card.mediaUrls ?? []), ...(card.mediaUrl ? [card.mediaUrl] : [])]));
 }
 
+function portalAssetExtension(url: string, contentType?: string | null) {
+  const urlExtension = url.split("?")[0].match(/\.([a-z0-9]{2,5})$/i)?.[1];
+  if (urlExtension) return urlExtension.toLocaleLowerCase();
+  const byType: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif", "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov" };
+  return byType[contentType?.split(";")[0] ?? ""] ?? "bin";
+}
+
+function portalDownloadName(card: BoardCard) {
+  return card.title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLocaleLowerCase() || "conteudo-aprovado";
+}
+
+function triggerPortalDownload(blob: Blob, fileName: string) {
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = objectUrl;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
+}
+
 async function downloadPortalCardAssets(card: BoardCard) {
   const assets = portalCardAssets(card);
-  for (const [index, url] of assets.entries()) {
-    const extension = url.split("?")[0].split(".").pop() || "jpg";
-    const fileName = `${card.title.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "").toLocaleLowerCase()}-${index + 1}.${extension}`;
+  if (assets.length === 0) return;
+  const baseName = portalDownloadName(card);
+
+  if (assets.length === 1) {
     try {
-      const response = await fetch(url);
+      const response = await fetch(assets[0]);
+      if (!response.ok) throw new Error("download");
       const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(objectUrl);
+      triggerPortalDownload(blob, `${baseName}.${portalAssetExtension(assets[0], blob.type)}`);
     } catch {
       const link = document.createElement("a");
-      link.href = url;
-      link.download = fileName;
+      link.href = assets[0];
+      link.download = baseName;
       link.target = "_blank";
       link.click();
     }
-    await new Promise((resolve) => window.setTimeout(resolve, 120));
+    return;
   }
+
+  const files: Record<string, Uint8Array> = {};
+  await Promise.all(assets.map(async (url, index) => {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Não foi possível baixar a arte ${index + 1}.`);
+    const blob = await response.blob();
+    files[`${baseName}-${index + 1}.${portalAssetExtension(url, blob.type)}`] = new Uint8Array(await blob.arrayBuffer());
+  }));
+  triggerPortalDownload(new Blob([zipSync(files, { level: 0 })], { type: "application/zip" }), `${baseName}.zip`);
 }
 
-function ClientApprovedPostsView({ cards }: { cards: BoardCard[] }) {
+function ClientApprovedPostsView({ cards, allowDownload, onOpenCard }: { cards: BoardCard[]; allowDownload: boolean; onOpenCard: (cardId: string) => void }) {
   const approvedCards = cards.filter(isPortalApproved);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState("");
+  const download = async (card: BoardCard) => {
+    setDownloadingId(card.id);
+    setDownloadError("");
+    try {
+      await downloadPortalCardAssets(card);
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : "Não foi possível preparar o download.");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
   return <section className="portal-approved-view glass">
-    <header className="portal-approved-head"><div><p className="eyebrow">Conteúdos aprovados</p><h1>Aprovados</h1><p>Baixe as artes que já receberam aprovação do cliente.</p></div><span>{approvedCards.length} {approvedCards.length === 1 ? "post" : "posts"}</span></header>
-    {approvedCards.length ? <div className="portal-approved-list">{approvedCards.map((card) => { const assets = portalCardAssets(card); return <article key={card.id} className="portal-approved-card"><div className="portal-approved-preview">{card.mediaUrl ? <img src={card.mediaUrl} alt={card.title} /> : <span>Sem arte</span>}</div><div className="portal-approved-copy"><span className="portal-text-status approved">Aprovado</span><h2>{card.title}</h2><p>{assets.length} {assets.length === 1 ? "arte disponível" : "artes disponíveis"}</p><button className="gradient-button" onClick={() => void downloadPortalCardAssets(card)} disabled={assets.length === 0}>{assets.length > 1 ? "Baixar todas as artes" : "Baixar arte"}</button></div></article>; })}</div> : <div className="portal-approved-empty"><span>✓</span><h2>Nenhum post aprovado ainda</h2><p>Quando o cliente aprovar um post, ele aparecerá aqui para download.</p></div>}
+    <header className="portal-approved-head"><div><p className="eyebrow">Conteúdos aprovados</p><h1>Aprovados</h1><p>{allowDownload ? "Visualize ou baixe as artes que já receberam aprovação." : "Consulte os posts que já receberam aprovação."}</p></div><span>{approvedCards.length} {approvedCards.length === 1 ? "post" : "posts"}</span></header>
+    {downloadError ? <p className="form-feedback error-text">{downloadError}</p> : null}
+    {approvedCards.length ? <div className="portal-approved-list">{approvedCards.map((card) => { const assets = portalCardAssets(card); const downloading = downloadingId === card.id; return <article key={card.id} className="portal-approved-card"><div className="portal-approved-preview">{assets.length ? <ClosedCardMedia card={card} /> : <span>Sem arte</span>}</div><div className="portal-approved-copy"><span className="portal-text-status approved">Aprovado</span><h2>{card.title}</h2><p>{assets.length} {assets.length === 1 ? "arquivo disponível" : "arquivos disponíveis"}</p><div className="portal-approved-actions"><button type="button" className="ghost-button" onClick={() => onOpenCard(card.id)}><UiIcon name="image" />Visualizar post</button>{allowDownload ? <button type="button" className="gradient-button" onClick={() => void download(card)} disabled={assets.length === 0 || downloading}><UiIcon name="download" />{downloading ? "Preparando download..." : assets.length > 1 ? "Baixar tudo em ZIP" : "Baixar conteúdo"}</button> : <span className="portal-view-only"><UiIcon name="eye" />Somente visualização</span>}</div></div></article>; })}</div> : <div className="portal-approved-empty"><span>✓</span><h2>Nenhum post aprovado ainda</h2><p>Quando um post for aprovado, ele aparecerá aqui para consulta.</p></div>}
   </section>;
+}
+
+function getPortalSearchStatuses(card: BoardCard) {
+  const combined = `${card.clientLabel} ${card.statusBadges.join(" ")}`;
+  if (card.archivedAt) return [{ label: "Arquivado", tone: "archived" }];
+  const statuses: Array<{ label: string; tone: string }> = [];
+  if (card.scheduledAt) statuses.push({ label: "Agendado", tone: "scheduled" });
+  if (isPortalApproved(card)) statuses.push({ label: "Aprovado", tone: "approved" });
+  else if (/(alteração|alteracao|revis)/i.test(combined)) statuses.push({ label: "Alteração solicitada", tone: "revision" });
+  else statuses.push({ label: "Aguardando aprovação", tone: "pending" });
+  return statuses;
+}
+
+function ClientPortalSearchView({ slug, onOpenCard }: { slug: string; onOpenCard: (cardId: string) => void }) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<BoardCard[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const trimmedQuery = query.trim();
+  useEffect(() => {
+    if (trimmedQuery.length < 2) {
+      setResults([]);
+      setLoading(false);
+      setError("");
+      return;
+    }
+    let active = true;
+    const timeout = window.setTimeout(() => {
+      setLoading(true);
+      setError("");
+      void searchPortalCardsBySlug(slug, trimmedQuery)
+        .then((response) => { if (active) setResults(response.items); })
+        .catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : "Não foi possível realizar a pesquisa."); })
+        .finally(() => { if (active) setLoading(false); });
+    }, 280);
+    return () => { active = false; window.clearTimeout(timeout); };
+  }, [slug, trimmedQuery]);
+
+  return <section className="portal-search-view">
+    <header className="portal-search-hero glass"><div><p className="eyebrow">PESQUISA GLOBAL</p><h1>Encontre qualquer conteúdo</h1><span>Pesquise posts em aprovação, aprovados, agendados ou arquivados.</span></div><div className="portal-search-field"><label><UiIcon name="search" /><input autoFocus type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Busque por título ou palavra da legenda" /></label><small>{loading ? "Buscando conteúdos..." : trimmedQuery.length >= 2 ? `${results.length} resultado${results.length === 1 ? " encontrado" : "s encontrados"}` : "Digite ao menos 2 letras para pesquisar"}</small></div></header>
+    {error ? <div className="portal-search-state error glass">{error}</div> : trimmedQuery.length < 2 ? <div className="portal-search-state glass"><span><UiIcon name="search" /></span><h2>O que você procura?</h2><p>Você pode pesquisar pelo título ou por qualquer trecho da legenda.</p></div> : !loading && results.length === 0 ? <div className="portal-search-state glass"><span><UiIcon name="search" /></span><h2>Nenhum conteúdo encontrado</h2><p>Tente usar outra palavra ou uma parte menor do título.</p></div> : <div className="portal-search-results">{results.map((card) => <article key={card.id} className="portal-search-result glass"><div className="portal-search-result-media">{portalCardAssets(card).length ? <ClosedCardMedia card={card} /> : <span><UiIcon name="image" />Sem arte</span>}</div><div className="portal-search-result-copy"><div className="portal-search-statuses">{getPortalSearchStatuses(card).map((status) => <span key={status.label} className={status.tone}>{status.label}</span>)}</div><h2>{card.title}</h2><p>{card.subtitle?.replace(/\*\*/g, "").slice(0, 180) || "Sem legenda cadastrada."}</p>{card.scheduledAt && !card.archivedAt ? <small><UiIcon name="calendar" />{formatScheduledCardDate(card.scheduledAt)}</small> : card.archivedAt ? <small><UiIcon name="clock" />Arquivado em {new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(new Date(card.archivedAt))}</small> : null}<button type="button" className="ghost-button" onClick={() => onOpenCard(card.id)}><UiIcon name="eye" />Abrir post</button></div></article>)}</div>}
+  </section>;
+}
+
+function ClientPortalTrackerView({ columns, withoutColumn, onOpenCard }: { columns: BoardColumn[]; withoutColumn: BoardCard[]; onOpenCard: (cardId: string) => void }) {
+  const stages = [...columns, ...(withoutColumn.length ? [{ id: "without-column", name: "Em andamento", color: "#8c94a8", visibleToClient: true, cards: withoutColumn }] : [])];
+  const cards = stages.flatMap((column) => column.cards);
+  const isDone = (card: BoardCard) => isPortalApproved(card) || /(finaliz|conclu|publicad|entregue)/i.test(`${card.clientLabel} ${card.statusBadges.join(" ")}`);
+  const completed = cards.filter(isDone).length;
+  const progress = cards.length ? Math.round((completed / cards.length) * 100) : 0;
+  const tone = (card: BoardCard) => isDone(card) ? "done" : /(alteração|alteracao|revis)/i.test(`${card.clientLabel} ${card.statusBadges.join(" ")}`) ? "revision" : /(design pronto)/i.test(card.statusBadges.join(" ")) ? "design" : /(legenda)/i.test(card.statusBadges.join(" ")) ? "copy" : /(desenvolvimento|criação|criacao)/i.test(card.statusBadges.join(" ")) ? "working" : "waiting";
+  const visibleStatus = (card: BoardCard) => card.clientLabel && !/^pendente$/i.test(card.clientLabel) ? card.clientLabel : card.statusBadges.find((status) => status !== "Enviar para Cliente") ?? "Em andamento";
+
+  return <section className="portal-tracker-view">
+    <header className="portal-tracker-hero glass">
+      <div><p className="eyebrow">ACOMPANHAMENTO</p><h1>Tracker de conteúdo</h1><span>Acompanhe cada etapa dos posts em produção.</span></div>
+      <div className="portal-tracker-progress-ring" style={{ "--tracker-progress": `${progress * 3.6}deg` } as CSSProperties}><strong>{progress}%</strong><small>concluído</small></div>
+    </header>
+    <div className="portal-tracker-summary">
+      <article><span><UiIcon name="layers" /></span><div><strong>{cards.length}</strong><small>{cards.length === 1 ? "conteúdo no tracker" : "conteúdos no tracker"}</small></div></article>
+      <article><span className="done"><UiIcon name="check" /></span><div><strong>{completed}</strong><small>{completed === 1 ? "conteúdo concluído" : "conteúdos concluídos"}</small></div></article>
+      <article><span className="working"><UiIcon name="clock" /></span><div><strong>{Math.max(cards.length - completed, 0)}</strong><small>em andamento</small></div></article>
+    </div>
+    {cards.length ? <div className="portal-tracker-stages">{stages.map((column) => <section key={column.id} className="portal-tracker-stage glass"><header><i style={{ backgroundColor: column.color }} /><h2>{column.name}</h2><span>{column.cards.length}</span></header><div>{column.cards.length ? column.cards.map((card) => <button key={card.id} type="button" className={`portal-tracker-card ${tone(card)}`} onClick={() => onOpenCard(card.id)}><i>{isDone(card) ? "✓" : ""}</i><div><strong>{card.title}</strong><span>{visibleStatus(card)}</span>{card.scheduledAt ? <small><UiIcon name="calendar" />{formatScheduledCardDate(card.scheduledAt).replace(/^Agendado:\s*/, "")}</small> : null}</div><em /></button>) : <p>Nenhum conteúdo nesta etapa.</p>}</div></section>)}</div> : <div className="portal-tracker-empty glass"><span><UiIcon name="layers" /></span><h2>O tracker está pronto</h2><p>Os conteúdos aparecerão aqui conforme forem liberados pela equipe.</p></div>}
+  </section>;
+}
+
+function ClientPortalArchivedView({ cards, loading, error, onOpenCard }: { cards: BoardCard[]; loading: boolean; error: string; onOpenCard: (cardId: string) => void }) {
+  const groups = new Map<string, BoardCard[]>();
+  [...cards].sort((left, right) => getArchiveGroupDate(right).getTime() - getArchiveGroupDate(left).getTime()).forEach((card) => {
+    const date = getArchiveGroupDate(card);
+    const month = date.getTime() > 0 ? new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(date) : "Sem data";
+    groups.set(month, [...(groups.get(month) ?? []), card]);
+  });
+  return <section className="portal-archive-view">
+    <header className="portal-archive-head glass"><div><p className="eyebrow">HISTÓRICO</p><h1>Conteúdos arquivados</h1><span>Consulte os mesmos conteúdos arquivados no Kanban.</span></div><b>{cards.length} {cards.length === 1 ? "conteúdo" : "conteúdos"}</b></header>
+    {loading ? <div className="portal-archive-state glass">Carregando conteúdos arquivados...</div> : error ? <div className="portal-archive-state error glass">{error}</div> : cards.length === 0 ? <div className="portal-archive-state glass"><span><UiIcon name="layers" /></span><h2>Nenhum conteúdo arquivado</h2><p>Quando um post for arquivado no Kanban, ele aparecerá aqui.</p></div> : <div className="portal-archive-groups">{[...groups.entries()].map(([month, monthCards]) => <section key={month}><header><h2>{month}</h2><span>{monthCards.length}</span></header><div className="portal-archive-grid">{monthCards.map((card) => <button key={card.id} type="button" className="portal-archive-card glass" onClick={() => onOpenCard(card.id)}><div className="portal-archive-preview">{portalCardAssets(card).length ? <ClosedCardMedia card={card} /> : <span><UiIcon name="image" />Sem arte</span>}</div><div className="portal-archive-copy"><span>Arquivado</span><h3>{card.title}</h3><p>{getArchiveGroupDate(card).getTime() > 0 ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(getArchiveGroupDate(card)) : "Sem data registrada"}</p>{card.tags.length ? <div>{card.tags.slice(0, 3).map((tag) => <i key={tag}>{tag}</i>)}</div> : null}</div></button>)}</div></section>)}</div>}
+  </section>;
+}
+
+type PortalPostDraft = { title: string; caption: string; artType: string; externalLinkUrl: string };
+
+function ClientPostSuggestionModal({ draft, files, submitting, error, onChange, onFilesChange, onClose, onSubmit }: { draft: PortalPostDraft; files: File[]; submitting: boolean; error: string; onChange: (field: keyof PortalPostDraft, value: string) => void; onFilesChange: (files: File[]) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  return <div className="modal-backdrop portal-post-modal-backdrop" onMouseDown={onClose}>
+    <form className="portal-post-modal" onSubmit={onSubmit} onMouseDown={(event) => event.stopPropagation()}>
+      <header><div><p className="eyebrow">Nova sugestão</p><h2>Sugerir um post</h2><p>Envie sua ideia para a equipe. Ela ficará pendente até entrar no planejamento.</p></div><button type="button" onClick={onClose} aria-label="Fechar">×</button></header>
+      <div className="portal-post-fields">
+        <label>Título da ideia *<input autoFocus value={draft.title} onChange={(event) => onChange("title", event.target.value)} placeholder="Ex.: Carrossel com dúvidas frequentes" maxLength={255} /></label>
+        <label>Formato<select value={draft.artType} onChange={(event) => onChange("artType", event.target.value)}>{ART_TYPE_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></label>
+        <label className="wide">Descrição ou legenda<textarea value={draft.caption} onChange={(event) => onChange("caption", event.target.value)} placeholder="Conte a ideia, o objetivo e qualquer orientação para a equipe..." maxLength={5000} /></label>
+        <label className="wide">Link de referência<input type="url" value={draft.externalLinkUrl} onChange={(event) => onChange("externalLinkUrl", event.target.value)} placeholder="https://..." /></label>
+        <label className="portal-post-files wide"><span>Artes ou referências</span><input multiple type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" onChange={(event) => onFilesChange(Array.from(event.target.files ?? []).slice(0, 20))} /><strong>{files.length ? `${files.length} ${files.length === 1 ? "arquivo selecionado" : "arquivos selecionados"}` : "Escolher arquivos"}</strong><small>Você pode enviar até 20 imagens ou vídeos.</small></label>
+      </div>
+      {files.length ? <div className="portal-post-file-list">{files.map((file, index) => <span key={`${file.name}-${index}`}>{file.name}<button type="button" onClick={() => onFilesChange(files.filter((_, itemIndex) => itemIndex !== index))}>×</button></span>)}</div> : null}
+      {error ? <p className="form-feedback error-text">{error}</p> : null}
+      <footer><button className="ghost-button" type="button" disabled={submitting} onClick={onClose}>Cancelar</button><button className="gradient-button" type="submit" disabled={submitting || !draft.title.trim()}>{submitting ? "Enviando sugestão..." : "Enviar para a equipe"}</button></footer>
+    </form>
+  </div>;
 }
 
 function ClientPortalWorkspacePage({
@@ -3425,7 +3884,9 @@ function ClientPortalWorkspacePage({
   ]);
   const data = resource.data;
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
-  const [portalView, setPortalView] = useState<"board" | "approved" | "texts" | "reports" | "invoices">("board");
+  const [portalView, setPortalView] = useState<"board" | "approved" | "texts" | "reports" | "invoices" | "tracker" | "archived" | "search" | "brand">("board");
+  const [boardSubView, setBoardSubView] = useState<"board" | "calendar">("board");
+  const [portalAppointments, setPortalAppointments] = useState<AgendaEvent[]>([]);
   const [portalInvoices, setPortalInvoices] = useState<BillingInvoice[]>([]);
   const [viewedInvoiceIds, setViewedInvoiceIds] = useState<string[]>([]);
   const [portalReportsCount, setPortalReportsCount] = useState(0);
@@ -3435,15 +3896,29 @@ function ClientPortalWorkspacePage({
   const [portalTextCommentDraft, setPortalTextCommentDraft] = useState("");
   const [portalTextSubmitting, setPortalTextSubmitting] = useState<"comment" | "approve" | "changes" | null>(null);
   const [portalTextFeedback, setPortalTextFeedback] = useState<string | null>(null);
+  const [createPostOpen, setCreatePostOpen] = useState(false);
+  const [postDraft, setPostDraft] = useState<PortalPostDraft>({ title: "", caption: "", artType: "Post único", externalLinkUrl: "" });
+  const [postFiles, setPostFiles] = useState<File[]>([]);
+  const [postSubmitting, setPostSubmitting] = useState(false);
+  const [postError, setPostError] = useState("");
+  const [postSuccess, setPostSuccess] = useState("");
+  const [approvedTransfer, setApprovedTransfer] = useState<{ title: string; targetX: number; targetY: number } | null>(null);
+  const [locallyApprovedCardIds, setLocallyApprovedCardIds] = useState<string[]>([]);
+  const [portalArchivedCards, setPortalArchivedCards] = useState<BoardCard[]>([]);
+  const [portalArchivedLoading, setPortalArchivedLoading] = useState(false);
+  const [portalArchivedError, setPortalArchivedError] = useState("");
   const loadCardDetail = useCallback(
     (cardId: string) => loadPortalCardDetailBySlug(slug, cardId),
     [slug],
   );
   const detail = useCardDetail(data, selectedCardId, loadCardDetail, refreshKey);
   useEffect(() => {
-    if (!data.accountName) return;
+    if (!data.accountName || !data.permissions.allowClientViewInvoices) {
+      setPortalInvoices([]);
+      return;
+    }
     setPortalInvoices(loadClientVisibleInvoices(data.accountName));
-  }, [data.accountName, refreshKey]);
+  }, [data.accountName, data.permissions.allowClientViewInvoices, refreshKey]);
   useEffect(() => {
     try {
       setViewedInvoiceIds(JSON.parse(window.localStorage.getItem(`designhub-v2-viewed-invoices:${slug}`) ?? "[]") as string[]);
@@ -3460,20 +3935,51 @@ function ClientPortalWorkspacePage({
     });
   }, [slug]);
   useEffect(() => {
+    if (resource.loading) return;
+    const now = new Date();
+    const from = localDateKey(new Date(now.getFullYear(), now.getMonth() - 3, 1));
+    const to = localDateKey(new Date(now.getFullYear(), now.getMonth() + 4, 0));
+    void listPortalAppointmentsBySlug(slug, from, to)
+      .then((response) => setPortalAppointments(response.items))
+      .catch(() => setPortalAppointments([]));
+  }, [resource.loading, slug, refreshKey]);
+  useEffect(() => {
+    if (!data.permissions.allowClientViewReports) {
+      setPortalReportsCount(0);
+      return;
+    }
     void listPortalReportsBySlug(slug)
       .then((response) => setPortalReportsCount(response.items.length))
       .catch(() => setPortalReportsCount(0));
-  }, [slug, refreshKey]);
+  }, [data.permissions.allowClientViewReports, slug, refreshKey]);
   useEffect(() => {
-    if (portalView !== "texts") return;
+    if ((portalView === "invoices" && !data.permissions.allowClientViewInvoices) || (portalView === "reports" && !data.permissions.allowClientViewReports) || (portalView === "brand" && !data.permissions.allowClientViewBrandBrain)) {
+      setPortalView("board");
+    }
+  }, [data.permissions.allowClientViewBrandBrain, data.permissions.allowClientViewInvoices, data.permissions.allowClientViewReports, portalView]);
+  useEffect(() => {
+    if (resource.loading) return;
     void listPortalTextsBySlug(slug).then((response) => {
       setPortalTexts(response.items);
       setSelectedPortalTextId((current) => response.items.some((item) => item.id === current) ? current : response.items[0]?.id ?? null);
     }).catch(() => setPortalTexts([]));
-  }, [portalView, slug]);
+  }, [resource.loading, slug, refreshKey]);
   const selectedPortalText = portalTexts.find((item) => item.id === selectedPortalTextId) ?? null;
+  const selectedPortalTextBanner = selectedPortalText ? window.localStorage.getItem(`designhub-text-cover:${slug}:${selectedPortalText.id}`) : null;
   const portalCards = [...data.boardColumns.flatMap((column) => column.cards), ...data.withoutColumn];
-  const portalGreeting = new Date().getHours() < 12 ? "Bom dia" : new Date().getHours() < 18 ? "Boa tarde" : "Boa noite";
+  const portalCardsWithLocalApprovals = portalCards.map((card) => locallyApprovedCardIds.includes(card.id) ? { ...card, clientLabel: "Aprovado pelo cliente", statusBadges: Array.from(new Set([...card.statusBadges, "Aprovado"])) } : card);
+  const approvedPortalCards = portalCardsWithLocalApprovals.filter(isPortalApproved);
+  const approvalPortalCards = portalCardsWithLocalApprovals.filter((card) => !isPortalApproved(card));
+  const portalTrackerEnabled = data.trackingEnabled;
+  const upcomingPortalAppointments = useMemo(() => {
+    const now = new Date();
+    const from = localDateKey(now);
+    const to = localDateKey(new Date(now.getFullYear(), now.getMonth() + 2, 0));
+    return expandAgendaEvents(portalAppointments, from, to)
+      .filter((event) => new Date(event.startsAt).getTime() >= now.getTime())
+      .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime())
+      .slice(0, 5);
+  }, [portalAppointments]);
   useEffect(() => {
     if (portalView !== "texts" || !selectedPortalTextId) {
       setPortalTextComments([]);
@@ -3484,6 +3990,22 @@ function ClientPortalWorkspacePage({
       .then((response) => setPortalTextComments(response.comments))
       .catch(() => setPortalTextComments([]));
   }, [portalView, selectedPortalTextId, slug]);
+  useEffect(() => {
+    if (!approvedTransfer) return;
+    const timeout = window.setTimeout(() => setApprovedTransfer(null), 1_900);
+    return () => window.clearTimeout(timeout);
+  }, [approvedTransfer]);
+  useEffect(() => {
+    if (portalView !== "archived" || !data.showArchivedToClient) return;
+    let active = true;
+    setPortalArchivedLoading(true);
+    setPortalArchivedError("");
+    void loadPortalArchivedCardsBySlug(slug)
+      .then((result) => { if (active) setPortalArchivedCards([...result.columns.flatMap((column) => column.cards), ...result.withoutColumn]); })
+      .catch((error) => { if (active) setPortalArchivedError(error instanceof Error ? error.message : "Não foi possível carregar os arquivados."); })
+      .finally(() => { if (active) setPortalArchivedLoading(false); });
+    return () => { active = false; };
+  }, [portalView, data.showArchivedToClient, slug, refreshKey]);
 
   async function handlePortalTextAction(action: "comment" | "approve" | "changes") {
     if (!selectedPortalText || (action === "comment" && !portalTextCommentDraft.trim())) return;
@@ -3520,8 +4042,50 @@ function ClientPortalWorkspacePage({
     }
   }
 
+  async function submitPostSuggestion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!postDraft.title.trim()) return;
+    setPostSubmitting(true);
+    setPostError("");
+    try {
+      const mediaUrls: string[] = [];
+      for (const file of postFiles) mediaUrls.push(await uploadPortalMediaBySlug(slug, file));
+      await createPortalPostBySlug(slug, {
+        title: postDraft.title.trim(),
+        caption: postDraft.caption.trim() || null,
+        artType: postDraft.artType,
+        externalLinkUrl: postDraft.externalLinkUrl.trim() || null,
+        mediaUrls,
+      });
+      setPostDraft({ title: "", caption: "", artType: "Post único", externalLinkUrl: "" });
+      setPostFiles([]);
+      setCreatePostOpen(false);
+      setPostSuccess("Sugestão enviada. Ela já está no quadro da equipe com status pendente.");
+      setRefreshKey((value) => value + 1);
+    } catch (error) {
+      setPostError(error instanceof Error ? error.message : "Não foi possível enviar a sugestão.");
+    } finally {
+      setPostSubmitting(false);
+    }
+  }
+
+  async function approvePortalCard(cardId: string, commentText: string) {
+    const cardTitle = portalCards.find((card) => card.id === cardId)?.title ?? "Post";
+    await submitPortalCardDecisionBySlug(slug, cardId, { approved: true, commentText });
+    const approvedButton = document.querySelector<HTMLElement>('[data-portal-view="approved"]');
+    const target = approvedButton?.getBoundingClientRect();
+    setLocallyApprovedCardIds((current) => current.includes(cardId) ? current : [...current, cardId]);
+    setSelectedCardId(null);
+    setApprovedTransfer({
+      title: cardTitle,
+      targetX: target ? target.left + target.width / 2 - window.innerWidth / 2 : -Math.min(320, window.innerWidth * .35),
+      targetY: target ? target.top + target.height / 2 - window.innerHeight / 2 : -Math.min(220, window.innerHeight * .3),
+    });
+  }
+
   return (
     <div className="portal-page">
+      <ClientContractAcceptance slug={slug} accountName={data.accountName} />
       <aside className="portal-sidebar glass">
         <div className="portal-brand-zone">
           <div className="brand-lockup compact">
@@ -3532,15 +4096,21 @@ function ClientPortalWorkspacePage({
           </div>
         </div>
 
+        {data.permissions.allowClientCreatePost ? <button className="portal-sidebar-create-post" onClick={() => { setPostError(""); setCreatePostOpen(true); }}><span>＋</span><div><strong>Sugerir post</strong><small>Enviar uma ideia</small></div></button> : null}
+
         <nav className="portal-nav">
           {[
-            { label: "Aprovacoes", count: portalCards.length },
-            { label: "Textos", count: 0 },
-            { label: "Aprovados", count: 0 },
-            { label: "Faturas", count: portalInvoices.filter((invoice) => !viewedInvoiceIds.includes(invoice.id)).length },
-            { label: "Relatorios", count: portalReportsCount },
+            { label: "Aprovações", count: approvalPortalCards.length },
+            { label: "Textos", count: portalTexts.filter((item) => item.status !== "Aprovado").length },
+            { label: "Aprovados", count: approvedPortalCards.length },
+            ...(data.permissions.allowClientViewBrandBrain ? [{ label: "Brand Brain", count: 0 }] : []),
+            ...(data.permissions.allowClientSearch ? [{ label: "Pesquisa", count: 0 }] : []),
+            ...(portalTrackerEnabled ? [{ label: "Tracker", count: portalCardsWithLocalApprovals.length }] : []),
+            ...(data.showArchivedToClient ? [{ label: "Arquivados", count: portalArchivedCards.length }] : []),
+            ...(data.permissions.allowClientViewInvoices ? [{ label: "Faturas", count: portalInvoices.filter((invoice) => !viewedInvoiceIds.includes(invoice.id)).length }] : []),
+            ...(data.permissions.allowClientViewReports ? [{ label: "Relatórios", count: portalReportsCount }] : []),
           ].map(({ label, count }) => (
-            <button key={label} onClick={() => label === "Textos" ? setPortalView("texts") : label === "Relatorios" ? setPortalView("reports") : label === "Faturas" ? setPortalView("invoices") : label === "Aprovados" ? setPortalView("approved") : label === "Aprovacoes" ? setPortalView("board") : undefined} className={(label === "Textos" ? portalView === "texts" : label === "Relatorios" ? portalView === "reports" : label === "Faturas" ? portalView === "invoices" : label === "Aprovados" ? portalView === "approved" : label === "Aprovacoes" && portalView === "board") ? "portal-nav-item active" : "portal-nav-item"}>
+            <button key={label} data-portal-view={label === "Aprovados" ? "approved" : undefined} onClick={() => label === "Textos" ? setPortalView("texts") : label === "Brand Brain" ? setPortalView("brand") : label === "Relatórios" ? setPortalView("reports") : label === "Faturas" ? setPortalView("invoices") : label === "Aprovados" ? setPortalView("approved") : label === "Pesquisa" ? setPortalView("search") : label === "Tracker" ? setPortalView("tracker") : label === "Arquivados" ? setPortalView("archived") : label === "Aprovações" ? setPortalView("board") : undefined} className={`${(label === "Textos" ? portalView === "texts" : label === "Brand Brain" ? portalView === "brand" : label === "Relatórios" ? portalView === "reports" : label === "Faturas" ? portalView === "invoices" : label === "Aprovados" ? portalView === "approved" : label === "Pesquisa" ? portalView === "search" : label === "Tracker" ? portalView === "tracker" : label === "Arquivados" ? portalView === "archived" : label === "Aprovações" && portalView === "board") ? "portal-nav-item active" : "portal-nav-item"}${label === "Aprovados" && approvedTransfer ? " receiving-approval" : ""}`}>
               <span>{label}</span>
               {count > 0 ? <b className="portal-nav-count">{count}</b> : null}
             </button>
@@ -3550,51 +4120,40 @@ function ClientPortalWorkspacePage({
       </aside>
 
       <main className="portal-main">
-        <section className="hero glass">
-          <div>
-            <p className="eyebrow">{data.locale}</p>
-            <h2>{portalGreeting}, {data.clientGreetingName || data.accountName}</h2>
-          </div>
+        {postSuccess ? <div className="portal-post-success"><span>✓</span><p>{postSuccess}</p><button onClick={() => setPostSuccess("")} aria-label="Fechar aviso">×</button></div> : null}
+        {approvedTransfer ? <><span className="portal-approved-fly-to-nav" style={{ "--approved-target-x": `${approvedTransfer.targetX}px`, "--approved-target-y": `${approvedTransfer.targetY}px` } as CSSProperties} aria-hidden="true"><UiIcon name="send" /></span><div className="portal-approved-transfer" role="status" aria-live="polite"><div><strong>Enviado para Aprovados!</strong><small>{approvedTransfer.title}</small></div><span className="portal-approved-check">✓</span></div></> : null}
 
-          <div className="widget-flags">
-            {Object.entries(data.widgets)
-              .filter(([key, enabled]) => enabled && key !== "invoices")
-              .map(([key]) => (
-                <span key={key} className="pill active">
-                  {labelForWidget(key)}
-                </span>
-              ))}
-          </div>
-        </section>
-
-        {portalView === "approved" ? <ClientApprovedPostsView cards={portalCards} /> : portalView === "invoices" ? <ClientPortalInvoicesView invoices={portalInvoices} onViewInvoice={markInvoiceViewed} /> : portalView === "reports" ? <PortalReports slug={slug} clientName={data.accountName} locale={data.locale} /> : portalView === "texts" ? <section className="portal-texts-view glass"><aside>{portalTexts.map((item) => <button key={item.id} className={item.id === selectedPortalTextId ? "selected" : ""} onClick={() => { setSelectedPortalTextId(item.id); setPortalTextCommentDraft(""); setPortalTextFeedback(null); }}><small>{item.contentType}</small><strong>{item.title}</strong></button>)}</aside><article>{selectedPortalText ? <><p className="eyebrow">{selectedPortalText.contentType}</p><div className="portal-text-heading"><div><h1>{selectedPortalText.title}</h1><span className={`portal-text-status ${selectedPortalText.status === "Aprovado" ? "approved" : ""}`}>{selectedPortalText.status}</span></div></div><div className="portal-text-content" dangerouslySetInnerHTML={{ __html: selectedPortalText.contentHtml }} /><section className="portal-text-feedback"><h3>Seu feedback</h3><p>Comente sobre este texto ou escolha uma ação para enviar seu retorno à equipe.</p><textarea value={portalTextCommentDraft} onChange={(event) => setPortalTextCommentDraft(event.target.value)} placeholder="Escreva seu comentário sobre este texto..." /><div className="portal-text-actions"><button className="ghost-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("comment")}>{portalTextSubmitting === "comment" ? "Enviando..." : "Adicionar comentário"}</button><button className="gradient-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("approve")}>{portalTextSubmitting === "approve" ? "Enviando..." : "Aprovar"}</button><button className="danger-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("changes")}>{portalTextSubmitting === "changes" ? "Enviando..." : "Pedir alteração"}</button></div>{portalTextFeedback ? <p className="portal-text-feedback-message">{portalTextFeedback}</p> : null}<div className="portal-text-comments"><h4>Comentários ({portalTextComments.length})</h4>{portalTextComments.map((comment) => <article key={comment.id}><div><strong>{comment.authorName}</strong><span>{comment.authorRole}</span></div><p>{comment.commentText}</p></article>)}</div></section></> : <p>Nenhum texto foi enviado para sua área ainda.</p>}</article></section> : <section className="portal-grid">
+        {portalView === "brand" && data.permissions.allowClientViewBrandBrain ? <ClientBrandBrainView slug={slug} clientName={data.accountName} allowEdit={data.permissions.allowClientEditBrandBrain} /> : portalView === "search" && data.permissions.allowClientSearch ? <ClientPortalSearchView slug={slug} onOpenCard={setSelectedCardId} /> : portalView === "archived" && data.showArchivedToClient ? <ClientPortalArchivedView cards={portalArchivedCards} loading={portalArchivedLoading} error={portalArchivedError} onOpenCard={setSelectedCardId} /> : portalView === "tracker" && portalTrackerEnabled ? <ClientPortalTrackerView columns={data.boardColumns} withoutColumn={data.withoutColumn} onOpenCard={setSelectedCardId} /> : portalView === "approved" ? <ClientApprovedPostsView cards={portalCardsWithLocalApprovals} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} /> : portalView === "invoices" && data.permissions.allowClientViewInvoices ? <ClientPortalInvoicesView invoices={portalInvoices} onViewInvoice={markInvoiceViewed} /> : portalView === "reports" && data.permissions.allowClientViewReports ? <PortalReports slug={slug} clientName={data.accountName} locale={data.locale} /> : portalView === "texts" ? <section className="portal-texts-view glass"><aside>{portalTexts.map((item) => <button key={item.id} className={item.id === selectedPortalTextId ? "selected" : ""} onClick={() => { setSelectedPortalTextId(item.id); setPortalTextCommentDraft(""); setPortalTextFeedback(null); }}><small>{item.contentType}</small><strong>{item.title}</strong></button>)}</aside><article>{selectedPortalText ? <><p className="eyebrow">{selectedPortalText.contentType}</p>{selectedPortalTextBanner ? <div className="portal-text-banner" style={{ backgroundImage: `url(${selectedPortalTextBanner})` }} aria-label="Banner do texto" /> : null}<div className="portal-text-heading"><div><h1>{selectedPortalText.title}</h1><span className={`portal-text-status ${selectedPortalText.status === "Aprovado" ? "approved" : ""}`}>{selectedPortalText.status}</span></div></div><div className="portal-text-content" dangerouslySetInnerHTML={{ __html: selectedPortalText.contentHtml }} /><section className="portal-text-feedback"><h3>Seu feedback</h3><p>Comente sobre este texto ou escolha uma ação para enviar seu retorno à equipe.</p><textarea value={portalTextCommentDraft} onChange={(event) => setPortalTextCommentDraft(event.target.value)} placeholder="Escreva aqui seu comentário sobre este texto" /><div className="portal-text-actions"><button className="ghost-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("comment")}>{portalTextSubmitting === "comment" ? "Enviando..." : "Adicionar comentário"}</button><button className="gradient-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("approve")}>{portalTextSubmitting === "approve" ? "Enviando..." : "Aprovar"}</button><button className="danger-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("changes")}>{portalTextSubmitting === "changes" ? "Enviando..." : "Pedir alteração"}</button></div>{portalTextFeedback ? <p className="portal-text-feedback-message">{portalTextFeedback}</p> : null}<div className="portal-text-comments"><h4>Comentários ({portalTextComments.length})</h4>{portalTextComments.map((comment) => <article key={comment.id}><div><strong>{comment.authorName}</strong><span>{comment.authorRole}</span></div><p>{comment.commentText}</p></article>)}</div></section></> : <p>Nenhum texto foi enviado para sua área ainda.</p>}</article></section> : <section className="portal-grid">
           <div className="portal-primary">
             <div className="glass board-shell">
               <div className="board-topbar">
                 <div className="tab-strip">
-                  <span className="tab active">Quadro do cliente</span>
-                  <span className="tab">Calendario</span>
-                  <span className="tab">Brand Brain</span>
+                  <button type="button" className={boardSubView === "board" ? "tab active" : "tab"} onClick={() => setBoardSubView("board")}>Quadro do cliente</button>
+                  <button type="button" className={boardSubView === "calendar" ? "tab active" : "tab"} onClick={() => setBoardSubView("calendar")}>Calendário</button>
+                  {data.permissions.allowClientViewBrandBrain ? <button type="button" className="tab" onClick={() => setPortalView("brand")}>Brand Brain</button> : null}
                 </div>
-                <label className="search-box" aria-label="Buscar post ou legenda"><UiIcon name="search" /><input type="search" aria-label="Buscar post ou legenda" /></label>
+                {data.permissions.allowClientSearch ? <button type="button" className="search-box portal-search-shortcut" onClick={() => setPortalView("search")}><UiIcon name="search" /><span>Pesquisar conteúdos</span></button> : null}
               </div>
 
+              {boardSubView === "calendar" ? (
+                <ClientPortalCalendarView cards={approvalPortalCards} appointments={portalAppointments} onSelectCard={setSelectedCardId} />
+              ) : (
               <div className="portal-columns-scroll">
-                {data.boardColumns.map((column) => (
+                {data.boardColumns.filter((column) => !isPortalApprovedColumn(column.name)).map((column) => { const approvalCards = column.cards.filter((card) => !isPortalApproved(card) && !locallyApprovedCardIds.includes(card.id)); return (
                   <section key={column.id} className="portal-column glass-subtle">
                     <header className="portal-column-head" style={{ borderColor: column.color }}>
                       <h3>{column.name}</h3>
-                      <span>{column.cards.length}</span>
+                      <span>{approvalCards.length}</span>
                     </header>
 
                     <div className="portal-card-list">
-                      {column.cards.map((card) => (
+                      {approvalCards.map((card) => (
                         <button
                           key={card.id}
                           className="portal-card card-button"
                           onClick={() => setSelectedCardId(card.id)}
                         >
-                          {card.mediaUrl ? <div className={`media-frame ${card.mediaAspect}`}><img src={card.mediaUrl} alt={card.title} /></div> : null}
+                          <ClosedCardMedia card={card} />
                           <div className="portal-card-copy">
                             <h4>{card.title}</h4>
                             {card.scheduledAt ? <p>{formatScheduledCardDate(card.scheduledAt)}</p> : null}
@@ -3603,22 +4162,22 @@ function ClientPortalWorkspacePage({
                       ))}
                     </div>
                   </section>
-                ))}
+                ); })}
 
-                {data.withoutColumn.length > 0 ? (
+                {data.withoutColumn.some((card) => !isPortalApproved(card) && !locallyApprovedCardIds.includes(card.id)) ? (
                   <section className="portal-column glass-subtle">
                     <header className="portal-column-head" style={{ borderColor: "#7a86a9" }}>
-                      <h3>{awaitingApprovalLabel(data.locale)}</h3>
-                      <span>{data.withoutColumn.length}</span>
+                      <h3>Em criação</h3>
+                      <span>{data.withoutColumn.filter((card) => !isPortalApproved(card) && !locallyApprovedCardIds.includes(card.id)).length}</span>
                     </header>
                     <div className="portal-card-list">
-                      {data.withoutColumn.map((card) => (
+                      {data.withoutColumn.filter((card) => !isPortalApproved(card) && !locallyApprovedCardIds.includes(card.id)).map((card) => (
                         <button
                           key={card.id}
                           className="portal-card card-button"
                           onClick={() => setSelectedCardId(card.id)}
                         >
-                          {card.mediaUrl ? <div className={`media-frame ${card.mediaAspect}`}><img src={card.mediaUrl} alt={card.title} /></div> : null}
+                          <ClosedCardMedia card={card} />
                           <div className="portal-card-copy">
                             <h4>{card.title}</h4>
                             {card.scheduledAt ? <p>{formatScheduledCardDate(card.scheduledAt)}</p> : null}
@@ -3629,32 +4188,15 @@ function ClientPortalWorkspacePage({
                   </section>
                 ) : null}
               </div>
+              )}
             </div>
           </div>
 
           <div className="portal-secondary">
-            <section className="glass widget-card">
-              <div className="widget-head">
-                <h3>Próximos posts</h3>
-                <span>{data.calendarEvents.length}</span>
-              </div>
-              <div className="widget-list">
-                {data.calendarEvents.map((event) => (
-                  <article key={event.id} className="list-item">
-                    <div>
-                      <strong>{event.title}</strong>
-                      <p>{formatCalendarSchedule(event.publishDate, event.publishTime)}</p>
-                    </div>
-                    <span>{event.publishTime?.slice(0, 5) ?? "--:--"}</span>
-                  </article>
-                ))}
-              </div>
-            </section>
-
             {data.widgets.upcomingPosts ? (
               <section className="glass widget-card">
                 <div className="widget-head">
-                  <h3>Proximos posts</h3>
+                  <h3>Próximos posts</h3>
                   <span>{data.upcomingItems.length}</span>
                 </div>
                 <div className="widget-list">
@@ -3662,9 +4204,30 @@ function ClientPortalWorkspacePage({
                     <article key={item.id} className="list-item">
                       <div>
                         <strong>{item.title}</strong>
-                        <p>{item.channel}</p>
+                        <p>{formatScheduledCardDate(item.scheduledAt)}</p>
                       </div>
-                      <span>{formatScheduledCardDate(item.scheduledAt)}</span>
+                      <span>{new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(item.scheduledAt))}</span>
+                    </article>
+                  ))}
+                  {data.upcomingItems.length === 0 ? <p className="widget-empty-copy">Nenhum post agendado no momento.</p> : null}
+                </div>
+              </section>
+            ) : null}
+
+            {upcomingPortalAppointments.length > 0 ? (
+              <section className="glass widget-card">
+                <div className="widget-head">
+                  <h3>Próximos compromissos</h3>
+                  <span>{upcomingPortalAppointments.length}</span>
+                </div>
+                <div className="widget-list">
+                  {upcomingPortalAppointments.map((event) => (
+                    <article key={event.id} className="list-item appointment-item">
+                      <div>
+                        <strong>{event.title}</strong>
+                        <p>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(event.startsAt))}</p>
+                      </div>
+                      {event.meetLink ? <a className="ghost-button compact-button" href={event.meetLink} target="_blank" rel="noreferrer" onClick={(mouseEvent) => mouseEvent.stopPropagation()}><UiIcon name="link" />Meet</a> : null}
                     </article>
                   ))}
                 </div>
@@ -3674,12 +4237,12 @@ function ClientPortalWorkspacePage({
             {data.widgets.reports ? (
               <section className="glass widget-card">
                 <div className="widget-head">
-                  <h3>Relatorios</h3>
+                  <h3>Relatórios</h3>
                   <span>Mensal</span>
                 </div>
                 <p className="widget-paragraph">
                   O cliente encontra aqui os relatórios liberados por permissão, sem ver nada do
-                  restante da operacao interna.
+                  restante da operação interna.
                 </p>
               </section>
             ) : null}
@@ -3696,17 +4259,34 @@ function ClientPortalWorkspacePage({
         onAddComment={(cardId, commentText) =>
           addPortalCardCommentBySlug(slug, cardId, { commentText })
         }
-        onApprove={(cardId, commentText) =>
-          submitPortalCardDecisionBySlug(slug, cardId, { approved: true, commentText })
-        }
+        onApprove={approvePortalCard}
         onRequestChanges={(cardId, commentText) =>
           submitPortalCardDecisionBySlug(slug, cardId, { approved: false, commentText })
         }
+        allowEditCaption={data.permissions.allowClientEditCaption}
+        onUpdateCaption={(cardId, caption) => updatePortalCardCaptionBySlug(slug, cardId, caption)}
+        allowManageTags={data.permissions.allowClientCreateTags}
+        onLoadTags={() => listPortalTagsBySlug(slug)}
+        onCreateTag={(input) => createPortalTagBySlug(slug, input)}
+        onUpdateTags={(cardId, tags) => updatePortalCardTagsBySlug(slug, cardId, tags)}
         onRefresh={() => setRefreshKey((value) => value + 1)}
         onClose={() => setSelectedCardId(null)}
       />
+      {createPostOpen ? <ClientPostSuggestionModal draft={postDraft} files={postFiles} submitting={postSubmitting} error={postError} onChange={(field, value) => setPostDraft((current) => ({ ...current, [field]: value }))} onFilesChange={setPostFiles} onClose={() => { if (!postSubmitting) setCreatePostOpen(false); }} onSubmit={submitPostSuggestion} /> : null}
     </div>
   );
+}
+
+function PortalFormattedCaption({ text }: { text: string }) {
+  const hashtags = Array.from(new Set(text.match(/#[\p{L}\p{N}_]+/gu) ?? []));
+  const body = text.replace(/#[\p{L}\p{N}_]+/gu, "").replace(/\s+([.,;:!?])/g, "$1").trim();
+  const sections = body.split(/\n{2,}|(?=[📊👉💡✅🎯📌])/u).map((item) => item.trim()).filter(Boolean);
+  const renderInline = (value: string) => value.split(/(\*\*.*?\*\*)/g).filter(Boolean).map((part, index) => part.startsWith("**") && part.endsWith("**") ? <strong key={`${part}-${index}`}>{part.slice(2, -2)}</strong> : <span key={`${part}-${index}`}>{part}</span>);
+
+  return <div className="portal-caption-content">
+    <div className="portal-caption-copy">{sections.length ? sections.map((section, index) => <p key={`${section.slice(0, 30)}-${index}`}>{renderInline(section)}</p>) : <p>Sem legenda cadastrada ainda.</p>}</div>
+    {hashtags.length ? <div className="portal-caption-hashtags" aria-label="Hashtags do post">{hashtags.map((hashtag) => <span key={hashtag}>{hashtag}</span>)}</div> : null}
+  </div>;
 }
 
 function CardDetailModal({
@@ -3718,6 +4298,12 @@ function CardDetailModal({
   onAddComment,
   onApprove,
   onRequestChanges,
+  allowEditCaption,
+  onUpdateCaption,
+  allowManageTags,
+  onLoadTags,
+  onCreateTag,
+  onUpdateTags,
   onRefresh,
   onClose,
   adminContext,
@@ -3730,6 +4316,12 @@ function CardDetailModal({
   onAddComment: (cardId: string, commentText: string) => Promise<unknown>;
   onApprove: (cardId: string, commentText: string) => Promise<unknown>;
   onRequestChanges: (cardId: string, commentText: string) => Promise<unknown>;
+  allowEditCaption?: boolean;
+  onUpdateCaption?: (cardId: string, caption: string | null) => Promise<unknown>;
+  allowManageTags?: boolean;
+  onLoadTags?: () => Promise<{ items: ClientTagDefinition[] }>;
+  onCreateTag?: (input: { name: string; color: string }) => Promise<{ ok: true; tag: ClientTagDefinition }>;
+  onUpdateTags?: (cardId: string, tags: string[]) => Promise<unknown>;
   onRefresh: () => void;
   onClose: () => void;
   adminContext?: { slug: string; columns: BoardColumn[] };
@@ -3737,6 +4329,27 @@ function CardDetailModal({
   const [commentDraft, setCommentDraft] = useState("");
   const [submitting, setSubmitting] = useState<"comment" | "approve" | "changes" | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [editingCaption, setEditingCaption] = useState(false);
+  const [captionDraft, setCaptionDraft] = useState(detail?.card.subtitle ?? "");
+  const [captionSaving, setCaptionSaving] = useState(false);
+  const [tagEditorOpen, setTagEditorOpen] = useState(false);
+  const [portalTagLibrary, setPortalTagLibrary] = useState<ClientTagDefinition[]>([]);
+  const [selectedPortalTags, setSelectedPortalTags] = useState<string[]>(detail?.card.tags ?? []);
+  const [newPortalTagName, setNewPortalTagName] = useState("");
+  const [newPortalTagColor, setNewPortalTagColor] = useState("#6f63dc");
+  const [portalTagWorking, setPortalTagWorking] = useState(false);
+  useEffect(() => {
+    if (!detail || editingCaption) return;
+    setCaptionDraft(detail.card.subtitle ?? "");
+  }, [detail?.card.id, detail?.card.subtitle, editingCaption]);
+  useEffect(() => {
+    setSelectedPortalTags(detail?.card.tags ?? []);
+    setTagEditorOpen(false);
+  }, [detail?.card.id, detail?.card.tags.join("|")]);
+  useEffect(() => {
+    if (!allowManageTags || !onLoadTags || !detail) return;
+    void onLoadTags().then((result) => setPortalTagLibrary(result.items)).catch(() => setPortalTagLibrary([]));
+  }, [allowManageTags, detail?.card.id, onLoadTags]);
   useEffect(() => {
     if (!detail) return;
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -3774,15 +4387,64 @@ function CardDetailModal({
       onRefresh();
       setFeedback(
         action === "comment"
-          ? "Comentario salvo."
+          ? "Comentário salvo."
           : action === "approve"
             ? "Card aprovado com sucesso."
             : "Solicitação de alteração enviada.",
       );
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Nao foi possivel concluir a acao.");
+      setFeedback(error instanceof Error ? error.message : "Não foi possível concluir a ação.");
     } finally {
       setSubmitting(null);
+    }
+  }
+
+  async function savePortalCaption() {
+    if (!onUpdateCaption || !detail) return;
+    setCaptionSaving(true);
+    setFeedback(null);
+    try {
+      await onUpdateCaption(detail.card.id, captionDraft.trim() || null);
+      setEditingCaption(false);
+      onRefresh();
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Não foi possível salvar a legenda.");
+    } finally {
+      setCaptionSaving(false);
+    }
+  }
+
+  async function createPortalTag() {
+    const name = newPortalTagName.trim();
+    if (!name || !onCreateTag) return;
+    setPortalTagWorking(true);
+    setFeedback(null);
+    try {
+      const result = await onCreateTag({ name, color: newPortalTagColor });
+      if (result.tag) {
+        setPortalTagLibrary((current) => [...current, result.tag].sort((a, b) => a.name.localeCompare(b.name)));
+        setSelectedPortalTags((current) => current.includes(result.tag.name) ? current : [...current, result.tag.name]);
+      }
+      setNewPortalTagName("");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Não foi possível criar a etiqueta.");
+    } finally {
+      setPortalTagWorking(false);
+    }
+  }
+
+  async function savePortalTags() {
+    if (!detail || !onUpdateTags) return;
+    setPortalTagWorking(true);
+    setFeedback(null);
+    try {
+      await onUpdateTags(detail.card.id, selectedPortalTags);
+      setTagEditorOpen(false);
+      onRefresh();
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Não foi possível salvar as etiquetas.");
+    } finally {
+      setPortalTagWorking(false);
     }
   }
 
@@ -3805,13 +4467,15 @@ function CardDetailModal({
           message={
             source === "backend"
               ? "Detalhe carregado da base real."
-              : "Nao consegui carregar este detalhe na API da V2."
+              : "Não consegui carregar este detalhe na API da V2."
           }
         />
 
         <div className="modal-grid">
           <div className="modal-media">
-            {detail.card.mediaUrl ? (
+            {portalCardAssets(detail.card).length > 1 ? (
+              <ArtworkCarousel urls={portalCardAssets(detail.card)} title={detail.card.title} />
+            ) : detail.card.mediaUrl ? (
               <div className={`media-frame ${detail.card.mediaAspect}`}>
                 <img src={detail.card.mediaUrl} alt={detail.card.title} />
               </div>
@@ -3836,22 +4500,23 @@ function CardDetailModal({
           </div>
 
           <div className="modal-sidebar-copy">
-            <section className="glass-subtle modal-card">
-              <h4>Resumo</h4>
-              <p>{detail.card.subtitle ?? "Sem legenda cadastrada ainda."}</p>
-              <div className="detail-list">
-                <div>
-                  <span>Status do cliente</span>
-                  <strong>{detail.card.clientLabel}</strong>
-                </div>
-                <div>
-                  <span>Agendamento</span>
-                  <strong>{detail.card.scheduledAt ? formatScheduledCardDate(detail.card.scheduledAt) : "Nao agendado"}</strong>
-                </div>
-                <div>
-                  <span>Comentarios</span>
-                  <strong>{detail.comments.length}</strong>
-                </div>
+            <section className="glass-subtle modal-card portal-summary-card">
+              <header className="portal-summary-heading"><span><UiIcon name="file" /></span><div><small>CONTEÚDO DO POST</small><h4>Legenda</h4></div>{allowEditCaption && !editingCaption ? <button type="button" className="portal-caption-edit-button" onClick={() => setEditingCaption(true)}><UiIcon name="file" />Editar legenda</button> : null}</header>
+              {editingCaption ? <div className="portal-caption-editor"><label htmlFor={`portal-caption-${detail.card.id}`}>Edite o texto abaixo</label><textarea id={`portal-caption-${detail.card.id}`} autoFocus value={captionDraft} onChange={(event) => setCaptionDraft(event.target.value)} maxLength={5000} placeholder="Escreva a legenda do post..." /><div className="portal-caption-editor-footer"><small>{captionDraft.length}/5000 caracteres</small><div><button type="button" className="ghost-button" disabled={captionSaving} onClick={() => { setCaptionDraft(detail.card.subtitle ?? ""); setEditingCaption(false); }}>Cancelar</button><button type="button" className="gradient-button" disabled={captionSaving} onClick={() => void savePortalCaption()}>{captionSaving ? "Salvando..." : "Salvar legenda"}</button></div></div></div> : <PortalFormattedCaption text={captionDraft} />}
+              {allowManageTags ? <section className="portal-tag-manager"><header><div><small>ETIQUETAS DO POST</small><strong>{selectedPortalTags.length ? `${selectedPortalTags.length} selecionada${selectedPortalTags.length === 1 ? "" : "s"}` : "Nenhuma etiqueta"}</strong></div><button type="button" onClick={() => setTagEditorOpen((open) => !open)}>{tagEditorOpen ? "Fechar" : "Gerenciar tags"}</button></header>{selectedPortalTags.length ? <div className="portal-tag-pills">{selectedPortalTags.map((name) => { const tag = portalTagLibrary.find((item) => item.name === name); return <span key={name} style={{ "--portal-tag-color": tag?.color ?? "#7568dc" } as CSSProperties}>{name}</span>; })}</div> : null}{tagEditorOpen ? <div className="portal-tag-editor"><div className="portal-tag-options">{portalTagLibrary.map((tag) => { const selected = selectedPortalTags.includes(tag.name); return <button key={tag.id} type="button" className={selected ? "selected" : ""} onClick={() => setSelectedPortalTags((current) => selected ? current.filter((name) => name !== tag.name) : [...current, tag.name])}><i style={{ backgroundColor: tag.color }} />{tag.name}<span>{selected ? "✓" : "+"}</span></button>; })}{portalTagLibrary.length === 0 ? <p>Nenhuma tag criada. Crie a primeira abaixo.</p> : null}</div><div className="portal-tag-create"><input value={newPortalTagName} onChange={(event) => setNewPortalTagName(event.target.value)} maxLength={100} placeholder="Nome da nova tag" /><input type="color" value={newPortalTagColor} onChange={(event) => setNewPortalTagColor(event.target.value)} aria-label="Cor da nova tag" /><button type="button" disabled={portalTagWorking || !newPortalTagName.trim()} onClick={() => void createPortalTag()}>+ Criar</button></div><div className="portal-tag-actions"><button type="button" className="ghost-button" disabled={portalTagWorking} onClick={() => { setSelectedPortalTags(detail.card.tags); setTagEditorOpen(false); }}>Cancelar</button><button type="button" className="gradient-button" disabled={portalTagWorking} onClick={() => void savePortalTags()}>{portalTagWorking ? "Salvando..." : "Salvar etiquetas"}</button></div></div> : null}</section> : null}
+              <div className="portal-card-meta-grid">
+                <article className={`portal-card-meta status ${isPortalApproved(detail.card) ? "approved" : "pending"}`}>
+                  <span><UiIcon name={isPortalApproved(detail.card) ? "check" : "clock"} /></span>
+                  <div><small>Status do cliente</small><strong>{detail.card.clientLabel}</strong></div>
+                </article>
+                <article className="portal-card-meta schedule">
+                  <span><UiIcon name="calendar" /></span>
+                  <div><small>Agendamento</small><strong>{detail.card.scheduledAt ? formatScheduledCardDate(detail.card.scheduledAt).replace(/^Agendado:\s*/, "") : "Não agendado"}</strong></div>
+                </article>
+                <article className="portal-card-meta comments">
+                  <span><UiIcon name="comment" /></span>
+                  <div><small>Comentários</small><strong>{detail.comments.length} {detail.comments.length === 1 ? "comentário" : "comentários"}</strong></div>
+                </article>
               </div>
             </section>
 
@@ -3919,7 +4584,7 @@ function CardDetailModal({
 
             {detail.approvalLinks.length > 0 ? (
               <section className="glass-subtle modal-card">
-                <h4>Links de aprovacao</h4>
+                <h4>Links de aprovação</h4>
                 <div className="comment-stack">
                   {detail.approvalLinks.map((link) => (
                     <article key={link.id} className="comment-item">
@@ -3976,13 +4641,17 @@ function AdminCardEditor({
   const [newHashtagGroupText, setNewHashtagGroupText] = useState("");
   const [scheduledAt, setScheduledAt] = useState(toDateTimeLocal(card.scheduledAt));
   const [externalLinkUrl, setExternalLinkUrl] = useState(card.externalLinkUrl ?? "");
-  const [keepFiles, setKeepFiles] = useState(card.keepFiles ?? false);
   const [mediaUrls, setMediaUrls] = useState(card.mediaUrls ?? (card.mediaUrl ? [card.mediaUrl] : []));
   const [commentDraft, setCommentDraft] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [approvalLink, setApprovalLink] = useState<string | null>(null);
+  const [internalApprovalOpen, setInternalApprovalOpen] = useState(false);
+  const [internalUsers, setInternalUsers] = useState<ManagedUser[]>([]);
+  const [internalRecipientIds, setInternalRecipientIds] = useState<string[]>([]);
+  const [internalMessage, setInternalMessage] = useState("");
+  const [internalSending, setInternalSending] = useState(false);
 
   useEffect(() => {
     const matching = columns.find((column) => column.cards.some((item) => item.id === card.id));
@@ -3992,7 +4661,24 @@ function AdminCardEditor({
   useEffect(() => {
     listAdminTagsBySlug(slug).then((result) => setTagLibrary(result.items)).catch(() => undefined);
     listAdminHashtagGroupsBySlug(slug).then((result) => setHashtagGroups(result.items)).catch(() => undefined);
+    listManagedUsers().then((result) => setInternalUsers(result.items.filter((user) => user.isActive && user.globalRole !== "cliente"))).catch(() => setInternalUsers([]));
   }, [slug]);
+
+  async function sendInternalApproval() {
+    if (!internalRecipientIds.length || !internalMessage.trim()) return;
+    setInternalSending(true);
+    try {
+      const recipients = internalUsers.filter((user) => internalRecipientIds.includes(user.id));
+      await addAdminCardCommentBySlug(slug, card.id, { commentText: `Aprovação interna enviada para ${recipients.map((user) => user.fullName).join(", ")}.
+
+${internalMessage.trim()}`, isInternal: true });
+      const key = "designhub-v2-internal-approvals";
+      const current = JSON.parse(window.localStorage.getItem(key) ?? "[]") as unknown[];
+      window.localStorage.setItem(key, JSON.stringify([{ id: crypto.randomUUID(), cardId: card.id, clientSlug: slug, cardTitle: title, recipients: recipients.map((user) => user.id), message: internalMessage.trim(), createdAt: new Date().toISOString() }, ...current]));
+      setFeedback("Card enviado para aprovação interna."); setInternalApprovalOpen(false); setInternalMessage(""); setInternalRecipientIds([]);
+    } catch (error) { setFeedback(error instanceof Error ? error.message : "Não foi possível enviar para aprovação interna."); }
+    finally { setInternalSending(false); }
+  }
 
   const splitValues = (value: string) =>
     value.split(",").map((item) => item.trim()).filter(Boolean);
@@ -4003,7 +4689,7 @@ function AdminCardEditor({
     const invalidFile = selectedFiles.find((file) => file.size > (file.type.startsWith("video/") ? MAX_VIDEO_FILE_SIZE : MAX_MEDIA_FILE_SIZE));
     if (invalidFile) {
       const max = invalidFile.type.startsWith("video/") ? MAX_VIDEO_FILE_SIZE : MAX_MEDIA_FILE_SIZE;
-      setFeedback(`“${invalidFile.name}” tem ${(invalidFile.size / 1024 / 1024).toFixed(1)} MB. O limite para ${invalidFile.type.startsWith("video/") ? "videos" : "imagens"} e ${Math.round(max / 1024 / 1024)} MB.`);
+      setFeedback(`“${invalidFile.name}” tem ${(invalidFile.size / 1024 / 1024).toFixed(1)} MB. O limite para ${invalidFile.type.startsWith("video/") ? "vídeos" : "imagens"} é ${Math.round(max / 1024 / 1024)} MB.`);
       return;
     }
     setUploading(true);
@@ -4016,7 +4702,7 @@ function AdminCardEditor({
       setMediaUrls((current) => [...current, ...uploadedUrls]);
       setFeedback(`${uploadedUrls.length} ${uploadedUrls.length === 1 ? "arquivo enviado" : "arquivos enviados"} com sucesso.`);
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Nao foi possivel enviar o arquivo.");
+      setFeedback(error instanceof Error ? error.message : "Não foi possível enviar o arquivo.");
     } finally {
       setUploading(false);
     }
@@ -4024,7 +4710,7 @@ function AdminCardEditor({
 
   async function saveCard() {
     if (!title.trim()) {
-      setFeedback("Informe um titulo para salvar o card.");
+      setFeedback("Informe um título para salvar o card.");
       return;
     }
     setSaving(true);
@@ -4042,17 +4728,16 @@ function AdminCardEditor({
         tags: splitValues(tags),
         hashtags: splitValues(hashtags).map((item) => item.startsWith("#") ? item : `#${item}`),
         isBriefApproval: card.isBriefApproval ?? false,
-        keepFiles,
         scheduledAt: scheduledAt || null,
         scheduledTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         clientLabel: clientLabel.trim() || "Pendente",
       });
       await moveAdminCardBySlug(slug, card.id, columnId || null);
-      setFeedback("Alteracoes salvas no card.");
+      setFeedback("Alterações salvas no card.");
       onRefresh();
       onClose();
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Nao foi possivel salvar as alteracoes.");
+      setFeedback(error instanceof Error ? error.message : "Não foi possível salvar as alterações.");
     } finally {
       setSaving(false);
     }
@@ -4063,10 +4748,10 @@ function AdminCardEditor({
     try {
       await onAddComment(card.id, commentDraft.trim());
       setCommentDraft("");
-      setFeedback("Comentario enviado.");
+      setFeedback("Comentário enviado.");
       onRefresh();
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Nao foi possivel enviar o comentario.");
+      setFeedback(error instanceof Error ? error.message : "Não foi possível enviar o comentário.");
     }
   }
 
@@ -4075,10 +4760,10 @@ function AdminCardEditor({
       const result = await createAdminApprovalLinkBySlug(slug, card.id);
       const origin = window.location.origin;
       setApprovalLink(`${origin}/#/approval/${result.approvalLink.token}`);
-      setFeedback("Link de aprovacao criado por 7 dias.");
+      setFeedback("Link de aprovação criado por 7 dias.");
       onRefresh();
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Nao foi possivel criar o link.");
+      setFeedback(error instanceof Error ? error.message : "Não foi possível criar o link.");
     }
   }
 
@@ -4096,7 +4781,7 @@ function AdminCardEditor({
       setNewTagName("");
       setFeedback(`Etiqueta “${name}” criada.`);
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Nao foi possivel criar a etiqueta.");
+      setFeedback(error instanceof Error ? error.message : "Não foi possível criar a etiqueta.");
     } finally {
       setCreatingTag(false);
     }
@@ -4115,7 +4800,7 @@ function AdminCardEditor({
       setNewHashtagGroupName(""); setNewHashtagGroupText("");
       setFeedback(`Grupo “${name}” criado.`);
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Nao foi possivel criar o grupo.");
+      setFeedback(error instanceof Error ? error.message : "Não foi possível criar o grupo.");
     }
   }
 
@@ -4133,7 +4818,7 @@ function AdminCardEditor({
       await deleteAdminHashtagGroupBySlug(slug, group.id);
       setHashtagGroups((current) => current.filter((item) => item.id !== group.id));
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Nao foi possivel excluir o grupo.");
+      setFeedback(error instanceof Error ? error.message : "Não foi possível excluir o grupo.");
     }
   }
 
@@ -4142,7 +4827,7 @@ function AdminCardEditor({
       <section className="admin-card-editor" onClick={(event) => event.stopPropagation()}>
         <button className="admin-card-close" onClick={onClose} aria-label="Fechar card">×</button>
         <div className="admin-card-main">
-          <EditorField label="Titulo">
+          <EditorField label="Título">
             <input value={title} onChange={(event) => setTitle(event.target.value)} />
           </EditorField>
           <div className="editor-main-grid">
@@ -4150,11 +4835,12 @@ function AdminCardEditor({
               <EditorField label="Legenda" action={<button className="caption-copy-button" type="button" title="Copiar legenda" aria-label="Copiar legenda" onClick={() => navigator.clipboard.writeText(caption)}><UiIcon name="copy" /></button>}>
                 <textarea className="admin-caption-editor" value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="Escreva a legenda do post" />
               </EditorField>
-              <EditorField label="Midia">
+              <EditorField label="Mídia">
+                {mediaUrls.length > 1 ? <div className="admin-artwork-carousel"><ArtworkCarousel urls={mediaUrls} title={title || card.title} /></div> : null}
                 <div className="editor-media-grid">
                   {mediaUrls.map((url, index) => (
                     <article className="editor-media-thumb" key={url}>
-                      {url.match(/\.(mp4|webm|mov)(\?|$)/i) ? <video src={url} /> : <img src={url} alt={`Midia ${index + 1}`} />}
+                      {url.match(/\.(mp4|webm|mov)(\?|$)/i) ? <video src={url} /> : <img src={url} alt={`Mídia ${index + 1}`} />}
                       {index === 0 ? <span>Capa</span> : null}
                       <button onClick={() => setMediaUrls((items) => items.filter((item) => item !== url))}>×</button>
                     </article>
@@ -4170,7 +4856,7 @@ function AdminCardEditor({
               </EditorField>
             </div>
             <section className="editor-comments">
-            <h4>Comentarios ({detail.comments.length})</h4>
+            <h4>Comentários ({detail.comments.length})</h4>
             {detail.comments.map((comment) => (
               <article className="editor-comment" key={comment.id}>
                 <div className="editor-comment-author"><CommentAvatar name={comment.authorName} url={comment.authorAvatarUrl} /><strong>{comment.authorName} <small>{comment.authorRole}</small></strong></div>
@@ -4180,7 +4866,7 @@ function AdminCardEditor({
             ))}
             <div className="editor-comment-compose">
               <div className="comment-toolbar"><b>B</b><i>I</i><u>U</u><span>H2</span><span>Lista</span></div>
-              <textarea value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} placeholder="Escrever um comentario" />
+              <textarea value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} placeholder="Escrever um comentário" />
               <button className="gradient-button" onClick={sendComment} disabled={!commentDraft.trim()}>Enviar</button>
             </div>
             </section>
@@ -4189,8 +4875,8 @@ function AdminCardEditor({
         <aside className="admin-card-side">
           <ArtTypeSelect value={artType} onChange={setArtType} />
           <EditorSelect label="Status" value={status} onChange={setStatus} options={CARD_STATUS_OPTIONS} />
-          <EditorSelect label="Feedback do cliente" value={clientLabel} onChange={setClientLabel} options={["Pendente", "Aprovado", "Alteracao solicitada"]} />
-          <EditorField label="Agendamento"><input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /><small className="editor-field-hint">Na data e hora informadas, o card sera movido para Arquivados.</small></EditorField>
+          <EditorSelect label="Feedback do cliente" value={clientLabel} onChange={setClientLabel} options={["Pendente", "Aprovado", "Alteração solicitada"]} />
+          <EditorField label="Agendamento"><input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /><small className="editor-field-hint">Na data e hora informadas, o card será movido para Arquivados.</small></EditorField>
           <label className="editor-field"><span>Coluna</span><select value={columnId} onChange={(event) => setColumnId(event.target.value)}><option value="">Sem coluna</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select></label>
           <section className="tag-library">
             <div className="tag-library-head"><span>Etiquetas</span></div>
@@ -4226,12 +4912,12 @@ function AdminCardEditor({
               <div className="hashtag-create"><input value={newHashtagGroupName} onChange={(event) => setNewHashtagGroupName(event.target.value)} placeholder="Nome do grupo" /><textarea value={newHashtagGroupText} onChange={(event) => setNewHashtagGroupText(event.target.value)} placeholder="#hashtag1 #hashtag2 #hashtag3" /><button type="button" onClick={createHashtagGroup}>+ Novo grupo</button></div>
             </div> : null}
           </section>
-          <button className="side-action" onClick={createApprovalLink}>⌁ Enviar link para cliente</button>
+          <button className="side-action" onClick={createApprovalLink}><span className="side-action-icon">⌁</span>Enviar link para cliente</button>
           {approvalLink ? <div className="approval-url"><input readOnly value={approvalLink} /><button onClick={() => navigator.clipboard.writeText(approvalLink)}>Copiar</button></div> : null}
-          <button className="side-action">♙ Aprovacao interna</button>
-          <label className="editor-check-card keep-files"><input type="checkbox" checked={keepFiles} onChange={(event) => setKeepFiles(event.target.checked)} /><span><strong>Manter arquivos</strong><small>Impede remocao automatica dos arquivos.</small></span></label>
+          <button className="side-action" onClick={() => setInternalApprovalOpen(true)}><span className="side-action-icon">♙</span>Aprovação interna</button>
+          {internalApprovalOpen ? <div className="internal-approval-popover"><header><div><span>REVISÃO DA EQUIPE</span><h4>Enviar para aprovação interna</h4></div><button type="button" onClick={() => setInternalApprovalOpen(false)}>×</button></header><p>Escolha quem deve revisar este card. Clientes não aparecem nesta lista.</p><div className="internal-recipient-list">{internalUsers.length ? internalUsers.map((user) => <label key={user.id}><input type="checkbox" checked={internalRecipientIds.includes(user.id)} onChange={(event) => setInternalRecipientIds((current) => event.target.checked ? [...current, user.id] : current.filter((id) => id !== user.id))} /><span><strong>{user.fullName}</strong><small>{user.globalRole} · {user.email}</small></span></label>) : <small>Nenhum membro interno disponível.</small>}</div><textarea value={internalMessage} onChange={(event) => setInternalMessage(event.target.value)} placeholder="Escreva uma mensagem para quem vai revisar..." /><footer><button type="button" className="ghost-button" onClick={() => setInternalApprovalOpen(false)}>Cancelar</button><button type="button" className="gradient-button" disabled={internalSending || !internalRecipientIds.length || !internalMessage.trim()} onClick={() => void sendInternalApproval()}>{internalSending ? "Enviando..." : "Enviar para revisão"}</button></footer></div> : null}
           {feedback ? <p className="editor-feedback">{feedback}</p> : null}
-          <button className="gradient-button editor-save" onClick={saveCard} disabled={saving || uploading}>{saving ? "Salvando..." : "Salvar alteracoes"}</button>
+          <button className="gradient-button editor-save" onClick={saveCard} disabled={saving || uploading}>{saving ? "Salvando..." : "Salvar alterações"}</button>
         </aside>
       </section>
     </div>
@@ -4293,25 +4979,6 @@ function toDateTimeLocal(value?: string | null) {
   return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
 }
 
-function labelForWidget(key: string) {
-  switch (key) {
-    case "upcomingPosts":
-      return "Proximos posts";
-    case "tracking":
-      return "Acompanhamento";
-    case "invoices":
-      return "Faturas";
-    case "reports":
-      return "Relatorios";
-    case "brandBrain":
-      return "Brand Brain";
-    case "search":
-      return "Busca";
-    default:
-      return key;
-  }
-}
-
 function LoginPage({
   session,
   onLogin,
@@ -4334,7 +5001,7 @@ function LoginPage({
     const ok = await onLogin(email.trim(), password);
     setSubmitting(false);
     if (!ok) {
-      setError("Nao consegui autenticar na API real nem no fallback local.");
+      setError("Não consegui autenticar na API real nem no fallback local.");
       return;
     }
     setError("");
@@ -4342,15 +5009,15 @@ function LoginPage({
 
   return (
     <main className="center-shell">
-      <section className="login-grid">
-        <article className="glass login-panel">
+      <section className="login-grid login-experience">
+        <article className="glass login-panel login-primary">
           <div className="login-brand-mark" aria-label="Design Hub V2">
             <img src={designHubV2Logo} alt="Logo Design Hub V2" />
           </div>
-          <p className="eyebrow">Acesso local da V2</p>
-          <h2>Entrar no Design Hub V2</h2>
+          <div className="login-kicker"><span className="login-live-dot" />DESIGN HUB · ESPAÇO DE OPERAÇÃO</div>
+          <h1>Seu trabalho, mais leve e mais bonito.</h1>
           <p className="hero-copy">
-            Aqui o login continua totalmente controlado por voce, sem social login e sem cadastro aberto.
+            Acesse seu espaço para organizar clientes, conteúdos e aprovações com clareza.
           </p>
 
           <form className="login-form" onSubmit={submit}>
@@ -4366,16 +5033,16 @@ function LoginPage({
                 onChange={(event) => setPassword(event.target.value)}
               />
             </label>
-            <button className="gradient-button" type="submit" disabled={submitting}>
+            <button className="gradient-button login-submit" type="submit" disabled={submitting}>
               {submitting ? "Entrando..." : "Entrar"}
             </button>
             {error ? <p className="form-feedback error-text">{error}</p> : null}
           </form>
         </article>
 
-        <aside className="glass login-panel">
-          <p className="eyebrow">Perfis demo</p>
-          <h3>Escolha um perfil para testar</h3>
+        <aside className="glass login-panel login-demo-panel">
+          <div className="login-demo-visual"><span className="login-orb orb-a" /><span className="login-orb orb-b" /><span className="login-orb orb-c" /><div className="login-visual-card"><b>✦</b><span>Uma operação<br /><strong>em sintonia.</strong></span></div></div>
+          <div className="login-demo-heading"><p className="eyebrow">Acesso rápido</p><h2>Escolha um perfil</h2><p>Entre como equipe ou cliente para explorar a experiência.</p></div>
           <div className="demo-user-list">
             {demoUsers.map((user) => (
               <button
@@ -4412,6 +5079,105 @@ const INTERNAL_AREAS: Record<string, { title: string; description: string; restr
   equipe: { title: "Equipe", description: "Acompanhe as pessoas e responsabilidades do seu time." },
 };
 
+function DesignBriefsWorkspace() {
+  const [title, setTitle] = useState("");
+  const [objective, setObjective] = useState("");
+  const [references, setReferences] = useState("");
+  const [saved, setSaved] = useState(false);
+  const save = () => { if (!title.trim()) return; const key = "designhub-v2-design-briefs"; const current = JSON.parse(window.localStorage.getItem(key) ?? "[]") as unknown[]; window.localStorage.setItem(key, JSON.stringify([{ id: crypto.randomUUID(), title: title.trim(), objective: objective.trim(), references: references.trim(), createdAt: new Date().toISOString() }, ...current])); setSaved(true); };
+  return <section className="design-briefs-workspace glass"><header><div><p className="eyebrow">DIRECIONAMENTO CRIATIVO</p><h2>Novo brief de design</h2><p>Organize referências, objetivos e orientações para a equipe criar com clareza.</p></div><span className="design-briefs-mark">✦</span></header><div className="design-briefs-grid"><label>Título do projeto<input autoFocus value={title} onChange={(event) => { setTitle(event.target.value); setSaved(false); }} placeholder="Ex.: Campanha de lançamento" /></label><label>Objetivo<textarea value={objective} onChange={(event) => { setObjective(event.target.value); setSaved(false); }} placeholder="Qual resultado a peça deve alcançar?" /></label><label className="wide">Referências e direcionamento<textarea value={references} onChange={(event) => { setReferences(event.target.value); setSaved(false); }} placeholder="Cores, estilo, formatos, links e observações para o design..." /></label></div><footer><small>Você pode complementar este brief depois.</small><button className="gradient-button" disabled={!title.trim()} onClick={save}>{saved ? "✓ Brief salvo" : "Salvar brief"}</button></footer></section>;
+}
+
+function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards: BoardCard[]; appointments: AgendaEvent[]; onSelectCard: (id: string) => void }) {
+  const [monthDate, setMonthDate] = useState(() => new Date());
+  const [selectedEvent, setSelectedEvent] = useState<AgendaEvent | null>(null);
+
+  const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1);
+  const gridStart = new Date(monthStart);
+  gridStart.setDate(gridStart.getDate() - ((gridStart.getDay() + 6) % 7));
+  const days = Array.from({ length: 42 }, (_, index) => { const day = new Date(gridStart); day.setDate(day.getDate() + index); return day; });
+
+  const rangeFrom = localDateKey(days[0]);
+  const rangeTo = localDateKey(days[days.length - 1]);
+  const expandedAppointments = useMemo(() => expandAgendaEvents(appointments, rangeFrom, rangeTo), [appointments, rangeFrom, rangeTo]);
+
+  const postsByDay = useMemo(() => {
+    const map = new Map<string, BoardCard[]>();
+    for (const card of cards) {
+      if (!card.scheduledAt) continue;
+      const key = localDateKey(new Date(card.scheduledAt));
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(card);
+    }
+    return map;
+  }, [cards]);
+
+  const eventsByDay = useMemo(() => {
+    const map = new Map<string, AgendaEvent[]>();
+    for (const event of expandedAppointments) {
+      const key = localDateKey(new Date(event.startsAt));
+      if (!map.has(key)) map.set(key, []);
+      map.get(key)!.push(event);
+    }
+    return map;
+  }, [expandedAppointments]);
+
+  return (
+    <div className="social-calendar-workspace glass-subtle">
+      <div className="social-calendar-toolbar">
+        <div className="social-calendar-month-nav">
+          <button type="button" onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1))} aria-label="Mês anterior">‹</button>
+          <h2>{new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(monthDate)}</h2>
+          <button type="button" onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1))} aria-label="Próximo mês">›</button>
+        </div>
+        <div className="social-calendar-summary">
+          <span><i className="scheduled" />Posts agendados</span>
+          <span><i style={{ background: "#8b45dd" }} />Compromissos</span>
+        </div>
+      </div>
+      <div className="social-calendar-weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((label) => <span key={label}>{label}</span>)}</div>
+      <div className="social-calendar-grid">
+        {days.map((day) => {
+          const key = localDateKey(day);
+          const posts = postsByDay.get(key) ?? [];
+          const events = eventsByDay.get(key) ?? [];
+          const muted = day.getMonth() !== monthDate.getMonth();
+          const visiblePosts = posts.slice(0, 2);
+          const visibleEvents = events.slice(0, 2 - visiblePosts.length < 0 ? 0 : 2 - visiblePosts.length);
+          const hiddenCount = posts.length + events.length - visiblePosts.length - visibleEvents.length;
+          return (
+            <div key={key} className={muted ? "social-calendar-day muted" : "social-calendar-day"}>
+              <time>{day.getDate()}</time>
+              {visiblePosts.map((card) => (
+                <button key={card.id} type="button" className="social-calendar-event" style={{ "--calendar-event-color": "#3c8ee9" } as CSSProperties} onClick={() => onSelectCard(card.id)}>
+                  <span>{card.title}</span>
+                </button>
+              ))}
+              {visibleEvents.map((event) => (
+                <button key={event.id} type="button" className="social-calendar-event" style={{ "--calendar-event-color": event.color || "#8b45dd" } as CSSProperties} onClick={() => setSelectedEvent(event)}>
+                  <span>{event.meetLink ? "🎥 " : ""}{event.title}</span>
+                  <small>{new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(new Date(event.startsAt))}</small>
+                </button>
+              ))}
+              {hiddenCount > 0 ? <span className="social-calendar-more">+{hiddenCount}</span> : null}
+            </div>
+          );
+        })}
+      </div>
+      {selectedEvent ? (
+        <div className="modal-backdrop" onClick={() => setSelectedEvent(null)}>
+          <section className="agenda-detail-modal portal-agenda-detail-modal" onClick={(event) => event.stopPropagation()}>
+            <header><div><p className="eyebrow">Compromisso</p><h3>{selectedEvent.title}</h3></div><button className="icon-close" onClick={() => setSelectedEvent(null)} aria-label="Fechar">×</button></header>
+            <p>{selectedEvent.taskDescription || "Sem detalhes adicionais."}</p>
+            <dl><div><dt>Quando</dt><dd>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(selectedEvent.startsAt))}</dd></div></dl>
+            {selectedEvent.meetLink ? <div className="portal-meet-card"><span><UiIcon name="link" /></span><div><small>VIDEOCHAMADA</small><strong>Google Meet</strong><p>O link será aberto em uma nova aba.</p></div><a href={selectedEvent.meetLink} target="_blank" rel="noreferrer">Entrar na reunião <UiIcon name="link" /></a></div> : null}
+          </section>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function ClientKanbanCalendar({ slug }: { slug: string }) {
   const [month, setMonth] = useState(() => new Date());
   const [posts, setPosts] = useState<CalendarEvent[]>([]);
@@ -4442,7 +5208,7 @@ function KanbanActivities({ slug }: { slug: string }) {
   return <section className="kanban-activities"><header><div><h2>Atividades</h2><p>Histórico deste Kanban, mantido por 15 dias.</p></div><span>{items.length}</span></header>{error ? <p className="form-feedback error-text">{error}</p> : null}{items.length ? <div>{items.map((item) => <article key={item.id}><i className={item.type}>{item.type === "approval" ? "✓" : "•"}</i><div><strong>{item.detail}</strong><p>{item.title}</p></div><time>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.occurredAt))}</time></article>)}</div> : <p className="kanban-activities-empty">Ainda não há atividades nos últimos 15 dias.</p>}</section>;
 }
 
-const EMPTY_BRAND_BRAIN: BrandBrain = { mission: "", vision: "", voice: "", visualNotes: "", approvedWords: [], avoidWords: [], expressions: [], colors: ["#5b5ce2", "#18b98b", "#f5a41a"], pillars: [] };
+const EMPTY_BRAND_BRAIN: BrandBrain = { mission: "", vision: "", positioning: "", brandPromise: "", audience: "", audiencePains: [], audienceDesires: [], voice: "", personalityTraits: [], voiceExamples: [], voiceAvoidExamples: [], visualNotes: "", typographyDisplay: "", typographyBody: "", typographyAccent: "", typographySample: "A identidade ganha voz quando cada detalhe fala a mesma língua.", approvedWords: [], avoidWords: [], expressions: [], colors: ["#5b5ce2", "#18b98b", "#f5a41a"], differentiators: [], proofPoints: [], references: [], pillars: [] };
 function PautasWorkspace({ slug, clientName, columns, onSent }: { slug: string; clientName: string; columns: BoardColumn[]; onSent: () => void }) {
   const [ideas, setIdeas] = useState<PautaIdea[]>([]); const [query, setQuery] = useState(""); const [filter, setFilter] = useState<"all" | "draft" | "sent">("all"); const [sending, setSending] = useState<string | null>(null);
   const [editing, setEditing] = useState<PautaIdea | null>(null); const [brainOpen, setBrainOpen] = useState(false); const [brain, setBrain] = useState<BrandBrain>(EMPTY_BRAND_BRAIN);
@@ -4465,6 +5231,137 @@ function BrandBrainWorkspace({ slug, clientName }: { slug: string; clientName: s
   const words = (key: "approvedWords" | "avoidWords" | "expressions", label: string) => <label className="brand-field"><span>{label}</span><input value={brain[key].join(", ")} onChange={(event) => setBrain({ ...brain, [key]: event.target.value.split(",").map((item) => item.trim()).filter(Boolean) })} placeholder="Separe por vírgulas" /></label>;
   return <section className="brand-brain"><header><div><span>✧ Brand Brain</span><h2>{clientName}</h2><p>Memória estratégica para manter todos os conteúdos consistentes.</p></div><button className="gradient-button" onClick={save}>{saved || "Salvar"}</button></header><nav>{([ ["home", "Home"], ["strategy", "Panorâmica"], ["vocabulary", "Vocabulário"], ["voice", "Voz"], ["avoid", "Da evitar"], ["visual", "Visual"] ] as const).map(([id, label]) => <button key={id} className={section === id ? "active" : ""} onClick={() => setSection(id)}>{label}</button>)}</nav>{section === "home" ? <div className="brand-home"><article><small>MISSÃO</small><strong>{brain.mission || "Defina o propósito da marca."}</strong></article><article><small>VISÃO</small><strong>{brain.vision || "Defina onde a marca quer chegar."}</strong></article><article className="brand-pillars"><div><small>PILARES</small><strong>{brain.pillars.length} pilares</strong></div><div className="brand-pillar-bar">{brain.pillars.map((pillar, index) => <i key={pillar.name || index} style={{ width: `${pillar.weight || 10}%`, background: brain.colors[index % brain.colors.length] }} />)}</div>{brain.pillars.map((pillar, index) => <p key={`${pillar.name}-${index}`}><b style={{ background: brain.colors[index % brain.colors.length] }} />{pillar.name || "Novo pilar"}<span>{pillar.weight || 0}%</span></p>)}</article><div className="brand-stat-grid"><article><b>{brain.approvedWords.length}</b><span>Vocabulário</span></article><article><b>{brain.avoidWords.length}</b><span>Palavras a evitar</span></article><article><b>{brain.expressions.length}</b><span>Expressões</span></article></div></div> : <div className="brand-editor">{section === "strategy" ? <><label className="brand-field"><span>Missão</span><textarea value={brain.mission} onChange={(event) => setBrain({ ...brain, mission: event.target.value })} /></label><label className="brand-field"><span>Visão</span><textarea value={brain.vision} onChange={(event) => setBrain({ ...brain, vision: event.target.value })} /></label><label className="brand-field"><span>Pilares: nome | foco | peso</span><textarea value={brain.pillars.map((item) => `${item.name}|${item.focus}|${item.weight}`).join("\n")} onChange={(event) => setBrain({ ...brain, pillars: event.target.value.split("\n").filter(Boolean).map((item) => { const [name = "", focus = "", weight = "0"] = item.split("|"); return { name: name.trim(), focus: focus.trim(), weight: Number(weight) || 0 }; }) })} /></label></> : null}{section === "voice" ? <label className="brand-field"><span>Tom de voz</span><textarea value={brain.voice} onChange={(event) => setBrain({ ...brain, voice: event.target.value })} /></label> : null}{section === "vocabulary" ? <>{words("approvedWords", "Palavras aprovadas")}{words("expressions", "Expressões aprovadas")}</> : null}{section === "avoid" ? <>{words("avoidWords", "Palavras e termos a evitar")}<p className="brand-check-note">A verificação sem IA procura estes termos em legendas e pautas e sinaliza quando houver correspondência.</p></> : null}{section === "visual" ? <><label className="brand-field"><span>Direção visual</span><textarea value={brain.visualNotes} onChange={(event) => setBrain({ ...brain, visualNotes: event.target.value })} /></label><label className="brand-field"><span>Paleta</span><input value={brain.colors.join(", ")} onChange={(event) => setBrain({ ...brain, colors: event.target.value.split(",").map((item) => item.trim()).filter(Boolean) })} /></label></> : null}</div>}</section>;
 }
+
+type BrandBrainSection = "overview" | "essence" | "audience" | "voice" | "content" | "visual" | "history";
+
+function normalizeBrandBrain(data?: Partial<BrandBrain> | null): BrandBrain {
+  return {
+    ...EMPTY_BRAND_BRAIN,
+    ...(data ?? {}),
+    audiencePains: data?.audiencePains ?? [], audienceDesires: data?.audienceDesires ?? [],
+    personalityTraits: data?.personalityTraits ?? [], voiceExamples: data?.voiceExamples ?? [], voiceAvoidExamples: data?.voiceAvoidExamples ?? [],
+    typographyDisplay: data?.typographyDisplay ?? "", typographyBody: data?.typographyBody ?? "", typographyAccent: data?.typographyAccent ?? "", typographySample: data?.typographySample || EMPTY_BRAND_BRAIN.typographySample,
+    approvedWords: data?.approvedWords ?? [], avoidWords: data?.avoidWords ?? [], expressions: data?.expressions ?? [],
+    differentiators: data?.differentiators ?? [], proofPoints: data?.proofPoints ?? [], references: data?.references ?? [],
+    colors: data?.colors?.length ? data.colors : EMPTY_BRAND_BRAIN.colors, pillars: data?.pillars ?? [],
+  };
+}
+
+function BrandBrainContentAudit({ brain }: { brain: BrandBrain }) {
+  const [text, setText] = useState("");
+  const normalized = text.toLocaleLowerCase("pt-BR");
+  const includes = (value: string) => normalized.includes(value.toLocaleLowerCase("pt-BR"));
+  const avoidHits = brain.avoidWords.filter((item) => item.trim() && includes(item));
+  const preferredHits = brain.approvedWords.filter((item) => item.trim() && includes(item));
+  const expressionHits = brain.expressions.filter((item) => item.trim() && includes(item));
+  const pillarHits = brain.pillars.filter((pillar) => {
+    const tokens = `${pillar.name} ${pillar.focus}`.toLocaleLowerCase("pt-BR").split(/[^\p{L}\p{N}]+/u).filter((token) => token.length > 4);
+    return tokens.some((token) => normalized.includes(token));
+  });
+  const score = text.trim() ? Math.max(0, Math.min(100, 72 - avoidHits.length * 22 + preferredHits.length * 5 + expressionHits.length * 7 + pillarHits.length * 6)) : null;
+  const tone = score == null ? "idle" : score >= 85 ? "great" : score >= 65 ? "good" : "review";
+  return <section className={`brand-v2-audit ${tone}`}><header><div><small>VERIFICAÇÃO DE CONTEÚDO</small><h3>Teste uma legenda</h3><p>Cole o texto para conferir se ele conversa com a memória da marca.</p></div>{score != null ? <strong>{score}<small>/100</small></strong> : <span>✦</span>}</header><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Cole aqui a legenda ou o texto que deseja revisar…" />{score != null ? <div className="brand-v2-audit-results"><article className={avoidHits.length ? "warning" : "ok"}><b>{avoidHits.length ? "Ajustar" : "Tudo certo"}</b><span>{avoidHits.length ? `Termos a evitar: ${avoidHits.join(", ")}` : "Nenhum termo proibido encontrado."}</span></article><article><b>Vocabulário</b><span>{preferredHits.length || expressionHits.length ? [...preferredHits, ...expressionHits].join(" · ") : "Nenhuma expressão característica apareceu ainda."}</span></article><article><b>Pilar relacionado</b><span>{pillarHits.length ? pillarHits.map((item) => item.name).join(" · ") : "Não identificamos conexão clara com um pilar."}</span></article><article><b>Tom esperado</b><span>{brain.voice || "Defina o tom de voz para receber uma orientação mais completa."}</span></article></div> : <p className="brand-v2-audit-empty">A análise acontece enquanto você escreve, sem alterar o conteúdo original.</p>}</section>;
+}
+
+function BrandBrainExperience({ slug, clientName, portal = false, allowEdit = true }: { slug: string; clientName: string; portal?: boolean; allowEdit?: boolean }) {
+  const [snapshot, setSnapshot] = useState<BrandBrainSnapshot | null>(null);
+  const [brain, setBrain] = useState<BrandBrain>(EMPTY_BRAND_BRAIN);
+  const [section, setSection] = useState<BrandBrainSection>("overview");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [summary, setSummary] = useState("");
+  const [comment, setComment] = useState("");
+  const [commenting, setCommenting] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const result = portal ? await loadPortalBrandBrainBySlug(slug) : await loadBrandBrainBySlug(slug);
+      setSnapshot(result); setBrain(normalizeBrandBrain(result.data));
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível carregar o Brand Brain."); }
+    finally { setLoading(false); }
+  }, [portal, slug]);
+  useEffect(() => { void load(); }, [load]);
+
+  const importantValues = [brain.mission, brain.vision, brain.positioning, brain.brandPromise, brain.audience, brain.voice, brain.visualNotes, brain.pillars.length, brain.approvedWords.length, brain.differentiators.length];
+  const completion = Math.round(importantValues.filter(Boolean).length / importantValues.length * 100);
+  const pending = snapshot?.revisions.filter((item) => item.status === "pending") ?? [];
+  const editable = !portal || allowEdit;
+  const dateLabel = (value?: string | null) => value ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Ainda não publicado";
+  const setText = (key: keyof BrandBrain, value: string) => setBrain((current) => ({ ...current, [key]: value }));
+  const setList = (key: keyof BrandBrain, value: string) => setBrain((current) => ({ ...current, [key]: value.split("\n").map((item) => item.trim()).filter(Boolean) }));
+  const listValue = (key: keyof BrandBrain) => ((brain[key] as string[]) ?? []).join("\n");
+
+  const save = async () => {
+    setSaving(true); setMessage("");
+    try {
+      const result = portal ? await savePortalBrandBrainBySlug(slug, brain, summary) : await saveBrandBrainBySlug(slug, brain, summary);
+      setMessage(result.pending ? "Sugestão enviada para a equipe. Ela ficará pendente até a aprovação." : "Brand Brain atualizado e uma nova versão foi registrada.");
+      setSummary(""); await load();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível salvar."); }
+    finally { setSaving(false); }
+  };
+  const decide = async (revisionId: string, approved: boolean) => {
+    setMessage("");
+    try { await decideBrandBrainRevisionBySlug(slug, revisionId, approved); setMessage(approved ? "Sugestão aprovada e publicada como nova versão." : "Sugestão recusada."); await load(); }
+    catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível concluir a revisão."); }
+  };
+  const sendComment = async () => {
+    if (!comment.trim()) return; setCommenting(true);
+    try {
+      if (portal) await addPortalBrandBrainCommentBySlug(slug, { commentText: comment.trim(), sectionKey: section });
+      else await addBrandBrainCommentBySlug(slug, { commentText: comment.trim(), sectionKey: section });
+      setComment(""); setMessage("Comentário enviado."); await load();
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível comentar."); }
+    finally { setCommenting(false); }
+  };
+  const field = (key: keyof BrandBrain, label: string, hint: string, large = false) => <label className="brand-v2-field"><span>{label}</span><small>{hint}</small><textarea disabled={!editable} className={large ? "large" : ""} value={(brain[key] as string) ?? ""} onChange={(event) => setText(key, event.target.value)} /></label>;
+  const listField = (key: keyof BrandBrain, label: string, hint: string) => <label className="brand-v2-field"><span>{label}</span><small>{hint}</small><textarea disabled={!editable} value={listValue(key)} onChange={(event) => setList(key, event.target.value)} placeholder="Um item por linha" /></label>;
+
+  if (loading) return <section className="brand-v2-loading">Organizando a memória da marca…</section>;
+  return <section className={`brand-v2 ${portal ? "portal-brand-brain" : ""}`}>
+    <header className="brand-v2-hero">
+      <div><span className="brand-v2-kicker">✦ Brand Brain</span><h1>{clientName}</h1><p>A fonte de verdade da marca para estratégia, conteúdo e direção visual.</p><div className="brand-v2-meta"><b>Versão {snapshot?.meta.version || "inicial"}</b><span>Atualizado {dateLabel(snapshot?.meta.updatedAt)}</span>{pending.length ? <em>{pending.length} sugestão{pending.length > 1 ? "ões" : ""} pendente{pending.length > 1 ? "s" : ""}</em> : <em className="ok">Tudo alinhado</em>}</div></div>
+      <div className="brand-v2-progress"><strong>{completion}%</strong><span>da identidade preenchida</span><i><b style={{ width: `${completion}%` }} /></i></div>
+    </header>
+    <nav className="brand-v2-nav">{([ ["overview", "Visão geral"], ["essence", "Essência"], ["audience", "Público"], ["voice", "Voz"], ["content", "Conteúdo"], ["visual", "Visual"], ["history", "Histórico"] ] as Array<[BrandBrainSection, string]>).map(([id, label]) => <button key={id} className={section === id ? "active" : ""} onClick={() => setSection(id)}>{label}{id === "history" && pending.length ? <b>{pending.length}</b> : null}</button>)}</nav>
+
+    {section === "overview" ? <div className="brand-v2-overview">
+      <article className="brand-v2-statement"><small>POSICIONAMENTO</small><h2>{brain.positioning || "Defina o espaço único que a marca deseja ocupar."}</h2><p>{brain.brandPromise || "A promessa central da marca aparecerá aqui."}</p></article>
+      <button className="brand-v2-voice-banner" onClick={() => setSection("voice")}><span>♬</span><div><small>VOZ · PERSONALIDADE</small><strong>{brain.personalityTraits.length ? brain.personalityTraits.join(" / ") : brain.voice || "Defina como a marca fala e se relaciona."}</strong></div><em>Abrir →</em></button>
+      <article className="brand-v2-pillars brand-v2-pillars-chart"><header><div><span className="brand-v2-section-icon">▱</span><small>PILARES</small><h3>{brain.pillars.length} {brain.pillars.length === 1 ? "pilar" : "pilares"}</h3></div><button onClick={() => setSection("content")}>Abrir →</button></header>{brain.pillars.length ? <><div className="brand-v2-segmented-bar">{brain.pillars.map((pillar, index) => <i key={`${pillar.name}-${index}`} style={{ flex: Math.max(pillar.weight, 8), background: brain.colors[index % brain.colors.length] }} />)}</div><div className="brand-v2-pillar-list">{brain.pillars.map((pillar, index) => <div key={`${pillar.name}-${index}`}><i style={{ background: brain.colors[index % brain.colors.length] }} /><span><strong>{pillar.name}</strong><small>{pillar.focus}</small></span><em><b style={{ width: `${Math.min(100, Math.max(0, pillar.weight))}%`, background: brain.colors[index % brain.colors.length] }} /></em><strong>{pillar.weight}%</strong></div>)}</div></> : <p>Nenhum pilar definido ainda.</p>}</article>
+      <article className="brand-v2-visual-summary"><header><div><span className="brand-v2-section-icon">◉</span><small>VISUAL</small></div><button onClick={() => setSection("visual")}>Abrir →</button></header><h3>Paleta</h3><div className="brand-v2-color-chips">{brain.colors.map((color) => <span key={color}><i style={{ background: color }} />{color}</span>)}</div><h3>Tipografia</h3><div className="brand-v2-type-preview"><small>{[brain.typographyDisplay, brain.typographyBody, brain.typographyAccent].filter(Boolean).join(", ") || "Tipografia ainda não definida"}</small><strong style={{ fontFamily: brain.typographyDisplay || undefined }}>{brain.typographyDisplay || "Fonte de destaque"}</strong><p style={{ fontFamily: brain.typographyBody || undefined }}>{brain.typographySample}</p></div></article>
+      <section className="brand-v2-explore"><h3>Explore as seções</h3><div>{[
+        { id: "content" as const, icon: "▤", count: brain.approvedWords.length, title: "Vocabulário", text: "Palavras e conceitos que representam a marca.", tone: "blue" },
+        { id: "content" as const, icon: "▱", count: brain.pillars.length, title: "Pilares", text: "Os grandes temas que guiam os conteúdos.", tone: "purple" },
+        { id: "voice" as const, icon: "♬", count: brain.personalityTraits.length, title: "Voz", text: "Tom, ritmo e personalidade da comunicação.", tone: "rose" },
+        { id: "content" as const, icon: "⊘", count: brain.avoidWords.length, title: "A evitar", text: "Palavras e expressões que não combinam com a marca.", tone: "sand" },
+        { id: "content" as const, icon: "❞", count: brain.expressions.length, title: "Expressões", text: "Frases e assinaturas aprovadas para uso.", tone: "mint" },
+        { id: "visual" as const, icon: "◉", count: brain.colors.length + [brain.typographyDisplay, brain.typographyBody, brain.typographyAccent].filter(Boolean).length, title: "Visual", text: "Cores, tipografia, estilo e composição.", tone: "lilac" },
+      ].map((item) => <button key={item.title} className={item.tone} onClick={() => setSection(item.id)}><span>{item.icon}</span><b>{item.count}</b><strong>{item.title}</strong><p>{item.text}</p></button>)}</div></section>
+    </div> : null}
+
+    {section === "essence" ? <div className="brand-v2-editor-grid">{field("mission", "Missão", "Por que a marca existe e que transformação deseja causar?", true)}{field("vision", "Visão", "Onde a marca quer chegar nos próximos anos?", true)}{field("positioning", "Posicionamento", "Qual espaço único a marca ocupa na mente do público?", true)}{field("brandPromise", "Promessa da marca", "O compromisso que deve estar presente em cada entrega.")}{listField("differentiators", "Diferenciais", "Razões concretas para escolher esta marca.")}{listField("proofPoints", "Provas e credenciais", "Resultados, números, experiência e fatos que sustentam a promessa.")}</div> : null}
+    {section === "audience" ? <div className="brand-v2-editor-grid">{field("audience", "Público prioritário", "Descreva a pessoa, o contexto e o momento de compra.", true)}{listField("audiencePains", "Dores e tensões", "Problemas que o conteúdo precisa reconhecer.")}{listField("audienceDesires", "Desejos e objetivos", "O que esse público quer conquistar ou sentir.")}</div> : null}
+    {section === "voice" ? <div className="brand-v2-editor-grid">{field("voice", "Tom de voz", "Como a marca fala, soa e se relaciona.", true)}{listField("personalityTraits", "Traços de personalidade", "Ex.: segura, próxima, sofisticada.")}{listField("voiceExamples", "Exemplos de como falar", "Frases que representam bem a marca.")}{listField("voiceAvoidExamples", "Exemplos de como não falar", "Construções que descaracterizam a marca.")}</div> : null}
+    {section === "content" ? <div className="brand-v2-editor-grid">{listField("approvedWords", "Vocabulário preferido", "Palavras que reforçam a identidade.")}{listField("expressions", "Expressões da marca", "Frases ou assinaturas que podem se repetir.")}{listField("avoidWords", "Termos a evitar", "O sistema sinaliza estes termos nas pautas.")}<label className="brand-v2-field wide"><span>Pilares: nome | foco | peso</span><small>Um pilar por linha. Ex.: Educação | Ensinar com clareza | 40</small><textarea disabled={!editable} className="large" value={brain.pillars.map((item) => `${item.name} | ${item.focus} | ${item.weight}`).join("\n")} onChange={(event) => setBrain({ ...brain, pillars: event.target.value.split("\n").filter(Boolean).map((item) => { const [name = "", focus = "", weight = "0"] = item.split("|"); return { name: name.trim(), focus: focus.trim(), weight: Number(weight) || 0 }; }) })} /></label></div> : null}
+    {section === "visual" ? <><div className="brand-v2-editor-grid">{field("visualNotes", "Direção visual", "Estilo fotográfico, composição, texturas e sensações.", true)}<label className="brand-v2-field"><span>Cores da marca</span><small>Use códigos hexadecimais separados por vírgula.</small><input disabled={!editable} value={brain.colors.join(", ")} onChange={(event) => setBrain({ ...brain, colors: event.target.value.split(",").map((item) => item.trim()).filter(Boolean) })} /><div className="brand-v2-color-preview">{brain.colors.map((color) => <i key={color} style={{ background: color }} />)}</div></label>{field("typographyDisplay", "Fonte de destaque", "Para títulos, chamadas e peças de impacto.")}{field("typographyBody", "Fonte de texto", "Para legendas, parágrafos e leitura contínua.")}{field("typographyAccent", "Fonte de apoio", "Opcional: itálicos, assinaturas ou pequenos destaques.")}{field("typographySample", "Texto de demonstração", "Frase usada na prévia tipográfica.", true)}{listField("references", "Referências", "Links, marcas e repertórios que ajudam a orientar a criação.")}</div><section className="brand-v2-typography-live"><small>PRÉVIA TIPOGRÁFICA</small><div><span>{[brain.typographyDisplay, brain.typographyBody, brain.typographyAccent].filter(Boolean).join(" · ") || "Defina as fontes acima"}</span><h2 style={{ fontFamily: brain.typographyDisplay || undefined }}>{brain.typographyDisplay || "Título principal da marca"}</h2><p style={{ fontFamily: brain.typographyBody || undefined }}>{brain.typographySample}</p>{brain.typographyAccent ? <em style={{ fontFamily: brain.typographyAccent }}>Detalhe ou assinatura em {brain.typographyAccent}</em> : null}</div></section></> : null}
+    {section === "content" ? <BrandBrainContentAudit brain={brain} /> : null}
+    {section === "history" ? <div className="brand-v2-history">
+      {!portal && pending.length ? <section className="brand-v2-review"><header><div><small>AGUARDANDO SUA DECISÃO</small><h2>Sugestões do cliente</h2></div><b>{pending.length}</b></header>{pending.map((revision) => <article key={revision.id}><div><strong>{revision.authorName}</strong><time>{dateLabel(revision.createdAt)}</time></div><p>{revision.summary || "Sugeriu uma atualização no Brand Brain."}</p><div><button className="ghost-button" onClick={() => setBrain(normalizeBrandBrain(revision.data))}>Visualizar proposta</button><button className="danger-button" onClick={() => void decide(revision.id, false)}>Recusar</button><button className="gradient-button" onClick={() => void decide(revision.id, true)}>Aprovar e publicar</button></div></article>)}</section> : null}
+      {portal && pending.length ? <section className="brand-v2-pending-note"><b>⏳</b><div><strong>Sua sugestão está em análise</strong><p>A equipe recebeu a atualização e você verá a nova versão aqui assim que ela for aprovada.</p></div></section> : null}
+      <section className="brand-v2-version-list"><h3>Versões publicadas</h3>{snapshot?.history.length ? snapshot.history.map((version) => <article key={version.id}><b>v{version.version}</b><div><strong>{version.authorName}</strong><span>{dateLabel(version.createdAt)}</span></div></article>) : <p>A primeira versão será criada no próximo salvamento.</p>}</section>
+    </div> : null}
+
+    {editable && section !== "overview" && section !== "history" ? <footer className="brand-v2-save"><label><span>{portal ? "O que você está sugerindo?" : "Nota da atualização"}</span><input value={summary} onChange={(event) => setSummary(event.target.value)} placeholder={portal ? "Ex.: atualizamos nosso público e tom de voz" : "Ex.: revisão estratégica de agosto"} /></label><button className="gradient-button" disabled={saving} onClick={() => void save()}>{saving ? "Salvando…" : portal ? "Enviar sugestão" : "Publicar nova versão"}</button></footer> : null}
+    <section className="brand-v2-comments"><header><div><small>CONVERSA DA MARCA</small><h3>Comentários</h3></div><span>{snapshot?.comments.length ?? 0}</span></header><div className="brand-v2-comment-form"><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder={`Comente sobre ${section === "overview" ? "o Brand Brain" : "esta seção"}…`} /><button className="ghost-button" disabled={commenting || !comment.trim()} onClick={() => void sendComment()}>{commenting ? "Enviando…" : "Comentar"}</button></div>{snapshot?.comments.filter((item) => item.sectionKey === section || section === "overview").slice(0, 8).map((item) => <article key={item.id}><div><strong>{item.authorName}</strong><span>{item.authorRole === "cliente" ? "Cliente" : "Equipe"} · {dateLabel(item.createdAt)}</span></div><p>{item.commentText}</p></article>)}</section>
+    {message ? <div className="brand-v2-message" role="status"><span>✓</span>{message}<button onClick={() => setMessage("")}>×</button></div> : null}
+  </section>;
+}
+
+function BrandBrainWorkspaceV2({ slug, clientName }: { slug: string; clientName: string }) { return <BrandBrainExperience slug={slug} clientName={clientName} />; }
+function ClientBrandBrainView({ slug, clientName, allowEdit }: { slug: string; clientName: string; allowEdit: boolean }) { return <BrandBrainExperience slug={slug} clientName={clientName} portal allowEdit={allowEdit} />; }
 
 type ProposalStatus = "draft" | "sent" | "accepted" | "refused";
 type LocalProposal = {
@@ -4558,18 +5455,90 @@ function PublicProposalPage() {
   return <main className="public-proposal-page"><div className="public-proposal-orb one" /><div className="public-proposal-orb two" /><header className="public-proposal-brand"><img src={liegePaschoaliniLogo} alt="Liege Paschoalini Studio" /><div><b>LIEGE PASCHOALINI STUDIO</b></div></header><ProposalClientPreview proposal={proposal} /><section className="public-proposal-decision">{decision ? <><span className={decision}>✓</span><h2>{decision === "accepted" ? copy.accepted : copy.refused}</h2><p>{copy.answer}</p></> : <><p>{copy.until} {new Date(proposal.expiresAt).toLocaleDateString(copy.code)}.</p><h2>{copy.continueTogether}</h2><div><button className="gradient-button" onClick={() => decide("accepted")}>{copy.accept}</button><button className="public-proposal-refuse" onClick={() => decide("refused")}>{copy.refuse}</button></div></>}</section></main>;
 }
 
+type ContractDraft = { title: string; client: string; language: string; type: string; startDate: string; endDate: string; value: string; scope: string; notes: string };
+const emptyContractDraft = (): ContractDraft => ({ title: "", client: "", language: "Português", type: "Prestação de serviços", startDate: "", endDate: "", value: "", scope: "", notes: "" });
+type ContractRecord = ContractDraft & { id: string; clientSlug: string; status: "pending" | "accepted"; createdAt: string; acceptedAt?: string };
+const CONTRACTS_STORAGE_KEY = "designhub-v2-contracts";
+type ContractTemplate = { id: string; name: string; language: string; description: string; draft: Partial<ContractDraft>; custom?: boolean };
+const CONTRACT_TEMPLATES_STORAGE_KEY = "designhub-v2-contract-templates";
+const CONTRACT_MODELS: ContractTemplate[] = [
+  { id: "services", name: "Prestação de serviços", language: "Português", description: "Modelo completo para projetos de conteúdo e design.", draft: { title: "Contrato de prestação de serviços", type: "Prestação de serviços", scope: "Objeto, escopo, prazos e entregas do projeto serão definidos entre as partes." } },
+  { id: "monthly", name: "Contrato mensal", language: "Português", description: "Ideal para contratos recorrentes e gestão contínua.", draft: { title: "Contrato de serviços mensais", type: "Mensalidade", scope: "A contratada prestará serviços recorrentes conforme o plano e o calendário acordados." } },
+  { id: "consulting", name: "Consultoria", language: "Português", description: "Base para projetos estratégicos e consultorias.", draft: { title: "Contrato de consultoria", type: "Consultoria", scope: "A consultoria será conduzida em encontros e entregas definidos no cronograma do projeto." } },
+];
+function readContractRecords() { try { return JSON.parse(window.localStorage.getItem(CONTRACTS_STORAGE_KEY) ?? "[]") as ContractRecord[]; } catch { return []; } }
+function writeContractRecords(records: ContractRecord[]) { window.localStorage.setItem(CONTRACTS_STORAGE_KEY, JSON.stringify(records)); }
+function readContractTemplates() { try { return JSON.parse(window.localStorage.getItem(CONTRACT_TEMPLATES_STORAGE_KEY) ?? "[]") as ContractTemplate[]; } catch { return []; } }
+function writeContractTemplates(templates: ContractTemplate[]) { window.localStorage.setItem(CONTRACT_TEMPLATES_STORAGE_KEY, JSON.stringify(templates)); }
+
+function ContractDocumentPreview({ contract, clientName }: { contract: ContractDraft; clientName?: string }) {
+  return <article className="contract-document-preview"><header><span>DESIGN HUB · CONTRATO · {contract.language || "Português"}</span><h1>{contract.title || "Novo contrato"}</h1><p>Documento preparado para {clientName || contract.client || "seu cliente"}</p></header><div className="contract-preview-meta"><div><small>Tipo</small><strong>{contract.type || "—"}</strong></div><div><small>Vigência</small><strong>{contract.startDate || "—"} {contract.endDate ? `até ${contract.endDate}` : ""}</strong></div><div><small>Valor</small><strong>{contract.value || "A definir"}</strong></div></div><section><small>ESCOPO E CONDIÇÕES</small><p>{contract.scope || "O escopo do contrato será apresentado aqui."}</p></section>{contract.notes ? <section><small>OBSERVAÇÕES</small><p>{contract.notes}</p></section> : null}<footer><span>Li e aceito os termos deste contrato.</span><b>Assinatura digital</b></footer></article>;
+}
+
+function ContractsWorkspace({ newContractSignal = 0 }: { newContractSignal?: number }) {
+  const [clients, setClients] = useState<AdminClientOption[]>([]);
+  const [clientSlug, setClientSlug] = useState("");
+  const [draft, setDraft] = useState<ContractDraft>(emptyContractDraft);
+  const [records, setRecords] = useState<ContractRecord[]>(readContractRecords);
+  const [customTemplates, setCustomTemplates] = useState<ContractTemplate[]>(readContractTemplates);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [templateName, setTemplateName] = useState("");
+  const [templateLanguage, setTemplateLanguage] = useState("Português");
+  const [selectedModel, setSelectedModel] = useState("");
+  const [saved, setSaved] = useState(false);
+  useEffect(() => { void listAdminClients().then((result) => { setClients(result.items); setClientSlug((current) => current || result.items[0]?.slug || ""); }).catch(() => setClients([])); }, []);
+  useEffect(() => { if (newContractSignal > 0) { setDraft(emptyContractDraft()); setSelectedModel(""); setSaved(false); setPreviewOpen(false); } }, [newContractSignal]);
+  const selectedClient = clients.find((client) => client.slug === clientSlug);
+  const allTemplates = [...CONTRACT_MODELS, ...customTemplates];
+  const applyModel = (modelId: string) => { setSelectedModel(modelId); const model = allTemplates.find((item) => item.id === modelId); if (model) setDraft({ ...emptyContractDraft(), ...model.draft, language: model.language || model.draft.language || "Português" }); };
+  const saveTemplate = () => { if (!templateName.trim()) return; const template: ContractTemplate = { id: crypto.randomUUID(), name: templateName.trim(), language: templateLanguage, description: "Modelo criado por você.", draft: { ...draft, language: templateLanguage }, custom: true }; const next = [template, ...customTemplates]; setCustomTemplates(next); writeContractTemplates(next); setSelectedModel(template.id); setTemplateName(""); setTemplateModalOpen(false); };
+  const save = () => { if (!draft.title.trim() || !clientSlug) return; const record: ContractRecord = { ...draft, title: draft.title.trim(), clientSlug, client: selectedClient?.name || draft.client, id: crypto.randomUUID(), status: "pending", createdAt: new Date().toISOString() }; const next = [record, ...records]; setRecords(next); writeContractRecords(next); setSaved(true); };
+  return <section className="contracts-workspace">
+    <div className="contracts-workspace-grid"><div className="contracts-form-card">
+      <header><div><span>CONTRATO</span><h2>Novo contrato</h2><p>Preencha os dados abaixo para registrar um novo contrato na operação.</p></div><div className="contracts-form-mark">✦</div></header>
+      <div className="contracts-form-grid two"><label>Título do contrato<input autoFocus value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Ex.: Contrato de gestão de conteúdo" /></label><label>Enviar para o cliente<select value={clientSlug} onChange={(event) => setClientSlug(event.target.value)}><option value="">Selecione um cliente</option>{clients.map((client) => <option key={client.id} value={client.slug}>{client.name}</option>)}</select></label></div>
+      <label className="contracts-model-picker">Usar um modelo pronto<select value={selectedModel} onChange={(event) => applyModel(event.target.value)}><option value="">Começar em branco</option>{allTemplates.map((model) => <option key={model.id} value={model.id}>{model.name} · {model.language}</option>)}</select></label>
+      <div className="contracts-form-grid three"><label>Idioma<select value={draft.language} onChange={(event) => setDraft({ ...draft, language: event.target.value })}><option>Português</option><option>English</option><option>Español</option><option>Français</option><option>Italiano</option><option>Deutsch</option></select></label><label>Tipo<select value={draft.type} onChange={(event) => setDraft({ ...draft, type: event.target.value })}><option>Prestação de serviços</option><option>Mensalidade</option><option>Consultoria</option><option>Parceria</option></select></label><label>Início<input type="date" value={draft.startDate} onChange={(event) => setDraft({ ...draft, startDate: event.target.value })} /></label></div><div className="contracts-form-grid two"><label>Vencimento<input type="date" value={draft.endDate} onChange={(event) => setDraft({ ...draft, endDate: event.target.value })} /></label><label>Valor contratado<input value={draft.value} onChange={(event) => setDraft({ ...draft, value: event.target.value })} placeholder="R$ 0,00" /></label></div>
+      <div className="contracts-form-grid two"><label className="wide">Escopo resumido<textarea value={draft.scope} onChange={(event) => setDraft({ ...draft, scope: event.target.value })} placeholder="Descreva os serviços e entregas incluídos." /></label></div>
+      <label className="contracts-notes">Observações internas<textarea value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} placeholder="Condições, responsáveis e observações importantes." /></label>
+      <footer><small>Você poderá complementar este contrato depois de salvá-lo.</small><div><button className="ghost-button" onClick={() => setPreviewOpen(true)}>Visualizar prévia</button><button className="gradient-button" onClick={save} disabled={!draft.title.trim() || !clientSlug}>Salvar contrato</button></div></footer>
+      {saved ? <p className="contracts-saved" role="status">✓ Contrato salvo como rascunho.</p> : null}
+    </div><aside className="contracts-library"><header><div><span>BIBLIOTECA</span><h3>Modelos prontos</h3></div><b>{allTemplates.length}</b></header>{allTemplates.map((model) => <button key={model.id} className={selectedModel === model.id ? "selected" : ""} onClick={() => applyModel(model.id)}><strong>{model.name}</strong><small>{model.language} · {model.description}</small></button>)}<button className="contracts-create-template" onClick={() => setTemplateModalOpen(true)}>＋ Salvar formulário como modelo</button>{records.length ? <><header className="contracts-library-records"><div><span>ENVIADOS</span><h3>Contratos recentes</h3></div><b>{records.length}</b></header>{records.slice(0, 4).map((record) => <div className="contracts-library-record" key={record.id}><strong>{record.title}</strong><small>{record.client} · {record.status === "accepted" ? "Aceito" : "Aguardando aceite"}</small></div>)}</> : null}</aside></div>
+    {previewOpen ? <div className="modal-backdrop" onClick={() => setPreviewOpen(false)}><section className="contract-preview-modal" onClick={(event) => event.stopPropagation()}><header><div><span>PRÉVIA PARA O CLIENTE</span><h2>Como o contrato será exibido</h2></div><button className="icon-close" onClick={() => setPreviewOpen(false)}>×</button></header><ContractDocumentPreview contract={draft} clientName={selectedClient?.name || draft.client} /><footer><button className="ghost-button" onClick={() => setPreviewOpen(false)}>Voltar para edição</button></footer></section></div> : null}
+    {templateModalOpen ? <div className="modal-backdrop" onClick={() => setTemplateModalOpen(false)}><section className="contract-template-modal" onClick={(event) => event.stopPropagation()}><header><div><span>NOVO MODELO</span><h2>Salvar na biblioteca</h2><p>O formulário atual ficará disponível para reutilização.</p></div><button className="icon-close" onClick={() => setTemplateModalOpen(false)}>×</button></header><label>Nome do modelo<input autoFocus value={templateName} onChange={(event) => setTemplateName(event.target.value)} placeholder="Ex.: Contrato mensal em inglês" /></label><label>Idioma<select value={templateLanguage} onChange={(event) => setTemplateLanguage(event.target.value)}><option>Português</option><option>English</option><option>Español</option><option>Français</option><option>Italiano</option><option>Deutsch</option></select></label><footer><button className="ghost-button" onClick={() => setTemplateModalOpen(false)}>Cancelar</button><button className="gradient-button" disabled={!templateName.trim()} onClick={saveTemplate}>Salvar modelo</button></footer></section></div> : null}
+  </section>;
+}
+
+function ClientContractAcceptance({ slug, accountName }: { slug: string; accountName: string }) {
+  const [contract, setContract] = useState<ContractRecord | null>(null);
+  const [accepted, setAccepted] = useState(false);
+  useEffect(() => {
+    const pending = readContractRecords().find((item) => item.clientSlug === slug && item.status === "pending") ?? null;
+    setContract(pending);
+    setAccepted(window.localStorage.getItem(`designhub-v2-contract-accepted:${slug}:${pending?.id ?? ""}`) === "1");
+  }, [slug]);
+  if (!contract || accepted) return null;
+  const accept = () => {
+    const next = readContractRecords().map((item) => item.id === contract.id ? { ...item, status: "accepted" as const, acceptedAt: new Date().toISOString() } : item);
+    writeContractRecords(next); window.localStorage.setItem(`designhub-v2-contract-accepted:${slug}:${contract.id}`, "1"); setAccepted(true);
+  };
+  return <div className="contract-acceptance-backdrop"><section className="contract-acceptance-modal"><header><span>PRIMEIRO ACESSO</span><h1>Antes de começar, leia seu contrato</h1><p>{accountName}, este documento foi disponibilizado para sua conta. Revise os termos com calma.</p></header><div className="contract-acceptance-paper"><ContractDocumentPreview contract={contract} clientName={accountName} /></div><footer><small>Ao clicar, você confirma que leu e está de acordo com os termos apresentados.</small><button className="gradient-button" onClick={accept}>Li e aceito o contrato</button></footer></section></div>;
+}
+
 function InternalAreaPage({ session, onLogout }: { session: SessionUser | null; onLogout: () => void }) {
   const { area = "" } = useParams();
-  const [reportCreationVersion, setReportCreationVersion] = useState(0);
+  const [reportCreationVersion, setReportCreationVersion] = useState(1);
   const [invoiceCreationVersion, setInvoiceCreationVersion] = useState(0);
-  const [proposalCreationVersion, setProposalCreationVersion] = useState(0);
+  const [proposalCreationVersion, setProposalCreationVersion] = useState(1);
+  const [contractCreationVersion, setContractCreationVersion] = useState(1);
   const [memberCreationVersion, setMemberCreationVersion] = useState(0);
   const page = INTERNAL_AREAS[area];
   if (!session || session.role === "client") return <Navigate to={getDefaultRoute(session)} replace />;
   if (!page || (page.restricted && session.role === "collaborator")) return <Navigate to="/dashboard" replace />;
   const metrics = area === "equipe" ? [{ label: "Papéis", value: "4", note: "Níveis de acesso", icon: <UiIcon name="users" />, tone: "clients" }, { label: "Clientes", value: "—", note: "Atribuições ativas", icon: <UiIcon name="link" />, tone: "posts" }] : area === "relatorios" ? [{ label: "Relatórios", value: "—", note: "Períodos disponíveis", icon: <UiIcon name="file" />, tone: "posts" }, { label: "Indicadores", value: "—", note: "Acompanhe resultados", icon: <UiIcon name="check" />, tone: "approved" }] : area === "faturamento" ? [{ label: "Faturas", value: "—", note: "Lançamentos da operação", icon: <UiIcon name="receipt" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Cobranças centralizadas", icon: <UiIcon name="check" />, tone: "approved" }] : [{ label: "Em andamento", value: "—", note: "Dados desta área", icon: <UiIcon name="clock" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Operação centralizada", icon: <UiIcon name="check" />, tone: "approved" }];
-  const content = area === "relatorios" ? <ReportsWorkspace newReportSignal={reportCreationVersion} /> : area === "faturamento" ? <BillingWorkspace session={session} newInvoiceSignal={invoiceCreationVersion} /> : area === "propostas" ? <ProposalsWorkspace newProposalSignal={proposalCreationVersion} /> : area === "equipe" ? <TeamManagementWorkspace session={session} newMemberSignal={memberCreationVersion} /> : area === "datas-comemorativas" ? <CommemorativeDatesWorkspace /> : area === "calendario-social" ? <SocialCalendarWorkspace /> : <section className="internal-area-card glass"><div className="internal-area-empty"><UiIcon name="spark" /><strong>Esta página é privada para o seu nível de acesso.</strong><span>O conteúdo desta área será organizado aqui.</span></div></section>;
-  const action = area === "relatorios" ? <button className="gradient-button page-context-action" onClick={() => setReportCreationVersion((current) => current + 1)}>+ Novo relatório</button> : area === "faturamento" ? <button className="gradient-button page-context-action" onClick={() => setInvoiceCreationVersion((current) => current + 1)}>+ Nova fatura</button> : area === "propostas" ? <button className="gradient-button page-context-action" onClick={() => setProposalCreationVersion((current) => current + 1)}>+ Nova proposta</button> : area === "equipe" && session.role === "super_admin" ? <button className="gradient-button page-context-action" onClick={() => setMemberCreationVersion((current) => current + 1)}>+ Novo membro</button> : null;
+  const content = area === "relatorios" ? <ReportsWorkspace newReportSignal={reportCreationVersion} /> : area === "faturamento" ? <BillingWorkspace session={session} newInvoiceSignal={invoiceCreationVersion} /> : area === "propostas" ? <ProposalsWorkspace newProposalSignal={proposalCreationVersion} /> : area === "contratos" ? <ContractsWorkspace newContractSignal={contractCreationVersion} /> : area === "equipe" ? <TeamManagementWorkspace session={session} newMemberSignal={memberCreationVersion} /> : area === "datas-comemorativas" ? <CommemorativeDatesWorkspace /> : area === "calendario-social" ? <SocialCalendarWorkspace /> : area === "briefs-design" ? <DesignBriefsWorkspace /> : <section className="internal-area-card glass"><div className="internal-area-empty"><UiIcon name="spark" /><strong>Esta página é privada para o seu nível de acesso.</strong><span>O conteúdo desta área será organizado aqui.</span></div></section>;
+  const action = area === "relatorios" ? <button className="gradient-button page-context-action" onClick={() => setReportCreationVersion((current) => current + 1)}>+ Novo relatório</button> : area === "faturamento" ? <button className="gradient-button page-context-action" onClick={() => setInvoiceCreationVersion((current) => current + 1)}>+ Nova fatura</button> : area === "propostas" ? <button className="gradient-button page-context-action" onClick={() => setProposalCreationVersion((current) => current + 1)}>+ Nova proposta</button> : area === "contratos" ? <button className="gradient-button page-context-action" onClick={() => setContractCreationVersion((current) => current + 1)}>+ Novo contrato</button> : area === "equipe" && session.role === "super_admin" ? <button className="gradient-button page-context-action" onClick={() => setMemberCreationVersion((current) => current + 1)}>+ Novo membro</button> : null;
   const titleIcon = area === "equipe" ? <UiIcon name="users" /> : area === "relatorios" || area === "briefs-design" ? <UiIcon name="file" /> : area === "faturamento" ? <UiIcon name="receipt" /> : area === "propostas" ? <UiIcon name="send" /> : area === "contratos" ? <UiIcon name="check" /> : area === "calendario-social" ? <UiIcon name="calendar" /> : area === "datas-comemorativas" ? <UiIcon name="spark" /> : undefined;
   return <div className="page-grid admin-layout internal-area-layout"><AdminRail session={session} /><main className="main-column"><WorkspaceNavbar session={session} onLogout={onLogout} /><PageContextBanner eyebrow="Área da operação" title={page.title} description={page.description} metrics={metrics} action={action} titleClassName={["relatorios", "faturamento", "propostas", "equipe", "calendario-social", "briefs-design", "datas-comemorativas", "contratos"].includes(area) ? "billing-banner-title" : undefined} titleIcon={titleIcon} />{content}</main></div>;
 }
@@ -4734,7 +5703,7 @@ function PublicApprovalPage() {
 
   useEffect(() => {
     if (!token) return;
-    loadPublicApproval(token).then(setView).catch((error) => setMessage(error instanceof Error ? error.message : "Link invalido."));
+    loadPublicApproval(token).then(setView).catch((error) => setMessage(error instanceof Error ? error.message : "Link inválido."));
   }, [token]);
 
   async function decide(approved: boolean) {
@@ -4742,9 +5711,9 @@ function PublicApprovalPage() {
     setMessage("");
     try {
       await submitPublicApproval(token, { approved, commentText: comment.trim() || undefined, requesterName: name.trim() || undefined });
-      setMessage(approved ? "Post aprovado. Obrigada pelo retorno!" : "Pedido de alteracao enviado para a equipe.");
+      setMessage(approved ? "Post aprovado. Obrigada pelo retorno!" : "Pedido de alteração enviado para a equipe.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Nao foi possivel registrar sua resposta.");
+      setMessage(error instanceof Error ? error.message : "Não foi possível registrar sua resposta.");
     } finally {
       setWorking(false);
     }
@@ -4752,7 +5721,7 @@ function PublicApprovalPage() {
 
   if (!view) return <main className="public-approval-page"><section className="public-approval-card"><h1>{message || "Abrindo seu post..."}</h1></section></main>;
   const card = mapPublicApprovalCard(view.card);
-  return <main className="public-approval-page"><section className="public-approval-card"><p className="eyebrow">{view.account.name}</p><h1>{card.title}</h1>{card.mediaUrl ? <div className={`media-frame ${card.mediaAspect}`}><img src={card.mediaUrl} alt={card.title} /></div> : null}<div className="public-caption">{card.subtitle || "Sem legenda cadastrada."}</div><label>Seu nome<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Como prefere ser identificado?" /></label><label>Comentario<textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Deixe uma observacao, se desejar" /></label><div className="public-approval-actions"><button className="gradient-button" disabled={working} onClick={() => decide(true)}>Aprovar</button><button className="danger-button" disabled={working} onClick={() => decide(false)}>Solicitar alteracao</button></div>{message ? <p className="form-feedback">{message}</p> : null}</section></main>;
+  return <main className="public-approval-page"><section className="public-approval-card"><p className="eyebrow">{view.account.name}</p><h1>{card.title}</h1>{card.mediaUrl ? <div className={`media-frame ${card.mediaAspect}`}><img src={card.mediaUrl} alt={card.title} /></div> : null}<div className="public-caption">{card.subtitle || "Sem legenda cadastrada."}</div><label>Seu nome<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Como prefere ser identificado?" /></label><label>Comentário<textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Deixe uma observação, se desejar" /></label><div className="public-approval-actions"><button className="gradient-button" disabled={working} onClick={() => decide(true)}>Aprovar</button><button className="danger-button" disabled={working} onClick={() => decide(false)}>Solicitar alteração</button></div>{message ? <p className="form-feedback">{message}</p> : null}</section></main>;
 }
 
 function mapPublicApprovalCard(card: { id: string; title: string; caption: string | null; mediaType: string; primaryMediaUrl: string | null; mediaUrls: string[]; externalLinkUrl: string | null; artType: string; status: string[]; tags: string[]; commentsCount: number; scheduledAt: string | null; clientLabel: string }) {
@@ -4768,8 +5737,20 @@ function mapPublicApprovalCard(card: { id: string; title: string; caption: strin
 export function App() {
   const location = useLocation();
   const [session, setSession] = useState<SessionUser | null>(() => readStoredSession());
-  const [bootingSession, setBootingSession] = useState(true);
+  const [bootingSession, setBootingSession] = useState(() => readStoredSession() === null && Boolean(readStoredAccessToken()));
+  const [globalSuccess, setGlobalSuccess] = useState<{ id: string; title: string; detail: string; tone?: "success" | "neutral" } | null>(null);
   const showGlobalHeader = bootingSession || location.pathname === "/login";
+
+  useEffect(() => {
+    const showSuccess = (event: Event) => setGlobalSuccess((event as CustomEvent<{ id: string; title: string; detail: string; tone?: "success" | "neutral" }>).detail);
+    window.addEventListener("design-hub:success", showSuccess);
+    return () => window.removeEventListener("design-hub:success", showSuccess);
+  }, []);
+  useEffect(() => {
+    if (!globalSuccess) return;
+    const timeout = window.setTimeout(() => setGlobalSuccess(null), 2_600);
+    return () => window.clearTimeout(timeout);
+  }, [globalSuccess]);
 
   useEffect(() => {
     let active = true;
@@ -4837,10 +5818,10 @@ export function App() {
         <AppHeader session={session} onLogout={handleLogout} />
         <main className="center-shell">
           <section className="glass access-card">
-            <p className="eyebrow">Sessao da V2</p>
+            <p className="eyebrow">Sessão da V2</p>
             <h2>Reconectando seu acesso</h2>
             <p className="hero-copy">
-              Estou validando a sessao diretamente na API local para restaurar o perfil correto.
+              Estou validando a sessão diretamente na API local para restaurar o perfil correto.
             </p>
           </section>
         </main>
@@ -4865,6 +5846,7 @@ export function App() {
         <Route path="/portal/:slug" element={<ClientPortalRoutePage session={session} onLogout={handleLogout} />} />
         <Route path="/agenda" element={<AgendaPage session={session} onLogout={handleLogout} />} />
       </Routes>
+      {globalSuccess ? <div key={globalSuccess.id} className={`global-success-notice ${globalSuccess.tone === "neutral" ? "is-neutral" : ""}`} role="status" aria-live="polite"><span className="global-success-icon"><UiIcon name="check" /></span><div><strong>{globalSuccess.title}</strong><small>{globalSuccess.detail}</small></div></div> : null}
     </div>
   );
 }

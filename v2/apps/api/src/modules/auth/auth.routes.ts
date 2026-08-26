@@ -46,19 +46,19 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.patch("/auth/me", async (request) => {
-    if (!request.auth) throw app.httpErrors.unauthorized("Sessao obrigatoria.");
+    if (!request.auth) throw app.httpErrors.unauthorized("Sessão obrigatória.");
     return { ok: true, user: await updateMyProfile(app, request.auth.user.id, updateMyProfileSchema.parse(request.body)) };
   });
 
   app.post("/auth/change-password", async (request) => {
-    if (!request.auth) throw app.httpErrors.unauthorized("Sessao obrigatoria.");
+    if (!request.auth) throw app.httpErrors.unauthorized("Sessão obrigatória.");
     await changeMyPassword(app, request.auth.user.id, changeMyPasswordSchema.parse(request.body));
     return { ok: true };
   });
 
   app.get("/auth/users", async (request) => {
     if (!request.auth) {
-      throw app.httpErrors.unauthorized("Sessao obrigatoria.");
+      throw app.httpErrors.unauthorized("Sessão obrigatória.");
     }
     if (!hasGlobalRole(request.auth.user.globalRole, "super_admin")) {
       throw app.httpErrors.forbidden(
@@ -73,7 +73,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
   app.post("/auth/users", async (request) => {
     if (!request.auth) {
-      throw app.httpErrors.unauthorized("Sessao obrigatoria.");
+      throw app.httpErrors.unauthorized("Sessão obrigatória.");
     }
     if (!hasGlobalRole(request.auth.user.globalRole, "super_admin")) {
       throw app.httpErrors.forbidden(
@@ -92,7 +92,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post("/auth/users/:userId/reset-password", async (request) => {
-    if (!request.auth) throw app.httpErrors.unauthorized("Sessao obrigatoria.");
+    if (!request.auth) throw app.httpErrors.unauthorized("Sessão obrigatória.");
     if (!hasGlobalRole(request.auth.user.globalRole, "super_admin")) {
       throw app.httpErrors.forbidden("Apenas o super admin pode redefinir senhas.");
     }

@@ -176,6 +176,7 @@ CREATE TABLE IF NOT EXISTS agenda_events (
   ends_at DATETIME NULL,
   recurrence_type ENUM('none', 'weekdays', 'weekly', 'monthly_nth_weekday') NOT NULL DEFAULT 'none',
   repeat_until DATE NULL,
+  meet_link VARCHAR(500) NULL,
   color VARCHAR(20) NOT NULL DEFAULT '#c9f7df',
   is_completed TINYINT(1) NOT NULL DEFAULT 0,
   created_by_user_id CHAR(36) NULL,
@@ -326,4 +327,57 @@ CREATE TABLE IF NOT EXISTS card_calendar_events (
   CONSTRAINT fk_card_calendar_creator
     FOREIGN KEY (created_by_user_id) REFERENCES users (id)
     ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS brand_brain_revisions (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  client_account_id CHAR(36) NOT NULL,
+  proposed_data_json JSON NOT NULL,
+  status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'pending',
+  summary VARCHAR(500) NULL,
+  created_by_user_id CHAR(36) NULL,
+  author_name VARCHAR(190) NOT NULL,
+  author_role VARCHAR(40) NOT NULL,
+  reviewed_by_user_id CHAR(36) NULL,
+  reviewer_name VARCHAR(190) NULL,
+  reviewed_at DATETIME NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  KEY idx_brand_revision_account_status (client_account_id, status, created_at),
+  CONSTRAINT fk_brand_revision_account FOREIGN KEY (client_account_id) REFERENCES client_accounts (id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_brand_revision_creator FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT fk_brand_revision_reviewer FOREIGN KEY (reviewed_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS brand_brain_versions (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  client_account_id CHAR(36) NOT NULL,
+  version_number INT NOT NULL,
+  data_json JSON NOT NULL,
+  created_by_user_id CHAR(36) NULL,
+  author_name VARCHAR(190) NOT NULL,
+  source_revision_id CHAR(36) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_brand_version_account_number (client_account_id, version_number),
+  KEY idx_brand_version_account_created (client_account_id, created_at),
+  CONSTRAINT fk_brand_version_account FOREIGN KEY (client_account_id) REFERENCES client_accounts (id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_brand_version_creator FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT fk_brand_version_revision FOREIGN KEY (source_revision_id) REFERENCES brand_brain_revisions (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS brand_brain_comments (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  client_account_id CHAR(36) NOT NULL,
+  revision_id CHAR(36) NULL,
+  section_key VARCHAR(80) NOT NULL DEFAULT 'general',
+  comment_text TEXT NOT NULL,
+  created_by_user_id CHAR(36) NULL,
+  author_name VARCHAR(190) NOT NULL,
+  author_role VARCHAR(40) NOT NULL,
+  is_internal TINYINT(1) NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_brand_comment_account_created (client_account_id, created_at),
+  CONSTRAINT fk_brand_comment_account FOREIGN KEY (client_account_id) REFERENCES client_accounts (id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_brand_comment_revision FOREIGN KEY (revision_id) REFERENCES brand_brain_revisions (id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_brand_comment_creator FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

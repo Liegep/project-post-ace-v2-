@@ -5,7 +5,7 @@ const mediaUrlSchema = z
   .string()
   .refine(
     (value) => z.string().url().safeParse(value).success || value.startsWith("/api/uploads/"),
-    "URL de midia invalida.",
+    "URL de mídia inválida.",
   );
 
 export const listCardsQuerySchema = z.object({

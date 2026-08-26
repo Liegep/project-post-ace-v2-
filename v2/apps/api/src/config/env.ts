@@ -29,5 +29,9 @@ const envSchema = z.object({
 export type AppEnv = z.infer<typeof envSchema>;
 
 export function loadEnv(): AppEnv {
-  return envSchema.parse(process.env);
+  return envSchema.parse({
+    ...process.env,
+    // Managed Node hosts commonly provide PORT instead of an app-specific name.
+    API_PORT: process.env.PORT || process.env.API_PORT,
+  });
 }

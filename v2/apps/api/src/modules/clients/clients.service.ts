@@ -19,24 +19,24 @@ export async function createClientAccount(
 ) {
   const existingSlug = await findClientAccountBySlug(app.db, input.slug);
   if (existingSlug) {
-    throw app.httpErrors.conflict("Ja existe uma conta com esse identificador.");
+    throw app.httpErrors.conflict("Já existe uma conta com esse identificador.");
   }
 
   if (input.ownerUserId) {
     const ownerUser = await findUserLookupById(app.db, input.ownerUserId);
     if (!ownerUser) {
-      throw app.httpErrors.notFound("Usuario responsavel nao encontrado.");
+      throw app.httpErrors.notFound("Usuário responsável não encontrado.");
     }
     if (ownerUser.global_role === "cliente") {
       throw app.httpErrors.badRequest(
-        "O responsavel interno nao pode ter perfil de cliente.",
+        "O responsável interno não pode ter perfil de cliente.",
       );
     }
   }
 
   const created = await createClientAccountWithDefaults(app.db, input, createdByUserId);
   if (!created) {
-    throw app.httpErrors.badRequest("Nao foi possivel criar a conta do cliente.");
+    throw app.httpErrors.badRequest("Não foi possível criar a conta do cliente.");
   }
 
   return created;
@@ -50,23 +50,23 @@ export async function attachUserToClient(
 ) {
   const client = await findClientAccountById(app.db, clientAccountId);
   if (!client) {
-    throw app.httpErrors.notFound("Conta do cliente nao encontrada.");
+    throw app.httpErrors.notFound("Conta do cliente não encontrada.");
   }
 
   const user = await findUserLookupById(app.db, input.userId);
   if (!user) {
-    throw app.httpErrors.notFound("Usuario nao encontrado.");
+    throw app.httpErrors.notFound("Usuário não encontrado.");
   }
 
   if (input.membershipRole === "cliente" && user.global_role !== "cliente") {
     throw app.httpErrors.badRequest(
-      "Para acesso de portal, o usuario precisa ter perfil global de cliente.",
+      "Para acesso de portal, o usuário precisa ter perfil global de cliente.",
     );
   }
 
   if (input.membershipRole !== "cliente" && user.global_role === "cliente") {
     throw app.httpErrors.badRequest(
-      "Usuarios do portal nao podem receber papel interno nesta conta.",
+      "Usuários do portal não podem receber papel interno nesta conta.",
     );
   }
 
@@ -79,7 +79,7 @@ export async function getClientAccessList(
 ) {
   const client = await findClientAccountById(app.db, clientAccountId);
   if (!client) {
-    throw app.httpErrors.notFound("Conta do cliente nao encontrada.");
+    throw app.httpErrors.notFound("Conta do cliente não encontrada.");
   }
 
   return {

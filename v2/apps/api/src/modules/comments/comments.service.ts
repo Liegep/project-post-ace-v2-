@@ -11,7 +11,7 @@ export async function getCardComments(
 ) {
   const card = await findCardById(app.db, cardId);
   if (!card || card.clientAccountId !== clientAccountId) {
-    throw app.httpErrors.notFound("Card nao encontrado nesta conta.");
+    throw app.httpErrors.notFound("Card não encontrado nesta conta.");
   }
 
   return {
@@ -34,12 +34,12 @@ export async function addCardComment(
 ) {
   const card = await findCardById(app.db, cardId);
   if (!card || card.clientAccountId !== clientAccountId) {
-    throw app.httpErrors.notFound("Card nao encontrado nesta conta.");
+    throw app.httpErrors.notFound("Card não encontrado nesta conta.");
   }
 
   if (input.isInternal && !actor.canCreateInternal) {
     throw app.httpErrors.forbidden(
-      "Esse perfil nao pode criar comentario interno.",
+      "Esse perfil não pode criar comentário interno.",
     );
   }
 
@@ -53,7 +53,7 @@ export async function addCardComment(
   });
 
   if (!created) {
-    throw app.httpErrors.badRequest("Nao foi possivel salvar o comentario.");
+    throw app.httpErrors.badRequest("Não foi possível salvar o comentário.");
   }
 
   return created;

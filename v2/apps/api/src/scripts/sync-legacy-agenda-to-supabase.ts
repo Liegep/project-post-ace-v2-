@@ -120,7 +120,7 @@ function parseArgs(argv: string[]): SyncOptions {
 
 function requireEnv(env: EnvMap, key: string): string {
   const value = env[key];
-  if (!value) throw new Error(`Variavel obrigatoria ausente: ${key}`);
+  if (!value) throw new Error(`Variavel obrigatória ausente: ${key}`);
   return value;
 }
 
@@ -184,7 +184,7 @@ async function findLegacyUserId(
       "SELECT id, email, full_name AS fullName FROM users WHERE id = ? LIMIT 1",
       [legacyUserId],
     );
-    if (rows.length === 0) throw new Error(`Usuario legado nao encontrado para id ${legacyUserId}`);
+    if (rows.length === 0) throw new Error(`Usuário legado não encontrado para id ${legacyUserId}`);
     return rows[0] as { id: string; email: string; fullName: string };
   }
 
@@ -196,7 +196,7 @@ async function findLegacyUserId(
     "SELECT id, email, full_name AS fullName FROM users WHERE email = ? LIMIT 1",
     [legacyUserEmail],
   );
-  if (rows.length === 0) throw new Error(`Usuario legado nao encontrado para email ${legacyUserEmail}`);
+  if (rows.length === 0) throw new Error(`Usuário legado não encontrado para email ${legacyUserEmail}`);
   return rows[0] as { id: string; email: string; fullName: string };
 }
 
@@ -307,7 +307,7 @@ async function main() {
   const supabaseAnonKey = env.VITE_SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_PUBLISHABLE_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Supabase URL/chave publishable nao encontrados.");
+    throw new Error("Supabase URL/chave publishable não encontrados.");
   }
 
   const supabaseEmail =
@@ -399,7 +399,7 @@ async function main() {
       );
     }
 
-    console.log(`Importacao concluida: ${rowsToInsert.length} compromissos inseridos.`);
+    console.log(`Importação concluída: ${rowsToInsert.length} compromissos inseridos.`);
   } finally {
     await db.end();
   }

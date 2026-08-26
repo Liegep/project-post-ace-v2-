@@ -1,4 +1,7 @@
 import Fastify from "fastify";
+import fastifyStatic from "@fastify/static";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { loadEnv } from "./config/env.js";
 import { dbPluginRegistered } from "./plugins/db.js";
 import { authPluginRegistered } from "./plugins/auth.js";
@@ -11,6 +14,7 @@ import { cardRoutes } from "./modules/cards/cards.routes.js";
 import { portalRoutes } from "./modules/portal/portal.routes.js";
 import { commentRoutes } from "./modules/comments/comments.routes.js";
 import { approvalRoutes } from "./modules/approvals/approvals.routes.js";
+import { reconcileApprovedCardColumns } from "./modules/approvals/approvals.service.js";
 import { calendarRoutes } from "./modules/calendar/calendar.routes.js";
 import { demoRoutes } from "./modules/demo/demo.routes.js";
 import { uploadRoutes } from "./modules/uploads/uploads.routes.js";
@@ -62,20 +66,43 @@ export async function buildApp() {
       }
     };
     await archiveDueCards();
+    try {
+      const organized = await reconcileApprovedCardColumns(app);
+      if (organized > 0) app.log.info({ organized }, "Approved cards organized into their client columns");
+    } catch (error) {
+      app.log.error(error, "Unable to organize approved cards");
+    }
     // Keep scheduled publication responsive without requiring a browser refresh.
     const scheduler = setInterval(() => { void archiveDueCards(); }, 5_000);
     scheduler.unref();
     app.addHook("onClose", async () => clearInterval(scheduler));
   }
 
-  app.get("/", async () => {
-    return {
+  if (appEnv.NODE_ENV === "production") {
+    const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
+    const webDirectory = path.resolve(currentDirectory, "../../web/dist");
+
+    await app.register(fastifyStatic, {
+      root: webDirectory,
+      prefix: "/",
+      wildcard: false,
+      index: false,
+    });
+
+    app.setNotFoundHandler(async (request, reply) => {
+      if (request.method === "GET" && !request.url.startsWith("/api")) {
+        return reply.type("text/html; charset=utf-8").sendFile("index.html");
+      }
+      throw app.httpErrors.notFound("Rota não encontrada.");
+    });
+  } else {
+    app.get("/", async () => ({
       ok: true,
       service: appEnv.APP_NAME,
       api: appEnv.API_URL,
       demoMode: appEnv.DEMO_MODE,
-    };
-  });
+    }));
+  }
 
   return app;
 }

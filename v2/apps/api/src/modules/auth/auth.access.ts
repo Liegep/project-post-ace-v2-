@@ -62,11 +62,11 @@ export function hasMembershipRole(
 export function assertInternalAccess(request: FastifyRequest) {
   const auth = request.auth;
   if (!auth) {
-    throw request.server.httpErrors.unauthorized("Sessao obrigatoria.");
+    throw request.server.httpErrors.unauthorized("Sessão obrigatória.");
   }
   if (!canAccessInternalArea(auth.user.globalRole)) {
     throw request.server.httpErrors.forbidden(
-      "Clientes nao podem acessar a area interna.",
+      "Clientes não podem acessar a área interna.",
     );
   }
 }
@@ -74,11 +74,11 @@ export function assertInternalAccess(request: FastifyRequest) {
 export function assertCanCreateClients(request: FastifyRequest) {
   const auth = request.auth;
   if (!auth) {
-    throw request.server.httpErrors.unauthorized("Sessao obrigatoria.");
+    throw request.server.httpErrors.unauthorized("Sessão obrigatória.");
   }
   if (!canCreateClients(auth.user.globalRole)) {
     throw request.server.httpErrors.forbidden(
-      "Seu perfil nao pode criar clientes.",
+      "Seu perfil não pode criar clientes.",
     );
   }
 }
@@ -90,7 +90,7 @@ export function assertClientAccess(
 ) {
   const auth = request.auth;
   if (!auth) {
-    throw request.server.httpErrors.unauthorized("Sessao obrigatoria.");
+    throw request.server.httpErrors.unauthorized("Sessão obrigatória.");
   }
 
   if (auth.user.globalRole === "super_admin") return;
@@ -98,7 +98,7 @@ export function assertClientAccess(
   const scope = getClientScope(auth.user.globalRole, auth.user.id, auth.memberships);
   if (scope.mode === "scoped" && !scope.clientIds.includes(clientAccountId)) {
     throw request.server.httpErrors.forbidden(
-      "Voce nao tem acesso a esta conta.",
+      "Você não tem acesso a esta conta.",
     );
   }
 
@@ -106,7 +106,7 @@ export function assertClientAccess(
     const ok = hasMembershipRole(auth.memberships, clientAccountId, ["cliente"]);
     if (!ok) {
       throw request.server.httpErrors.forbidden(
-        "Cliente so pode acessar a propria area.",
+        "Cliente só pode acessar a própria área.",
       );
     }
     return;
@@ -116,7 +116,7 @@ export function assertClientAccess(
     const ok = hasMembershipRole(auth.memberships, clientAccountId, allowedMembershipRoles);
     if (!ok) {
       throw request.server.httpErrors.forbidden(
-        "Seu papel nessa conta nao permite esta acao.",
+        "Seu papel nessa conta não permite esta ação.",
       );
     }
   }

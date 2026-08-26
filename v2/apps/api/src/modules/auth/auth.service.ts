@@ -9,17 +9,17 @@ export async function loginWithPassword(app: FastifyInstance, input: LoginInput)
   const user = await findUserByEmail(app.db, input.email);
 
   if (!user || !user.is_active) {
-    throw app.httpErrors.unauthorized("Email ou senha invalidos.");
+    throw app.httpErrors.unauthorized("Email ou senha inválidos.");
   }
 
   const passwordOk = await verifyPassword(input.password, user.password_hash);
   if (!passwordOk) {
-    throw app.httpErrors.unauthorized("Email ou senha invalidos.");
+    throw app.httpErrors.unauthorized("Email ou senha inválidos.");
   }
 
   const auth = await findAuthContextByUserId(app.db, user.id);
   if (!auth) {
-    throw app.httpErrors.notFound("Usuario nao encontrado.");
+    throw app.httpErrors.notFound("Usuário não encontrado.");
   }
 
   const accessToken = signAccessToken(app, {
@@ -41,7 +41,7 @@ export async function createManagedUser(
 ) {
   const existing = await findUserByEmail(app.db, input.email);
   if (existing) {
-    throw app.httpErrors.conflict("Ja existe um usuario com esse email.");
+    throw app.httpErrors.conflict("Já existe um usuário com esse email.");
   }
 
   const passwordHash = await hashPassword(input.password);
@@ -53,7 +53,7 @@ export async function createManagedUser(
   });
 
   if (!created) {
-    throw app.httpErrors.badRequest("Nao foi possivel criar o usuario.");
+    throw app.httpErrors.badRequest("Não foi possível criar o usuário.");
   }
 
   return created;
@@ -61,7 +61,7 @@ export async function createManagedUser(
 
 export async function updateMyProfile(app: FastifyInstance, userId: string, input: UpdateMyProfileInput) {
   const updated = await updateUserAvatar(app.db, userId, input.avatarUrl);
-  if (!updated) throw app.httpErrors.notFound("Usuario nao encontrado.");
+  if (!updated) throw app.httpErrors.notFound("Usuário não encontrado.");
   return updated.user;
 }
 
@@ -76,6 +76,6 @@ export async function changeMyPassword(app: FastifyInstance, userId: string, inp
 
 export async function resetManagedUserPassword(app: FastifyInstance, userId: string, newPassword: string) {
   const user = await findAuthContextByUserId(app.db, userId);
-  if (!user) throw app.httpErrors.notFound("Usuario nao encontrado.");
+  if (!user) throw app.httpErrors.notFound("Usuário não encontrado.");
   await updateUserPasswordHash(app.db, userId, await hashPassword(newPassword));
 }

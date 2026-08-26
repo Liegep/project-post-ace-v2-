@@ -91,12 +91,28 @@ export type ClientWidgetFlags = {
   search: boolean;
 };
 
+export type ClientPermissions = {
+  allowClientEditCaption: boolean;
+  allowClientCreatePost: boolean;
+  allowClientCreateTags: boolean;
+  allowClientDownload: boolean;
+  allowClientEditBrandBrain: boolean;
+  allowClientSearch: boolean;
+  allowClientViewInvoices: boolean;
+  allowClientViewReports: boolean;
+  allowClientViewBrandBrain: boolean;
+  allowClientViewTracking: boolean;
+};
+
 export type ClientPortalPreview = {
   accountName: string;
   clientGreetingName?: string;
   clientLogoUrl?: string | null;
   locale: string;
+  trackingEnabled: boolean;
+  showArchivedToClient: boolean;
   widgets: ClientWidgetFlags;
+  permissions: ClientPermissions;
   boardColumns: BoardColumn[];
   withoutColumn: BoardCard[];
   calendarEvents: CalendarEvent[];

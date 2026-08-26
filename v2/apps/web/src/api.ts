@@ -70,7 +70,18 @@ export type ClientTrackerSettings = {
   columns: Array<{ id: string; name: string; visibleToClient: boolean }>;
 };
 export type KanbanActivity = { id: string; title: string; detail: string; type: "card" | "approval"; occurredAt: string };
-export type BrandBrain = { mission: string; vision: string; voice: string; visualNotes: string; approvedWords: string[]; avoidWords: string[]; expressions: string[]; colors: string[]; pillars: Array<{ name: string; focus: string; weight: number }> };
+export type BrandBrain = {
+  mission: string; vision: string; positioning: string; brandPromise: string;
+  audience: string; audiencePains: string[]; audienceDesires: string[];
+  voice: string; personalityTraits: string[]; voiceExamples: string[]; voiceAvoidExamples: string[];
+  visualNotes: string; typographyDisplay: string; typographyBody: string; typographyAccent: string; typographySample: string;
+  approvedWords: string[]; avoidWords: string[]; expressions: string[]; colors: string[];
+  differentiators: string[]; proofPoints: string[]; references: string[];
+  pillars: Array<{ name: string; focus: string; weight: number }>;
+};
+export type BrandBrainRevision = { id: string; status: "pending" | "approved" | "rejected"; summary: string | null; data: BrandBrain; authorName: string; authorRole: string; reviewerName: string | null; createdAt: string; reviewedAt: string | null };
+export type BrandBrainComment = { id: string; revisionId: string | null; sectionKey: string; commentText: string; authorName: string; authorRole: string; isInternal: boolean; createdAt: string };
+export type BrandBrainSnapshot = { data: BrandBrain | null; meta: { version: number; updatedAt: string | null; updatedBy: string | null }; revisions: BrandBrainRevision[]; history: Array<{ id: string; version: number; authorName: string; createdAt: string }>; comments: BrandBrainComment[] };
 export type ReportMetrics = Record<"instagram" | "facebook", Record<"reach" | "impressions" | "engagement" | "followers" | "visits" | "clicks", number>>;
 export type ClientReport = { id: string; clientAccountId: string; title: string; periodStart: string; periodEnd: string; status: "draft" | "published"; metrics: ReportMetrics; highlights: Array<{ channel: "instagram" | "facebook"; title: string; value: number }>; evidenceUrls: string[]; notes: string | null; publishedAt: string | null; createdAt: string; updatedAt: string };
 
@@ -166,7 +177,10 @@ type ApiPortalHomeResponse = {
     locale: string;
     portalTitle?: string;
     logoUrl?: string | null;
+    trackingEnabled: boolean;
+    showArchivedToClient: boolean;
   };
+  permissions: ClientPortalPreview["permissions"];
   widgets: ClientPortalPreview["widgets"];
   upcomingItems: ClientPortalPreview["upcomingItems"];
 };
@@ -220,10 +234,11 @@ export type ClientTagDefinition = { id: string; name: string; color: string };
 export type HashtagGroup = { id: string; name: string; hashtags: string[] };
 export type DashboardTask = { id: string; title: string; deadlineAt: string; clientLabel: string; clientName: string; clientLogoUrl?: string | null };
 export type DashboardSubmission = { id: string; title: string; createdAt: string; clientName: string; clientLogoUrl?: string | null };
+export type DashboardClientActivity = { id: string; cardId: string | null; title: string; occurredAt: string; clientName: string; clientSlug: string; clientLogoUrl?: string | null; activityType: "approved" | "changes_requested" | "comment" | "brand_brain"; detail: string };
 export type DashboardUpcomingPost = { id: string; title: string; scheduledAt: string; clientLabel: string; clientName: string; clientLogoUrl?: string | null };
 export type AgendaLabel = { id: string; name: string; color: string };
 export type AgendaRecurrence = "none" | "weekdays" | "weekly" | "monthly_nth_weekday";
-export type AgendaEvent = { id: string; sourceEventId?: string; title: string; taskDescription?: string | null; startsAt: string; endsAt?: string | null; recurrenceType?: AgendaRecurrence; repeatUntil?: string | null; color: string; isCompleted: boolean; clientAccountId?: string | null; clientName?: string | null; labelId?: string | null; labelName?: string | null };
+export type AgendaEvent = { id: string; sourceEventId?: string; title: string; taskDescription?: string | null; startsAt: string; endsAt?: string | null; recurrenceType?: AgendaRecurrence; repeatUntil?: string | null; color: string; isCompleted: boolean; clientAccountId?: string | null; clientName?: string | null; labelId?: string | null; labelName?: string | null; meetLink?: string | null };
 
 type ApiCardDetailResponse = {
   card: ApiBoardCard;
@@ -233,8 +248,8 @@ type ApiCardDetailResponse = {
 
 const adminDrawerNotes = [
   "Cliente prefere aprovar pelo celular.",
-  "Equipe de anuncios acessa apenas as contas atribuidas.",
-  "Links temporarios de aprovacao podem expirar em 7 dias.",
+  "Equipe de anúncios acessa apenas as contas atribuídas.",
+  "Links temporários de aprovação podem expirar em 7 dias.",
 ];
 
 const adminQuickLinks = [
@@ -248,6 +263,8 @@ const adminQuickApps = ["Recados", "Rascunhos", "Links", "Rapidos"];
 
 let adminClientsCache: { expiresAt: number; data: { items: AdminClientOption[] } } | null = null;
 let adminClientsRequest: Promise<{ items: AdminClientOption[] }> | null = null;
+let portalAccountsCache: { authKey: string; expiresAt: number; data: { items: ApiPortalAccountItem[] } } | null = null;
+let portalAccountsRequest: { authKey: string; promise: Promise<{ items: ApiPortalAccountItem[] }> } | null = null;
 
 async function getAdminClients() {
   if (adminClientsCache && adminClientsCache.expiresAt > Date.now()) {
@@ -262,6 +279,27 @@ async function getAdminClients() {
       .finally(() => { adminClientsRequest = null; });
   }
   return adminClientsRequest;
+}
+
+async function getPortalAccounts() {
+  const authKey = getAccessToken() || getDevUserId();
+  if (portalAccountsCache?.authKey === authKey && portalAccountsCache.expiresAt > Date.now()) {
+    return portalAccountsCache.data;
+  }
+  if (portalAccountsRequest?.authKey === authKey) {
+    return portalAccountsRequest.promise;
+  }
+
+  const promise = fetchJson<{ items: ApiPortalAccountItem[] }>("/api/portal/accounts")
+    .then((data) => {
+      portalAccountsCache = { authKey, data, expiresAt: Date.now() + 60_000 };
+      return data;
+    })
+    .finally(() => {
+      if (portalAccountsRequest?.authKey === authKey) portalAccountsRequest = null;
+    });
+  portalAccountsRequest = { authKey, promise };
+  return promise;
 }
 
 const adminTrackingItems = [
@@ -317,7 +355,33 @@ async function sendJson<T>(path: string, init: RequestInit): Promise<T> {
     throw new Error(payload?.message ?? `Falha ao salvar: ${response.status}`);
   }
 
-  return response.json() as Promise<T>;
+  const payload = await response.json() as T;
+  const method = (init.method ?? "GET").toUpperCase();
+  if (method !== "GET") {
+    let body: Record<string, unknown> | null = null;
+    if (typeof init.body === "string") {
+      try { body = JSON.parse(init.body) as Record<string, unknown>; } catch { body = null; }
+    }
+    const isCardDecisionWithOwnAnimation = /\/cards\/[^/]+\/decision$/.test(path);
+    const isScheduleWithOwnAnimation = typeof body?.scheduledAt === "string";
+    if (!isCardDecisionWithOwnAnimation && !isScheduleWithOwnAnimation) {
+      const feedback = path.includes("/comments")
+        ? { title: "Feedback enviado", detail: "Seu comentário foi salvo com sucesso.", tone: "success" }
+        : path.includes("/texts/") && path.endsWith("/decision")
+          ? { title: "Feedback enviado", detail: "O retorno sobre o texto foi registrado.", tone: "success" }
+          : method === "DELETE"
+            ? { title: "Item removido", detail: "A alteração já foi aplicada.", tone: "neutral" }
+            : method === "PATCH" || method === "PUT"
+              ? { title: "Alterações salvas", detail: "Tudo foi atualizado corretamente.", tone: "success" }
+              : path.endsWith("/cards")
+                ? { title: "Conteúdo criado", detail: "O novo card já está disponível.", tone: "success" }
+                : path.endsWith("/columns")
+                  ? { title: "Coluna criada", detail: "A nova etapa já está no quadro.", tone: "success" }
+                  : { title: "Tudo certo", detail: "A ação foi concluída com sucesso.", tone: "success" };
+      window.dispatchEvent(new CustomEvent("design-hub:success", { detail: { ...feedback, id: `${Date.now()}-${Math.random()}` } }));
+    }
+  }
+  return payload;
 }
 
 async function fetchWithTimeout(url: string, init: RequestInit) {
@@ -427,7 +491,7 @@ function mapApprovalLink(link: ApiApprovalLink): ApprovalLink {
 export async function loadAdminWorkspaceBySlug(slug: string, options: { archived?: boolean } = {}): Promise<AdminWorkspacePreview> {
   const clientsResponse = await getAdminClients();
   const matchedClient = clientsResponse.items.find((item) => item.slug === slug);
-  if (!matchedClient) throw new Error(`Conta ${slug} nao encontrada.`);
+  if (!matchedClient) throw new Error(`Conta ${slug} não encontrada.`);
 
   const boardResponse = await fetchJson<ApiAdminBoardResponse>(
     `/api/clients/${matchedClient.id}/board${options.archived ? "?archived=true" : ""}`,
@@ -521,16 +585,12 @@ export async function extractAdminReportMetrics(clientAccountId: string, evidenc
 export async function listPortalReportsBySlug(slug: string) { const account = await findPortalAccountBySlug(slug); return fetchJson<{ items: ClientReport[] }>(`/api/portal/accounts/${account.clientAccountId}/reports`); }
 
 export async function loadClientPortalBySlug(slug: string): Promise<ClientPortalPreview> {
-  const accountsResponse = await fetchJson<{ items: ApiPortalAccountItem[] }>("/api/portal/accounts");
   const matchedAccount = await findPortalAccountBySlug(slug);
 
-  const [homeResponse, boardResponse, calendarResponse] = await Promise.all([
+  const [homeResponse, boardResponse] = await Promise.all([
     fetchJson<ApiPortalHomeResponse>(`/api/portal/accounts/${matchedAccount.clientAccountId}/home`),
     fetchJson<ApiPortalBoardResponse>(
       `/api/portal/accounts/${matchedAccount.clientAccountId}/board`,
-    ),
-    fetchJson<ApiCalendarResponse>(
-      `/api/portal/accounts/${matchedAccount.clientAccountId}/calendar`,
     ),
   ]);
 
@@ -539,12 +599,30 @@ export async function loadClientPortalBySlug(slug: string): Promise<ClientPortal
     clientGreetingName: homeResponse.account.portalTitle || homeResponse.account.name,
     clientLogoUrl: homeResponse.account.logoUrl ?? null,
     locale: homeResponse.account.locale,
+    trackingEnabled: homeResponse.account.trackingEnabled,
+    showArchivedToClient: homeResponse.account.showArchivedToClient,
     widgets: homeResponse.widgets,
+    permissions: homeResponse.permissions,
     boardColumns: mapColumns(boardResponse.board.columns),
     withoutColumn: boardResponse.board.withoutColumn.cards.map((card) => mapCard(card)),
-    calendarEvents: calendarResponse.events.map(mapCalendarEvent),
+    calendarEvents: [],
     upcomingItems: homeResponse.upcomingItems,
   };
+}
+
+export async function loadPortalArchivedCardsBySlug(slug: string) {
+  const account = await findPortalAccountBySlug(slug);
+  const response = await fetchJson<ApiPortalBoardResponse>(`/api/portal/accounts/${account.clientAccountId}/board?archived=true`);
+  return {
+    columns: mapColumns(response.board.columns),
+    withoutColumn: response.board.withoutColumn.cards.map((card) => mapCard(card)),
+  };
+}
+
+export async function searchPortalCardsBySlug(slug: string, query: string) {
+  const account = await findPortalAccountBySlug(slug);
+  const response = await fetchJson<{ items: ApiBoardCard[] }>(`/api/portal/accounts/${account.clientAccountId}/search?q=${encodeURIComponent(query)}`);
+  return { items: response.items.map((card) => mapCard(card)) };
 }
 
 export async function loadAdminCardDetailBySlug(
@@ -586,20 +664,18 @@ async function findAdminClientBySlug(slug: string) {
   const matchedClient = clientsResponse.items.find((item) => item.slug === slug);
 
   if (!matchedClient) {
-    throw new Error(`Conta ${slug} nao encontrada.`);
+    throw new Error(`Conta ${slug} não encontrada.`);
   }
 
   return matchedClient;
 }
 
 async function findPortalAccountBySlug(slug: string) {
-  const accountsResponse = await fetchJson<{ items: ApiPortalAccountItem[] }>(
-    "/api/portal/accounts",
-  );
+  const accountsResponse = await getPortalAccounts();
   const matchedAccount = accountsResponse.items.find((item) => item.clientSlug === slug);
 
   if (!matchedAccount) {
-    throw new Error(`Portal ${slug} nao encontrado.`);
+    throw new Error(`Portal ${slug} não encontrado.`);
   }
 
   return matchedAccount;
@@ -907,17 +983,26 @@ export async function listAdminHashtagGroupsBySlug(slug: string) {
 }
 
 export async function loadDashboardOverview() {
-  return fetchJson<{ dueTasks: DashboardTask[]; upcomingPosts: DashboardUpcomingPost[]; agendaToday: AgendaEvent[]; clientSubmissions: DashboardSubmission[] }>("/api/dashboard/overview");
+  return fetchJson<{ dueTasks: DashboardTask[]; upcomingPosts: DashboardUpcomingPost[]; agendaToday: AgendaEvent[]; clientSubmissions: DashboardSubmission[]; clientActivities: DashboardClientActivity[] }>("/api/dashboard/overview");
 }
 
 export async function loadAgendaEvents(from: string, to: string) { return fetchJson<{ items: AgendaEvent[] }>(`/api/agenda/events?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`); }
 export async function loadCalendarOverview(from: string, to: string) { const response = await fetchJson<ApiCalendarResponse & { meta?: { totalEvents?: number } }>(`/api/calendar/overview?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`); return { ...response, events: response.events.map(mapCalendarEvent) }; }
 export async function loadAdminClientCalendarBySlug(slug: string, from: string, to: string) { const client = await findAdminClientBySlug(slug); const response = await fetchJson<ApiCalendarResponse>(`/api/clients/${client.id}/calendar?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`); return { clientAccountId: client.id, events: response.events.map(mapCalendarEvent) }; }
 export async function loadAdminKanbanActivitiesBySlug(slug: string) { const client = await findAdminClientBySlug(slug); return fetchJson<{ items: KanbanActivity[] }>(`/api/clients/${client.id}/activities`); }
-export async function loadBrandBrainBySlug(slug: string) { const client = await findAdminClientBySlug(slug); return fetchJson<{ data: BrandBrain | null }>(`/api/clients/${client.id}/brand-brain`); }
-export async function saveBrandBrainBySlug(slug: string, data: BrandBrain) { const client = await findAdminClientBySlug(slug); return sendJson<{ ok: true }>(`/api/clients/${client.id}/brand-brain`, { method: "PUT", body: JSON.stringify({ data }) }); }
-export async function createAgendaEvent(input: { title: string; taskDescription?: string | null; startsAt: string; endsAt?: string | null; color: string; clientAccountId?: string | null; labelId?: string | null; recurrenceType?: AgendaRecurrence; repeatUntil?: string | null }) { return sendJson<{ ok: true; id: string }>("/api/agenda/events", { method: "POST", body: JSON.stringify(input) }); }
-export async function updateAgendaEvent(eventId: string, input: Partial<{ title: string; taskDescription: string | null; startsAt: string; color: string; clientAccountId: string | null; labelId: string | null; recurrenceType: AgendaRecurrence; repeatUntil: string | null }>) { return sendJson<{ ok: true }>(`/api/agenda/events/${eventId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+export async function loadBrandBrainBySlug(slug: string) { const client = await findAdminClientBySlug(slug); return fetchJson<BrandBrainSnapshot>(`/api/clients/${client.id}/brand-brain`); }
+export async function saveBrandBrainBySlug(slug: string, data: BrandBrain, summary?: string) { const client = await findAdminClientBySlug(slug); return sendJson<{ ok: true; pending: boolean; version?: number; revision?: BrandBrainRevision }>(`/api/clients/${client.id}/brand-brain`, { method: "PUT", body: JSON.stringify({ data, summary }) }); }
+export async function decideBrandBrainRevisionBySlug(slug: string, revisionId: string, approved: boolean) { const client = await findAdminClientBySlug(slug); return sendJson<{ ok: true; status: string; version: number | null }>(`/api/clients/${client.id}/brand-brain/revisions/${revisionId}/decision`, { method: "POST", body: JSON.stringify({ approved }) }); }
+export async function addBrandBrainCommentBySlug(slug: string, input: { commentText: string; revisionId?: string | null; sectionKey?: string; isInternal?: boolean }) { const client = await findAdminClientBySlug(slug); return sendJson<{ ok: true }>(`/api/clients/${client.id}/brand-brain/comments`, { method: "POST", body: JSON.stringify(input) }); }
+export async function loadPortalBrandBrainBySlug(slug: string) { const account = await findPortalAccountBySlug(slug); return fetchJson<BrandBrainSnapshot>(`/api/clients/${account.clientAccountId}/brand-brain`); }
+export async function savePortalBrandBrainBySlug(slug: string, data: BrandBrain, summary?: string) { const account = await findPortalAccountBySlug(slug); return sendJson<{ ok: true; pending: boolean; revision?: BrandBrainRevision }>(`/api/clients/${account.clientAccountId}/brand-brain`, { method: "PUT", body: JSON.stringify({ data, summary }) }); }
+export async function addPortalBrandBrainCommentBySlug(slug: string, input: { commentText: string; revisionId?: string | null; sectionKey?: string }) { const account = await findPortalAccountBySlug(slug); return sendJson<{ ok: true }>(`/api/clients/${account.clientAccountId}/brand-brain/comments`, { method: "POST", body: JSON.stringify(input) }); }
+export async function createAgendaEvent(input: { title: string; taskDescription?: string | null; startsAt: string; endsAt?: string | null; color: string; clientAccountId?: string | null; labelId?: string | null; recurrenceType?: AgendaRecurrence; repeatUntil?: string | null; meetLink?: string | null }) { return sendJson<{ ok: true; id: string }>("/api/agenda/events", { method: "POST", body: JSON.stringify(input) }); }
+export async function updateAgendaEvent(eventId: string, input: Partial<{ title: string; taskDescription: string | null; startsAt: string; color: string; clientAccountId: string | null; labelId: string | null; recurrenceType: AgendaRecurrence; repeatUntil: string | null; meetLink: string | null }>) { return sendJson<{ ok: true }>(`/api/agenda/events/${eventId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+export async function listPortalAppointmentsBySlug(slug: string, from: string, to: string) {
+  const account = await findPortalAccountBySlug(slug);
+  return fetchJson<{ items: AgendaEvent[] }>(`/api/portal/accounts/${account.clientAccountId}/appointments?from=${from}&to=${to}`);
+}
 export async function deleteAgendaEvent(eventId: string) { return sendJson<{ ok: true }>(`/api/agenda/events/${eventId}`, { method: "DELETE" }); }
 export async function loadAgendaLabels() { return fetchJson<{ items: AgendaLabel[] }>("/api/agenda/labels"); }
 export async function createAgendaLabel(input: { name: string; color: string }) { return sendJson<{ ok: true; label: AgendaLabel }>("/api/agenda/labels", { method: "POST", body: JSON.stringify(input) }); }
@@ -935,7 +1020,7 @@ export async function loadPublicApproval(token: string) {
   const response = await fetchWithTimeout(`${getApiBaseUrl()}/api/portal/approval/${token}`, { method: "GET" });
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(payload?.message ?? "Nao foi possivel abrir este link de aprovacao.");
+    throw new Error(payload?.message ?? "Não foi possível abrir este link de aprovação.");
   }
   return response.json() as Promise<{ account: { name: string }; card: ApiBoardCard; approvalLink: ApiApprovalLink }>;
 }
@@ -948,7 +1033,7 @@ export async function submitPublicApproval(token: string, input: { approved: boo
   });
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(payload?.message ?? "Nao foi possivel registrar sua decisao.");
+    throw new Error(payload?.message ?? "Não foi possível registrar sua decisão.");
   }
   return response.json() as Promise<{ ok: true }>;
 }
@@ -974,11 +1059,66 @@ export async function uploadAdminMedia(file: File) {
       throw new Error("O arquivo excede o limite permitido para este formato.");
     }
     const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(payload?.message ?? "Nao foi possivel enviar a imagem.");
+    throw new Error(payload?.message ?? "Não foi possível enviar a imagem.");
   }
 
   const result = (await response.json()) as { url: string };
   return result.url;
+}
+
+export async function uploadPortalMediaBySlug(slug: string, file: File) {
+  const account = await findPortalAccountBySlug(slug);
+  const headers = new Headers();
+  const accessToken = getAccessToken();
+  const devUserId = getDevUserId();
+  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+  if (devUserId) headers.set("x-user-id", devUserId);
+  const body = new FormData();
+  body.set("file", file);
+  const response = await fetchWithTimeout(`${getApiBaseUrl()}/api/portal/accounts/${account.clientAccountId}/uploads`, { method: "POST", headers, body });
+  if (!response.ok) {
+    if (response.status === 413) throw new Error("O arquivo excede o limite permitido para este formato.");
+    const payload = (await response.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(payload?.message ?? "Não foi possível enviar o arquivo.");
+  }
+  return ((await response.json()) as { url: string }).url;
+}
+
+export async function createPortalPostBySlug(slug: string, input: { title: string; caption?: string | null; artType: string; externalLinkUrl?: string | null; mediaUrls: string[] }) {
+  const account = await findPortalAccountBySlug(slug);
+  return sendJson<{ ok: true; card: ApiBoardCard }>(`/api/portal/accounts/${account.clientAccountId}/cards`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updatePortalCardCaptionBySlug(slug: string, cardId: string, caption: string | null) {
+  const account = await findPortalAccountBySlug(slug);
+  return sendJson<{ ok: true; card: ApiBoardCard }>(`/api/portal/accounts/${account.clientAccountId}/cards/${cardId}/caption`, {
+    method: "PATCH",
+    body: JSON.stringify({ caption }),
+  });
+}
+
+export async function listPortalTagsBySlug(slug: string) {
+  const account = await findPortalAccountBySlug(slug);
+  return fetchJson<{ items: ClientTagDefinition[] }>(`/api/portal/accounts/${account.clientAccountId}/tags`);
+}
+
+export async function createPortalTagBySlug(slug: string, input: { name: string; color: string }) {
+  const account = await findPortalAccountBySlug(slug);
+  return sendJson<{ ok: true; tag: ClientTagDefinition }>(`/api/portal/accounts/${account.clientAccountId}/tags`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updatePortalCardTagsBySlug(slug: string, cardId: string, tags: string[]) {
+  const account = await findPortalAccountBySlug(slug);
+  return sendJson<{ ok: true; card: ApiBoardCard }>(`/api/portal/accounts/${account.clientAccountId}/cards/${cardId}/tags`, {
+    method: "PATCH",
+    body: JSON.stringify({ tags }),
+  });
 }
 
 export async function updateMyProfile(input: { avatarUrl: string | null }) {

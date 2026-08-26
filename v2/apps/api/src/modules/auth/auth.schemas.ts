@@ -29,7 +29,7 @@ export const updateMyProfileSchema = z.object({
     .max(512)
     .refine(
       (value) => z.string().url().safeParse(value).success || value.startsWith("/api/uploads/"),
-      "URL da foto invalida.",
+      "URL da foto inválida.",
     )
     .nullable(),
 });

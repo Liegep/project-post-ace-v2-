@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { FastifyPluginAsync } from "fastify";
-import { assertInternalAccess, getClientScope } from "../auth/auth.access.js";
+import { assertClientAccess, assertInternalAccess, getClientScope } from "../auth/auth.access.js";
 import { createAgendaEventSchema, createAgendaLabelSchema, listAgendaEventsSchema, updateAgendaEventSchema } from "./agenda.schemas.js";
 
 export const agendaRoutes: FastifyPluginAsync = async (app) => {
@@ -13,8 +13,19 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
     const scopeSql = scope.mode === "global" ? "" : ` AND (e.client_account_id IS NULL OR e.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")}))`;
     const params = [query.to, query.from, ...(scope.mode === "global" ? [] : scope.clientIds)];
     const [rows] = await app.db.query(
-      "SELECT e.id, e.title, e.task_description AS taskDescription, e.starts_at AS startsAt, e.ends_at AS endsAt, e.recurrence_type AS recurrenceType, e.repeat_until AS repeatUntil, e.color, e.is_completed AS isCompleted, e.client_account_id AS clientAccountId, e.agenda_label_id AS labelId, a.name AS clientName, l.name AS labelName FROM agenda_events e LEFT JOIN client_accounts a ON a.id = e.client_account_id LEFT JOIN agenda_labels l ON l.id = e.agenda_label_id WHERE e.starts_at < ? AND (e.recurrence_type <> 'none' OR e.starts_at >= ?)" + scopeSql + " ORDER BY e.starts_at ASC",
+      "SELECT e.id, e.title, e.task_description AS taskDescription, e.starts_at AS startsAt, e.ends_at AS endsAt, e.recurrence_type AS recurrenceType, e.repeat_until AS repeatUntil, e.color, e.is_completed AS isCompleted, e.client_account_id AS clientAccountId, e.agenda_label_id AS labelId, e.meet_link AS meetLink, a.name AS clientName, l.name AS labelName FROM agenda_events e LEFT JOIN client_accounts a ON a.id = e.client_account_id LEFT JOIN agenda_labels l ON l.id = e.agenda_label_id WHERE e.starts_at < ? AND (e.recurrence_type <> 'none' OR e.starts_at >= ?)" + scopeSql + " ORDER BY e.starts_at ASC",
       params,
+    );
+    return { items: rows };
+  });
+
+  app.get("/portal/accounts/:clientAccountId/appointments", async (request) => {
+    const params = request.params as { clientAccountId: string };
+    assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
+    const query = listAgendaEventsSchema.parse(request.query);
+    const [rows] = await app.db.query(
+      "SELECT e.id, e.title, e.task_description AS taskDescription, e.starts_at AS startsAt, e.ends_at AS endsAt, e.recurrence_type AS recurrenceType, e.repeat_until AS repeatUntil, e.color, e.is_completed AS isCompleted, e.client_account_id AS clientAccountId, e.meet_link AS meetLink, a.name AS clientName FROM agenda_events e LEFT JOIN client_accounts a ON a.id = e.client_account_id WHERE e.client_account_id = ? AND e.starts_at < ? AND (e.recurrence_type <> 'none' OR e.starts_at >= ?) ORDER BY e.starts_at ASC",
+      [params.clientAccountId, query.to, query.from],
     );
     return { items: rows };
   });
@@ -24,8 +35,8 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
     const input = createAgendaEventSchema.parse(request.body);
     const id = crypto.randomUUID();
     await app.db.query(
-      "INSERT INTO agenda_events (id, client_account_id, agenda_label_id, title, task_description, starts_at, ends_at, recurrence_type, repeat_until, color, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-      [id, input.clientAccountId ?? null, input.labelId ?? null, input.title, input.taskDescription?.trim() || null, input.startsAt, input.endsAt ?? null, input.recurrenceType, input.repeatUntil ?? null, input.color, request.auth!.user.id],
+      "INSERT INTO agenda_events (id, client_account_id, agenda_label_id, title, task_description, starts_at, ends_at, recurrence_type, repeat_until, color, meet_link, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      [id, input.clientAccountId ?? null, input.labelId ?? null, input.title, input.taskDescription?.trim() || null, input.startsAt, input.endsAt ?? null, input.recurrenceType, input.repeatUntil ?? null, input.color, input.meetLink?.trim() || null, request.auth!.user.id],
     );
     return { ok: true, id };
   });
@@ -36,7 +47,7 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
     const input = updateAgendaEventSchema.parse(request.body);
     const updates: string[] = [];
     const values: unknown[] = [];
-    const mappings: Array<[keyof typeof input, string]> = [["title", "title"], ["taskDescription", "task_description"], ["startsAt", "starts_at"], ["endsAt", "ends_at"], ["color", "color"], ["clientAccountId", "client_account_id"], ["labelId", "agenda_label_id"], ["recurrenceType", "recurrence_type"], ["repeatUntil", "repeat_until"]];
+    const mappings: Array<[keyof typeof input, string]> = [["title", "title"], ["taskDescription", "task_description"], ["startsAt", "starts_at"], ["endsAt", "ends_at"], ["color", "color"], ["clientAccountId", "client_account_id"], ["labelId", "agenda_label_id"], ["recurrenceType", "recurrence_type"], ["repeatUntil", "repeat_until"], ["meetLink", "meet_link"]];
     for (const [key, column] of mappings) if (key in input) { updates.push(`${column} = ?`); values.push(input[key] ?? null); }
     if (!updates.length) return { ok: true };
     values.push(eventId, request.auth!.user.id);

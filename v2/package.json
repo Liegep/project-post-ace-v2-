@@ -2,14 +2,23 @@
   "name": "design-hub-v2",
   "private": true,
   "version": "0.1.0",
+  "engines": {
+    "node": ">=22 <23"
+  },
   "workspaces": [
     "apps/*"
   ],
   "scripts": {
     "dev:api": "npm --workspace @design-hub-v2/api run dev",
     "dev:web": "npm --workspace @design-hub-v2/web run dev",
+    "check": "npm --workspace @design-hub-v2/api run check && npm --workspace @design-hub-v2/web run check",
     "build:api": "npm --workspace @design-hub-v2/api run build",
     "build:web": "npm --workspace @design-hub-v2/web run build",
-    "start:api": "npm --workspace @design-hub-v2/api run start"
+    "build": "npm run build:api && npm run build:web",
+    "prepare:staging": "npm run check && npm run build",
+    "start": "npm run start:api",
+    "start:api": "npm --workspace @design-hub-v2/api run start",
+    "db:prepare:staging": "npm --workspace @design-hub-v2/api run db:prepare:staging",
+    "import:legacy": "tsx apps/api/src/scripts/import-legacy-export.ts"
   }
 }

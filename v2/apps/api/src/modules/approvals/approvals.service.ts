@@ -1,7 +1,8 @@
 import type { FastifyInstance } from "fastify";
+import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { addCardComment } from "../comments/comments.service.js";
 import { findClientAccountById } from "../clients/clients.repository.js";
-import { createColumn, findColumnByClientAndName } from "../columns/columns.repository.js";
+import { createColumn, findColumnByClientAndName, listColumnsByClientAccountId, updateColumn } from "../columns/columns.repository.js";
 import { findCardById, moveCard, updateCard } from "../cards/cards.repository.js";
 import {
   createApprovalLink,
@@ -20,17 +21,17 @@ function isExpired(dateValue: Date | string) {
 }
 
 async function ensureApprovedColumn(app: FastifyInstance, clientAccountId: string) {
-  const existing = await findColumnByClientAndName(
-    app.db,
-    clientAccountId,
-    "Aprovados pelo cliente",
-  );
-  if (existing) return existing;
+  const columns = await listColumnsByClientAccountId(app.db, clientAccountId);
+  let existing = columns.find((column) => /aprovados(?: pelo cliente)?/i.test(column.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "")));
+  if (existing) {
+    if (!existing.visibleToClient) existing = await updateColumn(app.db, existing.id, { visibleToClient: true }) ?? existing;
+    return existing;
+  }
 
   return createColumn(app.db, clientAccountId, {
-    name: "Aprovados pelo cliente",
-    color: "#9adf2f",
-    visibleToClient: false,
+    name: "Aprovados",
+    color: "#28b77d",
+    visibleToClient: true,
     autoCreated: true,
   });
 }
@@ -39,6 +40,35 @@ async function ensureEntradaColumn(app: FastifyInstance, clientAccountId: string
   const existing = await findColumnByClientAndName(app.db, clientAccountId, "Entrada");
   if (existing) return existing;
   return createColumn(app.db, clientAccountId, { name: "Entrada", color: "#5b7cfa", visibleToClient: false, autoCreated: true });
+}
+
+export async function reconcileApprovedCardColumns(app: FastifyInstance) {
+  const [rows] = await app.db.query<Array<RowDataPacket & { clientAccountId: string }>>(
+    [
+      "SELECT DISTINCT c.client_account_id AS clientAccountId",
+      "FROM kanban_cards c",
+      "WHERE c.archived = 0 AND (LOWER(c.client_label) LIKE '%aprovad%' OR EXISTS (",
+      "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL",
+      "))",
+    ].join(" "),
+  );
+
+  let moved = 0;
+  for (const row of rows) {
+    const approvedColumn = await ensureApprovedColumn(app, row.clientAccountId);
+    if (!approvedColumn) continue;
+    const [result] = await app.db.query<ResultSetHeader>(
+      [
+        "UPDATE kanban_cards c SET c.column_id = ?, c.client_label = 'Aprovado pelo cliente'",
+        "WHERE c.client_account_id = ? AND c.archived = 0 AND (LOWER(c.client_label) LIKE '%aprovad%' OR EXISTS (",
+        "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL",
+        ")) AND (c.column_id IS NULL OR c.column_id <> ?)",
+      ].join(" "),
+      [approvedColumn.id, row.clientAccountId, approvedColumn.id],
+    );
+    moved += Number(result.affectedRows ?? 0);
+  }
+  return moved;
 }
 
 export async function createCardApprovalLink(
@@ -50,12 +80,12 @@ export async function createCardApprovalLink(
 ) {
   const client = await findClientAccountById(app.db, clientAccountId);
   if (!client) {
-    throw app.httpErrors.notFound("Conta do cliente nao encontrada.");
+    throw app.httpErrors.notFound("Conta do cliente não encontrada.");
   }
 
   const card = await findCardById(app.db, cardId);
   if (!card || card.clientAccountId !== clientAccountId) {
-    throw app.httpErrors.notFound("Card nao encontrado nesta conta.");
+    throw app.httpErrors.notFound("Card não encontrado nesta conta.");
   }
 
   const days = input.expiresInDays ?? 7;
@@ -69,7 +99,7 @@ export async function createCardApprovalLink(
   });
 
   if (!created) {
-    throw app.httpErrors.badRequest("Nao foi possivel criar o link de aprovacao.");
+    throw app.httpErrors.badRequest("Não foi possível criar o link de aprovação.");
   }
 
   return created;
@@ -82,7 +112,7 @@ export async function getCardApprovalHistory(
 ) {
   const card = await findCardById(app.db, cardId);
   if (!card || card.clientAccountId !== clientAccountId) {
-    throw app.httpErrors.notFound("Card nao encontrado nesta conta.");
+    throw app.httpErrors.notFound("Card não encontrado nesta conta.");
   }
 
   return {
@@ -97,22 +127,22 @@ export async function getPublicApprovalView(
 ) {
   const link = await findApprovalLinkByToken(app.db, token);
   if (!link) {
-    throw app.httpErrors.notFound("Link de aprovacao nao encontrado.");
+    throw app.httpErrors.notFound("Link de aprovação não encontrado.");
   }
   if (!link.isActive || isExpired(link.expiresAt)) {
-    throw app.httpErrors.forbidden("Esse link de aprovacao expirou ou foi encerrado.");
+    throw app.httpErrors.forbidden("Esse link de aprovação expirou ou foi encerrado.");
   }
 
   await markApprovalLinkViewed(app.db, token);
 
   const card = await findCardById(app.db, link.cardId);
   if (!card) {
-    throw app.httpErrors.notFound("Card nao encontrado.");
+    throw app.httpErrors.notFound("Card não encontrado.");
   }
 
   const client = await findClientAccountById(app.db, link.clientAccountId);
   if (!client) {
-    throw app.httpErrors.notFound("Conta do cliente nao encontrada.");
+    throw app.httpErrors.notFound("Conta do cliente não encontrada.");
   }
 
   const refreshedLink = await findApprovalLinkByToken(app.db, token);
@@ -137,15 +167,15 @@ export async function submitPublicApprovalDecision(
 ) {
   const link = await findApprovalLinkByToken(app.db, token);
   if (!link) {
-    throw app.httpErrors.notFound("Link de aprovacao nao encontrado.");
+    throw app.httpErrors.notFound("Link de aprovação não encontrado.");
   }
   if (!link.isActive || isExpired(link.expiresAt)) {
-    throw app.httpErrors.forbidden("Esse link de aprovacao expirou ou foi encerrado.");
+    throw app.httpErrors.forbidden("Esse link de aprovação expirou ou foi encerrado.");
   }
 
   const card = await findCardById(app.db, link.cardId);
   if (!card) {
-    throw app.httpErrors.notFound("Card nao encontrado.");
+    throw app.httpErrors.notFound("Card não encontrado.");
   }
 
   if (input.commentText) {
@@ -171,7 +201,9 @@ export async function submitPublicApprovalDecision(
     await moveCard(app.db, link.cardId, card, {
       columnId: approvedColumn?.id ?? null,
     });
-    if (card.isBriefApproval) await updateCard(app.db, link.cardId, { isBriefApproval: false, clientLabel: "Aprovado" });
+    await updateCard(app.db, link.cardId, { isBriefApproval: card.isBriefApproval ? false : card.isBriefApproval, clientLabel: "Aprovado pelo cliente", status: Array.from(new Set([...card.status, "Aprovado"])) });
+  } else {
+    await updateCard(app.db, link.cardId, { clientLabel: "Alteração solicitada", status: Array.from(new Set([...card.status, "Revisão solicitada"])) });
   }
 
   return {

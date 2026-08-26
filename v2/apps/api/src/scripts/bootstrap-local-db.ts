@@ -5,6 +5,7 @@ import mysql from "mysql2/promise";
 import type { RowDataPacket } from "mysql2/promise";
 import { hashPassword } from "../modules/auth/auth.crypto.js";
 import { loadEnv } from "../config/env.js";
+import { ensureBrandBrainTables } from "../modules/clients/brand-brain.service.js";
 
 type SeedUser = {
   id: string;
@@ -52,6 +53,9 @@ const users: SeedUser[] = [
 
 async function main() {
   const env = loadEnv();
+  const argumentsSet = new Set(process.argv.slice(2));
+  const schemaOnly = argumentsSet.has("--schema-only");
+  const existingDatabase = argumentsSet.has("--existing-database");
   const rootDir = path.resolve(process.cwd(), "../..");
   const schemaPath = path.join(rootDir, "apps/api/db/schema.sql");
   const schemaSql = await readFile(schemaPath, "utf8");
@@ -61,13 +65,18 @@ async function main() {
     port: env.DB_PORT,
     user: env.DB_USER,
     password: env.DB_PASSWORD,
+    database: existingDatabase ? env.DB_NAME : undefined,
     multipleStatements: true,
   });
 
-  await adminConnection.query(
-    `CREATE DATABASE IF NOT EXISTS \`${env.DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
-  );
-  await adminConnection.query(`USE \`${env.DB_NAME}\`; ${schemaSql}`);
+  if (existingDatabase) {
+    await adminConnection.query(schemaSql);
+  } else {
+    await adminConnection.query(
+      `CREATE DATABASE IF NOT EXISTS \`${env.DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+    );
+    await adminConnection.query(`USE \`${env.DB_NAME}\`; ${schemaSql}`);
+  }
   await adminConnection.end();
 
   const db = await mysql.createConnection({
@@ -119,6 +128,7 @@ async function main() {
       ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
     ].join(" "),
   );
+  await ensureBrandBrainTables(db as never);
   await db.query(
     [
       "CREATE TABLE IF NOT EXISTS agenda_events (",
@@ -142,6 +152,7 @@ async function main() {
   const agendaRecurrenceMigrations = [
     ["recurrence_type", "ALTER TABLE agenda_events ADD COLUMN recurrence_type ENUM('none', 'weekdays', 'weekly', 'monthly_nth_weekday') NOT NULL DEFAULT 'none' AFTER ends_at"],
     ["repeat_until", "ALTER TABLE agenda_events ADD COLUMN repeat_until DATE NULL AFTER recurrence_type"],
+    ["meet_link", "ALTER TABLE agenda_events ADD COLUMN meet_link VARCHAR(500) NULL AFTER repeat_until"],
   ] as const;
   for (const [column, statement] of agendaRecurrenceMigrations) {
     const [rows] = await db.query<RowDataPacket[]>(`SHOW COLUMNS FROM agenda_events LIKE '${column}'`);
@@ -183,12 +194,18 @@ async function main() {
     ].join(" "),
   );
 
+  if (schemaOnly) {
+    await db.end();
+    console.log("Estrutura do banco preparada sem inserir dados de demonstração.");
+    return;
+  }
+
   const [existingUsers] = await db.query<Array<RowDataPacket & { total: number }>>(
     "SELECT COUNT(*) AS total FROM users",
   );
 
   if ((existingUsers[0]?.total ?? 0) > 0) {
-    console.log("Banco ja possui dados. Bootstrap ignorado para nao sobrescrever.");
+    console.log("Banco já possui dados. Bootstrap ignorado para não sobrescrever.");
     await db.end();
     return;
   }
@@ -274,7 +291,7 @@ async function main() {
 
   const columns = [
     ["column-vtcards", "VT Cards", "#24a7e8", 0, 0],
-    ["column-aprovacao", "Em aprovacao", "#f7a31a", 1, 1],
+    ["column-aprovacao", "Em aprovação", "#f7a31a", 1, 1],
     ["column-agendados", "Agendados", "#12bf83", 2, 1],
   ] as const;
 
@@ -293,7 +310,7 @@ async function main() {
     {
       id: "card-vt-1",
       columnId: "column-vtcards",
-      title: "Nao importa qual operadora seu colaborador usa",
+      title: "Não importa qual operadora seu colaborador usa",
       caption: "VT Cards",
       mediaType: "image",
       primaryMediaUrl:
@@ -301,7 +318,7 @@ async function main() {
       mediaUrlsJson: JSON.stringify([]),
       artType: "post_unico",
       statusJson: JSON.stringify(["Legenda pronta", "Design finalizado", "Legenda aprovada"]),
-      tagsJson: JSON.stringify(["Alteracao solicitada"]),
+      tagsJson: JSON.stringify(["Alteração solicitada"]),
       scheduledAt: "2026-08-23 10:00:00",
       clientLabel: "Pendente",
       eventColor: "#24a7e8",
@@ -310,7 +327,7 @@ async function main() {
     {
       id: "card-aprovacao-1",
       columnId: "column-aprovacao",
-      title: "Antes de ligar o motor, ja estamos cuidando de voce",
+      title: "Antes de ligar o motor, já estamos cuidando de você",
       caption: "Seguranca",
       mediaType: "image",
       primaryMediaUrl:
@@ -320,14 +337,14 @@ async function main() {
       statusJson: JSON.stringify(["Design pronto", "Aline aprovou"]),
       tagsJson: JSON.stringify(["Cliente revisando"]),
       scheduledAt: "2026-08-24 14:00:00",
-      clientLabel: "Aguardando aprovacao",
+      clientLabel: "Aguardando aprovação",
       eventColor: "#f7a31a",
       position: 0,
     },
     {
       id: "card-agendado-1",
       columnId: "column-agendados",
-      title: "Dois destinos. Qual voce escolhe?",
+      title: "Dois destinos. Qual você escolhe?",
       caption: "Santa Sophia",
       mediaType: "image",
       primaryMediaUrl:
@@ -387,7 +404,7 @@ async function main() {
       users[3].id,
       "Patricia Rodrigues",
       "cliente",
-      "Gostei muito. So sugiro deixar o subtitulo um pouco mais direto.",
+      "Gostei muito. Só sugiro deixar o subtítulo um pouco mais direto.",
       0,
     ],
     [

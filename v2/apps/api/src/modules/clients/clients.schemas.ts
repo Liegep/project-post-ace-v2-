@@ -14,12 +14,12 @@ const defaultClientPermissions = {
   allowClientViewTracking: false,
 };
 
-// Uploads locais sao expostos pela propria API como caminhos relativos.
+// Uploads locais são expostos pela própria API como caminhos relativos.
 const clientLogoUrlSchema = z
   .string()
   .refine(
     (value) => z.string().url().safeParse(value).success || value.startsWith("/api/uploads/"),
-    "URL do logo invalida.",
+    "URL do logo inválida.",
   );
 
 export const createClientAccountSchema = z.object({
@@ -28,7 +28,7 @@ export const createClientAccountSchema = z.object({
     .string()
     .min(2)
     .max(190)
-    .regex(/^[a-z0-9-]+$/, "Use apenas letras minusculas, numeros e hifen."),
+    .regex(/^[a-z0-9-]+$/, "Use apenas letras minúsculas, números e hífen."),
   locale: z.string().min(2).max(10).default("pt"),
   portalTitle: z.string().min(2).max(190),
   ownerUserId: z.string().min(1).nullable().optional(),
@@ -62,7 +62,7 @@ export const upsertClientMembershipSchema = z.object({
 
 export const updateClientAccountSchema = z.object({
   name: z.string().min(2).max(190),
-  slug: z.string().min(2).max(190).regex(/^[a-z0-9-]+$/, "Use apenas letras minusculas, numeros e hifen."),
+  slug: z.string().min(2).max(190).regex(/^[a-z0-9-]+$/, "Use apenas letras minúsculas, números e hífen."),
   locale: z.string().min(2).max(10),
   portalTitle: z.string().min(2).max(190),
   logoUrl: clientLogoUrlSchema.nullable().optional(),

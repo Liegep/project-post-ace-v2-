@@ -7,4 +7,36 @@ export const portalBoardQuerySchema = z.object({
   search: z.string().min(1).max(255).optional(),
 });
 
+export const portalSearchQuerySchema = z.object({
+  q: z.string().trim().min(1).max(255),
+});
+
+const portalMediaUrlSchema = z.string().startsWith("/api/uploads/", "Arquivo de mídia inválido.");
+
+export const createPortalPostSchema = z.object({
+  title: z.string().trim().min(1).max(255),
+  caption: z.string().trim().max(5000).nullable().optional(),
+  artType: z.string().trim().min(1).max(50).default("Post único"),
+  externalLinkUrl: z.string().url().max(1024).nullable().optional(),
+  mediaUrls: z.array(portalMediaUrlSchema).max(20).default([]),
+});
+
+export const portalCardDecisionSchema = z.object({
+  approved: z.boolean(),
+  commentText: z.string().trim().max(5000).optional(),
+});
+
+export const updatePortalCardCaptionSchema = z.object({
+  caption: z.string().trim().max(5000).nullable(),
+});
+
+export const updatePortalCardTagsSchema = z.object({
+  tags: z.array(z.string().trim().min(1).max(100)).max(30),
+});
+
 export type PortalBoardQueryInput = z.infer<typeof portalBoardQuerySchema>;
+export type PortalSearchQueryInput = z.infer<typeof portalSearchQuerySchema>;
+export type CreatePortalPostInput = z.infer<typeof createPortalPostSchema>;
+export type PortalCardDecisionInput = z.infer<typeof portalCardDecisionSchema>;
+export type UpdatePortalCardCaptionInput = z.infer<typeof updatePortalCardCaptionSchema>;
+export type UpdatePortalCardTagsInput = z.infer<typeof updatePortalCardTagsSchema>;

@@ -20,15 +20,23 @@ import {
 } from "./clients.service.js";
 import { findClientAccountById, findClientPermissionsByAccountId } from "./clients.repository.js";
 import { listColumnsByClientAccountId } from "../columns/columns.repository.js";
+import {
+  addBrandBrainComment,
+  createBrandBrainRevision,
+  decideBrandBrainRevision,
+  ensureBrandBrainTables,
+  getBrandBrainSnapshot,
+  saveOfficialBrandBrain,
+} from "./brand-brain.service.js";
 
 export const clientRoutes: FastifyPluginAsync = async (app) => {
+  await ensureBrandBrainTables(app.db);
   app.get("/clients/:clientAccountId/brand-brain", async (request) => {
     const { clientAccountId } = request.params as { clientAccountId: string };
     assertClientAccess(request, clientAccountId, ["admin", "colaborador", "cliente"]);
     const permissions = await findClientPermissionsByAccountId(app.db, clientAccountId);
     if (request.auth?.user.globalRole === "cliente" && !permissions?.allowClientViewBrandBrain) throw app.httpErrors.forbidden("Brand Brain não está disponível para este cliente.");
-    const [rows] = await app.db.query<Array<RowDataPacket & { workspace_drawer_json: { brandBrain?: unknown } | null }>>("SELECT workspace_drawer_json FROM client_accounts WHERE id = ?", [clientAccountId]);
-    return { data: rows[0]?.workspace_drawer_json?.brandBrain ?? null };
+    return getBrandBrainSnapshot(app.db, clientAccountId, request.auth?.user.globalRole !== "cliente");
   });
 
   app.put("/clients/:clientAccountId/brand-brain", async (request) => {
@@ -36,10 +44,35 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     assertClientAccess(request, clientAccountId, ["admin", "colaborador", "cliente"]);
     const permissions = await findClientPermissionsByAccountId(app.db, clientAccountId);
     if (request.auth?.user.globalRole === "cliente" && !permissions?.allowClientEditBrandBrain) throw app.httpErrors.forbidden("Este cliente não pode editar o Brand Brain.");
-    const [rows] = await app.db.query<Array<RowDataPacket & { workspace_drawer_json: Record<string, unknown> | null }>>("SELECT workspace_drawer_json FROM client_accounts WHERE id = ?", [clientAccountId]);
-    const body = request.body as { data?: unknown };
-    await app.db.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...(rows[0]?.workspace_drawer_json ?? {}), brandBrain: body.data ?? {} }), clientAccountId]);
-    return { ok: true };
+    const body = request.body as { data?: Record<string, unknown>; summary?: string };
+    const actor = request.auth!.user;
+    if (actor.globalRole === "cliente") {
+      const revision = await createBrandBrainRevision(app.db, { clientAccountId, data: body.data ?? {}, summary: body.summary, userId: actor.id, authorName: actor.fullName, authorRole: actor.globalRole });
+      return { ok: true, pending: true, revision };
+    }
+    const version = await saveOfficialBrandBrain(app.db, { clientAccountId, data: body.data ?? {}, userId: actor.id, authorName: actor.fullName });
+    return { ok: true, pending: false, version };
+  });
+
+  app.post("/clients/:clientAccountId/brand-brain/revisions/:revisionId/decision", async (request) => {
+    const { clientAccountId, revisionId } = request.params as { clientAccountId: string; revisionId: string };
+    assertInternalAccess(request); assertClientAccess(request, clientAccountId, ["admin", "colaborador"]);
+    const actor = request.auth!.user; const body = request.body as { approved?: boolean };
+    const result = await decideBrandBrainRevision(app.db, { clientAccountId, revisionId, approved: Boolean(body.approved), userId: actor.id, reviewerName: actor.fullName });
+    if (!result) throw app.httpErrors.notFound("Sugestão não encontrada.");
+    return { ok: true, ...result };
+  });
+
+  app.post("/clients/:clientAccountId/brand-brain/comments", async (request) => {
+    const { clientAccountId } = request.params as { clientAccountId: string };
+    assertClientAccess(request, clientAccountId, ["admin", "colaborador", "cliente"]);
+    const permissions = await findClientPermissionsByAccountId(app.db, clientAccountId);
+    const actor = request.auth!.user;
+    if (actor.globalRole === "cliente" && !permissions?.allowClientViewBrandBrain) throw app.httpErrors.forbidden("Brand Brain não está disponível para este cliente.");
+    const body = request.body as { commentText?: string; revisionId?: string | null; sectionKey?: string; isInternal?: boolean };
+    if (!body.commentText?.trim()) throw app.httpErrors.badRequest("Escreva um comentário.");
+    const comment = await addBrandBrainComment(app.db, { clientAccountId, revisionId: body.revisionId, sectionKey: body.sectionKey, commentText: body.commentText, userId: actor.id, authorName: actor.fullName, authorRole: actor.globalRole, isInternal: actor.globalRole === "cliente" ? false : Boolean(body.isInternal) });
+    return { ok: true, comment };
   });
 
   app.get("/clients/:clientAccountId/activities", async (request) => {
@@ -65,9 +98,10 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     const scope = getClientScope(auth.user.globalRole, auth.user.id, auth.memberships);
 
     let sql = [
-      "SELECT id, name, slug, logo_url, locale, portal_title, tracking_enabled, tracking_visible_to_client, owner_user_id, created_at,",
-      "(SELECT COUNT(*) FROM client_memberships cm WHERE cm.client_account_id = client_accounts.id) AS access_count",
-      "FROM client_accounts",
+      "SELECT a.id, a.name, a.slug, a.logo_url, a.locale, a.portal_title, a.tracking_enabled, a.tracking_visible_to_client, a.owner_user_id, a.created_at,",
+      "COALESCE(m.access_count, 0) AS access_count",
+      "FROM client_accounts a",
+      "LEFT JOIN (SELECT client_account_id, COUNT(*) AS access_count FROM client_memberships GROUP BY client_account_id) m ON m.client_account_id = a.id",
     ].join(" ");
     const params: string[] = [];
 
@@ -75,11 +109,11 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
       if (scope.clientIds.length === 0) {
         return { items: [] };
       }
-      sql += ` WHERE id IN (${scope.clientIds.map(() => "?").join(", ")})`;
+      sql += ` WHERE a.id IN (${scope.clientIds.map(() => "?").join(", ")})`;
       params.push(...scope.clientIds);
     }
 
-    sql += " ORDER BY created_at DESC";
+    sql += " ORDER BY a.created_at DESC";
 
     const [rows] = await app.db.query<RowDataPacket[]>(sql, params);
     return {
@@ -94,51 +128,81 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     const auth = request.auth!;
     const scope = getClientScope(auth.user.globalRole, auth.user.id, auth.memberships);
     if (scope.mode === "scoped" && scope.clientIds.length === 0) {
-      return { dueTasks: [], upcomingPosts: [], agendaToday: [], clientSubmissions: [] };
+      return { dueTasks: [], upcomingPosts: [], agendaToday: [], clientSubmissions: [], clientActivities: [] };
     }
 
     const scopeSql = scope.mode === "global"
       ? ""
       : ` AND c.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")})`;
     const params = scope.mode === "global" ? [] : scope.clientIds;
-    const [dueTasks] = await app.db.query<RowDataPacket[]>(
-      [
+    const brandScopeSql = scope.mode === "global" ? "" : ` AND r.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")})`;
+    const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const threeDaysEnd = new Date(todayStart); threeDaysEnd.setDate(threeDaysEnd.getDate() + 3);
+    const tomorrowStart = new Date(todayStart); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+    const [
+      [dueTasks],
+      [clientSubmissions],
+      [clientActivities],
+      [brandBrainActivities],
+      [upcomingPosts],
+      [agendaToday],
+    ] = await Promise.all([
+      app.db.query<RowDataPacket[]>([
         "SELECT c.id, c.title, c.deadline_at AS deadlineAt, c.client_label AS clientLabel,",
         "a.name AS clientName, a.logo_url AS clientLogoUrl",
         "FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id",
         "WHERE c.archived = 0 AND c.deadline_at IS NOT NULL", scopeSql,
         "ORDER BY c.deadline_at ASC LIMIT 4",
-      ].join(" "),
-      params,
-    );
-    const [clientSubmissions] = await app.db.query<RowDataPacket[]>(
-      [
+      ].join(" "), params),
+      app.db.query<RowDataPacket[]>([
         "SELECT c.id, c.title, c.created_at AS createdAt, a.name AS clientName, a.logo_url AS clientLogoUrl",
         "FROM kanban_cards c JOIN users u ON u.id = c.created_by_user_id",
         "JOIN client_accounts a ON a.id = c.client_account_id",
-        "WHERE c.archived = 0 AND u.global_role = 'cliente'", scopeSql,
+        "WHERE c.archived = 0 AND (u.global_role = 'cliente' OR c.status_json LIKE '%Sugestão do cliente%')", scopeSql,
         "ORDER BY c.created_at DESC LIMIT 4",
-      ].join(" "),
-      params,
-    );
-    const now = new Date();
-    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const threeDaysEnd = new Date(todayStart); threeDaysEnd.setDate(threeDaysEnd.getDate() + 3);
-    const tomorrowStart = new Date(todayStart); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
-    const [upcomingPosts] = await app.db.query<RowDataPacket[]>(
-      ["SELECT c.id, c.title, c.scheduled_at AS scheduledAt, c.client_label AS clientLabel, a.name AS clientName, a.logo_url AS clientLogoUrl FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id WHERE c.archived = 0 AND c.scheduled_at >= ? AND c.scheduled_at < ?", scopeSql, "ORDER BY c.scheduled_at ASC LIMIT 6"].join(" "),
-      [todayStart, threeDaysEnd, ...params],
-    );
-    const [agendaToday] = await app.db.query<RowDataPacket[]>(
-      ["SELECT e.id, e.title, e.task_description AS taskDescription, e.starts_at AS startsAt, e.color, e.is_completed AS isCompleted, a.name AS clientName FROM agenda_events e LEFT JOIN client_accounts a ON a.id = e.client_account_id WHERE e.starts_at >= ? AND e.starts_at < ?", scope.mode === "global" ? "" : ` AND (e.client_account_id IS NULL OR e.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")}))`, "ORDER BY e.starts_at ASC LIMIT 6"].join(" "),
-      [todayStart, tomorrowStart, ...(scope.mode === "global" ? [] : scope.clientIds)],
-    );
-    return { dueTasks, upcomingPosts, agendaToday, clientSubmissions };
+      ].join(" "), params),
+      app.db.query<RowDataPacket[]>([
+        "SELECT activity.* FROM (",
+        "SELECT CONCAT('decision-', c.id, '-', UNIX_TIMESTAMP(c.updated_at)) AS id, c.id AS cardId, c.title, c.updated_at AS occurredAt,",
+        "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl,",
+        "CASE WHEN LOWER(c.client_label) LIKE '%aprovad%' THEN 'approved' ELSE 'changes_requested' END AS activityType,",
+        "CASE WHEN LOWER(c.client_label) LIKE '%aprovad%' THEN 'Conteúdo aprovado pelo cliente' ELSE 'Cliente solicitou alterações' END AS detail",
+        "FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id",
+        "WHERE c.archived = 0 AND c.scheduled_at IS NULL AND (LOWER(c.client_label) LIKE '%aprovad%' OR LOWER(c.client_label) LIKE '%altera%')", scopeSql,
+        "UNION ALL",
+        "SELECT CONCAT('comment-', cc.id) AS id, c.id AS cardId, c.title, cc.created_at AS occurredAt,",
+        "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl, 'comment' AS activityType, LEFT(cc.comment_text, 240) AS detail",
+        "FROM card_comments cc JOIN kanban_cards c ON c.id = cc.card_id JOIN client_accounts a ON a.id = c.client_account_id",
+        "WHERE c.archived = 0 AND c.scheduled_at IS NULL AND cc.is_internal = 0 AND cc.author_role IN ('cliente', 'guest')", scopeSql,
+        ") activity ORDER BY activity.occurredAt DESC LIMIT 8",
+      ].join(" "), [...params, ...params]),
+      app.db.query<RowDataPacket[]>([
+        "SELECT CONCAT('brand-revision-', r.id) AS id, NULL AS cardId, 'Sugestão para o Brand Brain' AS title, r.created_at AS occurredAt,",
+        "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl, 'brand_brain' AS activityType,",
+        "COALESCE(r.summary, CONCAT(r.author_name, ' sugeriu uma atualização da marca')) AS detail",
+        "FROM brand_brain_revisions r JOIN client_accounts a ON a.id = r.client_account_id",
+        "WHERE r.status = 'pending' AND r.author_role = 'cliente'", brandScopeSql,
+        "ORDER BY r.created_at DESC LIMIT 8",
+      ].join(" "), params),
+      app.db.query<RowDataPacket[]>(
+        ["SELECT c.id, c.title, c.scheduled_at AS scheduledAt, c.client_label AS clientLabel, a.name AS clientName, a.logo_url AS clientLogoUrl FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id WHERE c.archived = 0 AND c.scheduled_at >= ? AND c.scheduled_at < ?", scopeSql, "ORDER BY c.scheduled_at ASC LIMIT 6"].join(" "),
+        [todayStart, threeDaysEnd, ...params],
+      ),
+      app.db.query<RowDataPacket[]>(
+        ["SELECT e.id, e.title, e.task_description AS taskDescription, e.starts_at AS startsAt, e.color, e.is_completed AS isCompleted, a.name AS clientName FROM agenda_events e LEFT JOIN client_accounts a ON a.id = e.client_account_id WHERE e.starts_at >= ? AND e.starts_at < ?", scope.mode === "global" ? "" : ` AND (e.client_account_id IS NULL OR e.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")}))`, "ORDER BY e.starts_at ASC LIMIT 6"].join(" "),
+        [todayStart, tomorrowStart, ...(scope.mode === "global" ? [] : scope.clientIds)],
+      ),
+    ]);
+    const combinedClientActivities = [...clientActivities, ...brandBrainActivities]
+      .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
+      .slice(0, 8);
+    return { dueTasks, upcomingPosts, agendaToday, clientSubmissions, clientActivities: combinedClientActivities };
   });
 
   app.get("/portal/accounts", async (request) => {
     if (!request.auth) {
-      throw app.httpErrors.unauthorized("Sessao obrigatoria.");
+      throw app.httpErrors.unauthorized("Sessão obrigatória.");
     }
 
     const auth = request.auth;
@@ -243,23 +307,23 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
       "SELECT id FROM client_accounts WHERE slug = ? AND id <> ? LIMIT 1",
       [input.slug, clientAccountId],
     );
-    if (sameSlug.length > 0) throw app.httpErrors.conflict("Ja existe uma conta com esse identificador.");
+    if (sameSlug.length > 0) throw app.httpErrors.conflict("Já existe uma conta com esse identificador.");
     const [result] = await app.db.query<ResultSetHeader>(
       "UPDATE client_accounts SET name = ?, slug = ?, locale = ?, portal_title = ?, logo_url = ? WHERE id = ?",
       [input.name, input.slug, input.locale, input.portalTitle, input.logoUrl ?? null, clientAccountId],
     );
-    if (result.affectedRows === 0) throw app.httpErrors.notFound("Conta do cliente nao encontrada.");
+    if (result.affectedRows === 0) throw app.httpErrors.notFound("Conta do cliente não encontrada.");
     return { ok: true };
   });
 
   app.delete("/clients/:clientAccountId", async (request) => {
-    if (!request.auth) throw app.httpErrors.unauthorized("Sessao obrigatoria.");
+    if (!request.auth) throw app.httpErrors.unauthorized("Sessão obrigatória.");
     if (!hasGlobalRole(request.auth.user.globalRole, "super_admin")) {
       throw app.httpErrors.forbidden("Apenas o super admin pode excluir clientes.");
     }
     const { clientAccountId } = request.params as { clientAccountId: string };
     const [result] = await app.db.query<ResultSetHeader>("DELETE FROM client_accounts WHERE id = ?", [clientAccountId]);
-    if (result.affectedRows === 0) throw app.httpErrors.notFound("Conta do cliente nao encontrada.");
+    if (result.affectedRows === 0) throw app.httpErrors.notFound("Conta do cliente não encontrada.");
     return { ok: true };
   });
 
@@ -311,7 +375,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
 
   app.post("/clients/:clientAccountId/accesses", async (request) => {
     if (!request.auth) {
-      throw app.httpErrors.unauthorized("Sessao obrigatoria.");
+      throw app.httpErrors.unauthorized("Sessão obrigatória.");
     }
     if (!hasGlobalRole(request.auth.user.globalRole, "super_admin")) {
       throw app.httpErrors.forbidden(

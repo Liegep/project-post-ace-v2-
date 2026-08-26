@@ -12,7 +12,7 @@ const boardColumns = [
     cards: [
       {
         id: "card-vt-1",
-        title: "Nao importa qual operadora seu colaborador usa",
+        title: "Não importa qual operadora seu colaborador usa",
         caption: "VT Cards",
         mediaType: "image",
         primaryMediaUrl:
@@ -20,7 +20,7 @@ const boardColumns = [
         mediaUrls: [],
         artType: "post_unico",
         status: ["Legenda pronta", "Design finalizado", "Legenda aprovada"],
-        tags: ["Alteracao solicitada"],
+        tags: ["Alteração solicitada"],
         commentsCount: 1,
         scheduledAt: "2026-08-23 10:00:00",
         clientLabel: "Pendente",
@@ -44,13 +44,13 @@ const boardColumns = [
   },
   {
     id: "column-aprovacao",
-    name: "Em aprovacao",
+    name: "Em aprovação",
     color: "#f7a31a",
     visibleToClient: true,
     cards: [
       {
         id: "card-aprovacao-1",
-        title: "Antes de ligar o motor, ja estamos cuidando de voce",
+        title: "Antes de ligar o motor, já estamos cuidando de você",
         caption: "Seguranca",
         mediaType: "image",
         primaryMediaUrl:
@@ -61,7 +61,7 @@ const boardColumns = [
         tags: ["Cliente revisando"],
         commentsCount: 2,
         scheduledAt: "2026-08-24 14:00:00",
-        clientLabel: "Aguardando aprovacao",
+        clientLabel: "Aguardando aprovação",
       },
     ],
   },
@@ -73,7 +73,7 @@ const boardColumns = [
     cards: [
       {
         id: "card-agendado-1",
-        title: "Dois destinos. Qual voce escolhe?",
+        title: "Dois destinos. Qual você escolhe?",
         caption: "Santa Sophia",
         mediaType: "image",
         primaryMediaUrl:
@@ -113,7 +113,7 @@ const commentsByCardId: Record<string, Array<{
       id: "comment-2",
       authorName: "Patricia Rodrigues",
       authorRole: "cliente",
-      commentText: "Gostei muito. So sugiro deixar o subtitulo um pouco mais direto.",
+      commentText: "Gostei muito. Só sugiro deixar o subtítulo um pouco mais direto.",
       isInternal: false,
       createdAt: "2026-08-20T11:15:00",
     },
@@ -162,7 +162,7 @@ const internalCalendarEvents = [
   },
   {
     id: "calendar-2",
-    title: "Antes de ligar o motor, ja estamos cuidando de voce",
+    title: "Antes de ligar o motor, já estamos cuidando de você",
     publishDate: "2026-08-24",
     publishTime: "14:00:00",
     status: "scheduled",
@@ -171,7 +171,7 @@ const internalCalendarEvents = [
   },
   {
     id: "calendar-3",
-    title: "Dois destinos. Qual voce escolhe?",
+    title: "Dois destinos. Qual você escolhe?",
     publishDate: "2026-08-25",
     publishTime: "11:00:00",
     status: "scheduled",
@@ -300,9 +300,9 @@ function applyDecision(cardId: string, approved: boolean) {
     return;
   }
 
-  card.clientLabel = "Alteracao solicitada";
-  ensureTag(cardId, "Alteracao solicitada");
-  ensureStatus(cardId, "Revisao solicitada");
+  card.clientLabel = "Alteração solicitada";
+  ensureTag(cardId, "Alteração solicitada");
+  ensureStatus(cardId, "Revisão solicitada");
 }
 
 export const demoRoutes: FastifyPluginAsync = async (app) => {
@@ -373,7 +373,7 @@ export const demoRoutes: FastifyPluginAsync = async (app) => {
 
     if (!card) {
       reply.code(404);
-      return { message: "Card nao encontrado." };
+      return { message: "Card não encontrado." };
     }
 
     if (body.decision === "approved") {
@@ -398,12 +398,12 @@ export const demoRoutes: FastifyPluginAsync = async (app) => {
 
     if (!card) {
       reply.code(404);
-      return { message: "Card nao encontrado." };
+      return { message: "Card não encontrado." };
     }
 
     if (!commentText) {
       reply.code(400);
-      return { message: "Comentario vazio." };
+      return { message: "Comentário vazio." };
     }
 
     return {
@@ -563,12 +563,12 @@ export const demoRoutes: FastifyPluginAsync = async (app) => {
 
     if (!card) {
       reply.code(404);
-      return { message: "Card nao encontrado." };
+      return { message: "Card não encontrado." };
     }
 
     if (!commentText) {
       reply.code(400);
-      return { message: "Comentario vazio." };
+      return { message: "Comentário vazio." };
     }
 
     return {
@@ -589,7 +589,7 @@ export const demoRoutes: FastifyPluginAsync = async (app) => {
 
     if (!card) {
       reply.code(404);
-      return { message: "Card nao encontrado." };
+      return { message: "Card não encontrado." };
     }
 
     if (body.commentText?.trim()) {
@@ -637,7 +637,7 @@ export const demoRoutes: FastifyPluginAsync = async (app) => {
       },
       {
         id: "portal-calendar-2",
-        title: "Antes de ligar o motor, ja estamos cuidando de voce",
+        title: "Antes de ligar o motor, já estamos cuidando de você",
         publishDate: "2026-08-24",
         publishTime: "14:00:00",
         status: "scheduled",

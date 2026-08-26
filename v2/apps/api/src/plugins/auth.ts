@@ -16,7 +16,7 @@ async function authPlugin(app: FastifyInstance) {
       try {
         payload = verifyAccessToken(app, bearerToken);
       } catch {
-        throw app.httpErrors.unauthorized("Token invalido ou expirado.");
+        throw app.httpErrors.unauthorized("Token inválido ou expirado.");
       }
       const auth = await findAuthContextByUserId(app.db, payload.sub);
       request.auth = auth;

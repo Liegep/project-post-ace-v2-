@@ -10,7 +10,7 @@ export async function getInternalCardDetail(
 ) {
   const card = await findCardById(app.db, cardId);
   if (!card || card.clientAccountId !== clientAccountId) {
-    throw app.httpErrors.notFound("Card nao encontrado nesta conta.");
+    throw app.httpErrors.notFound("Card não encontrado nesta conta.");
   }
 
   const [comments, approvalLinks] = await Promise.all([
@@ -46,7 +46,7 @@ export async function getPortalCardDetail(
 ) {
   const card = await findCardById(app.db, cardId);
   if (!card || card.clientAccountId !== clientAccountId) {
-    throw app.httpErrors.notFound("Card nao encontrado nesta conta.");
+    throw app.httpErrors.notFound("Card não encontrado nesta conta.");
   }
 
   const comments = await listCommentsByCardId(app.db, cardId, { includeInternal: false });

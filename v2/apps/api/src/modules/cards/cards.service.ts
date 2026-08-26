@@ -179,7 +179,7 @@ async function assertColumnBelongsToClient(
 
   const column = await findColumnById(app.db, columnId);
   if (!column || column.clientAccountId !== clientAccountId) {
-    throw app.httpErrors.badRequest("A coluna informada nao pertence a esta conta.");
+    throw app.httpErrors.badRequest("A coluna informada não pertence a esta conta.");
   }
 }
 
@@ -190,7 +190,7 @@ export async function listKanbanCards(
 ) {
   const client = await findClientAccountById(app.db, clientAccountId);
   if (!client) {
-    throw app.httpErrors.notFound("Conta do cliente nao encontrada.");
+    throw app.httpErrors.notFound("Conta do cliente não encontrada.");
   }
 
   if (query.columnId) {
@@ -214,7 +214,7 @@ export async function getKanbanBoard(
 ) {
   const client = await findClientAccountById(app.db, clientAccountId);
   if (!client) {
-    throw app.httpErrors.notFound("Conta do cliente nao encontrada.");
+    throw app.httpErrors.notFound("Conta do cliente não encontrada.");
   }
 
   const archived = parseArchivedValue(query.archived) ?? false;
@@ -254,14 +254,14 @@ export async function createKanbanCard(
 ) {
   const client = await findClientAccountById(app.db, clientAccountId);
   if (!client) {
-    throw app.httpErrors.notFound("Conta do cliente nao encontrada.");
+    throw app.httpErrors.notFound("Conta do cliente não encontrada.");
   }
 
   await assertColumnBelongsToClient(app, clientAccountId, input.columnId);
 
   const created = await createCard(app.db, clientAccountId, createdByUserId, input);
   if (!created) {
-    throw app.httpErrors.badRequest("Nao foi possivel criar o card.");
+    throw app.httpErrors.badRequest("Não foi possível criar o card.");
   }
 
   await upsertCalendarEventFromCard(app.db, created);
@@ -276,12 +276,12 @@ export async function updateKanbanCard(
 ) {
   const card = await findCardById(app.db, cardId);
   if (!card || card.clientAccountId !== clientAccountId) {
-    throw app.httpErrors.notFound("Card nao encontrado nesta conta.");
+    throw app.httpErrors.notFound("Card não encontrado nesta conta.");
   }
 
   const updated = await updateCard(app.db, cardId, input);
   if (!updated) {
-    throw app.httpErrors.badRequest("Nao foi possivel atualizar o card.");
+    throw app.httpErrors.badRequest("Não foi possível atualizar o card.");
   }
 
   const automations = input.tags
@@ -304,14 +304,14 @@ export async function moveKanbanCard(
 ) {
   const card = await findCardById(app.db, cardId);
   if (!card || card.clientAccountId !== clientAccountId) {
-    throw app.httpErrors.notFound("Card nao encontrado nesta conta.");
+    throw app.httpErrors.notFound("Card não encontrado nesta conta.");
   }
 
   await assertColumnBelongsToClient(app, clientAccountId, input.columnId);
 
   const moved = await moveCard(app.db, cardId, card, input);
   if (!moved) {
-    throw app.httpErrors.badRequest("Nao foi possivel mover o card.");
+    throw app.httpErrors.badRequest("Não foi possível mover o card.");
   }
 
   const automations = card.columnId !== input.columnId
@@ -332,12 +332,12 @@ export async function archiveKanbanCard(
 ) {
   const card = await findCardById(app.db, cardId);
   if (!card || card.clientAccountId !== clientAccountId) {
-    throw app.httpErrors.notFound("Card nao encontrado nesta conta.");
+    throw app.httpErrors.notFound("Card não encontrado nesta conta.");
   }
 
   const updated = await setCardArchived(app.db, cardId, archived);
   if (!updated) {
-    throw app.httpErrors.badRequest("Nao foi possivel atualizar o arquivo do card.");
+    throw app.httpErrors.badRequest("Não foi possível atualizar o arquivo do card.");
   }
 
   await upsertCalendarEventFromCard(app.db, updated);
@@ -347,10 +347,10 @@ export async function archiveKanbanCard(
 export async function deleteKanbanCard(app: FastifyInstance, clientAccountId: string, cardId: string) {
   const card = await findCardById(app.db, cardId);
   if (!card || card.clientAccountId !== clientAccountId) {
-    throw app.httpErrors.notFound("Card nao encontrado nesta conta.");
+    throw app.httpErrors.notFound("Card não encontrado nesta conta.");
   }
 
   if (!(await deleteCard(app.db, cardId))) {
-    throw app.httpErrors.badRequest("Nao foi possivel excluir o card.");
+    throw app.httpErrors.badRequest("Não foi possível excluir o card.");
   }
 }

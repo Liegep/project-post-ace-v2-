@@ -9,14 +9,14 @@ const adminColumns = [
     cards: [
       {
         id: "card-1",
-        title: "Nao importa qual operadora seu colaborador usa",
+        title: "Não importa qual operadora seu colaborador usa",
         subtitle: "VT Cards",
         mediaUrl:
           "https://images.unsplash.com/photo-1544620347-c4fd4a3d5957?auto=format&fit=crop&w=900&q=80",
         mediaAspect: "portrait" as const,
-        typeLabel: "Post unico",
+        typeLabel: "Post único",
         statusBadges: ["Legenda pronta", "Design finalizado", "Legenda aprovada"],
-        tags: ["Alteracao solicitada"],
+        tags: ["Alteração solicitada"],
         commentsCount: 1,
         scheduledAt: "2026-08-23 10:00",
         clientLabel: "Pendente",
@@ -38,13 +38,13 @@ const adminColumns = [
   },
   {
     id: "aprovacao",
-    name: "Em aprovacao",
+    name: "Em aprovação",
     color: "#f7a31a",
     visibleToClient: true,
     cards: [
       {
         id: "card-3",
-        title: "Antes de ligar o motor, ja estamos cuidando de voce",
+        title: "Antes de ligar o motor, já estamos cuidando de você",
         subtitle: "Seguranca",
         mediaUrl:
           "https://images.unsplash.com/photo-1517142089942-ba376ce32a2e?auto=format&fit=crop&w=900&q=80",
@@ -54,7 +54,7 @@ const adminColumns = [
         tags: ["Cliente revisando"],
         commentsCount: 2,
         scheduledAt: "2026-08-24 14:00",
-        clientLabel: "Aguardando aprovacao",
+        clientLabel: "Aguardando aprovação",
       },
     ],
   },
@@ -66,7 +66,7 @@ const adminColumns = [
     cards: [
       {
         id: "card-4",
-        title: "Dois destinos. Qual voce escolhe?",
+        title: "Dois destinos. Qual você escolhe?",
         subtitle: "Santa Sophia",
         mediaUrl:
           "https://images.unsplash.com/photo-1507525428034-b723cf961d3e?auto=format&fit=crop&w=900&q=80",
@@ -115,7 +115,7 @@ export const adminPreview: AdminWorkspacePreview = {
     },
     {
       id: "calendar-2",
-      title: "Antes de ligar o motor, ja estamos cuidando de voce",
+      title: "Antes de ligar o motor, já estamos cuidando de você",
       publishDate: "2026-08-24",
       publishTime: "14:00:00",
       status: "scheduled",
@@ -124,7 +124,7 @@ export const adminPreview: AdminWorkspacePreview = {
     },
     {
       id: "calendar-3",
-      title: "Dois destinos. Qual voce escolhe?",
+      title: "Dois destinos. Qual você escolhe?",
       publishDate: "2026-08-25",
       publishTime: "11:00:00",
       status: "scheduled",
@@ -134,8 +134,8 @@ export const adminPreview: AdminWorkspacePreview = {
   ],
   drawerNotes: [
     "Cliente prefere aprovar pelo celular.",
-    "Equipe de anuncios so acessa a conta ADS.",
-    "Links temporarios ficam ativos por 7 dias.",
+    "Equipe de anúncios só acessa a conta ADS.",
+    "Links temporários ficam ativos por 7 dias.",
   ],
   quickLinks: [
     { label: "Instagram", href: "#" },
@@ -154,6 +154,8 @@ export const adminPreview: AdminWorkspacePreview = {
 export const clientPreview: ClientPortalPreview = {
   accountName: "Serena Genovese",
   locale: "Italiano",
+  trackingEnabled: true,
+  showArchivedToClient: true,
   widgets: {
     upcomingPosts: true,
     tracking: true,
@@ -161,6 +163,18 @@ export const clientPreview: ClientPortalPreview = {
     reports: true,
     brandBrain: true,
     search: true,
+  },
+  permissions: {
+    allowClientEditCaption: true,
+    allowClientCreatePost: true,
+    allowClientCreateTags: true,
+    allowClientDownload: true,
+    allowClientEditBrandBrain: true,
+    allowClientSearch: true,
+    allowClientViewInvoices: true,
+    allowClientViewReports: true,
+    allowClientViewBrandBrain: true,
+    allowClientViewTracking: true,
   },
   boardColumns: adminColumns
     .filter((column) => column.visibleToClient)

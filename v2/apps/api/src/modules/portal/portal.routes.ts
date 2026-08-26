@@ -1,7 +1,14 @@
 import type { FastifyPluginAsync } from "fastify";
 import { assertClientAccess } from "../auth/auth.access.js";
+import { addCardComment } from "../comments/comments.service.js";
 import { getPortalCardDetail } from "../cards/card-detail.service.js";
-import { portalBoardQuerySchema } from "./portal.schemas.js";
+import { createKanbanCard } from "../cards/cards.service.js";
+import { findCardById, listCardsByClientAccountId, moveCard, updateCard } from "../cards/cards.repository.js";
+import { createColumn, listColumnsByClientAccountId, updateColumn } from "../columns/columns.repository.js";
+import { findClientPermissionsByAccountId } from "../clients/clients.repository.js";
+import { createClientTag, listClientTags } from "../tags/tags.repository.js";
+import { createClientTagSchema } from "../tags/tags.schemas.js";
+import { createPortalPostSchema, portalBoardQuerySchema, portalCardDecisionSchema, portalSearchQuerySchema, updatePortalCardCaptionSchema, updatePortalCardTagsSchema } from "./portal.schemas.js";
 import { getPortalBoard, getPortalHome } from "./portal.service.js";
 
 export const portalRoutes: FastifyPluginAsync = async (app) => {
@@ -23,10 +30,188 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
     });
   });
 
+  app.get("/portal/accounts/:clientAccountId/search", async (request) => {
+    const params = request.params as { clientAccountId: string };
+    assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
+    const permissions = await findClientPermissionsByAccountId(app.db, params.clientAccountId);
+    if (!permissions?.allowClientSearch) {
+      throw app.httpErrors.forbidden("A pesquisa não está habilitada para este cliente.");
+    }
+    const query = portalSearchQuerySchema.parse(request.query);
+    const [activeCards, archivedCards] = await Promise.all([
+      listCardsByClientAccountId(app.db, params.clientAccountId, { archived: false, search: query.q }),
+      listCardsByClientAccountId(app.db, params.clientAccountId, { archived: true, search: query.q }),
+    ]);
+    const visibleActiveCards = activeCards.filter((card) => card.status.includes("Enviar para Cliente") || /(aprovad|revis[aã]o solicitada)/i.test(`${card.clientLabel} ${card.status.join(" ")}`));
+    return { items: [...visibleActiveCards, ...archivedCards] };
+  });
+
   app.get("/portal/accounts/:clientAccountId/cards/:cardId", async (request) => {
     const params = request.params as { clientAccountId: string; cardId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
 
     return getPortalCardDetail(app, params.clientAccountId, params.cardId);
+  });
+
+  app.post("/portal/accounts/:clientAccountId/cards", async (request) => {
+    const params = request.params as { clientAccountId: string };
+    assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
+    const permissions = await findClientPermissionsByAccountId(app.db, params.clientAccountId);
+    if (!permissions?.allowClientCreatePost) {
+      throw app.httpErrors.forbidden("A criação de posts não está habilitada para este cliente.");
+    }
+    const input = createPortalPostSchema.parse(request.body);
+    const mediaType = input.mediaUrls.some((url) => /\.(mp4|webm|mov)(\?.*)?$/i.test(url)) ? "video" : "image";
+    return {
+      ok: true,
+      card: await createKanbanCard(app, params.clientAccountId, request.auth!.user.id, {
+        columnId: null,
+        title: input.title,
+        caption: input.caption ?? null,
+        mediaType,
+        primaryMediaUrl: input.mediaUrls[0] ?? null,
+        mediaUrls: input.mediaUrls,
+        externalLinkUrl: input.externalLinkUrl ?? null,
+        artType: input.artType,
+        status: ["Enviar para Cliente", "Sugestão do cliente"],
+        tags: [],
+        hashtags: [],
+        isBriefApproval: false,
+        keepFiles: false,
+        deadlineAt: null,
+        scheduledAt: null,
+        clientLabel: "Pendente",
+        eventColor: null,
+      }),
+    };
+  });
+
+  app.patch("/portal/accounts/:clientAccountId/cards/:cardId/caption", async (request) => {
+    const params = request.params as { clientAccountId: string; cardId: string };
+    assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
+    const permissions = await findClientPermissionsByAccountId(app.db, params.clientAccountId);
+    if (!permissions?.allowClientEditCaption) {
+      throw app.httpErrors.forbidden("A edição de legendas não está habilitada para este cliente.");
+    }
+
+    const input = updatePortalCardCaptionSchema.parse(request.body);
+    const card = await findCardById(app.db, params.cardId);
+    if (!card || card.clientAccountId !== params.clientAccountId) {
+      throw app.httpErrors.notFound("Card não encontrado nesta conta.");
+    }
+
+    const updatedCard = await updateCard(app.db, params.cardId, { caption: input.caption });
+    const actor = request.auth!.user;
+    await addCardComment(app, params.clientAccountId, params.cardId, {
+      commentText: "Legenda editada pelo cliente.",
+      isInternal: false,
+    }, {
+      userId: actor.id,
+      authorName: actor.fullName,
+      authorRole: actor.globalRole,
+      canCreateInternal: false,
+    });
+
+    return { ok: true, card: updatedCard };
+  });
+
+  app.get("/portal/accounts/:clientAccountId/tags", async (request) => {
+    const params = request.params as { clientAccountId: string };
+    assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
+    const permissions = await findClientPermissionsByAccountId(app.db, params.clientAccountId);
+    if (!permissions?.allowClientCreateTags) {
+      throw app.httpErrors.forbidden("O uso de etiquetas não está habilitado para este cliente.");
+    }
+    return { items: await listClientTags(app.db, params.clientAccountId) };
+  });
+
+  app.post("/portal/accounts/:clientAccountId/tags", async (request) => {
+    const params = request.params as { clientAccountId: string };
+    assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
+    const permissions = await findClientPermissionsByAccountId(app.db, params.clientAccountId);
+    if (!permissions?.allowClientCreateTags) {
+      throw app.httpErrors.forbidden("A criação de etiquetas não está habilitada para este cliente.");
+    }
+    const input = createClientTagSchema.parse(request.body);
+    const existing = await listClientTags(app.db, params.clientAccountId);
+    if (existing.some((tag) => tag.name.localeCompare(input.name.trim(), undefined, { sensitivity: "accent" }) === 0)) {
+      throw app.httpErrors.badRequest(`A etiqueta “${input.name.trim()}” já existe nesta conta.`);
+    }
+    return { ok: true, tag: await createClientTag(app.db, params.clientAccountId, input) };
+  });
+
+  app.patch("/portal/accounts/:clientAccountId/cards/:cardId/tags", async (request) => {
+    const params = request.params as { clientAccountId: string; cardId: string };
+    assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
+    const permissions = await findClientPermissionsByAccountId(app.db, params.clientAccountId);
+    if (!permissions?.allowClientCreateTags) {
+      throw app.httpErrors.forbidden("O uso de etiquetas não está habilitado para este cliente.");
+    }
+    const input = updatePortalCardTagsSchema.parse(request.body);
+    const card = await findCardById(app.db, params.cardId);
+    if (!card || card.clientAccountId !== params.clientAccountId) {
+      throw app.httpErrors.notFound("Card não encontrado nesta conta.");
+    }
+    const available = await listClientTags(app.db, params.clientAccountId);
+    const selected = Array.from(new Set(input.tags));
+    if (selected.some((name) => !available.some((tag) => tag.name === name))) {
+      throw app.httpErrors.badRequest("Uma das etiquetas selecionadas não pertence a este cliente.");
+    }
+    const updatedCard = await updateCard(app.db, params.cardId, { tags: selected });
+    const actor = request.auth!.user;
+    await addCardComment(app, params.clientAccountId, params.cardId, {
+      commentText: selected.length ? `Etiquetas atualizadas pelo cliente: ${selected.join(", ")}.` : "Etiquetas removidas pelo cliente.",
+      isInternal: false,
+    }, {
+      userId: actor.id,
+      authorName: actor.fullName,
+      authorRole: actor.globalRole,
+      canCreateInternal: false,
+    });
+    return { ok: true, card: updatedCard };
+  });
+
+  app.post("/portal/accounts/:clientAccountId/cards/:cardId/decision", async (request) => {
+    const params = request.params as { clientAccountId: string; cardId: string };
+    assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
+    const input = portalCardDecisionSchema.parse(request.body);
+    const card = await findCardById(app.db, params.cardId);
+    if (!card || card.clientAccountId !== params.clientAccountId) {
+      throw app.httpErrors.notFound("Card não encontrado nesta conta.");
+    }
+
+    const actor = request.auth!.user;
+    if (input.commentText) {
+      await addCardComment(app, params.clientAccountId, params.cardId, {
+        commentText: input.commentText,
+        isInternal: false,
+      }, {
+        userId: actor.id,
+        authorName: actor.fullName,
+        authorRole: actor.globalRole,
+        canCreateInternal: false,
+      });
+    }
+
+    const decisionStatuses = card.status.filter((status) => !/(aprovad|revis[aã]o solicitada)/i.test(status));
+    let updatedCard = await updateCard(app.db, params.cardId, {
+      clientLabel: input.approved ? "Aprovado pelo cliente" : "Alteração solicitada",
+      status: [...decisionStatuses, input.approved ? "Aprovado" : "Revisão solicitada"],
+    });
+
+    if (input.approved && updatedCard) {
+      const columns = await listColumnsByClientAccountId(app.db, params.clientAccountId);
+      let approvedColumn = columns.find((column) => /aprovados(?: pelo cliente)?/i.test(column.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "")));
+      if (!approvedColumn) {
+        approvedColumn = await createColumn(app.db, params.clientAccountId, { name: "Aprovados", color: "#28b77d", visibleToClient: true, autoCreated: true }) ?? undefined;
+      } else if (!approvedColumn.visibleToClient) {
+        approvedColumn = await updateColumn(app.db, approvedColumn.id, { visibleToClient: true }) ?? approvedColumn;
+      }
+      if (approvedColumn) {
+        updatedCard = await moveCard(app.db, params.cardId, updatedCard, { columnId: approvedColumn.id }) ?? updatedCard;
+      }
+    }
+
+    return { ok: true, card: updatedCard };
   });
 };

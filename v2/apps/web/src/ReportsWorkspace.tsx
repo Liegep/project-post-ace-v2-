@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { jsPDF } from "jspdf";
 import { createAdminReport, deleteAdminReport, extractAdminReportMetrics, listAdminClients, listAdminReports, listPortalReportsBySlug, publishAdminReport, updateAdminReport, uploadAdminMedia, type AdminClientOption, type ClientReport, type ReportMetrics } from "./api";
 
 const METRICS = [
@@ -62,7 +61,8 @@ function ReportDocument({ report, clientName, locale = "pt", printable = false }
   return <article className={printable ? "report-document printable-report" : "report-document"}><header><div><span>{copy.performance}</span><h2>{clientName}</h2><p>{new Date(`${report.periodStart}T12:00`).toLocaleDateString(browserLocale[language])} a {new Date(`${report.periodEnd}T12:00`).toLocaleDateString(browserLocale[language])}</p></div><b>{report.status === "published" ? copy.published : copy.draft}</b></header><section className="report-summary"><strong>{copy.summary}</strong><p>{reportSummary(report, language)}</p></section><section className="report-kpis">{METRICS.slice(0, 4).map(([key]) => <article key={key}><span>{metricText[language][key]}</span><strong>{number(report.metrics.instagram[key] + report.metrics.facebook[key], language)}</strong><small>{copy.combined}</small></article>)}</section><section className="report-chart"><header><div><span>{copy.reachByChannel}</span><h3>{copy.comparison}</h3></div></header>{(["instagram", "facebook"] as const).map((channel) => <div className={`report-bar ${channel}`} key={channel}><span>{channel === "instagram" ? "Instagram" : "Facebook"}</span><i><b style={{ width: `${(report.metrics[channel].reach / maxReach) * 100}%` }} /></i><strong>{number(report.metrics[channel].reach, language)}</strong></div>)}</section><section className="report-detail-grid">{(["instagram", "facebook"] as const).map((channel) => <article key={channel}><h3>{channel === "instagram" ? "Instagram" : "Facebook"}</h3>{METRICS.slice(2).map(([key]) => <p key={key}><span>{metricText[language][key]}</span><b>{number(report.metrics[channel][key], language)}</b></p>)}</article>)}</section>{report.highlights.length ? <section className="report-highlights"><span>{copy.highlights}</span>{report.highlights.map((item, index) => <p key={`${item.title}-${index}`}><b>{index + 1}</b>{item.title}<em>{item.channel === "instagram" ? "Instagram" : "Facebook"} · {number(item.value, language)}</em></p>)}</section> : null}{report.notes ? <section className="report-notes"><strong>{copy.teamNotes}</strong><p>{report.notes}</p></section> : null}</article>;
 }
 
-function downloadReportPdf(report: ClientReport, clientName: string, locale = "pt") {
+async function downloadReportPdf(report: ClientReport, clientName: string, locale = "pt") {
+  const { jsPDF } = await import("jspdf");
   const language = reportLocale(locale); const copy = reportText[language];
   const pdf = new jsPDF({ unit: "pt", format: "a4" });
   const width = 595;
@@ -174,6 +174,6 @@ export function PortalReports({ slug, clientName, locale = "pt" }: { slug: strin
   const language = reportLocale(locale); const copy = reportText[language];
   const [reports, setReports] = useState<ClientReport[]>([]); const [selected, setSelected] = useState<ClientReport | null>(null);
   useEffect(() => { void listPortalReportsBySlug(slug).then((response) => { setReports(response.items); setSelected(response.items[0] ?? null); }).catch(() => setReports([])); }, [slug]);
-  const download = () => { if (selected) downloadReportPdf(selected, clientName, language); };
+  const download = () => { if (selected) void downloadReportPdf(selected, clientName, language); };
   return <section className="portal-reports"><header><div><span>{copy.results}</span><h1>{copy.reports}</h1><p>{copy.portalIntro}</p></div>{selected ? <button className="gradient-button" onClick={download}>⇩ {copy.download}</button> : null}</header><div className="portal-reports-layout"><aside>{reports.map((report) => <button className={selected?.id === report.id ? "selected" : ""} key={report.id} onClick={() => setSelected(report)}><strong>{report.title}</strong><span>{new Date(`${report.periodStart}T12:00`).toLocaleDateString(browserLocale[language])} - {new Date(`${report.periodEnd}T12:00`).toLocaleDateString(browserLocale[language])}</span></button>)}{!reports.length ? <p>{copy.empty}</p> : null}</aside><main>{selected ? <ReportDocument report={selected} clientName={clientName} locale={language} /> : null}</main></div></section>;
 }

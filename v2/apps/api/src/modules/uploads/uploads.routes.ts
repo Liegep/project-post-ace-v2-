@@ -1,10 +1,11 @@
 import crypto from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import multipart from "@fastify/multipart";
 import sharp from "sharp";
-import { assertInternalAccess } from "../auth/auth.access.js";
+import { assertClientAccess, assertInternalAccess } from "../auth/auth.access.js";
+import { findClientPermissionsByAccountId } from "../clients/clients.repository.js";
 
 const allowedTypes = new Map<string, { kind: "image" | "video"; extension: string; contentType: string }>([
   ["image/jpeg", { kind: "image", extension: "webp", contentType: "image/webp" }],
@@ -30,9 +31,7 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
     },
   });
 
-  app.post("/uploads", async (request) => {
-    assertInternalAccess(request);
-
+  const storeUpload = async (request: FastifyRequest) => {
     const file = await request.file();
     if (!file) {
       throw app.httpErrors.badRequest("Escolha uma imagem para enviar.");
@@ -48,10 +47,10 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
       throw app.httpErrors.badRequest("O arquivo enviado esta vazio.");
     }
     if (format.kind === "image" && buffer.length > maxImageSize) {
-      throw app.httpErrors.badRequest("Imagens podem ter no maximo 12 MB.");
+      throw app.httpErrors.badRequest("Imagens podem ter no máximo 12 MB.");
     }
     if (format.kind === "video" && buffer.length > maxVideoSize) {
-      throw app.httpErrors.badRequest("Videos podem ter no maximo 20 MB.");
+      throw app.httpErrors.badRequest("Vídeos podem ter no máximo 20 MB.");
     }
 
     const directory = getUploadDirectory(app.appEnv.UPLOAD_DIR);
@@ -66,7 +65,7 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
           .toBuffer();
       } catch {
         throw app.httpErrors.badRequest(
-          `Nao foi possivel converter “${file.filename}” para WebP. Verifique se a imagem nao esta corrompida.`,
+          `Não foi possível converter “${file.filename}” para WebP. Verifique se a imagem não está corrompida.`,
         );
       }
     }
@@ -77,18 +76,33 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
       url: `/api/uploads/${fileName}`,
       fileName,
     };
+  };
+
+  app.post("/uploads", async (request) => {
+    assertInternalAccess(request);
+    return storeUpload(request);
+  });
+
+  app.post("/portal/accounts/:clientAccountId/uploads", async (request) => {
+    const params = request.params as { clientAccountId: string };
+    assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
+    const permissions = await findClientPermissionsByAccountId(app.db, params.clientAccountId);
+    if (!permissions?.allowClientCreatePost) {
+      throw app.httpErrors.forbidden("O envio de artes não está habilitado para este cliente.");
+    }
+    return storeUpload(request);
   });
 
   app.get("/uploads/:fileName", async (request, reply) => {
     const params = request.params as { fileName: string };
     const match = /^([a-f0-9-]+)\.(webp|mp4|webm|mov)$/.exec(params.fileName);
     if (!match) {
-      throw app.httpErrors.notFound("Arquivo nao encontrado.");
+      throw app.httpErrors.notFound("Arquivo não encontrado.");
     }
 
     const fileType = [...allowedTypes.values()].find((item) => item.extension === match[2]);
     if (!fileType) {
-      throw app.httpErrors.notFound("Arquivo nao encontrado.");
+      throw app.httpErrors.notFound("Arquivo não encontrado.");
     }
 
     try {
@@ -106,7 +120,7 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
       }
       return reply.type(fileType.contentType).send(file);
     } catch {
-      throw app.httpErrors.notFound("Arquivo nao encontrado.");
+      throw app.httpErrors.notFound("Arquivo não encontrado.");
     }
   });
 };

@@ -44,12 +44,12 @@ export function usePreviewResource<T>(
       .catch((error) => {
         if (!active) return;
         const description =
-          error instanceof Error ? error.message : "Sem conexao com a API da V2.";
+          error instanceof Error ? error.message : "Sem conexão com a API da V2.";
         setState({
           data: fallback,
           loading: false,
           source: "error",
-          message: `Nao consegui carregar os dados reais. ${description}`,
+          message: `Não consegui carregar os dados reais. ${description}`,
         });
       });
 

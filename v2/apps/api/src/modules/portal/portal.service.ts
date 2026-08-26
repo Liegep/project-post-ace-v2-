@@ -15,9 +15,10 @@ function parseArchivedValue(value: PortalBoardQueryInput["archived"]) {
 function groupPortalCards(
   columns: Awaited<ReturnType<typeof listColumnsByClientAccountId>>,
   cards: Awaited<ReturnType<typeof listCardsByClientAccountId>>,
+  includeAllCards = false,
 ) {
   const visibleColumns = columns.filter((column) => column.visibleToClient);
-  const cardsSentToClient = cards.filter((card) => card.status.includes("Enviar para Cliente"));
+  const cardsSentToClient = includeAllCards ? cards : cards.filter((card) => card.status.includes("Enviar para Cliente"));
   const visibleIds = new Set(visibleColumns.map((column) => column.id));
   const cardsByColumnId = new Map<string, typeof cards>();
   const withoutColumn: typeof cards = [];
@@ -52,14 +53,16 @@ export async function getPortalHome(
   app: FastifyInstance,
   clientAccountId: string,
 ) {
-  const client = await findClientAccountById(app.db, clientAccountId);
+  const [client, permissions] = await Promise.all([
+    findClientAccountById(app.db, clientAccountId),
+    findClientPermissionsByAccountId(app.db, clientAccountId),
+  ]);
   if (!client) {
-    throw app.httpErrors.notFound("Conta do cliente nao encontrada.");
+    throw app.httpErrors.notFound("Conta do cliente não encontrada.");
   }
 
-  const permissions = await findClientPermissionsByAccountId(app.db, clientAccountId);
   if (!permissions) {
-    throw app.httpErrors.notFound("Permissoes da conta nao encontradas.");
+    throw app.httpErrors.notFound("Permissões da conta não encontradas.");
   }
 
   const upcomingCards = client.show_upcoming_posts
@@ -112,14 +115,16 @@ export async function getPortalBoard(
   query: PortalBoardQueryInput,
   options: { canUseSearch: boolean },
 ) {
-  const client = await findClientAccountById(app.db, clientAccountId);
+  const [client, permissions] = await Promise.all([
+    findClientAccountById(app.db, clientAccountId),
+    findClientPermissionsByAccountId(app.db, clientAccountId),
+  ]);
   if (!client) {
-    throw app.httpErrors.notFound("Conta do cliente nao encontrada.");
+    throw app.httpErrors.notFound("Conta do cliente não encontrada.");
   }
 
-  const permissions = await findClientPermissionsByAccountId(app.db, clientAccountId);
   if (!permissions) {
-    throw app.httpErrors.notFound("Permissoes da conta nao encontradas.");
+    throw app.httpErrors.notFound("Permissões da conta não encontradas.");
   }
 
   const archivedRequested = parseArchivedValue(query.archived);
@@ -153,6 +158,6 @@ export async function getPortalBoard(
       archived,
       search: search ?? "",
     },
-    board: groupPortalCards(columns, cards),
+    board: groupPortalCards(columns, cards, archived),
   };
 }

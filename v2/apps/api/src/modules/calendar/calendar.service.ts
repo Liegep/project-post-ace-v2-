@@ -33,7 +33,7 @@ export async function getInternalClientCalendar(
 ) {
   const client = await findClientAccountById(app.db, clientAccountId);
   if (!client) {
-    throw app.httpErrors.notFound("Conta do cliente nao encontrada.");
+    throw app.httpErrors.notFound("Conta do cliente não encontrada.");
   }
 
   const range = normalizeCalendarRange(query);
@@ -88,7 +88,7 @@ export async function getPortalCalendar(
 ) {
   const client = await findClientAccountById(app.db, clientAccountId);
   if (!client) {
-    throw app.httpErrors.notFound("Conta do cliente nao encontrada.");
+    throw app.httpErrors.notFound("Conta do cliente não encontrada.");
   }
 
   const range = normalizeCalendarRange(query);

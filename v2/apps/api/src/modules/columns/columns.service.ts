@@ -20,7 +20,7 @@ export async function listKanbanColumns(
 ) {
   const client = await findClientAccountById(app.db, clientAccountId);
   if (!client) {
-    throw app.httpErrors.notFound("Conta do cliente nao encontrada.");
+    throw app.httpErrors.notFound("Conta do cliente não encontrada.");
   }
 
   return {
@@ -36,12 +36,12 @@ export async function createKanbanColumn(
 ) {
   const client = await findClientAccountById(app.db, clientAccountId);
   if (!client) {
-    throw app.httpErrors.notFound("Conta do cliente nao encontrada.");
+    throw app.httpErrors.notFound("Conta do cliente não encontrada.");
   }
 
   const created = await createColumn(app.db, clientAccountId, input);
   if (!created) {
-    throw app.httpErrors.badRequest("Nao foi possivel criar a coluna.");
+    throw app.httpErrors.badRequest("Não foi possível criar a coluna.");
   }
 
   return created;
@@ -55,12 +55,12 @@ export async function updateKanbanColumn(
 ) {
   const column = await findColumnById(app.db, columnId);
   if (!column || column.clientAccountId !== clientAccountId) {
-    throw app.httpErrors.notFound("Coluna nao encontrada nesta conta.");
+    throw app.httpErrors.notFound("Coluna não encontrada nesta conta.");
   }
 
   const updated = await updateColumn(app.db, columnId, input);
   if (!updated) {
-    throw app.httpErrors.badRequest("Nao foi possivel atualizar a coluna.");
+    throw app.httpErrors.badRequest("Não foi possível atualizar a coluna.");
   }
 
   return updated;
@@ -73,7 +73,7 @@ export async function deleteKanbanColumn(
 ) {
   const column = await findColumnById(app.db, columnId);
   if (!column || column.clientAccountId !== clientAccountId) {
-    throw app.httpErrors.notFound("Coluna nao encontrada nesta conta.");
+    throw app.httpErrors.notFound("Coluna não encontrada nesta conta.");
   }
 
   await deleteColumn(app.db, columnId);
@@ -96,7 +96,7 @@ export async function reorderKanbanColumns(
   for (const columnId of input.orderedColumnIds) {
     if (!currentIds.has(columnId)) {
       throw app.httpErrors.badRequest(
-        "A lista enviada tem coluna que nao pertence a esta conta.",
+        "A lista enviada tem coluna que não pertence a esta conta.",
       );
     }
   }

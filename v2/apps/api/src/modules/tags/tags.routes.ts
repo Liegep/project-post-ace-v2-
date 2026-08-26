@@ -18,7 +18,7 @@ export const tagRoutes: FastifyPluginAsync = async (app) => {
     const input = createClientTagSchema.parse(request.body);
     const existing = await listClientTags(app.db, clientAccountId);
     if (existing.some((tag) => tag.name.localeCompare(input.name.trim(), undefined, { sensitivity: "accent" }) === 0)) {
-      throw app.httpErrors.badRequest(`A etiqueta “${input.name.trim()}” ja existe nesta conta.`);
+      throw app.httpErrors.badRequest(`A etiqueta “${input.name.trim()}” já existe nesta conta.`);
     }
     const tag = await createClientTag(app.db, clientAccountId, input);
     return { ok: true, tag };
