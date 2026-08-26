@@ -3390,9 +3390,11 @@ button {
 
 /* Navbar + saudação compartilham um único painel de vidro, separados apenas por uma linha horizontal. */
 .dashboard-layout .dashboard-hero-panel {
+  position: relative;
+  z-index: 20;
   border: 1px solid rgba(255, 255, 255, 0.6);
   border-radius: 26px;
-  overflow: hidden;
+  overflow: visible;
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.38), rgba(244, 247, 255, 0.2));
   box-shadow: 0 28px 70px rgba(72, 91, 148, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.7);
   backdrop-filter: blur(18px) saturate(160%);

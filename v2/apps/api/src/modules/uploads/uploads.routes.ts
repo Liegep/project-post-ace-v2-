@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import multipart from "@fastify/multipart";
 import sharp from "sharp";
@@ -19,8 +20,10 @@ const allowedTypes = new Map<string, { kind: "image" | "video"; extension: strin
 const maxImageSize = 12 * 1024 * 1024;
 const maxVideoSize = 20 * 1024 * 1024;
 
-function getUploadDirectory(uploadDir: string) {
-  return path.resolve(process.cwd(), uploadDir);
+export function getUploadDirectory(uploadDir: string) {
+  if (path.isAbsolute(uploadDir)) return uploadDir;
+  const apiDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+  return path.resolve(apiDirectory, uploadDir);
 }
 
 export const uploadRoutes: FastifyPluginAsync = async (app) => {

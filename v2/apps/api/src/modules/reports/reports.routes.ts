@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { assertClientAccess, assertInternalAccess } from "../auth/auth.access.js";
 import { findClientPermissionsByAccountId } from "../clients/clients.repository.js";
+import { getUploadDirectory } from "../uploads/uploads.routes.js";
 import { createReportSchema, updateReportSchema } from "./reports.schemas.js";
 import { createReport, deleteReport, findReport, listReports, publishReport, updateReport } from "./reports.repository.js";
 
@@ -13,7 +14,7 @@ const extractionSchema = { type: "object", additionalProperties: false, required
 async function extractWithOpenAi(app: Parameters<FastifyPluginAsync>[0], evidenceUrls: string[]) {
   if (!app.appEnv.OPENAI_API_KEY) throw app.httpErrors.badRequest("A leitura por IA ainda não foi configurada. Adicione OPENAI_API_KEY ao arquivo .env da API.");
   if (!evidenceUrls.length || evidenceUrls.length > 4) throw app.httpErrors.badRequest("Envie de uma a quatro capturas para análise.");
-  const images = await Promise.all(evidenceUrls.map(async (url) => { const match = /^\/api\/uploads\/([a-f0-9-]+\.webp)$/.exec(url); if (!match) throw app.httpErrors.badRequest("Uma das imagens enviadas não é válida."); const data = await readFile(path.resolve(process.cwd(), app.appEnv.UPLOAD_DIR, match[1])); return { type: "input_image", image_url: `data:image/webp;base64,${data.toString("base64")}`, detail: "high" }; }));
+  const images = await Promise.all(evidenceUrls.map(async (url) => { const match = /^\/api\/uploads\/([a-f0-9-]+\.webp)$/.exec(url); if (!match) throw app.httpErrors.badRequest("Uma das imagens enviadas não é válida."); const data = await readFile(path.join(getUploadDirectory(app.appEnv.UPLOAD_DIR), match[1])); return { type: "input_image", image_url: `data:image/webp;base64,${data.toString("base64")}`, detail: "high" }; }));
   const response = await fetch("https://api.openai.com/v1/responses", { method: "POST", headers: { Authorization: `Bearer ${app.appEnv.OPENAI_API_KEY}`, "Content-Type": "application/json" }, body: JSON.stringify({ model: "gpt-4.1-mini", input: [{ role: "user", content: [{ type: "input_text", text: "Leia estas capturas do Meta Business Suite. Extraia apenas números claramente visíveis. Não estime: use 0 quando uma métrica não estiver nas capturas. Para alcance, converta '33,5 mil' em 33500. Retorne também até seis conteúdos em destaque que estiverem visíveis." }, ...images] }], text: { format: { type: "json_schema", name: "report_metrics", strict: true, schema: extractionSchema } } }) });
   if (!response.ok) { const error = await response.text(); app.log.error({ error }, "OpenAI report extraction failed"); throw app.httpErrors.badRequest("Não foi possível analisar as capturas agora. Tente novamente."); }
   const result = await response.json() as { output_text?: string; output?: Array<{ content?: Array<{ text?: string }> }> }; const output = result.output_text ?? result.output?.flatMap((item) => item.content ?? []).map((item) => item.text ?? "").join(""); if (!output) throw app.httpErrors.badRequest("A IA não retornou dados para as capturas enviadas."); return JSON.parse(output);
