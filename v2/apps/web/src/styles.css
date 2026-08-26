@@ -3359,15 +3359,15 @@ button {
 @keyframes dashboard-scheduled-check { from { opacity: 0; transform: scale(.2) rotate(-35deg); } to { opacity: 1; transform: scale(1) rotate(0); } }
 @keyframes dashboard-scheduled-spark { 0% { opacity: 0; transform: translateY(15px) scale(.2); } 45% { opacity: 1; transform: translateY(-8px) scale(1.2); } 100% { opacity: 0; transform: translateY(-20px) scale(.5); } }
 @media (prefers-reduced-motion: reduce) { .dashboard-scheduled-notice, .dashboard-scheduled-calendar, .dashboard-scheduled-calendar i, .dashboard-scheduled-spark { animation: none; } }
-.global-success-notice { position: fixed; z-index: 200; right: 24px; top: 24px; display: grid; grid-template-columns: 38px minmax(0,1fr); width: min(330px, calc(100vw - 32px)); align-items: center; gap: 11px; padding: 12px 14px; overflow: hidden; border: 1px solid rgba(255,255,255,.9); border-radius: 16px; color: #253452; background: rgba(255,255,255,.92); box-shadow: 0 14px 42px rgba(50,63,109,.16), inset 0 1px 0 rgba(255,255,255,.85); animation: global-success-notice 2.6s cubic-bezier(.2,.72,.2,1) both; backdrop-filter: blur(18px) saturate(1.15); pointer-events: none; }
-.global-success-notice::after { position: absolute; right: 0; bottom: 0; left: 0; height: 2px; content: ""; background: linear-gradient(90deg,#30bd8a,#6e68e9); transform-origin: left; animation: global-success-progress 2.35s .18s linear both; }
-.global-success-icon { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 12px; color: #fff; background: linear-gradient(135deg,#2abd88,#6673e8); box-shadow: 0 7px 16px rgba(54,155,128,.22); animation: global-success-pop .48s cubic-bezier(.2,.9,.25,1.15) both; }
-.global-success-icon svg { width: 19px; height: 19px; }
-.global-success-notice strong, .global-success-notice small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.global-success-notice strong { font-size: .82rem; }.global-success-notice small { margin-top: 3px; color: #7b879e; font-size: .65rem; font-weight: 700; }
+.global-success-notice { position: fixed; z-index: 200; right: 28px; bottom: 28px; display: grid; grid-template-columns: 46px minmax(0,1fr); width: min(390px, calc(100vw - 40px)); align-items: center; gap: 14px; padding: 16px 18px; overflow: hidden; border: 1px solid rgba(255,255,255,.92); border-radius: 20px; color: #253452; background: rgba(255,255,255,.95); box-shadow: 0 20px 54px rgba(50,63,109,.22), inset 0 1px 0 rgba(255,255,255,.9); animation: global-success-notice 2.6s cubic-bezier(.2,.72,.2,1) both; backdrop-filter: blur(18px) saturate(1.15); pointer-events: none; }
+.global-success-notice::after { position: absolute; right: 0; bottom: 0; left: 0; height: 3px; content: ""; background: linear-gradient(90deg,#30bd8a,#6e68e9); transform-origin: left; animation: global-success-progress 2.35s .18s linear both; }
+.global-success-icon { display: grid; width: 46px; height: 46px; place-items: center; border-radius: 14px; color: #fff; background: linear-gradient(135deg,#2abd88,#6673e8); box-shadow: 0 9px 20px rgba(54,155,128,.25); animation: global-success-pop .48s cubic-bezier(.2,.9,.25,1.15) both; }
+.global-success-icon svg { width: 23px; height: 23px; }
+.global-success-notice strong, .global-success-notice small { display: block; }
+.global-success-notice strong { font-size: .96rem; }.global-success-notice small { margin-top: 4px; color: #7b879e; font-size: .76rem; font-weight: 700; line-height: 1.35; }
 .global-success-notice.is-neutral::after { background: #aab2c1; }
 .global-success-notice.is-neutral .global-success-icon { color: #69758a; background: #eef1f5; box-shadow: none; }
-@keyframes global-success-notice { 0% { opacity: 0; transform: translateX(18px) scale(.97); } 12%,82% { opacity: 1; transform: translateX(0) scale(1); } 100% { opacity: 0; transform: translateX(10px) scale(.98); } }
+@keyframes global-success-notice { 0% { opacity: 0; transform: translate(18px,18px) scale(.97); } 12%,82% { opacity: 1; transform: translate(0,0) scale(1); } 100% { opacity: 0; transform: translate(10px,10px) scale(.98); } }
 @keyframes global-success-pop { 0% { opacity: 0; transform: scale(.72); } 72% { opacity: 1; transform: scale(1.06); } 100% { transform: none; } }
 @keyframes global-success-progress { from { transform: scaleX(1); } to { transform: scaleX(0); } }
 @media (max-width: 600px) { .global-success-notice { top: auto; right: 16px; bottom: 18px; left: 16px; width: auto; } }
