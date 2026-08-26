@@ -4852,7 +4852,8 @@ function AdminCardEditor({
   const [feedback, setFeedback] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [approvalLink, setApprovalLink] = useState<string | null>(null);
+  const [approvalLinkCopied, setApprovalLinkCopied] = useState(false);
+  const [creatingApprovalLink, setCreatingApprovalLink] = useState(false);
   const [internalApprovalOpen, setInternalApprovalOpen] = useState(false);
   const [internalUsers, setInternalUsers] = useState<ManagedUser[]>([]);
   const [internalRecipientIds, setInternalRecipientIds] = useState<string[]>([]);
@@ -4962,14 +4963,21 @@ ${internalMessage.trim()}`, isInternal: true });
   }
 
   async function createApprovalLink() {
+    if (creatingApprovalLink) return;
+    setCreatingApprovalLink(true);
+    setApprovalLinkCopied(false);
     try {
       const result = await createAdminApprovalLinkBySlug(slug, card.id);
       const origin = window.location.origin;
-      setApprovalLink(`${origin}/#/approval/${result.approvalLink.token}`);
-      setFeedback("Link de aprovação criado por 7 dias.");
+      const link = `${origin}/#/approval/${result.approvalLink.token}`;
+      await navigator.clipboard.writeText(link);
+      setApprovalLinkCopied(true);
+      setFeedback("Link de aprovação copiado. Ele é válido por 7 dias.");
       onRefresh();
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Não foi possível criar o link.");
+      setFeedback(error instanceof Error ? error.message : "Não foi possível criar e copiar o link.");
+    } finally {
+      setCreatingApprovalLink(false);
     }
   }
 
@@ -5117,8 +5125,7 @@ ${internalMessage.trim()}`, isInternal: true });
               <div className="hashtag-create"><input value={newHashtagGroupName} onChange={(event) => setNewHashtagGroupName(event.target.value)} placeholder="Nome do grupo" /><textarea value={newHashtagGroupText} onChange={(event) => setNewHashtagGroupText(event.target.value)} placeholder="#hashtag1 #hashtag2 #hashtag3" /><button type="button" onClick={createHashtagGroup}>+ Novo grupo</button></div>
             </div> : null}
           </section>
-          <button className="side-action" onClick={createApprovalLink}><span className="side-action-icon">⌁</span>Enviar link para cliente</button>
-          {approvalLink ? <div className="approval-url"><input readOnly value={approvalLink} /><button onClick={() => navigator.clipboard.writeText(approvalLink)}>Copiar</button></div> : null}
+          <button type="button" className={`side-action approval-link-action${approvalLinkCopied ? " copied" : ""}`} onClick={() => void createApprovalLink()} disabled={creatingApprovalLink}><span className="side-action-icon">{approvalLinkCopied ? <UiIcon name="check" /> : "⌁"}</span>{creatingApprovalLink ? "Criando link..." : approvalLinkCopied ? "Link copiado" : "Enviar link para aprovação"}</button>
           <button className="side-action" onClick={() => setInternalApprovalOpen(true)}><span className="side-action-icon">♙</span>Aprovação interna</button>
           {internalApprovalOpen ? <div className="internal-approval-popover"><header><div><span>REVISÃO DA EQUIPE</span><h4>Enviar para aprovação interna</h4></div><button type="button" onClick={() => setInternalApprovalOpen(false)}>×</button></header><p>Escolha quem deve revisar este card. Clientes não aparecem nesta lista.</p><div className="internal-recipient-list">{internalUsers.length ? internalUsers.map((user) => <label key={user.id}><input type="checkbox" checked={internalRecipientIds.includes(user.id)} onChange={(event) => setInternalRecipientIds((current) => event.target.checked ? [...current, user.id] : current.filter((id) => id !== user.id))} /><span><strong>{user.fullName}</strong><small>{user.globalRole} · {user.email}</small></span></label>) : <small>Nenhum membro interno disponível.</small>}</div><textarea value={internalMessage} onChange={(event) => setInternalMessage(event.target.value)} placeholder="Escreva uma mensagem para quem vai revisar..." /><footer><button type="button" className="ghost-button" onClick={() => setInternalApprovalOpen(false)}>Cancelar</button><button type="button" className="gradient-button" disabled={internalSending || !internalRecipientIds.length || !internalMessage.trim()} onClick={() => void sendInternalApproval()}>{internalSending ? "Enviando..." : "Enviar para revisão"}</button></footer></div> : null}
           {feedback ? <p className="editor-feedback">{feedback}</p> : null}
