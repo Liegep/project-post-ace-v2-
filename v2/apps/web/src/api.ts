@@ -796,7 +796,7 @@ export async function createAdminCardBySlug(
   },
 ) {
   const matchedClient = await findAdminClientBySlug(slug);
-  return sendJson(`/api/clients/${matchedClient.id}/cards`, {
+  return sendJson<{ ok: true; card: ApiBoardCard }>(`/api/clients/${matchedClient.id}/cards`, {
     method: "POST",
     body: JSON.stringify({
       ...input,
