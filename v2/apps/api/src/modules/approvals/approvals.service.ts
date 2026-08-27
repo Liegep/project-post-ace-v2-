@@ -36,18 +36,30 @@ async function ensureApprovedColumn(app: FastifyInstance, clientAccountId: strin
   });
 }
 
-async function ensureEntradaColumn(app: FastifyInstance, clientAccountId: string) {
-  const existing = await findColumnByClientAndName(app.db, clientAccountId, "Entrada");
+async function ensureApprovedBriefsColumn(app: FastifyInstance, clientAccountId: string) {
+  const existing = await findColumnByClientAndName(app.db, clientAccountId, "Pautas aprovadas");
   if (existing) return existing;
-  return createColumn(app.db, clientAccountId, { name: "Entrada", color: "#5b7cfa", visibleToClient: false, autoCreated: true });
+  return createColumn(app.db, clientAccountId, { name: "Pautas aprovadas", color: "#8b5cf6", visibleToClient: false, autoCreated: true });
 }
 
 export async function reconcileApprovedCardColumns(app: FastifyInstance) {
+  // Earlier versions cleared this flag after approval. Recover it from the
+  // pauta bank so existing approved pautas can also be organized correctly.
+  await app.db.query(
+    [
+      "UPDATE kanban_cards c INNER JOIN client_accounts ca ON ca.id = c.client_account_id",
+      "SET c.is_brief_approval = 1",
+      "WHERE c.archived = 0 AND c.is_brief_approval = 0",
+      "AND LOWER(c.client_label) LIKE '%aprovad%'",
+      "AND CAST(ca.workspace_drawer_json AS CHAR) LIKE CONCAT('%', c.id, '%')",
+    ].join(" "),
+  );
+
   const [rows] = await app.db.query<Array<RowDataPacket & { clientAccountId: string }>>(
     [
       "SELECT DISTINCT c.client_account_id AS clientAccountId",
       "FROM kanban_cards c",
-      "WHERE c.archived = 0 AND (LOWER(c.client_label) LIKE '%aprovad%' OR EXISTS (",
+      "WHERE c.archived = 0 AND c.is_brief_approval = 0 AND (LOWER(c.client_label) LIKE '%aprovad%' OR EXISTS (",
       "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL",
       "))",
     ].join(" "),
@@ -62,9 +74,34 @@ export async function reconcileApprovedCardColumns(app: FastifyInstance) {
         "UPDATE kanban_cards c SET c.column_id = ?, c.client_label = 'Aprovado pelo cliente'",
         "WHERE c.client_account_id = ? AND c.archived = 0 AND (LOWER(c.client_label) LIKE '%aprovad%' OR EXISTS (",
         "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL",
-        ")) AND (c.column_id IS NULL OR c.column_id <> ?)",
+        ")) AND c.is_brief_approval = 0 AND (c.column_id IS NULL OR c.column_id <> ?)",
       ].join(" "),
       [approvedColumn.id, row.clientAccountId, approvedColumn.id],
+    );
+    moved += Number(result.affectedRows ?? 0);
+  }
+
+  const [briefRows] = await app.db.query<Array<RowDataPacket & { clientAccountId: string }>>(
+    [
+      "SELECT DISTINCT c.client_account_id AS clientAccountId FROM kanban_cards c",
+      "WHERE c.archived = 0 AND c.is_brief_approval = 1",
+      "AND (LOWER(c.client_label) LIKE '%aprovad%' OR EXISTS (",
+      "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL",
+      "))",
+    ].join(" "),
+  );
+  for (const row of briefRows) {
+    const approvedBriefsColumn = await ensureApprovedBriefsColumn(app, row.clientAccountId);
+    if (!approvedBriefsColumn) continue;
+    const [result] = await app.db.query<ResultSetHeader>(
+      [
+        "UPDATE kanban_cards c SET c.column_id = ?, c.client_label = 'Aprovado pelo cliente'",
+        "WHERE c.client_account_id = ? AND c.archived = 0 AND c.is_brief_approval = 1",
+        "AND (LOWER(c.client_label) LIKE '%aprovad%' OR EXISTS (",
+        "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL",
+        ")) AND (c.column_id IS NULL OR c.column_id <> ?)",
+      ].join(" "),
+      [approvedBriefsColumn.id, row.clientAccountId, approvedBriefsColumn.id],
     );
     moved += Number(result.affectedRows ?? 0);
   }
@@ -196,12 +233,12 @@ export async function submitPublicApprovalDecision(
 
   if (input.approved) {
     const approvedColumn = card.isBriefApproval
-      ? await ensureEntradaColumn(app, link.clientAccountId)
+      ? await ensureApprovedBriefsColumn(app, link.clientAccountId)
       : await ensureApprovedColumn(app, link.clientAccountId);
     await moveCard(app.db, link.cardId, card, {
       columnId: approvedColumn?.id ?? null,
     });
-    await updateCard(app.db, link.cardId, { isBriefApproval: card.isBriefApproval ? false : card.isBriefApproval, clientLabel: "Aprovado pelo cliente", status: Array.from(new Set([...card.status, "Aprovado"])) });
+    await updateCard(app.db, link.cardId, { isBriefApproval: card.isBriefApproval, clientLabel: "Aprovado pelo cliente", status: Array.from(new Set([...card.status, "Aprovado"])) });
   } else {
     await updateCard(app.db, link.cardId, { clientLabel: "Alteração solicitada", status: Array.from(new Set([...card.status, "Revisão solicitada"])) });
   }

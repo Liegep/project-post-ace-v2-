@@ -197,18 +197,18 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
     let updatedCard = await updateCard(app.db, params.cardId, {
       clientLabel: input.approved ? "Aprovado pelo cliente" : "Alteração solicitada",
       status: [...decisionStatuses, input.approved ? "Aprovado" : "Revisão solicitada"],
-      isBriefApproval: input.approved && card.isBriefApproval ? false : card.isBriefApproval,
+      isBriefApproval: card.isBriefApproval,
     });
 
     if (input.approved && updatedCard) {
       const columns = await listColumnsByClientAccountId(app.db, params.clientAccountId);
       const normalizedColumnName = (name: string) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
       let destinationColumn = card.isBriefApproval
-        ? columns.find((column) => /^entrada$/i.test(normalizedColumnName(column.name)))
+        ? columns.find((column) => /^pautas aprovadas$/i.test(normalizedColumnName(column.name)))
         : columns.find((column) => /aprovados(?: pelo cliente)?/i.test(normalizedColumnName(column.name)));
       if (!destinationColumn) {
         destinationColumn = card.isBriefApproval
-          ? await createColumn(app.db, params.clientAccountId, { name: "Entrada", color: "#5b7cfa", visibleToClient: false, autoCreated: true }) ?? undefined
+          ? await createColumn(app.db, params.clientAccountId, { name: "Pautas aprovadas", color: "#8b5cf6", visibleToClient: false, autoCreated: true }) ?? undefined
           : await createColumn(app.db, params.clientAccountId, { name: "Aprovados", color: "#28b77d", visibleToClient: true, autoCreated: true }) ?? undefined;
       } else if (!card.isBriefApproval && !destinationColumn.visibleToClient) {
         destinationColumn = await updateColumn(app.db, destinationColumn.id, { visibleToClient: true }) ?? destinationColumn;
