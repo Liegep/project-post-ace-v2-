@@ -2160,10 +2160,27 @@ function AdminWorkspacePage({
   const [tagFilterOpen, setTagFilterOpen] = useState(false);
   const [tagQuery, setTagQuery] = useState("");
   const [selectedTagFilters, setSelectedTagFilters] = useState<string[]>([]);
+  const tagFilterPanelRef = useRef<HTMLElement>(null);
+  const tagFilterButtonRef = useRef<HTMLButtonElement>(null);
   const [clientOptions, setClientOptions] = useState<AdminClientOption[]>([]);
   const [sectionCounts, setSectionCounts] = useState({ archived: 0, texts: 0, pautas: 0 });
   const updateTextsCount = useCallback((texts: number) => setSectionCounts((current) => current.texts === texts ? current : { ...current, texts }), []);
   const updatePautasCount = useCallback((pautas: number) => setSectionCounts((current) => current.pautas === pautas ? current : { ...current, pautas }), []);
+  useEffect(() => {
+    if (!tagFilterOpen) return;
+    const closeOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!tagFilterPanelRef.current?.contains(target) && !tagFilterButtonRef.current?.contains(target)) setTagFilterOpen(false);
+    };
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setTagFilterOpen(false); };
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.removeEventListener("mousedown", closeOnOutsideClick);
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [tagFilterOpen]);
+  useEffect(() => { if (boardView !== "board") setTagFilterOpen(false); }, [boardView]);
   useEffect(() => {
     let active = true;
     void Promise.all([
@@ -2350,7 +2367,7 @@ function AdminWorkspacePage({
                   setSelectionMode((active) => !active);
                   setSelectedCardIds([]);
                 }}>Selecionar</button>
-                <button className={tagFilterOpen || selectedTagFilters.length ? "ghost-button active" : "ghost-button"} onClick={() => setTagFilterOpen((open) => !open)}>Etiquetas{selectedTagFilters.length ? ` (${selectedTagFilters.length})` : ""}</button>
+                <button ref={tagFilterButtonRef} className={tagFilterOpen || selectedTagFilters.length ? "ghost-button active" : "ghost-button"} onClick={() => setTagFilterOpen((open) => !open)}>Etiquetas{selectedTagFilters.length ? ` (${selectedTagFilters.length})` : ""}</button>
                 <button className="ghost-button" onClick={() => setEditingColumn("new")}>
                   Criar coluna
                 </button>
@@ -2361,8 +2378,8 @@ function AdminWorkspacePage({
                   Novo post
                 </button>
               </div> : null}
-              {boardView === "board" && tagFilterOpen ? <section className="tag-filter-panel">
-                <div className="tag-filter-search"><span>⌕</span><input autoFocus value={tagQuery} onChange={(event) => setTagQuery(event.target.value)} placeholder="Buscar..." /></div>
+              {boardView === "board" && tagFilterOpen ? <section ref={tagFilterPanelRef} className="tag-filter-panel">
+                <div className="tag-filter-search"><span>⌕</span><input autoFocus value={tagQuery} onChange={(event) => setTagQuery(event.target.value)} placeholder="Buscar..." /><button type="button" className="tag-filter-close" onClick={() => setTagFilterOpen(false)} aria-label="Fechar etiquetas">×</button></div>
                 <div className="tag-filter-tabs"><button className="active">Todas</button><button onClick={() => setSelectedTagFilters([])}>Limpar seleção</button></div>
                 <div className="tag-filter-list">{filteredTagDefinitions.map((tag) => { const selected = selectedTagFilters.includes(tag.name); return <button key={tag.id} className={selected ? "selected" : ""} onClick={() => setSelectedTagFilters((current) => selected ? current.filter((item) => item !== tag.name) : [...current, tag.name])}><span className="tag-filter-check">{selected ? "✓" : ""}</span><span className="tag-filter-dot" style={{ backgroundColor: tag.color }} /><strong>{tag.name}</strong></button>; })}{filteredTagDefinitions.length === 0 ? <p>Nenhuma etiqueta encontrada.</p> : null}</div>
               </section> : null}
