@@ -3960,16 +3960,20 @@ function MediaPreviewModal({ media, onClose, onNavigate }: { media: { urls: stri
 
 function CardView({ card, onOpen, onContextMenu, selectionMode = false, selected = false, onToggleSelection, onPreviewMedia, onRemoveTag, draggable = false, onDragStart, onDragEnd }: { card: BoardCard; onOpen: () => void; onContextMenu?: (event: React.MouseEvent<HTMLButtonElement>) => void; selectionMode?: boolean; selected?: boolean; onToggleSelection?: () => void; onPreviewMedia?: (card: BoardCard) => void; onRemoveTag?: (card: BoardCard, tag: string) => void; draggable?: boolean; onDragStart?: () => void; onDragEnd?: () => void }) {
   const primaryBadge = card.statusBadges[0] ?? null;
+  const isInDevelopment = /^em desenvolvimento$/i.test(primaryBadge?.trim() ?? "");
+  const isApprovedBrief = card.isBriefApproval && !isInDevelopment && /aprovad/i.test(`${card.clientLabel} ${card.statusBadges.join(" ")}`);
+  const visibleBadge = (badge: string) => card.isBriefApproval && /^aprovado$/i.test(badge.trim()) ? "Pauta aprovada" : badge;
+  const cardClassName = ["content-card", "glass-subtle", "card-button", selected ? "selected" : "", isApprovedBrief ? "approved-brief-card" : ""].filter(Boolean).join(" ");
 
   return (
-    <button className={selected ? "content-card glass-subtle card-button selected" : "content-card glass-subtle card-button"} onClick={onOpen} onContextMenu={onContextMenu} draggable={draggable} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", card.id); onDragStart?.(); }} onDragEnd={onDragEnd}>
+    <button className={cardClassName} onClick={onOpen} onContextMenu={onContextMenu} draggable={draggable} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", card.id); onDragStart?.(); }} onDragEnd={onDragEnd}>
       {selectionMode ? <span className={selected ? "card-select-checkbox checked" : "card-select-checkbox"} onClick={(event) => { event.stopPropagation(); onToggleSelection?.(); }}>{selected ? "✓" : ""}</span> : null}
       <div className="card-title-block">
         <h4>{card.title}</h4>
         {primaryBadge ? (
           <span className={`status-chip ${statusTone(primaryBadge)}`}>
             <span className="status-chip-dot" />
-            {primaryBadge}
+            {visibleBadge(primaryBadge)}
           </span>
         ) : null}
       </div>
@@ -3978,7 +3982,7 @@ function CardView({ card, onOpen, onContextMenu, selectionMode = false, selected
       <div className="card-meta">
         <div className="card-inline">
           {card.statusBadges.slice(1).map((badge) => (
-            <span key={badge} className="mini-badge subtle">{badge}</span>
+            <span key={badge} className={card.isBriefApproval && /^aprovado$/i.test(badge.trim()) ? "mini-badge subtle approved-brief-badge" : "mini-badge subtle"}>{visibleBadge(badge)}</span>
           ))}
           {card.tags.map((tag) => <span key={tag} className={onRemoveTag ? "mini-badge tag tag-filled removable" : "mini-badge tag tag-filled"} style={{ backgroundColor: card.tagColors?.[tag] ?? "#8263e8" }} onClick={(event) => { if (!onRemoveTag) return; event.stopPropagation(); onRemoveTag(card, tag); }}><span className="card-tag-dot" />{tag}{onRemoveTag ? <span className="card-tag-remove" aria-label={`Remover ${tag}`}>×</span> : null}</span>)}
           {card.commentsCount > 0 ? <span className="card-comment-count" title={`${card.commentsCount} ${card.commentsCount === 1 ? "comentário" : "comentários"}`}><UiIcon name="comment" />{card.commentsCount}</span> : null}
