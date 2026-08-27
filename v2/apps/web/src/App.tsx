@@ -143,6 +143,25 @@ type ClientForm = {
   instagram: string; facebook: string; tiktok: string; youtube: string; linkedin: string; x: string; website: string;
 };
 type EditClientForm = ClientForm & { portalTitle: string; clientUserId: string };
+type AutosaveState = "idle" | "pending" | "saving" | "saved" | "error" | "recovered";
+
+function readRecoveryDraft<T>(key: string): T | null {
+  try {
+    return JSON.parse(window.localStorage.getItem(key) ?? "null") as T | null;
+  } catch {
+    return null;
+  }
+}
+
+function AutosaveIndicator({ state, savedAt, savedLabel = "Salvo" }: { state: AutosaveState; savedAt?: Date | null; savedLabel?: string }) {
+  const label = state === "pending" ? "Alterações pendentes"
+    : state === "saving" ? "Salvando…"
+      : state === "error" ? "Não foi possível salvar"
+        : state === "recovered" ? "Rascunho recuperado"
+          : state === "saved" && savedAt ? `${savedLabel} às ${savedAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`
+            : "Tudo salvo";
+  return <span className={`autosave-indicator is-${state}`} role="status" aria-live="polite"><i />{label}</span>;
+}
 
 function normalizeArtType(value: string) {
   const normalized = value.toLocaleLowerCase("pt-BR");
@@ -3576,6 +3595,12 @@ function AdminTextsView({ clientName, slug, onCountChange }: { clientName: strin
   const [pdfSaving, setPdfSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [autosaveState, setAutosaveState] = useState<AutosaveState>("idle");
+  const [autosavedAt, setAutosavedAt] = useState<Date | null>(null);
+  const [editorRevision, setEditorRevision] = useState(0);
+  const lastSavedTextRef = useRef("");
+  const latestTextDraftRef = useRef("");
+  const textSaveInFlightRef = useRef(false);
   const commentsRef = useRef<HTMLElement>(null);
   const studioRef = useRef<HTMLElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
@@ -3602,29 +3627,69 @@ function AdminTextsView({ clientName, slug, onCountChange }: { clientName: strin
   useEffect(() => { void refreshTexts(); }, [slug]);
   useEffect(() => {
     if (!selected) { setComments([]); return; }
-    if (editorRef.current) editorRef.current.innerHTML = selected.contentHtml;
+    const recoveryKey = `designhub-v2-text-draft:${slug}:${selected.id}`;
+    const recovered = readRecoveryDraft<Partial<TextDocument> & { contentHtml?: string }>(recoveryKey);
+    const serverDraft = { title: selected.title, contentType: selected.contentType, plannedAt: selected.plannedAt, internalNotes: selected.internalNotes, status: selected.status, contentHtml: selected.contentHtml };
+    lastSavedTextRef.current = JSON.stringify(serverDraft);
+    if (recovered) {
+      setDocuments((items) => items.map((item) => item.id === selected.id ? { ...item, ...recovered } : item));
+      setAutosaveState("recovered");
+    } else {
+      setAutosaveState("idle");
+    }
+    if (editorRef.current) editorRef.current.innerHTML = recovered?.contentHtml ?? selected.contentHtml;
+    setEditorRevision((value) => value + 1);
     setCoverImage(window.localStorage.getItem(`designhub-text-cover:${slug}:${selected.id}`));
     void listAdminTextCommentsBySlug(slug, selected.id).then((result) => setComments(result.comments)).catch(() => setComments([]));
   }, [selected?.id, slug]);
   const updateLocal = (patch: Partial<TextDocument>) => selected && setDocuments((items) => items.map((item) => item.id === selected.id ? { ...item, ...patch } : item));
-  const formatDocument = (command: string, value?: string) => { editorRef.current?.focus(); document.execCommand(command, false, value); };
+  const formatDocument = (command: string, value?: string) => { editorRef.current?.focus(); document.execCommand(command, false, value); setEditorRevision((revision) => revision + 1); };
   const saveText = async (message = "Rascunho salvo.") => {
-    if (!selected) return;
+    if (!selected || textSaveInFlightRef.current) return false;
+    const recoveryKey = `designhub-v2-text-draft:${slug}:${selected.id}`;
+    const draft = { title: selected.title, contentType: selected.contentType, plannedAt: selected.plannedAt, internalNotes: selected.internalNotes, status: selected.status, contentHtml: editorRef.current?.innerHTML ?? selected.contentHtml };
+    const draftJson = JSON.stringify(draft);
+    latestTextDraftRef.current = draftJson;
+    if (draftJson === lastSavedTextRef.current) return true;
+    textSaveInFlightRef.current = true;
     setSaving(true);
+    setAutosaveState("saving");
     try {
-      const response = await updateAdminTextBySlug(slug, selected.id, { title: selected.title, contentType: selected.contentType, plannedAt: selected.plannedAt, internalNotes: selected.internalNotes, status: selected.status, contentHtml: editorRef.current?.innerHTML ?? selected.contentHtml });
+      const response = await updateAdminTextBySlug(slug, selected.id, draft);
       updateLocal(response.text);
       setActionMessage(message);
+      lastSavedTextRef.current = draftJson;
+      if (latestTextDraftRef.current === draftJson) {
+        try { window.localStorage.removeItem(recoveryKey); } catch { /* Recovery remains optional. */ }
+      }
+      setAutosavedAt(new Date());
+      setAutosaveState(latestTextDraftRef.current === draftJson ? "saved" : "pending");
+      if (latestTextDraftRef.current !== draftJson) setEditorRevision((revision) => revision + 1);
+      return true;
     } catch (error) { setActionMessage(error instanceof Error ? error.message : "Não foi possível salvar o texto."); }
-    finally { setSaving(false); }
+    finally { textSaveInFlightRef.current = false; setSaving(false); }
+    setAutosaveState("error");
+    return false;
   };
+  useEffect(() => {
+    if (!selected) return;
+    const recoveryKey = `designhub-v2-text-draft:${slug}:${selected.id}`;
+    const draft = { title: selected.title, contentType: selected.contentType, plannedAt: selected.plannedAt, internalNotes: selected.internalNotes, status: selected.status, contentHtml: editorRef.current?.innerHTML ?? selected.contentHtml };
+    const draftJson = JSON.stringify(draft);
+    latestTextDraftRef.current = draftJson;
+    if (draftJson === lastSavedTextRef.current) return;
+    try { window.localStorage.setItem(recoveryKey, draftJson); } catch { /* Recovery remains optional. */ }
+    setAutosaveState((current) => current === "saving" ? current : "pending");
+    const timeout = window.setTimeout(() => { void saveText("Salvo automaticamente."); }, 2_000);
+    return () => window.clearTimeout(timeout);
+  }, [editorRevision, selected?.contentType, selected?.internalNotes, selected?.plannedAt, selected?.status, selected?.title, selected?.id, slug]);
   const createText = async () => {
     try { const response = await createAdminTextBySlug(slug, { title: "Novo texto", contentType: "Texto" }); setDocuments((items) => [response.text, ...items]); setSelectedId(response.text.id); setActionMessage("Novo texto criado."); }
     catch (error) { setActionMessage(error instanceof Error ? error.message : "Não foi possível criar o texto."); }
   };
   const addEditorImage = async (file: File | null) => {
     if (!file || !file.type.startsWith("image/")) return;
-    try { const url = await uploadAdminMedia(file); const image = document.createElement("img"); image.src = url; image.alt = "Imagem inserida no texto"; image.className = "texts-inline-image"; editorRef.current?.append(image, document.createElement("p")); setActionMessage("Imagem adicionada. Salve o texto para publicar a alteração."); }
+    try { const url = await uploadAdminMedia(file); const image = document.createElement("img"); image.src = url; image.alt = "Imagem inserida no texto"; image.className = "texts-inline-image"; editorRef.current?.append(image, document.createElement("p")); setEditorRevision((revision) => revision + 1); setActionMessage("Imagem adicionada. O texto será salvo automaticamente."); }
     catch (error) { setActionMessage(error instanceof Error ? error.message : "Não foi possível enviar a imagem."); }
   };
   const addCoverImage = async (file: File | null) => {
@@ -3693,7 +3758,7 @@ function AdminTextsView({ clientName, slug, onCountChange }: { clientName: strin
       <label className="texts-search"><UiIcon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar textos" /></label>
       <nav className="texts-nav" aria-label="Categorias de textos">{["Todos os textos", "Rascunho", "Em revisão", "Aprovado"].map((item) => <button key={item} className={filter === item ? "active" : ""} onClick={() => setFilter(item)}>{item === "Todos os textos" ? "▣" : item === "Rascunho" ? "◌" : item === "Em revisão" ? "◒" : "✓"} {item}<span>{countFor(item)}</span></button>)}</nav>
       <button className="texts-library-comments" onClick={() => commentsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })}>▢ <span>Comentários</span><b>{comments.length}</b></button>
-      <div className="texts-document-list">{visibleDocuments.map((item) => <button key={item.id} className={selected.id === item.id ? "selected" : ""} onClick={() => setSelectedId(item.id)}><span>{item.contentType}</span><strong>{item.title}</strong><small>{item.status}</small></button>)}</div>
+      <div className="texts-document-list">{visibleDocuments.map((item) => <button key={item.id} className={selected.id === item.id ? "selected" : ""} onClick={async () => { await saveText("Salvo antes de trocar de texto."); setSelectedId(item.id); }}><span>{item.contentType}</span><strong>{item.title}</strong><small>{item.status}</small></button>)}</div>
     </aside>
     <article className="texts-document">
         <header className="texts-breadcrumb">Textos <span>›</span> {selected.contentType}</header>
@@ -3708,13 +3773,14 @@ function AdminTextsView({ clientName, slug, onCountChange }: { clientName: strin
             <input type="file" accept="image/*" onChange={(event) => { void addCoverImage(event.target.files?.[0] ?? null); event.currentTarget.value = ""; }} />
           </label>
         </div>
-        <div className="texts-copy texts-rich-editor" ref={editorRef} contentEditable suppressContentEditableWarning />
+        <div className="texts-copy texts-rich-editor" ref={editorRef} contentEditable suppressContentEditableWarning onInput={() => setEditorRevision((revision) => revision + 1)} />
         <section className="texts-comments-section" ref={commentsRef}><header><div><span>Discussão</span><h2>Comentários ({comments.length})</h2></div></header><div className="texts-comment-list">{comments.map((comment) => <article key={comment.id}>{comment.authorAvatarUrl ? <span className="texts-comment-avatar"><img src={comment.authorAvatarUrl} alt="" /></span> : <span className="texts-comment-avatar">{initials(comment.authorName)}</span>}<div><strong>{comment.authorName}</strong><time>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(comment.createdAt))}</time><p>{comment.commentText}</p></div></article>)}</div><div className="texts-comment-compose"><textarea value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} placeholder="Escreva um comentário para o cliente e a equipe..." /><button className="gradient-button" disabled={!commentDraft.trim()} onClick={() => void submitComment()}>Comentar</button></div></section>
       </div>
     </article>
     <aside className="texts-side-panel">
       <section className="texts-content-type"><span>Tipo de conteúdo</span><div><button className="texts-content-type-trigger" onClick={() => setContentTypeOpen((open) => !open)} aria-expanded={contentTypeOpen}>{selected.contentType}<b>⌄</b></button>{contentTypeOpen ? <div className="texts-content-type-options">{contentTypes.map((type) => <button key={type} className={type === selected.contentType ? "selected" : ""} onClick={() => { updateLocal({ contentType: type }); setContentTypeOpen(false); }}>{type === selected.contentType ? <b>✓</b> : null}{type}</button>)}</div> : null}</div></section>
       <section className="texts-actions texts-admin-actions">
+        <AutosaveIndicator state={autosaveState} savedAt={autosavedAt} />
         <button className="gradient-button" onClick={() => setShowPreview(true)}>◉ Pré-visualizar</button>
         <button className="ghost-button" disabled={pdfSaving} onClick={() => void downloadPdf()}>⇩ {pdfSaving ? "Gerando PDF..." : "Baixar PDF"}</button>
         <button className="ghost-button" onClick={downloadWord}>▣ Baixar Word</button>
@@ -4945,6 +5011,11 @@ function CardDetailModal({
   );
 }
 
+type CardRecoveryDraft = {
+  title: string; caption: string; artType: string; columnId: string; status: string; clientLabel: string;
+  tags: string; hashtags: string; scheduledAt: string; externalLinkUrl: string; mediaUrls: string[];
+};
+
 function AdminCardEditor({
   detail,
   columns,
@@ -4961,27 +5032,43 @@ function AdminCardEditor({
   onClose: () => void;
 }) {
   const card = detail.card;
-  const [title, setTitle] = useState(card.title);
-  const [caption, setCaption] = useState(card.subtitle ?? "");
-  const [artType, setArtType] = useState(normalizeArtType(card.typeLabel));
-  const [columnId, setColumnId] = useState<string>("");
-  const [status, setStatus] = useState(card.statusBadges[0] ?? "Entrada");
-  const [clientLabel, setClientLabel] = useState(card.clientLabel);
-  const [tags, setTags] = useState(card.tags.join(", "));
+  const recoveryKey = `designhub-v2-card-draft:${slug}:${card.id}`;
+  const serverDraft = useMemo<CardRecoveryDraft>(() => ({
+    title: card.title,
+    caption: card.subtitle ?? "",
+    artType: normalizeArtType(card.typeLabel),
+    columnId: columns.find((column) => column.cards.some((item) => item.id === card.id))?.id ?? "",
+    status: card.statusBadges[0] ?? "Entrada",
+    clientLabel: card.clientLabel,
+    tags: card.tags.join(", "),
+    hashtags: (card.hashtags ?? []).join(", "),
+    scheduledAt: toDateTimeLocal(card.scheduledAt),
+    externalLinkUrl: card.externalLinkUrl ?? "",
+    mediaUrls: card.mediaUrls ?? (card.mediaUrl ? [card.mediaUrl] : []),
+  }), [card, columns]);
+  const recoveredDraft = useMemo(() => readRecoveryDraft<CardRecoveryDraft>(recoveryKey), [recoveryKey]);
+  const initialDraft = recoveredDraft ?? serverDraft;
+  const [title, setTitle] = useState(initialDraft.title);
+  const [caption, setCaption] = useState(initialDraft.caption);
+  const [artType, setArtType] = useState(initialDraft.artType);
+  const [columnId, setColumnId] = useState(initialDraft.columnId);
+  const [status, setStatus] = useState(initialDraft.status);
+  const [clientLabel, setClientLabel] = useState(initialDraft.clientLabel);
+  const [tags, setTags] = useState(initialDraft.tags);
   const [tagLibrary, setTagLibrary] = useState<ClientTagDefinition[]>([]);
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState("#5e5cf1");
   const [creatingTag, setCreatingTag] = useState(false);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [tagSearch, setTagSearch] = useState("");
-  const [hashtags, setHashtags] = useState((card.hashtags ?? []).join(", "));
+  const [hashtags, setHashtags] = useState(initialDraft.hashtags);
   const [hashtagGroups, setHashtagGroups] = useState<HashtagGroup[]>([]);
   const [hashtagPickerOpen, setHashtagPickerOpen] = useState(false);
   const [newHashtagGroupName, setNewHashtagGroupName] = useState("");
   const [newHashtagGroupText, setNewHashtagGroupText] = useState("");
-  const [scheduledAt, setScheduledAt] = useState(toDateTimeLocal(card.scheduledAt));
-  const [externalLinkUrl, setExternalLinkUrl] = useState(card.externalLinkUrl ?? "");
-  const [mediaUrls, setMediaUrls] = useState(card.mediaUrls ?? (card.mediaUrl ? [card.mediaUrl] : []));
+  const [scheduledAt, setScheduledAt] = useState(initialDraft.scheduledAt);
+  const [externalLinkUrl, setExternalLinkUrl] = useState(initialDraft.externalLinkUrl);
+  const [mediaUrls, setMediaUrls] = useState(initialDraft.mediaUrls);
   const [commentDraft, setCommentDraft] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -4993,17 +5080,30 @@ function AdminCardEditor({
   const [internalRecipientIds, setInternalRecipientIds] = useState<string[]>([]);
   const [internalMessage, setInternalMessage] = useState("");
   const [internalSending, setInternalSending] = useState(false);
-
-  useEffect(() => {
-    const matching = columns.find((column) => column.cards.some((item) => item.id === card.id));
-    setColumnId(matching?.id ?? "");
-  }, [card.id, columns]);
+  const [autosaveState, setAutosaveState] = useState<AutosaveState>(recoveredDraft ? "recovered" : "idle");
+  const [autosavedAt, setAutosavedAt] = useState<Date | null>(null);
+  const saveInFlightRef = useRef(false);
+  const lastSavedDraftRef = useRef(JSON.stringify(serverDraft));
+  const savedColumnIdRef = useRef(serverDraft.columnId);
+  const draft = useMemo<CardRecoveryDraft>(() => ({ title, caption, artType, columnId, status, clientLabel, tags, hashtags, scheduledAt, externalLinkUrl, mediaUrls }), [artType, caption, clientLabel, columnId, externalLinkUrl, hashtags, mediaUrls, scheduledAt, status, tags, title]);
+  const latestDraftRef = useRef(draft);
+  latestDraftRef.current = draft;
 
   useEffect(() => {
     listAdminTagsBySlug(slug).then((result) => setTagLibrary(result.items)).catch(() => undefined);
     listAdminHashtagGroupsBySlug(slug).then((result) => setHashtagGroups(result.items)).catch(() => undefined);
     listManagedUsers().then((result) => setInternalUsers(result.items.filter((user) => user.isActive && user.globalRole !== "cliente"))).catch(() => setInternalUsers([]));
   }, [slug]);
+
+  useEffect(() => {
+    const draftJson = JSON.stringify(draft);
+    if (draftJson === lastSavedDraftRef.current) return;
+    try { window.localStorage.setItem(recoveryKey, draftJson); } catch { /* Recovery remains optional. */ }
+    setAutosaveState((current) => current === "saving" ? current : "pending");
+    if (uploading) return;
+    const timeout = window.setTimeout(() => { void persistCard(false); }, 2_000);
+    return () => window.clearTimeout(timeout);
+  }, [draft, recoveryKey, uploading]);
 
   async function sendInternalApproval() {
     if (!internalRecipientIds.length || !internalMessage.trim()) return;
@@ -5049,39 +5149,77 @@ ${internalMessage.trim()}`, isInternal: true });
     }
   }
 
-  async function saveCard() {
-    if (!title.trim()) {
+  async function persistCard(closeAfterSave: boolean) {
+    const currentDraft = latestDraftRef.current;
+    const draftJson = JSON.stringify(currentDraft);
+    if (!currentDraft.title.trim()) {
       setFeedback("Informe um título para salvar o card.");
-      return;
+      setAutosaveState("error");
+      return false;
     }
+    if (draftJson === lastSavedDraftRef.current) {
+      if (closeAfterSave) { onRefresh(); onClose(); }
+      return true;
+    }
+    if (saveInFlightRef.current) return false;
+    saveInFlightRef.current = true;
     setSaving(true);
-    setFeedback(null);
+    setAutosaveState("saving");
+    if (closeAfterSave) setFeedback(null);
     try {
       await updateAdminCardBySlug(slug, card.id, {
-        title: title.trim(),
-        caption: caption.trim() || null,
-        artType,
-        mediaType: artType.toLowerCase().includes("video") ? "video" : "image",
-        primaryMediaUrl: mediaUrls[0] ?? null,
-        mediaUrls,
-        externalLinkUrl: externalLinkUrl.trim() || null,
-        status: [status, ...card.statusBadges.slice(1)],
-        tags: splitValues(tags),
-        hashtags: splitValues(hashtags).map((item) => item.startsWith("#") ? item : `#${item}`),
+        title: currentDraft.title.trim(),
+        caption: currentDraft.caption.trim() || null,
+        artType: currentDraft.artType,
+        mediaType: currentDraft.artType.toLowerCase().includes("video") ? "video" : "image",
+        primaryMediaUrl: currentDraft.mediaUrls[0] ?? null,
+        mediaUrls: currentDraft.mediaUrls,
+        externalLinkUrl: currentDraft.externalLinkUrl.trim() || null,
+        status: [currentDraft.status, ...card.statusBadges.slice(1)],
+        tags: splitValues(currentDraft.tags),
+        hashtags: splitValues(currentDraft.hashtags).map((item) => item.startsWith("#") ? item : `#${item}`),
         isBriefApproval: card.isBriefApproval ?? false,
-        scheduledAt: scheduledAt || null,
+        scheduledAt: currentDraft.scheduledAt || null,
         scheduledTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-        clientLabel: clientLabel.trim() || "Pendente",
+        clientLabel: currentDraft.clientLabel.trim() || "Pendente",
       });
-      await moveAdminCardBySlug(slug, card.id, columnId || null);
-      setFeedback("Alterações salvas no card.");
-      onRefresh();
-      onClose();
+      if (currentDraft.columnId !== savedColumnIdRef.current) {
+        await moveAdminCardBySlug(slug, card.id, currentDraft.columnId || null);
+        savedColumnIdRef.current = currentDraft.columnId;
+      }
+      lastSavedDraftRef.current = draftJson;
+      const hasNewerDraft = JSON.stringify(latestDraftRef.current) !== draftJson;
+      if (!hasNewerDraft) {
+        try { window.localStorage.removeItem(recoveryKey); } catch { /* Recovery remains optional. */ }
+      }
+      setAutosavedAt(new Date());
+      setAutosaveState(hasNewerDraft ? "pending" : "saved");
+      if (closeAfterSave && !hasNewerDraft) {
+        setFeedback("Alterações salvas no card.");
+        onRefresh();
+        onClose();
+      } else if (hasNewerDraft) {
+        window.setTimeout(() => { void persistCard(closeAfterSave); }, 2_000);
+      }
+      return true;
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "Não foi possível salvar as alterações.");
+      setAutosaveState("error");
+      return false;
     } finally {
+      saveInFlightRef.current = false;
       setSaving(false);
     }
+  }
+
+  async function requestClose() {
+    if (saving || uploading) return;
+    if (JSON.stringify(latestDraftRef.current) !== lastSavedDraftRef.current) {
+      await persistCard(true);
+      return;
+    }
+    onRefresh();
+    onClose();
   }
 
   async function sendComment() {
@@ -5171,9 +5309,9 @@ ${internalMessage.trim()}`, isInternal: true });
   }
 
   return (
-    <div className="admin-card-backdrop" onClick={onClose}>
+    <div className="admin-card-backdrop" onClick={() => void requestClose()}>
       <section className="admin-card-editor" onClick={(event) => event.stopPropagation()}>
-        <button className="admin-card-close" onClick={onClose} aria-label="Fechar card">×</button>
+        <button className="admin-card-close" onClick={() => void requestClose()} aria-label="Fechar card">×</button>
         <div className="admin-card-main">
           <EditorField label="Título">
             <input value={title} onChange={(event) => setTitle(event.target.value)} />
@@ -5263,7 +5401,8 @@ ${internalMessage.trim()}`, isInternal: true });
           <button className="side-action" onClick={() => setInternalApprovalOpen(true)}><span className="side-action-icon">♙</span>Aprovação interna</button>
           {internalApprovalOpen ? <div className="internal-approval-popover"><header><div><span>REVISÃO DA EQUIPE</span><h4>Enviar para aprovação interna</h4></div><button type="button" onClick={() => setInternalApprovalOpen(false)}>×</button></header><p>Escolha quem deve revisar este card. Clientes não aparecem nesta lista.</p><div className="internal-recipient-list">{internalUsers.length ? internalUsers.map((user) => <label key={user.id}><input type="checkbox" checked={internalRecipientIds.includes(user.id)} onChange={(event) => setInternalRecipientIds((current) => event.target.checked ? [...current, user.id] : current.filter((id) => id !== user.id))} /><span><strong>{user.fullName}</strong><small>{user.globalRole} · {user.email}</small></span></label>) : <small>Nenhum membro interno disponível.</small>}</div><textarea value={internalMessage} onChange={(event) => setInternalMessage(event.target.value)} placeholder="Escreva uma mensagem para quem vai revisar..." /><footer><button type="button" className="ghost-button" onClick={() => setInternalApprovalOpen(false)}>Cancelar</button><button type="button" className="gradient-button" disabled={internalSending || !internalRecipientIds.length || !internalMessage.trim()} onClick={() => void sendInternalApproval()}>{internalSending ? "Enviando..." : "Enviar para revisão"}</button></footer></div> : null}
           {feedback ? <p className="editor-feedback">{feedback}</p> : null}
-          <button className="gradient-button editor-save" onClick={saveCard} disabled={saving || uploading}>{saving ? "Salvando..." : "Salvar alterações"}</button>
+          <AutosaveIndicator state={autosaveState} savedAt={autosavedAt} />
+          <button className="gradient-button editor-save" onClick={() => void persistCard(true)} disabled={saving || uploading}>{saving ? "Salvando..." : "Salvar e fechar"}</button>
         </aside>
       </section>
     </div>
@@ -5426,12 +5565,27 @@ const INTERNAL_AREAS: Record<string, { title: string; description: string; restr
 };
 
 function DesignBriefsWorkspace() {
-  const [title, setTitle] = useState("");
-  const [objective, setObjective] = useState("");
-  const [references, setReferences] = useState("");
+  const recoveryKey = "designhub-v2-design-brief-current-draft";
+  const recoveredDraft = useMemo(() => readRecoveryDraft<{ title: string; objective: string; references: string }>(recoveryKey), []);
+  const [title, setTitle] = useState(recoveredDraft?.title ?? "");
+  const [objective, setObjective] = useState(recoveredDraft?.objective ?? "");
+  const [references, setReferences] = useState(recoveredDraft?.references ?? "");
   const [saved, setSaved] = useState(false);
-  const save = () => { if (!title.trim()) return; const key = "designhub-v2-design-briefs"; const current = JSON.parse(window.localStorage.getItem(key) ?? "[]") as unknown[]; window.localStorage.setItem(key, JSON.stringify([{ id: crypto.randomUUID(), title: title.trim(), objective: objective.trim(), references: references.trim(), createdAt: new Date().toISOString() }, ...current])); setSaved(true); };
-  return <section className="design-briefs-workspace glass"><header><div><p className="eyebrow">DIRECIONAMENTO CRIATIVO</p><h2>Novo brief de design</h2><p>Organize referências, objetivos e orientações para a equipe criar com clareza.</p></div><span className="design-briefs-mark">✦</span></header><div className="design-briefs-grid"><label>Título do projeto<input autoFocus value={title} onChange={(event) => { setTitle(event.target.value); setSaved(false); }} placeholder="Ex.: Campanha de lançamento" /></label><label>Objetivo<textarea value={objective} onChange={(event) => { setObjective(event.target.value); setSaved(false); }} placeholder="Qual resultado a peça deve alcançar?" /></label><label className="wide">Referências e direcionamento<textarea value={references} onChange={(event) => { setReferences(event.target.value); setSaved(false); }} placeholder="Cores, estilo, formatos, links e observações para o design..." /></label></div><footer><small>Você pode complementar este brief depois.</small><button className="gradient-button" disabled={!title.trim()} onClick={save}>{saved ? "✓ Brief salvo" : "Salvar brief"}</button></footer></section>;
+  const [draftState, setDraftState] = useState<AutosaveState>(recoveredDraft ? "recovered" : "idle");
+  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
+  const committedDraftRef = useRef("");
+  useEffect(() => {
+    const draftJson = JSON.stringify({ title, objective, references });
+    if (draftJson === committedDraftRef.current || (!title && !objective && !references)) return;
+    setDraftState((current) => current === "recovered" ? current : "pending");
+    const timeout = window.setTimeout(() => {
+      try { window.localStorage.setItem(recoveryKey, draftJson); setDraftSavedAt(new Date()); setDraftState("saved"); }
+      catch { setDraftState("error"); }
+    }, 600);
+    return () => window.clearTimeout(timeout);
+  }, [objective, references, title]);
+  const save = () => { if (!title.trim()) return; const key = "designhub-v2-design-briefs"; const current = JSON.parse(window.localStorage.getItem(key) ?? "[]") as unknown[]; window.localStorage.setItem(key, JSON.stringify([{ id: crypto.randomUUID(), title: title.trim(), objective: objective.trim(), references: references.trim(), createdAt: new Date().toISOString() }, ...current])); committedDraftRef.current = JSON.stringify({ title, objective, references }); window.localStorage.removeItem(recoveryKey); setDraftSavedAt(new Date()); setDraftState("saved"); setSaved(true); };
+  return <section className="design-briefs-workspace glass"><header><div><p className="eyebrow">DIRECIONAMENTO CRIATIVO</p><h2>Novo brief de design</h2><p>Organize referências, objetivos e orientações para a equipe criar com clareza.</p></div><span className="design-briefs-mark">✦</span></header><div className="design-briefs-grid"><label>Título do projeto<input autoFocus value={title} onChange={(event) => { setTitle(event.target.value); setSaved(false); }} placeholder="Ex.: Campanha de lançamento" /></label><label>Objetivo<textarea value={objective} onChange={(event) => { setObjective(event.target.value); setSaved(false); }} placeholder="Qual resultado a peça deve alcançar?" /></label><label className="wide">Referências e direcionamento<textarea value={references} onChange={(event) => { setReferences(event.target.value); setSaved(false); }} placeholder="Cores, estilo, formatos, links e observações para o design..." /></label></div><footer><AutosaveIndicator state={draftState} savedAt={draftSavedAt} savedLabel="Rascunho protegido" /><button className="gradient-button" disabled={!title.trim()} onClick={save}>{saved ? "✓ Brief salvo" : "Salvar brief"}</button></footer></section>;
 }
 
 function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards: BoardCard[]; appointments: AgendaEvent[]; onSelectCard: (id: string) => void }) {
@@ -5614,6 +5768,7 @@ function BrandBrainContentAudit({ brain }: { brain: BrandBrain }) {
 }
 
 function BrandBrainExperience({ slug, clientName, portal = false, allowEdit = true }: { slug: string; clientName: string; portal?: boolean; allowEdit?: boolean }) {
+  const recoveryKey = `designhub-v2-brand-brain-draft:${portal ? "portal" : "admin"}:${slug}`;
   const [snapshot, setSnapshot] = useState<BrandBrainSnapshot | null>(null);
   const [brain, setBrain] = useState<BrandBrain>(EMPTY_BRAND_BRAIN);
   const [section, setSection] = useState<BrandBrainSection>("overview");
@@ -5623,15 +5778,24 @@ function BrandBrainExperience({ slug, clientName, portal = false, allowEdit = tr
   const [summary, setSummary] = useState("");
   const [comment, setComment] = useState("");
   const [commenting, setCommenting] = useState(false);
+  const [draftState, setDraftState] = useState<AutosaveState>("idle");
+  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
+  const publishedBrainRef = useRef("");
+  const recoveryCheckedRef = useRef(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const result = portal ? await loadPortalBrandBrainBySlug(slug) : await loadBrandBrainBySlug(slug);
-      setSnapshot(result); setBrain(normalizeBrandBrain(result.data));
+      const publishedBrain = normalizeBrandBrain(result.data);
+      publishedBrainRef.current = JSON.stringify(publishedBrain);
+      const recovered = recoveryCheckedRef.current ? null : readRecoveryDraft<BrandBrain>(recoveryKey);
+      recoveryCheckedRef.current = true;
+      setSnapshot(result); setBrain(recovered ? normalizeBrandBrain(recovered) : publishedBrain);
+      setDraftState(recovered ? "recovered" : "idle");
     } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível carregar o Brand Brain."); }
     finally { setLoading(false); }
-  }, [portal, slug]);
+  }, [portal, recoveryKey, slug]);
   useEffect(() => { void load(); }, [load]);
 
   const importantValues = [brain.mission, brain.vision, brain.positioning, brain.brandPromise, brain.audience, brain.voice, brain.visualNotes, brain.pillars.length, brain.approvedWords.length, brain.differentiators.length];
@@ -5643,11 +5807,32 @@ function BrandBrainExperience({ slug, clientName, portal = false, allowEdit = tr
   const setList = (key: keyof BrandBrain, value: string) => setBrain((current) => ({ ...current, [key]: value.split("\n").map((item) => item.trim()).filter(Boolean) }));
   const listValue = (key: keyof BrandBrain) => ((brain[key] as string[]) ?? []).join("\n");
 
+  useEffect(() => {
+    if (loading || !editable || !publishedBrainRef.current) return;
+    const brainJson = JSON.stringify(brain);
+    if (brainJson === publishedBrainRef.current) return;
+    setDraftState((current) => current === "recovered" ? current : "pending");
+    const timeout = window.setTimeout(() => {
+      try {
+        window.localStorage.setItem(recoveryKey, brainJson);
+        setDraftSavedAt(new Date());
+        setDraftState("saved");
+      } catch {
+        setDraftState("error");
+      }
+    }, 600);
+    return () => window.clearTimeout(timeout);
+  }, [brain, editable, loading, recoveryKey]);
+
   const save = async () => {
     setSaving(true); setMessage("");
     try {
       const result = portal ? await savePortalBrandBrainBySlug(slug, brain, summary) : await saveBrandBrainBySlug(slug, brain, summary);
       setMessage(result.pending ? "Sugestão enviada para a equipe. Ela ficará pendente até a aprovação." : "Brand Brain atualizado e uma nova versão foi registrada.");
+      try { window.localStorage.removeItem(recoveryKey); } catch { /* Recovery remains optional. */ }
+      publishedBrainRef.current = JSON.stringify(brain);
+      setDraftSavedAt(new Date());
+      setDraftState("saved");
       setSummary(""); await load();
     } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível salvar."); }
     finally { setSaving(false); }
@@ -5704,7 +5889,7 @@ function BrandBrainExperience({ slug, clientName, portal = false, allowEdit = tr
       <section className="brand-v2-version-list"><h3>Versões publicadas</h3>{snapshot?.history.length ? snapshot.history.map((version) => <article key={version.id}><b>v{version.version}</b><div><strong>{version.authorName}</strong><span>{dateLabel(version.createdAt)}</span></div></article>) : <p>A primeira versão será criada no próximo salvamento.</p>}</section>
     </div> : null}
 
-    {editable && section !== "overview" && section !== "history" ? <footer className="brand-v2-save"><label><span>{portal ? "O que você está sugerindo?" : "Nota da atualização"}</span><input value={summary} onChange={(event) => setSummary(event.target.value)} placeholder={portal ? "Ex.: atualizamos nosso público e tom de voz" : "Ex.: revisão estratégica de agosto"} /></label><button className="gradient-button" disabled={saving} onClick={() => void save()}>{saving ? "Salvando…" : portal ? "Enviar sugestão" : "Publicar nova versão"}</button></footer> : null}
+    {editable && section !== "overview" && section !== "history" ? <footer className="brand-v2-save"><label><span>{portal ? "O que você está sugerindo?" : "Nota da atualização"}</span><input value={summary} onChange={(event) => setSummary(event.target.value)} placeholder={portal ? "Ex.: atualizamos nosso público e tom de voz" : "Ex.: revisão estratégica de agosto"} /></label><AutosaveIndicator state={draftState} savedAt={draftSavedAt} savedLabel="Rascunho protegido" /><button className="gradient-button" disabled={saving} onClick={() => void save()}>{saving ? "Salvando…" : portal ? "Enviar sugestão" : "Publicar nova versão"}</button></footer> : null}
     <section className="brand-v2-comments"><header><div><small>CONVERSA DA MARCA</small><h3>Comentários</h3></div><span>{snapshot?.comments.length ?? 0}</span></header><div className="brand-v2-comment-form"><textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder={`Comente sobre ${section === "overview" ? "o Brand Brain" : "esta seção"}…`} /><button className="ghost-button" disabled={commenting || !comment.trim()} onClick={() => void sendComment()}>{commenting ? "Enviando…" : "Comentar"}</button></div>{snapshot?.comments.filter((item) => item.sectionKey === section || section === "overview").slice(0, 8).map((item) => <article key={item.id}><div><strong>{item.authorName}</strong><span>{item.authorRole === "cliente" ? "Cliente" : "Equipe"} · {dateLabel(item.createdAt)}</span></div><p>{item.commentText}</p></article>)}</section>
     {message ? <div className="brand-v2-message" role="status"><span>✓</span>{message}<button onClick={() => setMessage("")}>×</button></div> : null}
   </section>;
@@ -5826,24 +6011,40 @@ function ContractDocumentPreview({ contract, clientName }: { contract: ContractD
 }
 
 function ContractsWorkspace({ newContractSignal = 0 }: { newContractSignal?: number }) {
+  const recoveryKey = "designhub-v2-contract-current-draft";
+  const recoveredDraft = useMemo(() => readRecoveryDraft<{ draft: ContractDraft; clientSlug: string; selectedModel: string }>(recoveryKey), []);
   const [clients, setClients] = useState<AdminClientOption[]>([]);
-  const [clientSlug, setClientSlug] = useState("");
-  const [draft, setDraft] = useState<ContractDraft>(emptyContractDraft);
+  const [clientSlug, setClientSlug] = useState(recoveredDraft?.clientSlug ?? "");
+  const [draft, setDraft] = useState<ContractDraft>(recoveredDraft?.draft ?? emptyContractDraft);
   const [records, setRecords] = useState<ContractRecord[]>(readContractRecords);
   const [customTemplates, setCustomTemplates] = useState<ContractTemplate[]>(readContractTemplates);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
   const [templateLanguage, setTemplateLanguage] = useState("Português");
-  const [selectedModel, setSelectedModel] = useState("");
+  const [selectedModel, setSelectedModel] = useState(recoveredDraft?.selectedModel ?? "");
   const [saved, setSaved] = useState(false);
+  const [draftState, setDraftState] = useState<AutosaveState>(recoveredDraft ? "recovered" : "idle");
+  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
+  const committedDraftRef = useRef("");
   useEffect(() => { void listAdminClients().then((result) => { setClients(result.items); setClientSlug((current) => current || result.items[0]?.slug || ""); }).catch(() => setClients([])); }, []);
-  useEffect(() => { if (newContractSignal > 0) { setDraft(emptyContractDraft()); setSelectedModel(""); setSaved(false); setPreviewOpen(false); } }, [newContractSignal]);
+  useEffect(() => { if (newContractSignal > 0) { setDraft(emptyContractDraft()); setSelectedModel(""); setSaved(false); setPreviewOpen(false); committedDraftRef.current = ""; try { window.localStorage.removeItem(recoveryKey); } catch { /* Recovery remains optional. */ } setDraftState("idle"); } }, [newContractSignal]);
+  useEffect(() => {
+    const draftJson = JSON.stringify({ draft, clientSlug, selectedModel });
+    const isEmpty = !draft.title && !draft.scope && !draft.notes && !draft.value && !draft.startDate && !draft.endDate;
+    if (draftJson === committedDraftRef.current || isEmpty) return;
+    setDraftState((current) => current === "recovered" ? current : "pending");
+    const timeout = window.setTimeout(() => {
+      try { window.localStorage.setItem(recoveryKey, draftJson); setDraftSavedAt(new Date()); setDraftState("saved"); }
+      catch { setDraftState("error"); }
+    }, 600);
+    return () => window.clearTimeout(timeout);
+  }, [clientSlug, draft, recoveryKey, selectedModel]);
   const selectedClient = clients.find((client) => client.slug === clientSlug);
   const allTemplates = [...CONTRACT_MODELS, ...customTemplates];
   const applyModel = (modelId: string) => { setSelectedModel(modelId); const model = allTemplates.find((item) => item.id === modelId); if (model) setDraft({ ...emptyContractDraft(), ...model.draft, language: model.language || model.draft.language || "Português" }); };
   const saveTemplate = () => { if (!templateName.trim()) return; const template: ContractTemplate = { id: crypto.randomUUID(), name: templateName.trim(), language: templateLanguage, description: "Modelo criado por você.", draft: { ...draft, language: templateLanguage }, custom: true }; const next = [template, ...customTemplates]; setCustomTemplates(next); writeContractTemplates(next); setSelectedModel(template.id); setTemplateName(""); setTemplateModalOpen(false); };
-  const save = () => { if (!draft.title.trim() || !clientSlug) return; const record: ContractRecord = { ...draft, title: draft.title.trim(), clientSlug, client: selectedClient?.name || draft.client, id: crypto.randomUUID(), status: "pending", createdAt: new Date().toISOString() }; const next = [record, ...records]; setRecords(next); writeContractRecords(next); setSaved(true); };
+  const save = () => { if (!draft.title.trim() || !clientSlug) return; const record: ContractRecord = { ...draft, title: draft.title.trim(), clientSlug, client: selectedClient?.name || draft.client, id: crypto.randomUUID(), status: "pending", createdAt: new Date().toISOString() }; const next = [record, ...records]; setRecords(next); writeContractRecords(next); committedDraftRef.current = JSON.stringify({ draft, clientSlug, selectedModel }); try { window.localStorage.removeItem(recoveryKey); } catch { /* Recovery remains optional. */ } setDraftSavedAt(new Date()); setDraftState("saved"); setSaved(true); };
   return <section className="contracts-workspace">
     <div className="contracts-workspace-grid"><div className="contracts-form-card">
       <header><div><span>CONTRATO</span><h2>Novo contrato</h2><p>Preencha os dados abaixo para registrar um novo contrato na operação.</p></div><div className="contracts-form-mark">✦</div></header>
@@ -5852,7 +6053,7 @@ function ContractsWorkspace({ newContractSignal = 0 }: { newContractSignal?: num
       <div className="contracts-form-grid three"><label>Idioma<select value={draft.language} onChange={(event) => setDraft({ ...draft, language: event.target.value })}><option>Português</option><option>English</option><option>Español</option><option>Français</option><option>Italiano</option><option>Deutsch</option></select></label><label>Tipo<select value={draft.type} onChange={(event) => setDraft({ ...draft, type: event.target.value })}><option>Prestação de serviços</option><option>Mensalidade</option><option>Consultoria</option><option>Parceria</option></select></label><label>Início<input type="date" value={draft.startDate} onChange={(event) => setDraft({ ...draft, startDate: event.target.value })} /></label></div><div className="contracts-form-grid two"><label>Vencimento<input type="date" value={draft.endDate} onChange={(event) => setDraft({ ...draft, endDate: event.target.value })} /></label><label>Valor contratado<input value={draft.value} onChange={(event) => setDraft({ ...draft, value: event.target.value })} placeholder="R$ 0,00" /></label></div>
       <div className="contracts-form-grid two"><label className="wide">Escopo resumido<textarea value={draft.scope} onChange={(event) => setDraft({ ...draft, scope: event.target.value })} placeholder="Descreva os serviços e entregas incluídos." /></label></div>
       <label className="contracts-notes">Observações internas<textarea value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} placeholder="Condições, responsáveis e observações importantes." /></label>
-      <footer><small>Você poderá complementar este contrato depois de salvá-lo.</small><div><button className="ghost-button" onClick={() => setPreviewOpen(true)}>Visualizar prévia</button><button className="gradient-button" onClick={save} disabled={!draft.title.trim() || !clientSlug}>Salvar contrato</button></div></footer>
+      <footer><AutosaveIndicator state={draftState} savedAt={draftSavedAt} savedLabel="Rascunho protegido" /><div><button className="ghost-button" onClick={() => setPreviewOpen(true)}>Visualizar prévia</button><button className="gradient-button" onClick={save} disabled={!draft.title.trim() || !clientSlug}>Salvar contrato</button></div></footer>
       {saved ? <p className="contracts-saved" role="status">✓ Contrato salvo como rascunho.</p> : null}
     </div><aside className="contracts-library"><header><div><span>BIBLIOTECA</span><h3>Modelos prontos</h3></div><b>{allTemplates.length}</b></header>{allTemplates.map((model) => <button key={model.id} className={selectedModel === model.id ? "selected" : ""} onClick={() => applyModel(model.id)}><strong>{model.name}</strong><small>{model.language} · {model.description}</small></button>)}<button className="contracts-create-template" onClick={() => setTemplateModalOpen(true)}>＋ Salvar formulário como modelo</button>{records.length ? <><header className="contracts-library-records"><div><span>ENVIADOS</span><h3>Contratos recentes</h3></div><b>{records.length}</b></header>{records.slice(0, 4).map((record) => <div className="contracts-library-record" key={record.id}><strong>{record.title}</strong><small>{record.client} · {record.status === "accepted" ? "Aceito" : "Aguardando aceite"}</small></div>)}</> : null}</aside></div>
     {previewOpen ? <div className="modal-backdrop" onClick={() => setPreviewOpen(false)}><section className="contract-preview-modal" onClick={(event) => event.stopPropagation()}><header><div><span>PRÉVIA PARA O CLIENTE</span><h2>Como o contrato será exibido</h2></div><button className="icon-close" onClick={() => setPreviewOpen(false)}>×</button></header><ContractDocumentPreview contract={draft} clientName={selectedClient?.name || draft.client} /><footer><button className="ghost-button" onClick={() => setPreviewOpen(false)}>Voltar para edição</button></footer></section></div> : null}
