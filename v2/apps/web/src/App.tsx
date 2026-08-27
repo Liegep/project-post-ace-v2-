@@ -1893,6 +1893,7 @@ function DashboardClientSubmissionsWidget({ items, userId }: { items: DashboardS
 }
 
 function DashboardClientActivitiesWidget({ items, onSchedule }: { items: DashboardClientActivity[]; onSchedule: (item: DashboardClientActivity) => void }) {
+  const [expanded, setExpanded] = useState(false);
   const activityLabel = (item: DashboardClientActivity) => item.activityType === "approved" ? "Aprovou o conteúdo" : item.activityType === "changes_requested" ? "Solicitou alterações" : item.activityType === "brand_brain" ? "Sugeriu uma atualização da marca" : "Deixou um feedback";
   const activityTime = (value: string) => {
     const date = new Date(value);
@@ -1910,6 +1911,8 @@ function DashboardClientActivitiesWidget({ items, onSchedule }: { items: Dashboa
       if (!item.cardId || (item.activityType !== "approved" && item.activityType !== "changes_requested")) return item;
       return { ...item, detail: latestCommentByCard.get(item.cardId)?.detail ?? "" };
     });
+  const displayedItems = expanded ? mergedItems : mergedItems.slice(0, 3);
+  const hiddenCount = Math.max(0, mergedItems.length - displayedItems.length);
   const openCard = (item: DashboardClientActivity) => {
     if (!item.cardId) return;
     window.location.hash = `/admin/${encodeURIComponent(item.clientSlug)}?card=${encodeURIComponent(item.cardId)}`;
@@ -1917,12 +1920,12 @@ function DashboardClientActivitiesWidget({ items, onSchedule }: { items: Dashboa
 
   return <section className="dashboard-list dashboard-client-activities compact">
     <header className="dashboard-submissions-head"><div><h3>Feedback dos clientes</h3><small>Comentários, aprovações e alterações</small></div><span>{mergedItems.length}</span></header>
-    <div className="dashboard-activity-list">{mergedItems.map((item) => <article key={item.id} className={`dashboard-activity-row ${item.activityType}`}>
+    <div className="dashboard-activity-list">{displayedItems.map((item) => <article key={item.id} className={`dashboard-activity-row ${item.activityType}`}>
       <span className="dashboard-submission-avatar">{item.clientLogoUrl ? <img src={item.clientLogoUrl} alt={`Logo de ${item.clientName}`} /> : item.clientName.slice(0, 2).toUpperCase()}</span>
       <div className="dashboard-activity-copy"><span className="dashboard-activity-kind">{item.activityType === "approved" ? "✓" : item.activityType === "changes_requested" ? "↻" : item.activityType === "brand_brain" ? "✦" : "💬"} {activityLabel(item)}</span><strong>{item.title}</strong><small>{item.clientName}{item.detail ? ` · “${item.detail}”` : ""}</small></div>
       <div className="dashboard-activity-actions"><time title="Data do retorno do cliente">{activityTime(item.occurredAt)}</time>{item.activityType === "brand_brain" ? <button type="button" onClick={() => { window.location.hash = `/admin/${item.clientSlug}?view=brand`; }}><UiIcon name="spark" />Revisar</button> : item.activityType === "changes_requested" ? <button type="button" onClick={() => openCard(item)}><UiIcon name="eye" />Ver</button> : <button type="button" onClick={() => onSchedule(item)}><UiIcon name="calendar" />Agendar</button>}</div>
     </article>)}</div>
-    <span className="dashboard-link">Abrir o quadro do cliente →</span>
+    {hiddenCount > 0 ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded(true)}>Ver mais...</button> : null}
   </section>;
 }
 
