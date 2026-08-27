@@ -2121,11 +2121,28 @@ function AdminWorkspacePage({
   const location = useLocation();
   const [refreshKey, setRefreshKey] = useState(0);
   const [boardView, setBoardView] = useState<"board" | "archived" | "texts" | "calendar" | "activities" | "brand" | "pautas">(() => window.location.hash.includes("view=brand") ? "brand" : "board");
-  const resource = usePreviewResource(emptyAdminWorkspace, () => loadAdminWorkspaceBySlug(slug, { archived: boardView === "archived" }), [
+  const workspaceMode = boardView === "archived" ? "archived" : "board";
+  const workspaceResource = usePreviewResource(
+    { mode: workspaceMode, data: emptyAdminWorkspace },
+    async () => ({
+      mode: workspaceMode,
+      data: await loadAdminWorkspaceBySlug(slug, { archived: workspaceMode === "archived" }),
+    }), [
     slug,
     refreshKey,
-    boardView,
+    workspaceMode,
   ]);
+  const resource = {
+    ...workspaceResource,
+    data: workspaceResource.data.data,
+    setData: (update: AdminWorkspacePreview | ((current: AdminWorkspacePreview) => AdminWorkspacePreview)) => {
+      workspaceResource.setData((current) => ({
+        ...current,
+        data: typeof update === "function" ? update(current.data) : update,
+      }));
+    },
+  };
+  const workspaceViewChanging = workspaceResource.data.mode !== workspaceMode;
   const data = resource.data;
   const scheduledCardIds = [...data.columns.flatMap((column) => column.cards), ...data.withoutColumn]
     .filter((card) => card.scheduledAt)
@@ -2386,7 +2403,7 @@ function AdminWorkspacePage({
             </div>
 
             <div className="board-layout">
-              {boardView === "texts" ? <AdminTextsView clientName={data.clientName} slug={slug} onCountChange={updateTextsCount} /> : boardView === "calendar" ? <ClientKanbanCalendar slug={slug} /> : boardView === "activities" ? <KanbanActivities slug={slug} /> : boardView === "brand" ? <BrandBrainWorkspaceV2 slug={slug} clientName={data.clientName} /> : boardView === "pautas" ? <PautasWorkspace slug={slug} clientName={data.clientName} columns={data.columns} onSent={() => setRefreshKey((value) => value + 1)} onCountChange={updatePautasCount} /> : boardView === "archived" && resource.loading ? <div className="archived-empty">Carregando cards arquivados...</div> : boardView === "archived" ? <ArchivedCardsView
+              {boardView === "texts" ? <AdminTextsView clientName={data.clientName} slug={slug} onCountChange={updateTextsCount} /> : boardView === "calendar" ? <ClientKanbanCalendar slug={slug} /> : boardView === "activities" ? <KanbanActivities slug={slug} /> : boardView === "brand" ? <BrandBrainWorkspaceV2 slug={slug} clientName={data.clientName} /> : boardView === "pautas" ? <PautasWorkspace slug={slug} clientName={data.clientName} columns={data.columns} onSent={() => setRefreshKey((value) => value + 1)} onCountChange={updatePautasCount} /> : boardView === "archived" && (workspaceViewChanging || resource.loading) ? <div className="archived-empty">Carregando cards arquivados...</div> : boardView === "archived" ? <ArchivedCardsView
                 cards={archivedCards}
                 onOpenCard={setSelectedCardId}
                 onPreviewMedia={openMediaPreview}
@@ -2397,7 +2414,7 @@ function AdminWorkspacePage({
                     deleteAdminCardBySlug(slug, cardId).then(() => setRefreshKey((value) => value + 1));
                   }
                 }}
-              /> : <div
+              /> : workspaceViewChanging ? <div className="archived-empty">Carregando quadro...</div> : <div
                 className={draggedColumnId ? "columns-scroll columns-reordering" : "columns-scroll"}
                 onDragOver={(event) => {
                   if (!draggedColumnId) return;
