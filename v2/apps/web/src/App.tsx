@@ -4417,6 +4417,8 @@ function ClientPortalWorkspacePage({
   const portalCardsWithLocalApprovals = portalCards.map((card) => locallyApprovedCardIds.includes(card.id) ? { ...card, clientLabel: "Aprovado pelo cliente", statusBadges: Array.from(new Set([...card.statusBadges, "Aprovado"])) } : card);
   const approvedPortalCards = portalCardsWithLocalApprovals.filter(isPortalApproved);
   const approvalPortalCards = portalCardsWithLocalApprovals.filter((card) => !isPortalApproved(card));
+  const pautaApprovalCards = approvalPortalCards.filter((card) => card.isBriefApproval);
+  const contentApprovalCardIds = new Set(approvalPortalCards.filter((card) => !card.isBriefApproval).map((card) => card.id));
   const portalTrackerEnabled = data.trackingEnabled;
   const upcomingPortalAppointments = useMemo(() => {
     const now = new Date();
@@ -4585,55 +4587,37 @@ function ClientPortalWorkspacePage({
               {boardSubView === "calendar" ? (
                 <ClientPortalCalendarView cards={approvalPortalCards} appointments={portalAppointments} onSelectCard={setSelectedCardId} />
               ) : (
-              <div className="portal-columns-scroll">
-                {data.boardColumns.filter((column) => !isPortalApprovedColumn(column.name)).map((column) => { const approvalCards = column.cards.filter((card) => !isPortalApproved(card) && !locallyApprovedCardIds.includes(card.id)); return (
-                  <section key={column.id} className="portal-column glass-subtle">
-                    <header className="portal-column-head" style={{ borderColor: column.color }}>
-                      <h3>{column.name}</h3>
-                      <span>{approvalCards.length}</span>
-                    </header>
+              <div className="portal-approval-board">
+                {pautaApprovalCards.length ? <section className="portal-pautas-approval">
+                  <header>
+                    <div><span>IDEIAS PARA REVISÃO</span><h2>Pautas para aprovação</h2><p>Revise a proposta, deixe um comentário e aprove para ela entrar no fluxo de criação.</p></div>
+                    <b>{pautaApprovalCards.length} {pautaApprovalCards.length === 1 ? "pauta" : "pautas"}</b>
+                  </header>
+                  <div className="portal-pauta-grid">{pautaApprovalCards.map((card) => <button key={card.id} type="button" className="portal-pauta-card" onClick={() => setSelectedCardId(card.id)}>
+                    <span className="portal-pauta-icon"><UiIcon name="file" /></span>
+                    <span className="portal-pauta-copy"><small>PAUTA</small><strong>{card.title}</strong><p>{card.subtitle || "Proposta de conteúdo enviada para sua avaliação."}</p></span>
+                    <span className="portal-pauta-review">Revisar <UiIcon name="eye" /></span>
+                  </button>)}</div>
+                </section> : null}
 
-                    <div className="portal-card-list">
-                      {approvalCards.map((card) => (
-                        <button
-                          key={card.id}
-                          className="portal-card card-button"
-                          onClick={() => setSelectedCardId(card.id)}
-                        >
-                          <ClosedCardMedia card={card} />
-                          <div className="portal-card-copy">
-                            <h4>{card.title}</h4>
-                            {card.scheduledAt ? <p>{formatScheduledCardDate(card.scheduledAt)}</p> : null}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </section>
-                ); })}
+                {contentApprovalCardIds.size ? <section className="portal-content-approval">
+                  {pautaApprovalCards.length ? <header><div><span>CONTEÚDOS VISUAIS</span><h2>Posts para aprovação</h2></div><b>{contentApprovalCardIds.size}</b></header> : null}
+                  <div className="portal-columns-scroll">
+                    {data.boardColumns.filter((column) => !isPortalApprovedColumn(column.name)).map((column) => { const approvalCards = column.cards.filter((card) => contentApprovalCardIds.has(card.id)); return approvalCards.length ? (
+                      <section key={column.id} className="portal-column glass-subtle">
+                        <header className="portal-column-head" style={{ borderColor: column.color }}><h3>{column.name}</h3><span>{approvalCards.length}</span></header>
+                        <div className="portal-card-list">{approvalCards.map((card) => <button key={card.id} className="portal-card card-button" onClick={() => setSelectedCardId(card.id)}><ClosedCardMedia card={card} /><div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{formatScheduledCardDate(card.scheduledAt)}</p> : null}</div></button>)}</div>
+                      </section>
+                    ) : null; })}
 
-                {data.withoutColumn.some((card) => !isPortalApproved(card) && !locallyApprovedCardIds.includes(card.id)) ? (
-                  <section className="portal-column glass-subtle">
-                    <header className="portal-column-head" style={{ borderColor: "#7a86a9" }}>
-                      <h3>Em criação</h3>
-                      <span>{data.withoutColumn.filter((card) => !isPortalApproved(card) && !locallyApprovedCardIds.includes(card.id)).length}</span>
-                    </header>
-                    <div className="portal-card-list">
-                      {data.withoutColumn.filter((card) => !isPortalApproved(card) && !locallyApprovedCardIds.includes(card.id)).map((card) => (
-                        <button
-                          key={card.id}
-                          className="portal-card card-button"
-                          onClick={() => setSelectedCardId(card.id)}
-                        >
-                          <ClosedCardMedia card={card} />
-                          <div className="portal-card-copy">
-                            <h4>{card.title}</h4>
-                            {card.scheduledAt ? <p>{formatScheduledCardDate(card.scheduledAt)}</p> : null}
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  </section>
-                ) : null}
+                    {data.withoutColumn.some((card) => contentApprovalCardIds.has(card.id)) ? <section className="portal-column glass-subtle">
+                      <header className="portal-column-head" style={{ borderColor: "#7a86a9" }}><h3>Em criação</h3><span>{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).length}</span></header>
+                      <div className="portal-card-list">{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).map((card) => <button key={card.id} className="portal-card card-button" onClick={() => setSelectedCardId(card.id)}><ClosedCardMedia card={card} /><div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{formatScheduledCardDate(card.scheduledAt)}</p> : null}</div></button>)}</div>
+                    </section> : null}
+                  </div>
+                </section> : null}
+
+                {!pautaApprovalCards.length && !contentApprovalCardIds.size ? <section className="portal-approval-empty"><span>✓</span><h2>Tudo revisado</h2><p>Não há pautas ou posts aguardando sua aprovação agora.</p></section> : null}
               </div>
               )}
             </div>

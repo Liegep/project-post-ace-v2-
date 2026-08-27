@@ -4982,6 +4982,32 @@ button {
   align-items: start;
 }
 
+.portal-approval-board { display: grid; gap: 18px; padding: 20px; }
+.portal-pautas-approval { padding: 24px; border: 1px solid rgba(122, 100, 225, .17); border-radius: 22px; background: radial-gradient(circle at 92% 5%, rgba(145, 111, 238, .13), transparent 24%), linear-gradient(135deg, rgba(247, 251, 255, .94), rgba(251, 247, 255, .96)); box-shadow: 0 16px 36px rgba(70, 62, 126, .08); }
+.portal-pautas-approval > header, .portal-content-approval > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 18px; }
+.portal-pautas-approval > header span, .portal-content-approval > header span { color: #6a56d5; font-size: .66rem; font-weight: 900; letter-spacing: .13em; }
+.portal-pautas-approval > header h2, .portal-content-approval > header h2 { margin: 5px 0 4px; color: #243150; font-size: 1.35rem; letter-spacing: -.025em; }
+.portal-pautas-approval > header p { max-width: 680px; margin: 0; color: #74809a; font-size: .82rem; line-height: 1.5; }
+.portal-pautas-approval > header b, .portal-content-approval > header b { display: grid; min-width: 64px; min-height: 34px; padding: 0 12px; place-items: center; border-radius: 999px; color: #6654d4; background: rgba(236, 233, 255, .92); font-size: .72rem; white-space: nowrap; }
+.portal-pauta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 12px; }
+.portal-pauta-card { display: grid; grid-template-columns: 46px minmax(0, 1fr) auto; align-items: center; gap: 13px; min-height: 112px; padding: 16px; border: 1px solid rgba(217, 220, 236, .9); border-radius: 17px; color: inherit; background: rgba(255, 255, 255, .9); box-shadow: 0 10px 24px rgba(67, 76, 119, .06); text-align: left; font: inherit; cursor: pointer; transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+.portal-pauta-card:hover { border-color: rgba(119, 96, 222, .42); box-shadow: 0 15px 30px rgba(79, 66, 152, .12); transform: translateY(-2px); }
+.portal-pauta-icon { display: grid; width: 46px; height: 46px; place-items: center; border-radius: 14px; color: #fff; background: linear-gradient(135deg, #47aaf4, #7b4ce3); box-shadow: 0 9px 19px rgba(103, 77, 207, .2); }
+.portal-pauta-icon svg { width: 21px; height: 21px; }
+.portal-pauta-copy { display: block; min-width: 0; }
+.portal-pauta-copy small { display: block; margin-bottom: 5px; color: #7664d9; font-size: .62rem; font-weight: 900; letter-spacing: .12em; }
+.portal-pauta-copy strong { display: block; overflow: hidden; color: #273451; font-size: .93rem; text-overflow: ellipsis; white-space: nowrap; }
+.portal-pauta-copy p { display: -webkit-box; overflow: hidden; margin: 6px 0 0; color: #748099; font-size: .76rem; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.portal-pauta-review { display: inline-flex; align-items: center; gap: 6px; padding: 8px 10px; border-radius: 10px; color: #6553cf; background: #f0edff; font-size: .7rem; font-weight: 850; white-space: nowrap; }
+.portal-pauta-review svg { width: 14px; height: 14px; }
+.portal-content-approval { padding: 22px; border: 1px solid rgba(222, 227, 240, .9); border-radius: 21px; background: rgba(255, 255, 255, .5); }
+.portal-content-approval > header { margin-bottom: 14px; }
+.portal-content-approval .portal-columns-scroll { padding: 0; }
+.portal-approval-empty { display: grid; min-height: 260px; place-content: center; justify-items: center; padding: 28px; text-align: center; }
+.portal-approval-empty > span { display: grid; width: 54px; height: 54px; place-items: center; border-radius: 50%; color: #fff; background: linear-gradient(135deg, #26bb87, #52c79e); font-size: 1.35rem; box-shadow: 0 12px 25px rgba(38, 177, 126, .2); }
+.portal-approval-empty h2 { margin: 13px 0 5px; color: #293653; }
+.portal-approval-empty p { margin: 0; color: #7b869c; }
+
 .portal-card {
   min-width: 0;
   overflow: hidden;
@@ -5215,6 +5241,14 @@ button {
   .portal-card-copy {
     padding: 12px 4px 4px;
   }
+
+  .portal-approval-board { padding: 12px; }
+  .portal-pautas-approval, .portal-content-approval { padding: 17px; }
+  .portal-pautas-approval > header, .portal-content-approval > header { align-items: flex-start; flex-direction: column; }
+  .portal-pauta-grid { grid-template-columns: 1fr; }
+  .portal-pauta-card { grid-template-columns: 42px minmax(0, 1fr); }
+  .portal-pauta-icon { width: 42px; height: 42px; }
+  .portal-pauta-review { grid-column: 2; width: fit-content; }
 }
 
 /* Mantém os widgets e cards do portal no tamanho natural quando há pouco conteúdo. */
