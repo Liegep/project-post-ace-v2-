@@ -242,7 +242,7 @@ export default function CreateReportPage() {
             <Button variant="ghost" size="icon" className="group bg-white hover:bg-foreground shadow-md border border-border/40 transition-colors" onClick={() => navigate("/reports")}>
               <ArrowLeft className="h-5 w-5 text-black group-hover:text-white transition-colors" strokeWidth={2.5} />
             </Button>
-            <h1 className="text-lg font-semibold">{isEditMode ? "Editar Relatório" : "Novo Relatório"}</h1>
+            <h1 className="type-heading">{isEditMode ? "Editar Relatório" : "Novo Relatório"}</h1>
           </div>
           <div className="flex items-center gap-2">
             <UserProfileMenu />

@@ -229,7 +229,7 @@ export default function CommemorativeDatesPage() {
             <ArrowLeft className="h-5 w-5 text-black group-hover:text-white transition-colors" strokeWidth={2.5} />
           </Button>
           <CalendarHeart className="h-4 w-4 md:h-5 md:w-5 text-primary shrink-0" />
-          <h1 className="text-base md:text-xl font-bold text-foreground truncate">Datas Comemorativas</h1>
+          <h1 className="type-heading truncate text-foreground">Datas Comemorativas</h1>
         </div>
         <div className="flex items-center gap-2">
           {isAdmin && (

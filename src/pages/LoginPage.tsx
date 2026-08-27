@@ -179,7 +179,7 @@ const LoginPage = () => {
             />
           )}
           <h1
-            className={`text-2xl font-bold text-foreground transition-all duration-500 delay-300 ${
+            className={`type-heading text-foreground transition-all duration-500 delay-300 ${
               animDone ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"
             }`}
           >

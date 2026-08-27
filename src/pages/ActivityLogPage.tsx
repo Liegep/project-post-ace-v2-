@@ -51,7 +51,7 @@ const ActivityLogPage = () => {
             </Button>
             <div className="flex items-center gap-2">
               <History className="h-5 w-5 text-primary" />
-              <h1 className="text-lg font-bold text-foreground">Registro de Atividades</h1>
+              <h1 className="type-heading text-foreground">Registro de Atividades</h1>
             </div>
           </div>
           <div className="flex items-center gap-2">

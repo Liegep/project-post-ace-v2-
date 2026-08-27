@@ -224,7 +224,7 @@ const IdeasPage = () => {
           <Button variant="ghost" size="icon" className="hidden md:inline-flex group bg-white hover:bg-foreground shadow-md border border-border/40 transition-colors" onClick={() => navigate("/")}>
             <ArrowLeft className="h-5 w-5 text-black group-hover:text-white transition-colors" strokeWidth={2.5} />
           </Button>
-          <h1 className="text-base md:text-xl font-bold text-foreground truncate">💡 Ideias de Pauta</h1>
+          <h1 className="type-heading truncate text-foreground">💡 Ideias de Pauta</h1>
         </div>
         <div className="flex items-center gap-2 text-primary-foreground">
           {/* Add column button in header */}

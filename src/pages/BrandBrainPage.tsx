@@ -71,7 +71,7 @@ export default function BrandBrainPage() {
             </Button>
             {client.logo_url && <img src={client.logo_url} alt="" className="h-12 w-12 rounded-lg border object-contain" />}
             <div>
-              <h1 className="text-xl font-bold sm:text-2xl">{client.name}</h1>
+              <h1 className="type-heading">{client.name}</h1>
               <p className="text-xs text-muted-foreground flex items-center gap-1.5">
                 <Sparkles className="h-3.5 w-3.5" /> {t.subtitle}
               </p>

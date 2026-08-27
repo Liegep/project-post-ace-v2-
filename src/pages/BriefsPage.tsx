@@ -452,7 +452,7 @@ const BriefsPage = () => {
           </Button>
           <div className="flex items-center gap-2 min-w-0">
             <FileText className="h-4 w-4 md:h-5 md:w-5 text-primary shrink-0" />
-            <h1 className="text-base md:text-lg font-bold truncate">Pautas</h1>
+            <h1 className="type-heading truncate">Pautas</h1>
           </div>
           <div className="ml-auto flex items-center gap-2">
             <LanguageSelector />

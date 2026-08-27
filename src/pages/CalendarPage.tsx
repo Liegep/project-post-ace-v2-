@@ -480,7 +480,7 @@ export default function CalendarPage() {
               <ArrowLeft className="h-5 w-5 text-black group-hover:text-white transition-colors" strokeWidth={2.5} />
             </Button>
             <CalendarDays className="h-4 w-4 md:h-5 md:w-5 text-primary shrink-0" />
-            <h1 className="text-sm md:text-lg font-bold text-foreground truncate">Calendário</h1>
+            <h1 className="type-heading truncate text-foreground">Calendário</h1>
           </div>
 
           <div className="flex items-center gap-1 md:gap-2 flex-wrap">

@@ -186,7 +186,7 @@ const ContractsPage = () => {
               <ArrowLeft className="h-5 w-5 text-black group-hover:text-white transition-colors" strokeWidth={2.5} />
             </Button>
             <div>
-              <h1 className="text-xl font-bold flex items-center gap-2">
+              <h1 className="type-heading flex items-center gap-2">
                 <FileText className="h-5 w-5 text-primary" />
                 Gestão de Contratos
               </h1>

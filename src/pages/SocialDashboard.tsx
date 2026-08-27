@@ -213,7 +213,7 @@ export default function SocialDashboard() {
               <ArrowLeft className="h-5 w-5 text-black group-hover:text-white transition-colors" strokeWidth={2.5} />
             </Button>
             <div className="min-w-0">
-              <h1 className="text-base md:text-xl font-bold text-foreground flex items-center gap-2 truncate">
+              <h1 className="type-heading flex items-center gap-2 truncate text-foreground">
                 <CalendarDays className="h-4 w-4 md:h-5 md:w-5 text-primary shrink-0" />
                 <span className="truncate">Agendamento Social</span>
               </h1>

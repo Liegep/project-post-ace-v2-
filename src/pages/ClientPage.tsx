@@ -349,7 +349,7 @@ const ClientPageInner = ({ clientData }: { clientData: ClientData }) => {
                 )}
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">{clientData.name}</p>
-                  <h1 className="text-xl font-bold text-slate-900 sm:text-2xl">
+                  <h1 className="type-heading text-slate-900">
                     {getGreeting()}{displayFirstName ? `, ${displayFirstName}` : ""} 👋
                   </h1>
                   <p className="text-sm text-slate-500">{t("clientSubtitle")}</p>

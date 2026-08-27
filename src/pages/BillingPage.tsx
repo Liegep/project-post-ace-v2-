@@ -238,7 +238,7 @@ const BillingPage = () => {
           </Button>
           <div className="flex items-center gap-2 flex-1">
             <DollarSign className="h-5 w-5 text-primary" />
-            <h1 className="text-lg font-bold">Faturamento</h1>
+            <h1 className="type-heading">Faturamento</h1>
           </div>
           <Button variant="outline" size="sm" onClick={() => setIssuerOpen(true)} className="gap-1.5">
             <Building2 className="h-4 w-4" /> Dados da Empresa

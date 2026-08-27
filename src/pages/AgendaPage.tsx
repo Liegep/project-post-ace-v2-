@@ -205,7 +205,7 @@ const AgendaPage = () => {
               <ArrowLeft className="h-5 w-5 text-black group-hover:text-white transition-colors" strokeWidth={2.5} />
             </Button>
             <div>
-              <h1 className="text-xl sm:text-2xl font-bold text-foreground">Agenda</h1>
+              <h1 className="type-heading text-foreground">Agenda</h1>
               <p className="text-xs sm:text-sm text-muted-foreground">Seus compromissos e tarefas</p>
             </div>
           </div>

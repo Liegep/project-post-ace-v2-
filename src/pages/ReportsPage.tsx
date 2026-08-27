@@ -117,7 +117,7 @@ export default function ReportsPage() {
               <ArrowLeft className="h-5 w-5 text-black group-hover:text-white transition-colors" strokeWidth={2.5} />
             </Button>
             <div>
-              <h1 className="text-lg font-semibold tracking-tight">Relatórios</h1>
+              <h1 className="type-heading">Relatórios</h1>
               <p className="hidden md:block text-xs text-muted-foreground">Relatórios de mídias sociais</p>
             </div>
           </div>

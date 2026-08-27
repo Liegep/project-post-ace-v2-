@@ -431,7 +431,7 @@ const TeamManagementPage = () => {
               <ArrowLeft className="h-5 w-5 text-slate-900 transition-colors group-hover:text-white" strokeWidth={2.4} />
             </Button>
             <div className="min-w-0">
-              <h1 className="flex items-center gap-3 text-2xl font-bold tracking-tight text-slate-900 md:text-4xl">
+              <h1 className="type-display flex items-center gap-3 text-slate-900">
                 <Users className="h-7 w-7 shrink-0 text-slate-900 md:h-9 md:w-9" />
                 <span className="truncate">Gestão da Equipe</span>
               </h1>

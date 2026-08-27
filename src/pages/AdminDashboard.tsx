@@ -1070,7 +1070,7 @@ const AdminDashboard = () => {
               <img src={appLogo} alt="Logo" className="h-10 w-10 shrink-0 rounded-2xl object-contain border border-slate-200 bg-white shadow-sm" />
             ) : null}
             <div className="flex items-center gap-3">
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900">Design Hub</h1>
+              <h1 className="type-heading text-slate-900">Design Hub</h1>
               <div className="hidden items-center gap-3 md:flex">
                 {isAdmin && (
                   <Button
@@ -1131,7 +1131,7 @@ const AdminDashboard = () => {
       <Sheet open={quickLinksOpen} onOpenChange={setQuickLinksOpen}>
         <SheetContent side="right" className="w-72 p-0">
           <SheetHeader className="border-b px-5 py-4">
-            <SheetTitle className="text-left text-base font-semibold flex items-center gap-2">
+            <SheetTitle className="type-subheading flex items-center gap-2 text-left">
               <Link2 className="h-4 w-4" />
               Links Rápidos
             </SheetTitle>
@@ -1147,10 +1147,10 @@ const AdminDashboard = () => {
           <section className="grid gap-4 xl:grid-cols-[1.2fr_1.4fr]">
             <div className="relative overflow-hidden rounded-[28px] border border-[#dfe8fb] bg-gradient-to-r from-white via-[#f7faff] to-[#eef4ff] px-7 py-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]">
               <div className="relative z-10">
-                <h2 className="text-3xl font-semibold tracking-tight text-slate-900">
+                <h2 className="type-display text-slate-900">
                   {getGreeting()}, {userName ? userName.split(" ")[0] : "Liege"}👋
                 </h2>
-                <p className="mt-2 text-base capitalize text-slate-500">{getFormattedDate()}</p>
+                <p className="type-body mt-2 capitalize text-slate-500">{getFormattedDate()}</p>
               </div>
               <div className="pointer-events-none absolute -right-3 top-8 h-32 w-32 rounded-full bg-gradient-to-br from-[#dce8ff] via-[#bccbff] to-[#eef2ff] opacity-80 blur-[1px]" />
               <div className="pointer-events-none absolute right-24 top-12 h-20 w-20 rounded-full border border-white/70 bg-white/50 backdrop-blur" />
@@ -1166,12 +1166,12 @@ const AdminDashboard = () => {
                 { label: "Aprovados", value: approvedCount, note: approvedCount > 0 ? `+${approvedCount} aprovações` : "Sem aprovações hoje", icon: CheckCircle2, color: "text-emerald-500" },
               ].map((item) => (
                 <div key={item.label} className="bg-white px-5 py-5">
-                  <div className="flex items-center gap-2 text-xs font-medium text-slate-500">
+                  <div className="type-label flex items-center gap-2 text-slate-500">
                     <item.icon className={`h-4 w-4 ${item.color}`} />
                     {item.label}
                   </div>
-                  <div className="mt-4 text-4xl font-semibold tracking-tight text-slate-900">{item.value}</div>
-                  <p className={`mt-2 text-xs ${item.color}`}>{item.note}</p>
+                  <div className="type-kpi mt-4 text-slate-900">{item.value}</div>
+                  <p className={`type-caption mt-2 ${item.color}`}>{item.note}</p>
                 </div>
               ))}
             </div>
@@ -1184,7 +1184,7 @@ const AdminDashboard = () => {
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-violet-600">
                     <CalendarClock className="h-4 w-4" />
                   </div>
-                  <h3 className="font-semibold text-slate-900">Tarefas com Prazo</h3>
+                  <h3 className="type-subheading text-slate-900">Tarefas com Prazo</h3>
                 </div>
                 <span className="rounded-full bg-amber-100 px-2 py-1 text-[11px] font-semibold text-amber-600">
                   Em breve ({dashboardTasks.length})
@@ -1234,7 +1234,7 @@ const AdminDashboard = () => {
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-violet-600">
                     <CalendarDays className="h-4 w-4" />
                   </div>
-                  <h3 className="font-semibold text-slate-900">Agenda de hoje</h3>
+                  <h3 className="type-subheading text-slate-900">Agenda de hoje</h3>
                 </div>
                 <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-600">
                   {todayAppointmentsPending} pendentes
@@ -1276,7 +1276,7 @@ const AdminDashboard = () => {
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-violet-600">
                     <CalendarClock className="h-4 w-4" />
                   </div>
-                  <h3 className="font-semibold text-slate-900">Posts para Hoje</h3>
+                  <h3 className="type-subheading text-slate-900">Posts para Hoje</h3>
                 </div>
                 <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-600">
                   {todayPosts.length}
@@ -1320,7 +1320,7 @@ const AdminDashboard = () => {
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-violet-600">
                 <Bell className="h-4 w-4 text-amber-500" />
               </div>
-                <h3 className="font-semibold text-slate-900">{t("clientFeedbacks")}</h3>
+                <h3 className="type-subheading text-slate-900">{t("clientFeedbacks")}</h3>
               </div>
               <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-600">
                 {feedbacks.length}
@@ -1505,7 +1505,7 @@ const AdminDashboard = () => {
                   <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-violet-600">
                     <FilePlus className="h-4 w-4" />
                   </div>
-                  <h3 className="font-semibold text-slate-900">{t("postsCreatedByClient")}</h3>
+                  <h3 className="type-subheading text-slate-900">{t("postsCreatedByClient")}</h3>
                 </div>
                 <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-600">
                   {clientCreatedNotifs.length}
@@ -1550,7 +1550,7 @@ const AdminDashboard = () => {
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-violet-600">
                   <Users className="h-4 w-4" />
                 </div>
-                <h3 className="font-semibold text-slate-900">Clientes</h3>
+                <h3 className="type-subheading text-slate-900">Clientes</h3>
               </div>
               <span className="rounded-full bg-violet-100 px-2 py-1 text-[11px] font-semibold text-violet-600">
                 {activeClientsCount}

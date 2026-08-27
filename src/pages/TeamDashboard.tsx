@@ -260,7 +260,7 @@ const TeamDashboard = () => {
           <div className="flex items-center gap-2 md:gap-3 min-w-0">
             <MobileNav title="Equipe" />
             <div className="min-w-0">
-              <h1 className="text-lg md:text-2xl font-bold text-foreground truncate">
+              <h1 className="type-heading truncate text-foreground">
                 {t("hello")}, {userName || t("teamMember")} 👋
               </h1>
               <p className="text-xs md:text-sm text-muted-foreground">{t("yourClients")}: {clients.length}</p>

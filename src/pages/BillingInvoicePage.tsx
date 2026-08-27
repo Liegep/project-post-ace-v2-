@@ -548,7 +548,7 @@ export default function BillingInvoicePage() {
             <Button variant="ghost" size="icon" onClick={() => navigate("/billing")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <h1 className="text-lg font-bold">Fatura</h1>
+            <h1 className="type-heading">Fatura</h1>
           </div>
         </header>
         <div className="flex min-h-[60vh] items-center justify-center">
@@ -567,7 +567,7 @@ export default function BillingInvoicePage() {
             <Button variant="ghost" size="icon" onClick={() => navigate("/billing")}>
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <h1 className="text-lg font-bold">Fatura</h1>
+            <h1 className="type-heading">Fatura</h1>
           </div>
         </header>
         <div className="mx-auto max-w-xl px-4 py-16 text-center">
@@ -592,7 +592,7 @@ export default function BillingInvoicePage() {
           </Button>
           <div className="flex-1">
             <p className="text-xs uppercase tracking-[0.3em] text-muted-foreground">Fatura #{invoice.invoice_number}</p>
-            <h1 className="text-lg font-bold">{title || "Sem título"}</h1>
+            <h1 className="type-heading">{title || "Sem título"}</h1>
           </div>
           <Badge className={selectedStatus.className}>
             <selectedStatus.icon className="mr-1 h-3.5 w-3.5" />

@@ -45,11 +45,50 @@
     --space-6: 1.5rem;
     --space-8: 2rem;
 
-    --font-size-xs: 0.75rem;
-    --font-size-sm: 0.875rem;
-    --font-size-base: 1rem;
-    --font-size-lg: 1.25rem;
-    --font-size-xl: 1.5rem;
+    /* Unified type scale — ~1.25 modular rhythm around a 14px body. */
+    --font-family-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+
+    --type-display-size: 1.875rem;
+    --type-display-weight: 650;
+    --type-display-leading: 1.15;
+    --type-display-tracking: -0.025em;
+
+    --type-heading-size: 1.375rem;
+    --type-heading-weight: 600;
+    --type-heading-leading: 1.25;
+    --type-heading-tracking: -0.015em;
+
+    --type-subheading-size: 1.0625rem;
+    --type-subheading-weight: 500;
+    --type-subheading-leading: 1.35;
+    --type-subheading-tracking: -0.005em;
+
+    --type-body-size: 0.875rem;
+    --type-body-weight: 400;
+    --type-body-leading: 1.55;
+    --type-body-tracking: 0;
+
+    --type-label-size: 0.75rem;
+    --type-label-weight: 500;
+    --type-label-leading: 1.35;
+    --type-label-tracking: 0.12em;
+
+    --type-caption-size: 0.75rem;
+    --type-caption-weight: 400;
+    --type-caption-leading: 1.4;
+    --type-caption-tracking: 0.01em;
+
+    --type-kpi-size: 1.5rem;
+    --type-kpi-weight: 550;
+    --type-kpi-leading: 1.1;
+    --type-kpi-tracking: -0.02em;
+
+    /* Backwards-compatible aliases for existing UI primitives. */
+    --font-size-xs: var(--type-caption-size);
+    --font-size-sm: var(--type-body-size);
+    --font-size-base: var(--type-body-size);
+    --font-size-lg: var(--type-subheading-size);
+    --font-size-xl: var(--type-heading-size);
 
     --icon-xs: 0.75rem;
     --icon-sm: 1rem;
@@ -108,6 +147,11 @@
 
   body {
     @apply text-foreground;
+    font-family: var(--font-family-sans);
+    font-size: var(--type-body-size);
+    font-weight: var(--type-body-weight);
+    line-height: var(--type-body-leading);
+    letter-spacing: var(--type-body-tracking);
     background-color: hsl(220 20% 97%);
     background-image: 
       radial-gradient(ellipse at 0% 0%, hsl(200 60% 88% / 0.6) 0%, transparent 50%),
@@ -117,6 +161,59 @@
       radial-gradient(ellipse at 20% 100%, hsl(190 50% 90% / 0.4) 0%, transparent 50%);
     background-attachment: fixed;
     min-height: 100vh;
+  }
+}
+
+@layer components {
+  .type-display {
+    font-size: var(--type-display-size);
+    font-weight: var(--type-display-weight);
+    line-height: var(--type-display-leading);
+    letter-spacing: var(--type-display-tracking);
+  }
+
+  .type-heading {
+    font-size: var(--type-heading-size);
+    font-weight: var(--type-heading-weight);
+    line-height: var(--type-heading-leading);
+    letter-spacing: var(--type-heading-tracking);
+  }
+
+  .type-subheading {
+    font-size: var(--type-subheading-size);
+    font-weight: var(--type-subheading-weight);
+    line-height: var(--type-subheading-leading);
+    letter-spacing: var(--type-subheading-tracking);
+  }
+
+  .type-body {
+    font-size: var(--type-body-size);
+    font-weight: var(--type-body-weight);
+    line-height: var(--type-body-leading);
+    letter-spacing: var(--type-body-tracking);
+  }
+
+  .type-label {
+    font-size: var(--type-label-size);
+    font-weight: var(--type-label-weight);
+    line-height: var(--type-label-leading);
+    letter-spacing: var(--type-label-tracking);
+    text-transform: uppercase;
+  }
+
+  .type-caption {
+    font-size: var(--type-caption-size);
+    font-weight: var(--type-caption-weight);
+    line-height: var(--type-caption-leading);
+    letter-spacing: var(--type-caption-tracking);
+  }
+
+  .type-kpi {
+    font-variant-numeric: tabular-nums;
+    font-size: var(--type-kpi-size);
+    font-weight: var(--type-kpi-weight);
+    line-height: var(--type-kpi-leading);
+    letter-spacing: var(--type-kpi-tracking);
   }
 }
 
