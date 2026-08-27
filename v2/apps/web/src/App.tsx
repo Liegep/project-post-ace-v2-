@@ -1888,8 +1888,7 @@ function DashboardClientSubmissionsWidget({ items, userId }: { items: DashboardS
       <small>{formatSubmissionDate(item.createdAt)}</small>
       <button className="dashboard-submission-dismiss" type="button" onClick={() => dismissSuggestion(item.id)} aria-label={`Remover sugestão de ${item.clientName}`} title="Já vi esta sugestão">×</button>
     </article>)}</div>
-    {hiddenCount > 0 ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded(true)}>Ver mais sugestões ({hiddenCount})…</button> : expanded && visibleItems.length > 3 ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded(false)}>Ver menos sugestões</button> : null}
-    <button className="dashboard-link">Ver sugestões no quadro →</button>
+    {hiddenCount > 0 ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded(true)}>Ver mais...</button> : null}
   </section>;
 }
 
