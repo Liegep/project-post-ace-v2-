@@ -37,9 +37,11 @@ async function ensureApprovedColumn(app: FastifyInstance, clientAccountId: strin
 }
 
 async function ensureApprovedBriefsColumn(app: FastifyInstance, clientAccountId: string) {
-  const existing = await findColumnByClientAndName(app.db, clientAccountId, "Pautas aprovadas");
+  const existing = await findColumnByClientAndName(app.db, clientAccountId, "Pauta aprovada");
   if (existing) return existing;
-  return createColumn(app.db, clientAccountId, { name: "Pautas aprovadas", color: "#8b5cf6", visibleToClient: false, autoCreated: true });
+  const previousPlural = await findColumnByClientAndName(app.db, clientAccountId, "Pautas aprovadas");
+  if (previousPlural) return updateColumn(app.db, previousPlural.id, { name: "Pauta aprovada" });
+  return createColumn(app.db, clientAccountId, { name: "Pauta aprovada", color: "#8b5cf6", visibleToClient: false, autoCreated: true });
 }
 
 export async function reconcileApprovedCardColumns(app: FastifyInstance) {
