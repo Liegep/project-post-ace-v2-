@@ -18,7 +18,9 @@ function groupPortalCards(
   includeAllCards = false,
 ) {
   const visibleColumns = columns.filter((column) => column.visibleToClient);
-  const cardsSentToClient = includeAllCards ? cards : cards.filter((card) => card.status.includes("Enviar para Cliente"));
+  const cardsSentToClient = includeAllCards
+    ? cards
+    : cards.filter((card) => card.status.includes("Enviar para Cliente") || card.isBriefApproval);
   const visibleIds = new Set(visibleColumns.map((column) => column.id));
   const cardsByColumnId = new Map<string, typeof cards>();
   const withoutColumn: typeof cards = [];

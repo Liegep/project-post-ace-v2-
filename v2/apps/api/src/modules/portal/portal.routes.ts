@@ -42,7 +42,7 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
       listCardsByClientAccountId(app.db, params.clientAccountId, { archived: false, search: query.q }),
       listCardsByClientAccountId(app.db, params.clientAccountId, { archived: true, search: query.q }),
     ]);
-    const visibleActiveCards = activeCards.filter((card) => card.status.includes("Enviar para Cliente") || /(aprovad|revis[aã]o solicitada)/i.test(`${card.clientLabel} ${card.status.join(" ")}`));
+    const visibleActiveCards = activeCards.filter((card) => card.isBriefApproval || card.status.includes("Enviar para Cliente") || /(aprovad|revis[aã]o solicitada)/i.test(`${card.clientLabel} ${card.status.join(" ")}`));
     return { items: [...visibleActiveCards, ...archivedCards] };
   });
 
@@ -197,18 +197,24 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
     let updatedCard = await updateCard(app.db, params.cardId, {
       clientLabel: input.approved ? "Aprovado pelo cliente" : "Alteração solicitada",
       status: [...decisionStatuses, input.approved ? "Aprovado" : "Revisão solicitada"],
+      isBriefApproval: input.approved && card.isBriefApproval ? false : card.isBriefApproval,
     });
 
     if (input.approved && updatedCard) {
       const columns = await listColumnsByClientAccountId(app.db, params.clientAccountId);
-      let approvedColumn = columns.find((column) => /aprovados(?: pelo cliente)?/i.test(column.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "")));
-      if (!approvedColumn) {
-        approvedColumn = await createColumn(app.db, params.clientAccountId, { name: "Aprovados", color: "#28b77d", visibleToClient: true, autoCreated: true }) ?? undefined;
-      } else if (!approvedColumn.visibleToClient) {
-        approvedColumn = await updateColumn(app.db, approvedColumn.id, { visibleToClient: true }) ?? approvedColumn;
+      const normalizedColumnName = (name: string) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+      let destinationColumn = card.isBriefApproval
+        ? columns.find((column) => /^entrada$/i.test(normalizedColumnName(column.name)))
+        : columns.find((column) => /aprovados(?: pelo cliente)?/i.test(normalizedColumnName(column.name)));
+      if (!destinationColumn) {
+        destinationColumn = card.isBriefApproval
+          ? await createColumn(app.db, params.clientAccountId, { name: "Entrada", color: "#5b7cfa", visibleToClient: false, autoCreated: true }) ?? undefined
+          : await createColumn(app.db, params.clientAccountId, { name: "Aprovados", color: "#28b77d", visibleToClient: true, autoCreated: true }) ?? undefined;
+      } else if (!card.isBriefApproval && !destinationColumn.visibleToClient) {
+        destinationColumn = await updateColumn(app.db, destinationColumn.id, { visibleToClient: true }) ?? destinationColumn;
       }
-      if (approvedColumn) {
-        updatedCard = await moveCard(app.db, params.cardId, updatedCard, { columnId: approvedColumn.id }) ?? updatedCard;
+      if (destinationColumn) {
+        updatedCard = await moveCard(app.db, params.cardId, updatedCard, { columnId: destinationColumn.id }) ?? updatedCard;
       }
     }
 
