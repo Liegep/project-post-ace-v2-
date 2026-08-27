@@ -3349,6 +3349,7 @@ function ColumnEditorModal({
     setName(column?.name ?? "");
     setColor(column?.color ?? columnColors[0]);
     setVisibleToClient(column?.visibleToClient ?? false);
+    setSaving(false);
     setError("");
   }, [column, open]);
 
@@ -3367,6 +3368,7 @@ function ColumnEditorModal({
       await onSave({ name: name.trim(), color, visibleToClient });
     } catch {
       setError("Não foi possível salvar agora. Tente novamente.");
+    } finally {
       setSaving(false);
     }
   }
