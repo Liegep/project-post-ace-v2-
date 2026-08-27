@@ -4568,6 +4568,8 @@ button {
 .kanban-admin-layout > .main-column {
   height: 100%;
   min-height: 0;
+  box-sizing: border-box;
+  padding-inline-end: 66px;
   overflow: hidden;
 }
 
