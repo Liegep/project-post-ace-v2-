@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { zipSync } from "fflate";
@@ -120,11 +120,17 @@ import { PortalReports, ReportsWorkspace } from "./ReportsWorkspace";
 import { BILLING_PENDING_LINE_KEY, BillingInvoiceDocument, BillingWorkspace, formatBillingDate, formatBillingMoney, getBillingInvoiceTotal, loadClientVisibleInvoices, type BillingInvoice, type BillingLineRequest } from "./BillingWorkspace";
 import liegePaschoaliniLogo from "./assets/liege-paschoalini-logo.png";
 import designHubV2Logo from "./assets/design-hub-v2-logo.png";
+import { normalizePortalLocale, portalLocaleTag, portalText, type PortalLocale } from "./portalI18n";
 
 const SESSION_KEY = "designhub-v2-session";
 const DEV_USER_ID_KEY = "designhub-v2-dev-user-id";
 const MAX_MEDIA_FILE_SIZE = 12 * 1024 * 1024;
 const MAX_VIDEO_FILE_SIZE = 20 * 1024 * 1024;
+const PortalLocaleContext = createContext<PortalLocale>("pt");
+function usePortalTranslation() {
+  const locale = useContext(PortalLocaleContext);
+  return { locale, localeTag: portalLocaleTag(locale), t: (source: string) => portalText(locale, source) };
+}
 const CARD_STATUS_OPTIONS = [
   "Entrada",
   "Em Desenvolvimento",
@@ -4004,6 +4010,7 @@ function ClientPortalRoutePage({ session, onLogout }: { session: SessionUser | n
 }
 
 function ClientProfileMenu({ session, slug, onLogout, clientLogoUrl, accountName }: { session: SessionUser; slug: string; onLogout: () => void; clientLogoUrl?: string | null; accountName: string }) {
+  const { t } = usePortalTranslation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -4027,8 +4034,8 @@ function ClientProfileMenu({ session, slug, onLogout, clientLogoUrl, accountName
   const show = (next: typeof dialog) => { setOpen(false); setDialog(next); setMessage(""); };
   const savePassword = async () => {
     setSaving(true); setMessage("");
-    try { await changeMyPassword({ currentPassword, newPassword }); setCurrentPassword(""); setNewPassword(""); setMessage("Senha atualizada com sucesso."); }
-    catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível atualizar a senha."); }
+    try { await changeMyPassword({ currentPassword, newPassword }); setCurrentPassword(""); setNewPassword(""); setMessage(t("Senha atualizada com sucesso.")); }
+    catch (error) { setMessage(error instanceof Error ? error.message : t("Não foi possível atualizar a senha.")); }
     finally { setSaving(false); }
   };
   const hasMultipleAccounts = session.assignedPortalSlugs.length > 1;
@@ -4041,31 +4048,31 @@ function ClientProfileMenu({ session, slug, onLogout, clientLogoUrl, accountName
       </button>
       {open ? (
         <div className="profile-popover profile-popover-up">
-          <button onClick={() => show("password")}><span>⚿</span>Alterar Senha</button>
-          {hasMultipleAccounts ? <button onClick={() => show("accounts")}><span>♧</span>Trocar de conta</button> : null}
+          <button onClick={() => show("password")}><span>⚿</span>{t("Alterar Senha")}</button>
+          {hasMultipleAccounts ? <button onClick={() => show("accounts")}><span>♧</span>{t("Trocar de conta")}</button> : null}
           <hr />
-          <button className="profile-logout" onClick={onLogout}><span>⇥</span>Sair</button>
+          <button className="profile-logout" onClick={onLogout}><span>⇥</span>{t("Sair")}</button>
         </div>
       ) : null}
       {dialog ? (
         <div className="profile-modal-backdrop" onMouseDown={() => setDialog(null)}>
           <section className="profile-modal" onMouseDown={(event) => event.stopPropagation()}>
             <header>
-              <h3>{dialog === "password" ? "Alterar Senha" : "Trocar de conta"}</h3>
-              <button onClick={() => setDialog(null)} aria-label="Fechar">×</button>
+              <h3>{dialog === "password" ? t("Alterar Senha") : t("Trocar de conta")}</h3>
+              <button onClick={() => setDialog(null)} aria-label={t("Fechar")}>×</button>
             </header>
             {dialog === "password" ? (
               <div className="profile-form">
-                <label>Senha atual<input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
-                <label>Nova senha<input type="password" minLength={8} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label>
-                <button className="gradient-button" disabled={saving || !currentPassword || newPassword.length < 8} onClick={() => void savePassword()}>{saving ? "Salvando..." : "Salvar nova senha"}</button>
+                <label>{t("Senha atual")}<input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
+                <label>{t("Nova senha")}<input type="password" minLength={8} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label>
+                <button className="gradient-button" disabled={saving || !currentPassword || newPassword.length < 8} onClick={() => void savePassword()}>{saving ? t("Salvando...") : t("Salvar nova senha")}</button>
               </div>
             ) : null}
             {dialog === "accounts" ? (
               <div className="profile-agenda">
                 {session.assignedPortalSlugs.map((accountSlug) => (
                   <a key={accountSlug} href={`/portal/${accountSlug}`} onClick={(event) => { event.preventDefault(); setDialog(null); navigate(`/portal/${accountSlug}`); }} className={accountSlug === slug ? "selected" : ""}>
-                    {accountSlug.replace(/-/g, " ")}{accountSlug === slug ? <small>Conta atual</small> : null}
+                    {accountSlug.replace(/-/g, " ")}{accountSlug === slug ? <small>{t("Conta atual")}</small> : null}
                   </a>
                 ))}
               </div>
@@ -4079,6 +4086,7 @@ function ClientProfileMenu({ session, slug, onLogout, clientLogoUrl, accountName
 }
 
 function ClientPortalInvoicesView({ invoices, onViewInvoice }: { invoices: BillingInvoice[]; onViewInvoice?: (invoiceId: string) => void }) {
+  const { t, localeTag } = usePortalTranslation();
   const [previewInvoice, setPreviewInvoice] = useState<BillingInvoice | null>(null);
   const [printRequested, setPrintRequested] = useState(false);
   const invoiceRef = useRef<HTMLDivElement>(null);
@@ -4113,10 +4121,11 @@ function ClientPortalInvoicesView({ invoices, onViewInvoice }: { invoices: Billi
     setPreviewInvoice(invoice);
   };
 
+  const date = (value: string) => new Intl.DateTimeFormat(localeTag).format(new Date(`${value.slice(0, 10)}T12:00:00`));
   return <section className="portal-invoices-view glass">
-    <header className="portal-invoices-head"><div><p className="eyebrow">Financeiro</p><h1>Faturas</h1><p>Consulte os lançamentos disponibilizados para sua conta.</p></div><span>{invoices.length} {invoices.length === 1 ? "fatura" : "faturas"}</span></header>
-    {invoices.length ? <div className="portal-invoices-list">{invoices.map((invoice) => <article key={invoice.id} className="portal-invoice-row"><div className="portal-invoice-number">#{invoice.number}</div><div className="portal-invoice-main"><strong>{invoice.title}</strong><span>Emitida em {formatBillingDate(invoice.issueDate)} · Vencimento {formatBillingDate(invoice.dueDate)}</span></div><div className="portal-invoice-value"><strong>{formatBillingMoney(getBillingInvoiceTotal(invoice), invoice.currency)}</strong><em className={`invoice-status ${invoice.status}`}>{invoice.status === "paid" ? "Paga" : invoice.status === "overdue" ? "Atrasada" : invoice.status === "cancelled" ? "Cancelada" : "Aberta"}</em></div><div className="portal-invoice-actions"><button className="ghost-button" onClick={() => previewInvoiceForClient(invoice)}><UiIcon name="eye" />Visualizar</button><button className="ghost-button" onClick={() => downloadInvoice(invoice)}><UiIcon name="file" />Baixar</button></div></article>)}</div> : <div className="portal-invoices-empty"><span>▣</span><h2>Nenhuma fatura disponível</h2><p>Quando uma fatura for liberada para esta conta, ela aparecerá aqui.</p></div>}
-    {previewInvoice ? <div className="modal-backdrop" onClick={() => setPreviewInvoice(null)}><section className="portal-invoice-preview-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Visualização da fatura</p><h2>{previewInvoice.title}</h2><span>Fatura #{previewInvoice.number}</span></div><button className="icon-close" onClick={() => setPreviewInvoice(null)} aria-label="Fechar">×</button></header><div ref={invoiceRef}><BillingInvoiceDocument invoice={previewInvoice} /></div><footer><button className="ghost-button" onClick={() => setPreviewInvoice(null)}>Fechar</button><button className="gradient-button" onClick={printInvoice}><UiIcon name="file" />Baixar</button></footer></section></div> : null}
+    <header className="portal-invoices-head"><div><p className="eyebrow">{t("Financeiro")}</p><h1>{t("Faturas")}</h1><p>{t("Consulte os lançamentos disponibilizados para sua conta.")}</p></div><span>{invoices.length} {t(invoices.length === 1 ? "fatura" : "faturas")}</span></header>
+    {invoices.length ? <div className="portal-invoices-list">{invoices.map((invoice) => <article key={invoice.id} className="portal-invoice-row"><div className="portal-invoice-number">#{invoice.number}</div><div className="portal-invoice-main"><strong>{invoice.title}</strong><span>{t("Emitida em")} {date(invoice.issueDate)} · {t("Vencimento")} {date(invoice.dueDate)}</span></div><div className="portal-invoice-value"><strong>{formatBillingMoney(getBillingInvoiceTotal(invoice), invoice.currency)}</strong><em className={`invoice-status ${invoice.status}`}>{t(invoice.status === "paid" ? "Paga" : invoice.status === "overdue" ? "Atrasada" : invoice.status === "cancelled" ? "Cancelada" : "Aberta")}</em></div><div className="portal-invoice-actions"><button className="ghost-button" onClick={() => previewInvoiceForClient(invoice)}><UiIcon name="eye" />{t("Visualizar")}</button><button className="ghost-button" onClick={() => downloadInvoice(invoice)}><UiIcon name="file" />{t("Baixar")}</button></div></article>)}</div> : <div className="portal-invoices-empty"><span>▣</span><h2>{t("Nenhuma fatura disponível")}</h2><p>{t("Quando uma fatura for liberada para esta conta, ela aparecerá aqui.")}</p></div>}
+    {previewInvoice ? <div className="modal-backdrop" onClick={() => setPreviewInvoice(null)}><section className="portal-invoice-preview-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">{t("Visualização da fatura")}</p><h2>{previewInvoice.title}</h2><span>{t("Fatura")} #{previewInvoice.number}</span></div><button className="icon-close" onClick={() => setPreviewInvoice(null)} aria-label={t("Fechar")}>×</button></header><div ref={invoiceRef}><BillingInvoiceDocument invoice={previewInvoice} /></div><footer><button className="ghost-button" onClick={() => setPreviewInvoice(null)}>{t("Fechar")}</button><button className="gradient-button" onClick={printInvoice}><UiIcon name="file" />{t("Baixar")}</button></footer></section></div> : null}
   </section>;
 }
 
@@ -4196,6 +4205,7 @@ async function downloadPortalCardAssets(card: BoardCard) {
 }
 
 function ClientApprovedPostsView({ cards, allowDownload, onOpenCard }: { cards: BoardCard[]; allowDownload: boolean; onOpenCard: (cardId: string) => void }) {
+  const { t } = usePortalTranslation();
   const approvedCards = cards.filter(isPortalApproved);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState("");
@@ -4205,30 +4215,31 @@ function ClientApprovedPostsView({ cards, allowDownload, onOpenCard }: { cards: 
     try {
       await downloadPortalCardAssets(card);
     } catch (error) {
-      setDownloadError(error instanceof Error ? error.message : "Não foi possível preparar o download.");
+      setDownloadError(error instanceof Error ? error.message : t("Não foi possível preparar o download."));
     } finally {
       setDownloadingId(null);
     }
   };
   return <section className="portal-approved-view glass">
-    <header className="portal-approved-head"><div><p className="eyebrow">Conteúdos aprovados</p><h1>Aprovados</h1><p>{allowDownload ? "Visualize ou baixe as artes que já receberam aprovação." : "Consulte os posts que já receberam aprovação."}</p></div><span>{approvedCards.length} {approvedCards.length === 1 ? "post" : "posts"}</span></header>
+    <header className="portal-approved-head"><div><p className="eyebrow">{t("Conteúdos aprovados")}</p><h1>{t("Aprovados")}</h1><p>{t(allowDownload ? "Visualize ou baixe as artes que já receberam aprovação." : "Consulte os posts que já receberam aprovação.")}</p></div><span>{approvedCards.length} {t(approvedCards.length === 1 ? "post" : "posts")}</span></header>
     {downloadError ? <p className="form-feedback error-text">{downloadError}</p> : null}
-    {approvedCards.length ? <div className="portal-approved-list">{approvedCards.map((card) => { const assets = portalCardAssets(card); const downloading = downloadingId === card.id; return <article key={card.id} className="portal-approved-card"><div className="portal-approved-preview">{assets.length ? <ClosedCardMedia card={card} /> : <span>Sem arte</span>}</div><div className="portal-approved-copy"><span className="portal-text-status approved">Aprovado</span><h2>{card.title}</h2><p>{assets.length} {assets.length === 1 ? "arquivo disponível" : "arquivos disponíveis"}</p><div className="portal-approved-actions"><button type="button" className="ghost-button" onClick={() => onOpenCard(card.id)}><UiIcon name="image" />Visualizar post</button>{allowDownload ? <button type="button" className="gradient-button" onClick={() => void download(card)} disabled={assets.length === 0 || downloading}><UiIcon name="download" />{downloading ? "Preparando download..." : assets.length > 1 ? "Baixar tudo em ZIP" : "Baixar conteúdo"}</button> : <span className="portal-view-only"><UiIcon name="eye" />Somente visualização</span>}</div></div></article>; })}</div> : <div className="portal-approved-empty"><span>✓</span><h2>Nenhum post aprovado ainda</h2><p>Quando um post for aprovado, ele aparecerá aqui para consulta.</p></div>}
+    {approvedCards.length ? <div className="portal-approved-list">{approvedCards.map((card) => { const assets = portalCardAssets(card); const downloading = downloadingId === card.id; return <article key={card.id} className="portal-approved-card"><div className="portal-approved-preview">{assets.length ? <ClosedCardMedia card={card} /> : <span>{t("Sem arte")}</span>}</div><div className="portal-approved-copy"><span className="portal-text-status approved">{t("Aprovado")}</span><h2>{card.title}</h2><p>{assets.length} {t(assets.length === 1 ? "arquivo disponível" : "arquivos disponíveis")}</p><div className="portal-approved-actions"><button type="button" className="ghost-button" onClick={() => onOpenCard(card.id)}><UiIcon name="image" />{t("Visualizar post")}</button>{allowDownload ? <button type="button" className="gradient-button" onClick={() => void download(card)} disabled={assets.length === 0 || downloading}><UiIcon name="download" />{t(downloading ? "Preparando download..." : assets.length > 1 ? "Baixar tudo em ZIP" : "Baixar conteúdo")}</button> : <span className="portal-view-only"><UiIcon name="eye" />{t("Somente visualização")}</span>}</div></div></article>; })}</div> : <div className="portal-approved-empty"><span>✓</span><h2>{t("Nenhum post aprovado ainda")}</h2><p>{t("Quando um post for aprovado, ele aparecerá aqui para consulta.")}</p></div>}
   </section>;
 }
 
-function getPortalSearchStatuses(card: BoardCard) {
+function getPortalSearchStatuses(card: BoardCard, t: (source: string) => string) {
   const combined = `${card.clientLabel} ${card.statusBadges.join(" ")}`;
-  if (card.archivedAt) return [{ label: "Arquivado", tone: "archived" }];
+  if (card.archivedAt) return [{ label: t("Arquivado"), tone: "archived" }];
   const statuses: Array<{ label: string; tone: string }> = [];
-  if (card.scheduledAt) statuses.push({ label: "Agendado", tone: "scheduled" });
-  if (isPortalApproved(card)) statuses.push({ label: "Aprovado", tone: "approved" });
-  else if (/(alteração|alteracao|revis)/i.test(combined)) statuses.push({ label: "Alteração solicitada", tone: "revision" });
-  else statuses.push({ label: "Aguardando aprovação", tone: "pending" });
+  if (card.scheduledAt) statuses.push({ label: t("Agendado"), tone: "scheduled" });
+  if (isPortalApproved(card)) statuses.push({ label: t("Aprovado"), tone: "approved" });
+  else if (/(alteração|alteracao|revis)/i.test(combined)) statuses.push({ label: t("Alteração solicitada"), tone: "revision" });
+  else statuses.push({ label: t("Aguardando aprovação"), tone: "pending" });
   return statuses;
 }
 
 function ClientPortalSearchView({ slug, onOpenCard }: { slug: string; onOpenCard: (cardId: string) => void }) {
+  const { t, localeTag } = usePortalTranslation();
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<BoardCard[]>([]);
   const [loading, setLoading] = useState(false);
@@ -4247,70 +4258,73 @@ function ClientPortalSearchView({ slug, onOpenCard }: { slug: string; onOpenCard
       setError("");
       void searchPortalCardsBySlug(slug, trimmedQuery)
         .then((response) => { if (active) setResults(response.items); })
-        .catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : "Não foi possível realizar a pesquisa."); })
+        .catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : t("Não foi possível realizar a pesquisa.")); })
         .finally(() => { if (active) setLoading(false); });
     }, 280);
     return () => { active = false; window.clearTimeout(timeout); };
   }, [slug, trimmedQuery]);
 
   return <section className="portal-search-view">
-    <header className="portal-search-hero glass"><div><p className="eyebrow">PESQUISA GLOBAL</p><h1>Encontre qualquer conteúdo</h1><span>Pesquise posts em aprovação, aprovados, agendados ou arquivados.</span></div><div className="portal-search-field"><label><UiIcon name="search" /><input autoFocus type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Busque por título ou palavra da legenda" /></label><small>{loading ? "Buscando conteúdos..." : trimmedQuery.length >= 2 ? `${results.length} resultado${results.length === 1 ? " encontrado" : "s encontrados"}` : "Digite ao menos 2 letras para pesquisar"}</small></div></header>
-    {error ? <div className="portal-search-state error glass">{error}</div> : trimmedQuery.length < 2 ? <div className="portal-search-state glass"><span><UiIcon name="search" /></span><h2>O que você procura?</h2><p>Você pode pesquisar pelo título ou por qualquer trecho da legenda.</p></div> : !loading && results.length === 0 ? <div className="portal-search-state glass"><span><UiIcon name="search" /></span><h2>Nenhum conteúdo encontrado</h2><p>Tente usar outra palavra ou uma parte menor do título.</p></div> : <div className="portal-search-results">{results.map((card) => <article key={card.id} className="portal-search-result glass"><div className="portal-search-result-media">{portalCardAssets(card).length ? <ClosedCardMedia card={card} /> : <span><UiIcon name="image" />Sem arte</span>}</div><div className="portal-search-result-copy"><div className="portal-search-statuses">{getPortalSearchStatuses(card).map((status) => <span key={status.label} className={status.tone}>{status.label}</span>)}</div><h2>{card.title}</h2><p>{card.subtitle?.replace(/\*\*/g, "").slice(0, 180) || "Sem legenda cadastrada."}</p>{card.scheduledAt && !card.archivedAt ? <small><UiIcon name="calendar" />{formatScheduledCardDate(card.scheduledAt)}</small> : card.archivedAt ? <small><UiIcon name="clock" />Arquivado em {new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(new Date(card.archivedAt))}</small> : null}<button type="button" className="ghost-button" onClick={() => onOpenCard(card.id)}><UiIcon name="eye" />Abrir post</button></div></article>)}</div>}
+    <header className="portal-search-hero glass"><div><p className="eyebrow">{t("PESQUISA GLOBAL")}</p><h1>{t("Encontre qualquer conteúdo")}</h1><span>{t("Pesquise posts em aprovação, aprovados, agendados ou arquivados.")}</span></div><div className="portal-search-field"><label><UiIcon name="search" /><input autoFocus type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t("Busque por título ou palavra da legenda")} /></label><small>{loading ? t("Buscando conteúdos...") : trimmedQuery.length >= 2 ? `${results.length} ${t(results.length === 1 ? "resultado encontrado" : "resultados encontrados")}` : t("Digite ao menos 2 letras para pesquisar")}</small></div></header>
+    {error ? <div className="portal-search-state error glass">{error}</div> : trimmedQuery.length < 2 ? <div className="portal-search-state glass"><span><UiIcon name="search" /></span><h2>{t("O que você procura?")}</h2><p>{t("Você pode pesquisar pelo título ou por qualquer trecho da legenda.")}</p></div> : !loading && results.length === 0 ? <div className="portal-search-state glass"><span><UiIcon name="search" /></span><h2>{t("Nenhum conteúdo encontrado")}</h2><p>{t("Tente usar outra palavra ou uma parte menor do título.")}</p></div> : <div className="portal-search-results">{results.map((card) => <article key={card.id} className="portal-search-result glass"><div className="portal-search-result-media">{portalCardAssets(card).length ? <ClosedCardMedia card={card} /> : <span><UiIcon name="image" />{t("Sem arte")}</span>}</div><div className="portal-search-result-copy"><div className="portal-search-statuses">{getPortalSearchStatuses(card, t).map((status) => <span key={status.label} className={status.tone}>{status.label}</span>)}</div><h2>{card.title}</h2><p>{card.subtitle?.replace(/\*\*/g, "").slice(0, 180) || t("Sem legenda cadastrada.")}</p>{card.scheduledAt && !card.archivedAt ? <small><UiIcon name="calendar" />{new Intl.DateTimeFormat(localeTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(card.scheduledAt))}</small> : card.archivedAt ? <small><UiIcon name="clock" />{t("Arquivado em")} {new Intl.DateTimeFormat(localeTag, { dateStyle: "medium" }).format(new Date(card.archivedAt))}</small> : null}<button type="button" className="ghost-button" onClick={() => onOpenCard(card.id)}><UiIcon name="eye" />{t("Abrir post")}</button></div></article>)}</div>}
   </section>;
 }
 
 function ClientPortalTrackerView({ columns, withoutColumn, onOpenCard }: { columns: BoardColumn[]; withoutColumn: BoardCard[]; onOpenCard: (cardId: string) => void }) {
-  const stages = [...columns, ...(withoutColumn.length ? [{ id: "without-column", name: "Em andamento", color: "#8c94a8", visibleToClient: true, cards: withoutColumn }] : [])];
+  const { t, localeTag } = usePortalTranslation();
+  const stages = [...columns, ...(withoutColumn.length ? [{ id: "without-column", name: t("Em andamento"), color: "#8c94a8", visibleToClient: true, cards: withoutColumn }] : [])];
   const cards = stages.flatMap((column) => column.cards);
   const isDone = (card: BoardCard) => isPortalApproved(card) || /(finaliz|conclu|publicad|entregue)/i.test(`${card.clientLabel} ${card.statusBadges.join(" ")}`);
   const completed = cards.filter(isDone).length;
   const progress = cards.length ? Math.round((completed / cards.length) * 100) : 0;
   const tone = (card: BoardCard) => isDone(card) ? "done" : /(alteração|alteracao|revis)/i.test(`${card.clientLabel} ${card.statusBadges.join(" ")}`) ? "revision" : /(design pronto)/i.test(card.statusBadges.join(" ")) ? "design" : /(legenda)/i.test(card.statusBadges.join(" ")) ? "copy" : /(desenvolvimento|criação|criacao)/i.test(card.statusBadges.join(" ")) ? "working" : "waiting";
-  const visibleStatus = (card: BoardCard) => card.clientLabel && !/^pendente$/i.test(card.clientLabel) ? card.clientLabel : card.statusBadges.find((status) => status !== "Enviar para Cliente") ?? "Em andamento";
+  const visibleStatus = (card: BoardCard) => card.clientLabel && !/^pendente$/i.test(card.clientLabel) ? portalText(localeTag, card.clientLabel) : portalText(localeTag, card.statusBadges.find((status) => status !== "Enviar para Cliente") ?? "Em andamento");
 
   return <section className="portal-tracker-view">
     <header className="portal-tracker-hero glass">
-      <div><p className="eyebrow">ACOMPANHAMENTO</p><h1>Tracker de conteúdo</h1><span>Acompanhe cada etapa dos posts em produção.</span></div>
-      <div className="portal-tracker-progress-ring" style={{ "--tracker-progress": `${progress * 3.6}deg` } as CSSProperties}><strong>{progress}%</strong><small>concluído</small></div>
+      <div><p className="eyebrow">{t("ACOMPANHAMENTO")}</p><h1>{t("Tracker de conteúdo")}</h1><span>{t("Acompanhe cada etapa dos posts em produção.")}</span></div>
+      <div className="portal-tracker-progress-ring" style={{ "--tracker-progress": `${progress * 3.6}deg` } as CSSProperties}><strong>{progress}%</strong><small>{t("concluído")}</small></div>
     </header>
     <div className="portal-tracker-summary">
-      <article><span><UiIcon name="layers" /></span><div><strong>{cards.length}</strong><small>{cards.length === 1 ? "conteúdo no tracker" : "conteúdos no tracker"}</small></div></article>
-      <article><span className="done"><UiIcon name="check" /></span><div><strong>{completed}</strong><small>{completed === 1 ? "conteúdo concluído" : "conteúdos concluídos"}</small></div></article>
-      <article><span className="working"><UiIcon name="clock" /></span><div><strong>{Math.max(cards.length - completed, 0)}</strong><small>em andamento</small></div></article>
+      <article><span><UiIcon name="layers" /></span><div><strong>{cards.length}</strong><small>{t(cards.length === 1 ? "conteúdo no tracker" : "conteúdos no tracker")}</small></div></article>
+      <article><span className="done"><UiIcon name="check" /></span><div><strong>{completed}</strong><small>{t(completed === 1 ? "conteúdo concluído" : "conteúdos concluídos")}</small></div></article>
+      <article><span className="working"><UiIcon name="clock" /></span><div><strong>{Math.max(cards.length - completed, 0)}</strong><small>{t("em andamento")}</small></div></article>
     </div>
-    {cards.length ? <div className="portal-tracker-stages">{stages.map((column) => <section key={column.id} className="portal-tracker-stage glass"><header><i style={{ backgroundColor: column.color }} /><h2>{column.name}</h2><span>{column.cards.length}</span></header><div>{column.cards.length ? column.cards.map((card) => <button key={card.id} type="button" className={`portal-tracker-card ${tone(card)}`} onClick={() => onOpenCard(card.id)}><i>{isDone(card) ? "✓" : ""}</i><div><strong>{card.title}</strong><span>{visibleStatus(card)}</span>{card.scheduledAt ? <small><UiIcon name="calendar" />{formatScheduledCardDate(card.scheduledAt).replace(/^Agendado:\s*/, "")}</small> : null}</div><em /></button>) : <p>Nenhum conteúdo nesta etapa.</p>}</div></section>)}</div> : <div className="portal-tracker-empty glass"><span><UiIcon name="layers" /></span><h2>O tracker está pronto</h2><p>Os conteúdos aparecerão aqui conforme forem liberados pela equipe.</p></div>}
+    {cards.length ? <div className="portal-tracker-stages">{stages.map((column) => <section key={column.id} className="portal-tracker-stage glass"><header><i style={{ backgroundColor: column.color }} /><h2>{column.name}</h2><span>{column.cards.length}</span></header><div>{column.cards.length ? column.cards.map((card) => <button key={card.id} type="button" className={`portal-tracker-card ${tone(card)}`} onClick={() => onOpenCard(card.id)}><i>{isDone(card) ? "✓" : ""}</i><div><strong>{card.title}</strong><span>{visibleStatus(card)}</span>{card.scheduledAt ? <small><UiIcon name="calendar" />{new Intl.DateTimeFormat(localeTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(card.scheduledAt))}</small> : null}</div><em /></button>) : <p>{t("Nenhum conteúdo nesta etapa.")}</p>}</div></section>)}</div> : <div className="portal-tracker-empty glass"><span><UiIcon name="layers" /></span><h2>{t("O tracker está pronto")}</h2><p>{t("Os conteúdos aparecerão aqui conforme forem liberados pela equipe.")}</p></div>}
   </section>;
 }
 
 function ClientPortalArchivedView({ cards, loading, error, onOpenCard }: { cards: BoardCard[]; loading: boolean; error: string; onOpenCard: (cardId: string) => void }) {
+  const { t, localeTag } = usePortalTranslation();
   const groups = new Map<string, BoardCard[]>();
   [...cards].sort((left, right) => getArchiveGroupDate(right).getTime() - getArchiveGroupDate(left).getTime()).forEach((card) => {
     const date = getArchiveGroupDate(card);
-    const month = date.getTime() > 0 ? new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(date) : "Sem data";
+    const month = date.getTime() > 0 ? new Intl.DateTimeFormat(localeTag, { month: "long", year: "numeric" }).format(date) : t("Sem data");
     groups.set(month, [...(groups.get(month) ?? []), card]);
   });
   return <section className="portal-archive-view">
-    <header className="portal-archive-head glass"><div><p className="eyebrow">HISTÓRICO</p><h1>Conteúdos arquivados</h1><span>Consulte os mesmos conteúdos arquivados no Kanban.</span></div><b>{cards.length} {cards.length === 1 ? "conteúdo" : "conteúdos"}</b></header>
-    {loading ? <div className="portal-archive-state glass">Carregando conteúdos arquivados...</div> : error ? <div className="portal-archive-state error glass">{error}</div> : cards.length === 0 ? <div className="portal-archive-state glass"><span><UiIcon name="layers" /></span><h2>Nenhum conteúdo arquivado</h2><p>Quando um post for arquivado no Kanban, ele aparecerá aqui.</p></div> : <div className="portal-archive-groups">{[...groups.entries()].map(([month, monthCards]) => <section key={month}><header><h2>{month}</h2><span>{monthCards.length}</span></header><div className="portal-archive-grid">{monthCards.map((card) => <button key={card.id} type="button" className="portal-archive-card glass" onClick={() => onOpenCard(card.id)}><div className="portal-archive-preview">{portalCardAssets(card).length ? <ClosedCardMedia card={card} /> : <span><UiIcon name="image" />Sem arte</span>}</div><div className="portal-archive-copy"><span>Arquivado</span><h3>{card.title}</h3><p>{getArchiveGroupDate(card).getTime() > 0 ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(getArchiveGroupDate(card)) : "Sem data registrada"}</p>{card.tags.length ? <div>{card.tags.slice(0, 3).map((tag) => <i key={tag}>{tag}</i>)}</div> : null}</div></button>)}</div></section>)}</div>}
+    <header className="portal-archive-head glass"><div><p className="eyebrow">{t("HISTÓRICO")}</p><h1>{t("Conteúdos arquivados")}</h1><span>{t("Consulte os mesmos conteúdos arquivados no Kanban.")}</span></div><b>{cards.length} {t(cards.length === 1 ? "conteúdo" : "conteúdos")}</b></header>
+    {loading ? <div className="portal-archive-state glass">{t("Carregando conteúdos arquivados...")}</div> : error ? <div className="portal-archive-state error glass">{error}</div> : cards.length === 0 ? <div className="portal-archive-state glass"><span><UiIcon name="layers" /></span><h2>{t("Nenhum conteúdo arquivado")}</h2><p>{t("Quando um post for arquivado no Kanban, ele aparecerá aqui.")}</p></div> : <div className="portal-archive-groups">{[...groups.entries()].map(([month, monthCards]) => <section key={month}><header><h2>{month}</h2><span>{monthCards.length}</span></header><div className="portal-archive-grid">{monthCards.map((card) => <button key={card.id} type="button" className="portal-archive-card glass" onClick={() => onOpenCard(card.id)}><div className="portal-archive-preview">{portalCardAssets(card).length ? <ClosedCardMedia card={card} /> : <span><UiIcon name="image" />{t("Sem arte")}</span>}</div><div className="portal-archive-copy"><span>{t("Arquivado")}</span><h3>{card.title}</h3><p>{getArchiveGroupDate(card).getTime() > 0 ? new Intl.DateTimeFormat(localeTag, { dateStyle: "medium" }).format(getArchiveGroupDate(card)) : t("Sem data registrada")}</p>{card.tags.length ? <div>{card.tags.slice(0, 3).map((tag) => <i key={tag}>{tag}</i>)}</div> : null}</div></button>)}</div></section>)}</div>}
   </section>;
 }
 
 type PortalPostDraft = { title: string; caption: string; artType: string; externalLinkUrl: string };
 
 function ClientPostSuggestionModal({ draft, files, submitting, error, onChange, onFilesChange, onClose, onSubmit }: { draft: PortalPostDraft; files: File[]; submitting: boolean; error: string; onChange: (field: keyof PortalPostDraft, value: string) => void; onFilesChange: (files: File[]) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  const { t } = usePortalTranslation();
   return <div className="modal-backdrop portal-post-modal-backdrop" onMouseDown={onClose}>
     <form className="portal-post-modal" onSubmit={onSubmit} onMouseDown={(event) => event.stopPropagation()}>
-      <header><div><p className="eyebrow">Nova sugestão</p><h2>Sugerir um post</h2><p>Envie sua ideia para a equipe. Ela ficará pendente até entrar no planejamento.</p></div><button type="button" onClick={onClose} aria-label="Fechar">×</button></header>
+      <header><div><p className="eyebrow">{t("Nova sugestão")}</p><h2>{t("Sugerir um post")}</h2><p>{t("Envie sua ideia para a equipe. Ela ficará pendente até entrar no planejamento.")}</p></div><button type="button" onClick={onClose} aria-label={t("Fechar")}>×</button></header>
       <div className="portal-post-fields">
-        <label>Título da ideia *<input autoFocus value={draft.title} onChange={(event) => onChange("title", event.target.value)} placeholder="Ex.: Carrossel com dúvidas frequentes" maxLength={255} /></label>
-        <label>Formato<select value={draft.artType} onChange={(event) => onChange("artType", event.target.value)}>{ART_TYPE_OPTIONS.map((option) => <option key={option}>{option}</option>)}</select></label>
-        <label className="wide">Descrição ou legenda<textarea value={draft.caption} onChange={(event) => onChange("caption", event.target.value)} placeholder="Conte a ideia, o objetivo e qualquer orientação para a equipe..." maxLength={5000} /></label>
-        <label className="wide">Link de referência<input type="url" value={draft.externalLinkUrl} onChange={(event) => onChange("externalLinkUrl", event.target.value)} placeholder="https://..." /></label>
-        <label className="portal-post-files wide"><span>Artes ou referências</span><input multiple type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" onChange={(event) => onFilesChange(Array.from(event.target.files ?? []).slice(0, 20))} /><strong>{files.length ? `${files.length} ${files.length === 1 ? "arquivo selecionado" : "arquivos selecionados"}` : "Escolher arquivos"}</strong><small>Você pode enviar até 20 imagens ou vídeos.</small></label>
+        <label>{t("Título da ideia *")}<input autoFocus value={draft.title} onChange={(event) => onChange("title", event.target.value)} placeholder={t("Ex.: Carrossel com dúvidas frequentes")} maxLength={255} /></label>
+        <label>{t("Formato")}<select value={draft.artType} onChange={(event) => onChange("artType", event.target.value)}>{ART_TYPE_OPTIONS.map((option) => <option key={option}>{t(option)}</option>)}</select></label>
+        <label className="wide">{t("Descrição ou legenda")}<textarea value={draft.caption} onChange={(event) => onChange("caption", event.target.value)} placeholder={t("Conte a ideia, o objetivo e qualquer orientação para a equipe...")} maxLength={5000} /></label>
+        <label className="wide">{t("Link de referência")}<input type="url" value={draft.externalLinkUrl} onChange={(event) => onChange("externalLinkUrl", event.target.value)} placeholder="https://..." /></label>
+        <label className="portal-post-files wide"><span>{t("Artes ou referências")}</span><input multiple type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" onChange={(event) => onFilesChange(Array.from(event.target.files ?? []).slice(0, 20))} /><strong>{files.length ? `${files.length} ${t(files.length === 1 ? "arquivo selecionado" : "arquivos selecionados")}` : t("Escolher arquivos")}</strong><small>{t("Você pode enviar até 20 imagens ou vídeos.")}</small></label>
       </div>
       {files.length ? <div className="portal-post-file-list">{files.map((file, index) => <span key={`${file.name}-${index}`}>{file.name}<button type="button" onClick={() => onFilesChange(files.filter((_, itemIndex) => itemIndex !== index))}>×</button></span>)}</div> : null}
       {error ? <p className="form-feedback error-text">{error}</p> : null}
-      <footer><button className="ghost-button" type="button" disabled={submitting} onClick={onClose}>Cancelar</button><button className="gradient-button" type="submit" disabled={submitting || !draft.title.trim()}>{submitting ? "Enviando sugestão..." : "Enviar para a equipe"}</button></footer>
+      <footer><button className="ghost-button" type="button" disabled={submitting} onClick={onClose}>{t("Cancelar")}</button><button className="gradient-button" type="submit" disabled={submitting || !draft.title.trim()}>{t(submitting ? "Enviando sugestão..." : "Enviar para a equipe")}</button></footer>
     </form>
   </div>;
 }
@@ -4330,6 +4344,9 @@ function ClientPortalWorkspacePage({
     refreshKey,
   ]);
   const data = resource.data;
+  const portalLocale = normalizePortalLocale(data.locale);
+  const tr = (source: string) => portalText(portalLocale, source);
+  const clientLocaleTag = portalLocaleTag(portalLocale);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [portalView, setPortalView] = useState<"board" | "approved" | "texts" | "reports" | "invoices" | "tracker" | "archived" | "search" | "brand">("board");
   const [boardSubView, setBoardSubView] = useState<"board" | "calendar">("board");
@@ -4451,7 +4468,7 @@ function ClientPortalWorkspacePage({
     setPortalArchivedError("");
     void loadPortalArchivedCardsBySlug(slug)
       .then((result) => { if (active) setPortalArchivedCards([...result.columns.flatMap((column) => column.cards), ...result.withoutColumn]); })
-      .catch((error) => { if (active) setPortalArchivedError(error instanceof Error ? error.message : "Não foi possível carregar os arquivados."); })
+      .catch((error) => { if (active) setPortalArchivedError(error instanceof Error ? error.message : tr("Não foi possível carregar os arquivados.")); })
       .finally(() => { if (active) setPortalArchivedLoading(false); });
     return () => { active = false; };
   }, [portalView, data.showArchivedToClient, slug, refreshKey]);
@@ -4479,13 +4496,13 @@ function ClientPortalWorkspacePage({
       setPortalTextCommentDraft("");
       setPortalTextFeedback(
         action === "comment"
-          ? "Comentário enviado."
+          ? tr("Comentário enviado.")
           : action === "approve"
-            ? "Texto aprovado com sucesso."
-            : "Solicitação de alteração enviada.",
+            ? tr("Texto aprovado com sucesso.")
+            : tr("Solicitação de alteração enviada."),
       );
     } catch (error) {
-      setPortalTextFeedback(error instanceof Error ? error.message : "Não foi possível enviar o retorno.");
+      setPortalTextFeedback(error instanceof Error ? error.message : tr("Não foi possível enviar o retorno."));
     } finally {
       setPortalTextSubmitting(null);
     }
@@ -4509,10 +4526,10 @@ function ClientPortalWorkspacePage({
       setPostDraft({ title: "", caption: "", artType: "Post único", externalLinkUrl: "" });
       setPostFiles([]);
       setCreatePostOpen(false);
-      setPostSuccess("Sugestão enviada. Ela já está no quadro da equipe com status pendente.");
+      setPostSuccess(tr("Sugestão enviada. Ela já está no quadro da equipe com status pendente."));
       setRefreshKey((value) => value + 1);
     } catch (error) {
-      setPostError(error instanceof Error ? error.message : "Não foi possível enviar a sugestão.");
+      setPostError(error instanceof Error ? error.message : tr("Não foi possível enviar a sugestão."));
     } finally {
       setPostSubmitting(false);
     }
@@ -4533,33 +4550,34 @@ function ClientPortalWorkspacePage({
   }
 
   return (
-    <div className="portal-page">
+    <PortalLocaleContext.Provider value={portalLocale}>
+    <div className="portal-page" lang={portalLocale}>
       <ClientContractAcceptance slug={slug} accountName={data.accountName} />
       <aside className="portal-sidebar glass">
         <div className="portal-brand-zone">
           <div className="brand-lockup compact">
           <div className="brand-badge"><img src={designHubV2Logo} alt="Design Hub" /></div>
           <div>
-            <p className="eyebrow">Portal do cliente</p>
+            <p className="eyebrow">{tr("Portal do cliente")}</p>
           </div>
           </div>
         </div>
 
-        {data.permissions.allowClientCreatePost ? <button className="portal-sidebar-create-post" onClick={() => { setPostError(""); setCreatePostOpen(true); }}><span>＋</span><div><strong>Sugerir post</strong><small>Enviar uma ideia</small></div></button> : null}
+        {data.permissions.allowClientCreatePost ? <button className="portal-sidebar-create-post" onClick={() => { setPostError(""); setCreatePostOpen(true); }}><span>＋</span><div><strong>{tr("Sugerir post")}</strong><small>{tr("Enviar uma ideia")}</small></div></button> : null}
 
         <nav className="portal-nav">
           {[
-            { label: "Aprovações", count: approvalPortalCards.length },
-            { label: "Textos", count: portalTexts.filter((item) => item.status !== "Aprovado").length },
-            { label: "Aprovados", count: approvedPortalCards.length },
-            ...(data.permissions.allowClientViewBrandBrain ? [{ label: "Brand Brain", count: 0 }] : []),
-            ...(data.permissions.allowClientSearch ? [{ label: "Pesquisa", count: 0 }] : []),
-            ...(portalTrackerEnabled ? [{ label: "Tracker", count: portalCardsWithLocalApprovals.length }] : []),
-            ...(data.showArchivedToClient ? [{ label: "Arquivados", count: portalArchivedCards.length }] : []),
-            ...(data.permissions.allowClientViewInvoices ? [{ label: "Faturas", count: portalInvoices.filter((invoice) => !viewedInvoiceIds.includes(invoice.id)).length }] : []),
-            ...(data.permissions.allowClientViewReports ? [{ label: "Relatórios", count: portalReportsCount }] : []),
-          ].map(({ label, count }) => (
-            <button key={label} data-portal-view={label === "Aprovados" ? "approved" : undefined} onClick={() => label === "Textos" ? setPortalView("texts") : label === "Brand Brain" ? setPortalView("brand") : label === "Relatórios" ? setPortalView("reports") : label === "Faturas" ? setPortalView("invoices") : label === "Aprovados" ? setPortalView("approved") : label === "Pesquisa" ? setPortalView("search") : label === "Tracker" ? setPortalView("tracker") : label === "Arquivados" ? setPortalView("archived") : label === "Aprovações" ? setPortalView("board") : undefined} className={`${(label === "Textos" ? portalView === "texts" : label === "Brand Brain" ? portalView === "brand" : label === "Relatórios" ? portalView === "reports" : label === "Faturas" ? portalView === "invoices" : label === "Aprovados" ? portalView === "approved" : label === "Pesquisa" ? portalView === "search" : label === "Tracker" ? portalView === "tracker" : label === "Arquivados" ? portalView === "archived" : label === "Aprovações" && portalView === "board") ? "portal-nav-item active" : "portal-nav-item"}${label === "Aprovados" && approvedTransfer ? " receiving-approval" : ""}`}>
+            { view: "board" as const, label: tr("Aprovações"), count: approvalPortalCards.length },
+            { view: "texts" as const, label: tr("Textos"), count: portalTexts.filter((item) => item.status !== "Aprovado").length },
+            { view: "approved" as const, label: tr("Aprovados"), count: approvedPortalCards.length },
+            ...(data.permissions.allowClientViewBrandBrain ? [{ view: "brand" as const, label: "Brand Brain", count: 0 }] : []),
+            ...(data.permissions.allowClientSearch ? [{ view: "search" as const, label: tr("Pesquisa"), count: 0 }] : []),
+            ...(portalTrackerEnabled ? [{ view: "tracker" as const, label: "Tracker", count: portalCardsWithLocalApprovals.length }] : []),
+            ...(data.showArchivedToClient ? [{ view: "archived" as const, label: tr("Arquivados"), count: portalArchivedCards.length }] : []),
+            ...(data.permissions.allowClientViewInvoices ? [{ view: "invoices" as const, label: tr("Faturas"), count: portalInvoices.filter((invoice) => !viewedInvoiceIds.includes(invoice.id)).length }] : []),
+            ...(data.permissions.allowClientViewReports ? [{ view: "reports" as const, label: tr("Relatórios"), count: portalReportsCount }] : []),
+          ].map(({ view, label, count }) => (
+            <button key={view} data-portal-view={view === "approved" ? "approved" : undefined} onClick={() => setPortalView(view)} className={`${portalView === view ? "portal-nav-item active" : "portal-nav-item"}${view === "approved" && approvedTransfer ? " receiving-approval" : ""}`}>
               <span>{label}</span>
               {count > 0 ? <b className="portal-nav-count">{count}</b> : null}
             </button>
@@ -4569,19 +4587,19 @@ function ClientPortalWorkspacePage({
       </aside>
 
       <main className="portal-main">
-        {postSuccess ? <div className="portal-post-success"><span>✓</span><p>{postSuccess}</p><button onClick={() => setPostSuccess("")} aria-label="Fechar aviso">×</button></div> : null}
-        {approvedTransfer ? <><span className="portal-approved-fly-to-nav" style={{ "--approved-target-x": `${approvedTransfer.targetX}px`, "--approved-target-y": `${approvedTransfer.targetY}px` } as CSSProperties} aria-hidden="true"><UiIcon name="send" /></span><div className="portal-approved-transfer" role="status" aria-live="polite"><div><strong>Enviado para Aprovados!</strong><small>{approvedTransfer.title}</small></div><span className="portal-approved-check">✓</span></div></> : null}
+        {postSuccess ? <div className="portal-post-success"><span>✓</span><p>{postSuccess}</p><button onClick={() => setPostSuccess("")} aria-label={tr("Fechar aviso")}>×</button></div> : null}
+        {approvedTransfer ? <><span className="portal-approved-fly-to-nav" style={{ "--approved-target-x": `${approvedTransfer.targetX}px`, "--approved-target-y": `${approvedTransfer.targetY}px` } as CSSProperties} aria-hidden="true"><UiIcon name="send" /></span><div className="portal-approved-transfer" role="status" aria-live="polite"><div><strong>{tr("Enviado para Aprovados!")}</strong><small>{approvedTransfer.title}</small></div><span className="portal-approved-check">✓</span></div></> : null}
 
-        {portalView === "brand" && data.permissions.allowClientViewBrandBrain ? <ClientBrandBrainView slug={slug} clientName={data.accountName} allowEdit={data.permissions.allowClientEditBrandBrain} /> : portalView === "search" && data.permissions.allowClientSearch ? <ClientPortalSearchView slug={slug} onOpenCard={setSelectedCardId} /> : portalView === "archived" && data.showArchivedToClient ? <ClientPortalArchivedView cards={portalArchivedCards} loading={portalArchivedLoading} error={portalArchivedError} onOpenCard={setSelectedCardId} /> : portalView === "tracker" && portalTrackerEnabled ? <ClientPortalTrackerView columns={data.boardColumns} withoutColumn={data.withoutColumn} onOpenCard={setSelectedCardId} /> : portalView === "approved" ? <ClientApprovedPostsView cards={portalCardsWithLocalApprovals} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} /> : portalView === "invoices" && data.permissions.allowClientViewInvoices ? <ClientPortalInvoicesView invoices={portalInvoices} onViewInvoice={markInvoiceViewed} /> : portalView === "reports" && data.permissions.allowClientViewReports ? <PortalReports slug={slug} clientName={data.accountName} locale={data.locale} /> : portalView === "texts" ? <section className="portal-texts-view glass"><aside>{portalTexts.map((item) => <button key={item.id} className={item.id === selectedPortalTextId ? "selected" : ""} onClick={() => { setSelectedPortalTextId(item.id); setPortalTextCommentDraft(""); setPortalTextFeedback(null); }}><small>{item.contentType}</small><strong>{item.title}</strong></button>)}</aside><article>{selectedPortalText ? <><p className="eyebrow">{selectedPortalText.contentType}</p>{selectedPortalTextBanner ? <div className="portal-text-banner" style={{ backgroundImage: `url(${selectedPortalTextBanner})` }} aria-label="Banner do texto" /> : null}<div className="portal-text-heading"><div><h1>{selectedPortalText.title}</h1><span className={`portal-text-status ${selectedPortalText.status === "Aprovado" ? "approved" : ""}`}>{selectedPortalText.status}</span></div></div><div className="portal-text-content" dangerouslySetInnerHTML={{ __html: selectedPortalText.contentHtml }} /><section className="portal-text-feedback"><h3>Seu feedback</h3><p>Comente sobre este texto ou escolha uma ação para enviar seu retorno à equipe.</p><textarea value={portalTextCommentDraft} onChange={(event) => setPortalTextCommentDraft(event.target.value)} placeholder="Escreva aqui seu comentário sobre este texto" /><div className="portal-text-actions"><button className="ghost-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("comment")}>{portalTextSubmitting === "comment" ? "Enviando..." : "Adicionar comentário"}</button><button className="gradient-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("approve")}>{portalTextSubmitting === "approve" ? "Enviando..." : "Aprovar"}</button><button className="danger-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("changes")}>{portalTextSubmitting === "changes" ? "Enviando..." : "Pedir alteração"}</button></div>{portalTextFeedback ? <p className="portal-text-feedback-message">{portalTextFeedback}</p> : null}<div className="portal-text-comments"><h4>Comentários ({portalTextComments.length})</h4>{portalTextComments.map((comment) => <article key={comment.id}><div><strong>{comment.authorName}</strong><span>{comment.authorRole}</span></div><p>{comment.commentText}</p></article>)}</div></section></> : <p>Nenhum texto foi enviado para sua área ainda.</p>}</article></section> : <section className="portal-grid">
+        {portalView === "brand" && data.permissions.allowClientViewBrandBrain ? <ClientBrandBrainView slug={slug} clientName={data.accountName} allowEdit={data.permissions.allowClientEditBrandBrain} /> : portalView === "search" && data.permissions.allowClientSearch ? <ClientPortalSearchView slug={slug} onOpenCard={setSelectedCardId} /> : portalView === "archived" && data.showArchivedToClient ? <ClientPortalArchivedView cards={portalArchivedCards} loading={portalArchivedLoading} error={portalArchivedError} onOpenCard={setSelectedCardId} /> : portalView === "tracker" && portalTrackerEnabled ? <ClientPortalTrackerView columns={data.boardColumns} withoutColumn={data.withoutColumn} onOpenCard={setSelectedCardId} /> : portalView === "approved" ? <ClientApprovedPostsView cards={portalCardsWithLocalApprovals} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} /> : portalView === "invoices" && data.permissions.allowClientViewInvoices ? <ClientPortalInvoicesView invoices={portalInvoices} onViewInvoice={markInvoiceViewed} /> : portalView === "reports" && data.permissions.allowClientViewReports ? <PortalReports slug={slug} clientName={data.accountName} locale={portalLocale} /> : portalView === "texts" ? <section className="portal-texts-view glass"><aside>{portalTexts.map((item) => <button key={item.id} className={item.id === selectedPortalTextId ? "selected" : ""} onClick={() => { setSelectedPortalTextId(item.id); setPortalTextCommentDraft(""); setPortalTextFeedback(null); }}><small>{item.contentType}</small><strong>{item.title}</strong></button>)}</aside><article>{selectedPortalText ? <><p className="eyebrow">{selectedPortalText.contentType}</p>{selectedPortalTextBanner ? <div className="portal-text-banner" style={{ backgroundImage: `url(${selectedPortalTextBanner})` }} aria-label={tr("Banner do texto")} /> : null}<div className="portal-text-heading"><div><h1>{selectedPortalText.title}</h1><span className={`portal-text-status ${selectedPortalText.status === "Aprovado" ? "approved" : ""}`}>{tr(selectedPortalText.status)}</span></div></div><div className="portal-text-content" dangerouslySetInnerHTML={{ __html: selectedPortalText.contentHtml }} /><section className="portal-text-feedback"><h3>{tr("Seu feedback")}</h3><p>{tr("Comente sobre este texto ou escolha uma ação para enviar seu retorno à equipe.")}</p><textarea value={portalTextCommentDraft} onChange={(event) => setPortalTextCommentDraft(event.target.value)} placeholder={tr("Escreva aqui seu comentário sobre este texto")} /><div className="portal-text-actions"><button className="ghost-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("comment")}>{tr(portalTextSubmitting === "comment" ? "Enviando..." : "Adicionar comentário")}</button><button className="gradient-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("approve")}>{tr(portalTextSubmitting === "approve" ? "Enviando..." : "Aprovar")}</button><button className="danger-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("changes")}>{tr(portalTextSubmitting === "changes" ? "Enviando..." : "Pedir alteração")}</button></div>{portalTextFeedback ? <p className="portal-text-feedback-message">{portalTextFeedback}</p> : null}<div className="portal-text-comments"><h4>{tr("Comentários")} ({portalTextComments.length})</h4>{portalTextComments.map((comment) => <article key={comment.id}><div><strong>{comment.authorName}</strong><span>{comment.authorRole}</span></div><p>{comment.commentText}</p></article>)}</div></section></> : <p>{tr("Nenhum texto foi enviado para sua área ainda.")}</p>}</article></section> : <section className="portal-grid">
           <div className="portal-primary">
             <div className="glass board-shell">
               <div className="board-topbar">
                 <div className="tab-strip">
-                  <button type="button" className={boardSubView === "board" ? "tab active" : "tab"} onClick={() => setBoardSubView("board")}>Quadro do cliente</button>
-                  <button type="button" className={boardSubView === "calendar" ? "tab active" : "tab"} onClick={() => setBoardSubView("calendar")}>Calendário</button>
+                  <button type="button" className={boardSubView === "board" ? "tab active" : "tab"} onClick={() => setBoardSubView("board")}>{tr("Quadro do cliente")}</button>
+                  <button type="button" className={boardSubView === "calendar" ? "tab active" : "tab"} onClick={() => setBoardSubView("calendar")}>{tr("Calendário")}</button>
                   {data.permissions.allowClientViewBrandBrain ? <button type="button" className="tab" onClick={() => setPortalView("brand")}>Brand Brain</button> : null}
                 </div>
-                {data.permissions.allowClientSearch ? <button type="button" className="search-box portal-search-shortcut" onClick={() => setPortalView("search")}><UiIcon name="search" /><span>Pesquisar conteúdos</span></button> : null}
+                {data.permissions.allowClientSearch ? <button type="button" className="search-box portal-search-shortcut" onClick={() => setPortalView("search")}><UiIcon name="search" /><span>{tr("Pesquisar conteúdos")}</span></button> : null}
               </div>
 
               {boardSubView === "calendar" ? (
@@ -4590,34 +4608,34 @@ function ClientPortalWorkspacePage({
               <div className="portal-approval-board">
                 {pautaApprovalCards.length ? <section className="portal-pautas-approval">
                   <header>
-                    <div><span>IDEIAS PARA REVISÃO</span><h2>Pautas para aprovação</h2><p>Revise a proposta, deixe um comentário e aprove para ela entrar no fluxo de criação.</p></div>
-                    <b>{pautaApprovalCards.length} {pautaApprovalCards.length === 1 ? "pauta" : "pautas"}</b>
+                    <div><span>{tr("IDEIAS PARA REVISÃO")}</span><h2>{tr("Pautas para aprovação")}</h2><p>{tr("Revise a proposta, deixe um comentário e aprove para ela entrar no fluxo de criação.")}</p></div>
+                    <b>{pautaApprovalCards.length} {tr(pautaApprovalCards.length === 1 ? "pauta" : "pautas")}</b>
                   </header>
                   <div className="portal-pauta-grid">{pautaApprovalCards.map((card) => <button key={card.id} type="button" className="portal-pauta-card" onClick={() => setSelectedCardId(card.id)}>
                     <span className="portal-pauta-icon"><UiIcon name="file" /></span>
-                    <span className="portal-pauta-copy"><small>PAUTA</small><strong>{card.title}</strong><p>{card.subtitle || "Proposta de conteúdo enviada para sua avaliação."}</p></span>
-                    <span className="portal-pauta-review">Revisar <UiIcon name="eye" /></span>
+                    <span className="portal-pauta-copy"><small>{tr("PAUTA")}</small><strong>{card.title}</strong><p>{card.subtitle || tr("Proposta de conteúdo enviada para sua avaliação.")}</p></span>
+                    <span className="portal-pauta-review">{tr("Revisar")} <UiIcon name="eye" /></span>
                   </button>)}</div>
                 </section> : null}
 
                 {contentApprovalCardIds.size ? <section className="portal-content-approval">
-                  {pautaApprovalCards.length ? <header><div><span>CONTEÚDOS VISUAIS</span><h2>Posts para aprovação</h2></div><b>{contentApprovalCardIds.size}</b></header> : null}
+                  {pautaApprovalCards.length ? <header><div><span>{tr("CONTEÚDOS VISUAIS")}</span><h2>{tr("Posts para aprovação")}</h2></div><b>{contentApprovalCardIds.size}</b></header> : null}
                   <div className="portal-columns-scroll">
                     {data.boardColumns.filter((column) => !isPortalApprovedColumn(column.name)).map((column) => { const approvalCards = column.cards.filter((card) => contentApprovalCardIds.has(card.id)); return approvalCards.length ? (
                       <section key={column.id} className="portal-column glass-subtle">
                         <header className="portal-column-head" style={{ borderColor: column.color }}><h3>{column.name}</h3><span>{approvalCards.length}</span></header>
-                        <div className="portal-card-list">{approvalCards.map((card) => <button key={card.id} className="portal-card card-button" onClick={() => setSelectedCardId(card.id)}><ClosedCardMedia card={card} /><div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{formatScheduledCardDate(card.scheduledAt)}</p> : null}</div></button>)}</div>
+                        <div className="portal-card-list">{approvalCards.map((card) => <button key={card.id} className="portal-card card-button" onClick={() => setSelectedCardId(card.id)}><ClosedCardMedia card={card} /><div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{new Intl.DateTimeFormat(clientLocaleTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(card.scheduledAt))}</p> : null}</div></button>)}</div>
                       </section>
                     ) : null; })}
 
                     {data.withoutColumn.some((card) => contentApprovalCardIds.has(card.id)) ? <section className="portal-column glass-subtle">
-                      <header className="portal-column-head" style={{ borderColor: "#7a86a9" }}><h3>Em criação</h3><span>{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).length}</span></header>
-                      <div className="portal-card-list">{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).map((card) => <button key={card.id} className="portal-card card-button" onClick={() => setSelectedCardId(card.id)}><ClosedCardMedia card={card} /><div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{formatScheduledCardDate(card.scheduledAt)}</p> : null}</div></button>)}</div>
+                      <header className="portal-column-head" style={{ borderColor: "#7a86a9" }}><h3>{tr("Em criação")}</h3><span>{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).length}</span></header>
+                      <div className="portal-card-list">{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).map((card) => <button key={card.id} className="portal-card card-button" onClick={() => setSelectedCardId(card.id)}><ClosedCardMedia card={card} /><div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{new Intl.DateTimeFormat(clientLocaleTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(card.scheduledAt))}</p> : null}</div></button>)}</div>
                     </section> : null}
                   </div>
                 </section> : null}
 
-                {!pautaApprovalCards.length && !contentApprovalCardIds.size ? <section className="portal-approval-empty"><span>✓</span><h2>Tudo revisado</h2><p>Não há pautas ou posts aguardando sua aprovação agora.</p></section> : null}
+                {!pautaApprovalCards.length && !contentApprovalCardIds.size ? <section className="portal-approval-empty"><span>✓</span><h2>{tr("Tudo revisado")}</h2><p>{tr("Não há pautas ou posts aguardando sua aprovação agora.")}</p></section> : null}
               </div>
               )}
             </div>
@@ -4627,7 +4645,7 @@ function ClientPortalWorkspacePage({
             {data.widgets.upcomingPosts ? (
               <section className="glass widget-card">
                 <div className="widget-head">
-                  <h3>Próximos posts</h3>
+                  <h3>{tr("Próximos posts")}</h3>
                   <span>{data.upcomingItems.length}</span>
                 </div>
                 <div className="widget-list">
@@ -4635,12 +4653,12 @@ function ClientPortalWorkspacePage({
                     <article key={item.id} className="list-item">
                       <div>
                         <strong>{item.title}</strong>
-                        <p>{formatScheduledCardDate(item.scheduledAt)}</p>
+                        <p>{new Intl.DateTimeFormat(clientLocaleTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.scheduledAt))}</p>
                       </div>
-                      <span>{new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(item.scheduledAt))}</span>
+                      <span>{new Intl.DateTimeFormat(clientLocaleTag, { hour: "2-digit", minute: "2-digit" }).format(new Date(item.scheduledAt))}</span>
                     </article>
                   ))}
-                  {data.upcomingItems.length === 0 ? <p className="widget-empty-copy">Nenhum post agendado no momento.</p> : null}
+                  {data.upcomingItems.length === 0 ? <p className="widget-empty-copy">{tr("Nenhum post agendado no momento.")}</p> : null}
                 </div>
               </section>
             ) : null}
@@ -4648,7 +4666,7 @@ function ClientPortalWorkspacePage({
             {upcomingPortalAppointments.length > 0 ? (
               <section className="glass widget-card">
                 <div className="widget-head">
-                  <h3>Próximos compromissos</h3>
+                  <h3>{tr("Próximos compromissos")}</h3>
                   <span>{upcomingPortalAppointments.length}</span>
                 </div>
                 <div className="widget-list">
@@ -4656,7 +4674,7 @@ function ClientPortalWorkspacePage({
                     <article key={event.id} className="list-item appointment-item">
                       <div>
                         <strong>{event.title}</strong>
-                        <p>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(event.startsAt))}</p>
+                        <p>{new Intl.DateTimeFormat(clientLocaleTag, { dateStyle: "short", timeStyle: "short" }).format(new Date(event.startsAt))}</p>
                       </div>
                       {event.meetLink ? <a className="ghost-button compact-button" href={event.meetLink} target="_blank" rel="noreferrer" onClick={(mouseEvent) => mouseEvent.stopPropagation()}><UiIcon name="link" />Meet</a> : null}
                     </article>
@@ -4668,12 +4686,11 @@ function ClientPortalWorkspacePage({
             {data.widgets.reports ? (
               <section className="glass widget-card">
                 <div className="widget-head">
-                  <h3>Relatórios</h3>
-                  <span>Mensal</span>
+                  <h3>{tr("Relatórios")}</h3>
+                  <span>{tr("Mensal")}</span>
                 </div>
                 <p className="widget-paragraph">
-                  O cliente encontra aqui os relatórios liberados por permissão, sem ver nada do
-                  restante da operação interna.
+                  {tr("O cliente encontra aqui os relatórios liberados por permissão, sem ver nada do restante da operação interna.")}
                 </p>
               </section>
             ) : null}
@@ -4683,7 +4700,7 @@ function ClientPortalWorkspacePage({
 
       <CardDetailModal
         mode="portal"
-        titlePrefix="Card do cliente"
+        titlePrefix={tr("Card do cliente")}
         detail={detail.data}
         loading={detail.loading}
         source={detail.source}
@@ -4705,18 +4722,20 @@ function ClientPortalWorkspacePage({
       />
       {createPostOpen ? <ClientPostSuggestionModal draft={postDraft} files={postFiles} submitting={postSubmitting} error={postError} onChange={(field, value) => setPostDraft((current) => ({ ...current, [field]: value }))} onFilesChange={setPostFiles} onClose={() => { if (!postSubmitting) setCreatePostOpen(false); }} onSubmit={submitPostSuggestion} /> : null}
     </div>
+    </PortalLocaleContext.Provider>
   );
 }
 
 function PortalFormattedCaption({ text }: { text: string }) {
+  const { t } = usePortalTranslation();
   const hashtags = Array.from(new Set(text.match(/#[\p{L}\p{N}_]+/gu) ?? []));
   const body = text.replace(/#[\p{L}\p{N}_]+/gu, "").replace(/\s+([.,;:!?])/g, "$1").trim();
   const sections = body.split(/\n{2,}|(?=[📊👉💡✅🎯📌])/u).map((item) => item.trim()).filter(Boolean);
   const renderInline = (value: string) => value.split(/(\*\*.*?\*\*)/g).filter(Boolean).map((part, index) => part.startsWith("**") && part.endsWith("**") ? <strong key={`${part}-${index}`}>{part.slice(2, -2)}</strong> : <span key={`${part}-${index}`}>{part}</span>);
 
   return <div className="portal-caption-content">
-    <div className="portal-caption-copy">{sections.length ? sections.map((section, index) => <p key={`${section.slice(0, 30)}-${index}`}>{renderInline(section)}</p>) : <p>Sem legenda cadastrada ainda.</p>}</div>
-    {hashtags.length ? <div className="portal-caption-hashtags" aria-label="Hashtags do post">{hashtags.map((hashtag) => <span key={hashtag}>{hashtag}</span>)}</div> : null}
+    <div className="portal-caption-copy">{sections.length ? sections.map((section, index) => <p key={`${section.slice(0, 30)}-${index}`}>{renderInline(section)}</p>) : <p>{t("Sem legenda cadastrada ainda.")}</p>}</div>
+    {hashtags.length ? <div className="portal-caption-hashtags" aria-label={t("Hashtags do post")}>{hashtags.map((hashtag) => <span key={hashtag}>{hashtag}</span>)}</div> : null}
   </div>;
 }
 
@@ -4757,6 +4776,7 @@ function CardDetailModal({
   onClose: () => void;
   adminContext?: { slug: string; columns: BoardColumn[] };
 }) {
+  const { t, localeTag } = usePortalTranslation();
   const [commentDraft, setCommentDraft] = useState("");
   const [submitting, setSubmitting] = useState<"comment" | "approve" | "changes" | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -4818,13 +4838,13 @@ function CardDetailModal({
       onRefresh();
       setFeedback(
         action === "comment"
-          ? "Comentário salvo."
+          ? t("Comentário salvo.")
           : action === "approve"
-            ? "Card aprovado com sucesso."
-            : "Solicitação de alteração enviada.",
+            ? t("Card aprovado com sucesso.")
+            : t("Solicitação de alteração enviada."),
       );
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Não foi possível concluir a ação.");
+      setFeedback(error instanceof Error ? error.message : t("Não foi possível concluir a ação."));
     } finally {
       setSubmitting(null);
     }
@@ -4839,7 +4859,7 @@ function CardDetailModal({
       setEditingCaption(false);
       onRefresh();
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Não foi possível salvar a legenda.");
+      setFeedback(error instanceof Error ? error.message : t("Não foi possível salvar a legenda."));
     } finally {
       setCaptionSaving(false);
     }
@@ -4858,7 +4878,7 @@ function CardDetailModal({
       }
       setNewPortalTagName("");
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Não foi possível criar a etiqueta.");
+      setFeedback(error instanceof Error ? error.message : t("Não foi possível criar a etiqueta."));
     } finally {
       setPortalTagWorking(false);
     }
@@ -4873,7 +4893,7 @@ function CardDetailModal({
       setTagEditorOpen(false);
       onRefresh();
     } catch (error) {
-      setFeedback(error instanceof Error ? error.message : "Não foi possível salvar as etiquetas.");
+      setFeedback(error instanceof Error ? error.message : t("Não foi possível salvar as etiquetas."));
     } finally {
       setPortalTagWorking(false);
     }
@@ -4888,11 +4908,11 @@ function CardDetailModal({
             <h3>{detail.card.title}</h3>
           </div>
           <button className="ghost-button" onClick={onClose}>
-            Fechar
+            {t("Fechar")}
           </button>
         </div>
 
-        <StatusBanner
+        {mode === "admin" ? <StatusBanner
           source={source}
           loading={loading}
           message={
@@ -4900,7 +4920,7 @@ function CardDetailModal({
               ? "Detalhe carregado da base real."
               : "Não consegui carregar este detalhe na API da V2."
           }
-        />
+        /> : null}
 
         <div className="modal-grid">
           <div className="modal-media">
@@ -4925,42 +4945,42 @@ function CardDetailModal({
             </div>
             {detail.card.externalLinkUrl ? (
               <a className="external-card-link" href={detail.card.externalLinkUrl} target="_blank" rel="noreferrer">
-                Abrir link externo ↗
+                {t("Abrir link externo ↗")}
               </a>
             ) : null}
           </div>
 
           <div className="modal-sidebar-copy">
             <section className="glass-subtle modal-card portal-summary-card">
-              <header className="portal-summary-heading"><span><UiIcon name="file" /></span><div><small>CONTEÚDO DO POST</small><h4>Legenda</h4></div>{allowEditCaption && !editingCaption ? <button type="button" className="portal-caption-edit-button" onClick={() => setEditingCaption(true)}><UiIcon name="file" />Editar legenda</button> : null}</header>
-              {editingCaption ? <div className="portal-caption-editor"><label htmlFor={`portal-caption-${detail.card.id}`}>Edite o texto abaixo</label><textarea id={`portal-caption-${detail.card.id}`} autoFocus value={captionDraft} onChange={(event) => setCaptionDraft(event.target.value)} maxLength={5000} placeholder="Escreva a legenda do post..." /><div className="portal-caption-editor-footer"><small>{captionDraft.length}/5000 caracteres</small><div><button type="button" className="ghost-button" disabled={captionSaving} onClick={() => { setCaptionDraft(detail.card.subtitle ?? ""); setEditingCaption(false); }}>Cancelar</button><button type="button" className="gradient-button" disabled={captionSaving} onClick={() => void savePortalCaption()}>{captionSaving ? "Salvando..." : "Salvar legenda"}</button></div></div></div> : <PortalFormattedCaption text={captionDraft} />}
-              {allowManageTags ? <section className="portal-tag-manager"><header><div><small>ETIQUETAS DO POST</small><strong>{selectedPortalTags.length ? `${selectedPortalTags.length} selecionada${selectedPortalTags.length === 1 ? "" : "s"}` : "Nenhuma etiqueta"}</strong></div><button type="button" onClick={() => setTagEditorOpen((open) => !open)}>{tagEditorOpen ? "Fechar" : "Gerenciar tags"}</button></header>{selectedPortalTags.length ? <div className="portal-tag-pills">{selectedPortalTags.map((name) => { const tag = portalTagLibrary.find((item) => item.name === name); return <span key={name} style={{ "--portal-tag-color": tag?.color ?? "#7568dc" } as CSSProperties}>{name}</span>; })}</div> : null}{tagEditorOpen ? <div className="portal-tag-editor"><div className="portal-tag-options">{portalTagLibrary.map((tag) => { const selected = selectedPortalTags.includes(tag.name); return <button key={tag.id} type="button" className={selected ? "selected" : ""} onClick={() => setSelectedPortalTags((current) => selected ? current.filter((name) => name !== tag.name) : [...current, tag.name])}><i style={{ backgroundColor: tag.color }} />{tag.name}<span>{selected ? "✓" : "+"}</span></button>; })}{portalTagLibrary.length === 0 ? <p>Nenhuma tag criada. Crie a primeira abaixo.</p> : null}</div><div className="portal-tag-create"><input value={newPortalTagName} onChange={(event) => setNewPortalTagName(event.target.value)} maxLength={100} placeholder="Nome da nova tag" /><input type="color" value={newPortalTagColor} onChange={(event) => setNewPortalTagColor(event.target.value)} aria-label="Cor da nova tag" /><button type="button" disabled={portalTagWorking || !newPortalTagName.trim()} onClick={() => void createPortalTag()}>+ Criar</button></div><div className="portal-tag-actions"><button type="button" className="ghost-button" disabled={portalTagWorking} onClick={() => { setSelectedPortalTags(detail.card.tags); setTagEditorOpen(false); }}>Cancelar</button><button type="button" className="gradient-button" disabled={portalTagWorking} onClick={() => void savePortalTags()}>{portalTagWorking ? "Salvando..." : "Salvar etiquetas"}</button></div></div> : null}</section> : null}
+              <header className="portal-summary-heading"><span><UiIcon name="file" /></span><div><small>{t("CONTEÚDO DO POST")}</small><h4>{t("Legenda")}</h4></div>{allowEditCaption && !editingCaption ? <button type="button" className="portal-caption-edit-button" onClick={() => setEditingCaption(true)}><UiIcon name="file" />{t("Editar legenda")}</button> : null}</header>
+              {editingCaption ? <div className="portal-caption-editor"><label htmlFor={`portal-caption-${detail.card.id}`}>{t("Edite o texto abaixo")}</label><textarea id={`portal-caption-${detail.card.id}`} autoFocus value={captionDraft} onChange={(event) => setCaptionDraft(event.target.value)} maxLength={5000} placeholder={t("Escreva a legenda do post...")} /><div className="portal-caption-editor-footer"><small>{captionDraft.length}/5000 {t("caracteres")}</small><div><button type="button" className="ghost-button" disabled={captionSaving} onClick={() => { setCaptionDraft(detail.card.subtitle ?? ""); setEditingCaption(false); }}>{t("Cancelar")}</button><button type="button" className="gradient-button" disabled={captionSaving} onClick={() => void savePortalCaption()}>{t(captionSaving ? "Salvando..." : "Salvar legenda")}</button></div></div></div> : <PortalFormattedCaption text={captionDraft} />}
+              {allowManageTags ? <section className="portal-tag-manager"><header><div><small>{t("ETIQUETAS DO POST")}</small><strong>{selectedPortalTags.length ? `${selectedPortalTags.length} ${t(selectedPortalTags.length === 1 ? "etiqueta selecionada" : "etiquetas selecionadas")}` : t("Nenhuma etiqueta")}</strong></div><button type="button" onClick={() => setTagEditorOpen((open) => !open)}>{t(tagEditorOpen ? "Fechar" : "Gerenciar tags")}</button></header>{selectedPortalTags.length ? <div className="portal-tag-pills">{selectedPortalTags.map((name) => { const tag = portalTagLibrary.find((item) => item.name === name); return <span key={name} style={{ "--portal-tag-color": tag?.color ?? "#7568dc" } as CSSProperties}>{name}</span>; })}</div> : null}{tagEditorOpen ? <div className="portal-tag-editor"><div className="portal-tag-options">{portalTagLibrary.map((tag) => { const selected = selectedPortalTags.includes(tag.name); return <button key={tag.id} type="button" className={selected ? "selected" : ""} onClick={() => setSelectedPortalTags((current) => selected ? current.filter((name) => name !== tag.name) : [...current, tag.name])}><i style={{ backgroundColor: tag.color }} />{tag.name}<span>{selected ? "✓" : "+"}</span></button>; })}{portalTagLibrary.length === 0 ? <p>{t("Nenhuma tag criada. Crie a primeira abaixo.")}</p> : null}</div><div className="portal-tag-create"><input value={newPortalTagName} onChange={(event) => setNewPortalTagName(event.target.value)} maxLength={100} placeholder={t("Nome da nova tag")} /><input type="color" value={newPortalTagColor} onChange={(event) => setNewPortalTagColor(event.target.value)} aria-label={t("Cor da nova tag")} /><button type="button" disabled={portalTagWorking || !newPortalTagName.trim()} onClick={() => void createPortalTag()}>{t("+ Criar")}</button></div><div className="portal-tag-actions"><button type="button" className="ghost-button" disabled={portalTagWorking} onClick={() => { setSelectedPortalTags(detail.card.tags); setTagEditorOpen(false); }}>{t("Cancelar")}</button><button type="button" className="gradient-button" disabled={portalTagWorking} onClick={() => void savePortalTags()}>{t(portalTagWorking ? "Salvando..." : "Salvar etiquetas")}</button></div></div> : null}</section> : null}
               <div className="portal-card-meta-grid">
                 <article className={`portal-card-meta status ${isPortalApproved(detail.card) ? "approved" : "pending"}`}>
                   <span><UiIcon name={isPortalApproved(detail.card) ? "check" : "clock"} /></span>
-                  <div><small>Status do cliente</small><strong>{detail.card.clientLabel}</strong></div>
+                  <div><small>{t("Status do cliente")}</small><strong>{portalText(localeTag, detail.card.clientLabel)}</strong></div>
                 </article>
                 <article className="portal-card-meta schedule">
                   <span><UiIcon name="calendar" /></span>
-                  <div><small>Agendamento</small><strong>{detail.card.scheduledAt ? formatScheduledCardDate(detail.card.scheduledAt).replace(/^Agendado:\s*/, "") : "Não agendado"}</strong></div>
+                  <div><small>{t("Agendamento")}</small><strong>{detail.card.scheduledAt ? new Intl.DateTimeFormat(localeTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(detail.card.scheduledAt)) : t("Não agendado")}</strong></div>
                 </article>
                 <article className="portal-card-meta comments">
                   <span><UiIcon name="comment" /></span>
-                  <div><small>Comentários</small><strong>{detail.comments.length} {detail.comments.length === 1 ? "comentário" : "comentários"}</strong></div>
+                  <div><small>{t("Comentários")}</small><strong>{detail.comments.length} {t(detail.comments.length === 1 ? "comentário" : "comentários")}</strong></div>
                 </article>
               </div>
             </section>
 
             <section className="glass-subtle modal-card portal-feedback-card">
-              <h4>{mode === "portal" ? "Seu feedback" : "Comentários"}</h4>
-              {mode === "portal" ? <p className="portal-feedback-helper">Comente sobre este post ou escolha uma ação para enviar seu retorno à equipe.</p> : null}
+              <h4>{mode === "portal" ? t("Seu feedback") : "Comentários"}</h4>
+              {mode === "portal" ? <p className="portal-feedback-helper">{t("Comente sobre este post ou escolha uma ação para enviar seu retorno à equipe.")}</p> : null}
               <div className="comment-form">
                 <textarea
                   className="comment-input"
                   placeholder={
                     mode === "admin"
                       ? "Escreva um comentário interno para este card"
-                      : "Escreva aqui seu comentário sobre este post"
+                      : t("Escreva aqui seu comentário sobre este post")
                   }
                   value={commentDraft}
                   onChange={(event) => setCommentDraft(event.target.value)}
@@ -4975,7 +4995,7 @@ function CardDetailModal({
                       )
                     }
                   >
-                    {submitting === "comment" ? "Salvando..." : "Adicionar comentário"}
+                    {t(submitting === "comment" ? "Salvando..." : "Adicionar comentário")}
                   </button>
                   <button
                     className="gradient-button"
@@ -4984,7 +5004,7 @@ function CardDetailModal({
                       handleAction("approve", () => onApprove(detail.card.id, commentDraft.trim()))
                     }
                   >
-                    {submitting === "approve" ? "Enviando..." : "Aprovar"}
+                    {t(submitting === "approve" ? "Enviando..." : "Aprovar")}
                   </button>
                   <button
                     className="danger-button"
@@ -4995,7 +5015,7 @@ function CardDetailModal({
                       )
                     }
                   >
-                        {submitting === "changes" ? "Enviando..." : "Pedir alteração"}
+                        {t(submitting === "changes" ? "Enviando..." : "Pedir alteração")}
                   </button>
                 </div>
                 {feedback ? <p className="form-feedback">{feedback}</p> : null}
@@ -5013,7 +5033,7 @@ function CardDetailModal({
               </div>
             </section>
 
-            {detail.approvalLinks.length > 0 ? (
+            {mode === "admin" && detail.approvalLinks.length > 0 ? (
               <section className="glass-subtle modal-card">
                 <h4>Links de aprovação</h4>
                 <div className="comment-stack">
@@ -5614,6 +5634,7 @@ function DesignBriefsWorkspace() {
 }
 
 function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards: BoardCard[]; appointments: AgendaEvent[]; onSelectCard: (id: string) => void }) {
+  const { t, localeTag } = usePortalTranslation();
   const [monthDate, setMonthDate] = useState(() => new Date());
   const [selectedEvent, setSelectedEvent] = useState<AgendaEvent | null>(null);
   const artworkHover = useCalendarArtworkHover();
@@ -5626,6 +5647,7 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
   const rangeFrom = localDateKey(days[0]);
   const rangeTo = localDateKey(days[days.length - 1]);
   const expandedAppointments = useMemo(() => expandAgendaEvents(appointments, rangeFrom, rangeTo), [appointments, rangeFrom, rangeTo]);
+  const weekdayLabels = Array.from({ length: 7 }, (_, index) => new Intl.DateTimeFormat(localeTag, { weekday: "short" }).format(new Date(2026, 7, 24 + index)));
 
   const postsByDay = useMemo(() => {
     const map = new Map<string, BoardCard[]>();
@@ -5652,16 +5674,16 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
     <div className="social-calendar-workspace glass-subtle">
       <div className="social-calendar-toolbar">
         <div className="social-calendar-month-nav">
-          <button type="button" onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1))} aria-label="Mês anterior">‹</button>
-          <h2>{new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(monthDate)}</h2>
-          <button type="button" onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1))} aria-label="Próximo mês">›</button>
+          <button type="button" onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() - 1, 1))} aria-label={t("Mês anterior")}>‹</button>
+          <h2>{new Intl.DateTimeFormat(localeTag, { month: "long", year: "numeric" }).format(monthDate)}</h2>
+          <button type="button" onClick={() => setMonthDate(new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 1))} aria-label={t("Próximo mês")}>›</button>
         </div>
         <div className="social-calendar-summary">
-          <span><i className="scheduled" />Posts agendados</span>
-          <span><i style={{ background: "#8b45dd" }} />Compromissos</span>
+          <span><i className="scheduled" />{t("Posts agendados")}</span>
+          <span><i style={{ background: "#8b45dd" }} />{t("Compromissos")}</span>
         </div>
       </div>
-      <div className="social-calendar-weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((label) => <span key={label}>{label}</span>)}</div>
+      <div className="social-calendar-weekdays">{weekdayLabels.map((label) => <span key={label}>{label}</span>)}</div>
       <div className="social-calendar-grid">
         {days.map((day) => {
           const key = localDateKey(day);
@@ -5682,7 +5704,7 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
               {visibleEvents.map((event) => (
                 <button key={event.id} type="button" className="social-calendar-event" style={{ "--calendar-event-color": event.color || "#8b45dd" } as CSSProperties} onClick={() => setSelectedEvent(event)}>
                   <span>{event.meetLink ? "🎥 " : ""}{event.title}</span>
-                  <small>{new Intl.DateTimeFormat("pt-BR", { timeStyle: "short" }).format(new Date(event.startsAt))}</small>
+                  <small>{new Intl.DateTimeFormat(localeTag, { timeStyle: "short" }).format(new Date(event.startsAt))}</small>
                 </button>
               ))}
               {hiddenCount > 0 ? <span className="social-calendar-more">+{hiddenCount}</span> : null}
@@ -5693,10 +5715,10 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
       {selectedEvent ? (
         <div className="modal-backdrop" onClick={() => setSelectedEvent(null)}>
           <section className="agenda-detail-modal portal-agenda-detail-modal" onClick={(event) => event.stopPropagation()}>
-            <header><div><p className="eyebrow">Compromisso</p><h3>{selectedEvent.title}</h3></div><button className="icon-close" onClick={() => setSelectedEvent(null)} aria-label="Fechar">×</button></header>
-            <p>{selectedEvent.taskDescription || "Sem detalhes adicionais."}</p>
-            <dl><div><dt>Quando</dt><dd>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(selectedEvent.startsAt))}</dd></div></dl>
-            {selectedEvent.meetLink ? <div className="portal-meet-card"><span><UiIcon name="link" /></span><div><small>VIDEOCHAMADA</small><strong>Google Meet</strong><p>O link será aberto em uma nova aba.</p></div><a href={selectedEvent.meetLink} target="_blank" rel="noreferrer">Entrar na reunião <UiIcon name="link" /></a></div> : null}
+            <header><div><p className="eyebrow">{t("Compromisso")}</p><h3>{selectedEvent.title}</h3></div><button className="icon-close" onClick={() => setSelectedEvent(null)} aria-label={t("Fechar")}>×</button></header>
+            <p>{selectedEvent.taskDescription || t("Sem detalhes adicionais.")}</p>
+            <dl><div><dt>{t("Quando")}</dt><dd>{new Intl.DateTimeFormat(localeTag, { dateStyle: "full", timeStyle: "short" }).format(new Date(selectedEvent.startsAt))}</dd></div></dl>
+            {selectedEvent.meetLink ? <div className="portal-meet-card"><span><UiIcon name="link" /></span><div><small>{t("VIDEOCHAMADA")}</small><strong>Google Meet</strong><p>{t("O link será aberto em uma nova aba.")}</p></div><a href={selectedEvent.meetLink} target="_blank" rel="noreferrer">{t("Entrar na reunião")} <UiIcon name="link" /></a></div> : null}
           </section>
         </div>
       ) : null}
@@ -5808,6 +5830,7 @@ function normalizeBrandBrain(data?: Partial<BrandBrain> | null): BrandBrain {
 }
 
 function BrandBrainContentAudit({ brain }: { brain: BrandBrain }) {
+  const { t } = usePortalTranslation();
   const [text, setText] = useState("");
   const normalized = text.toLocaleLowerCase("pt-BR");
   const includes = (value: string) => normalized.includes(value.toLocaleLowerCase("pt-BR"));
@@ -5820,10 +5843,11 @@ function BrandBrainContentAudit({ brain }: { brain: BrandBrain }) {
   });
   const score = text.trim() ? Math.max(0, Math.min(100, 72 - avoidHits.length * 22 + preferredHits.length * 5 + expressionHits.length * 7 + pillarHits.length * 6)) : null;
   const tone = score == null ? "idle" : score >= 85 ? "great" : score >= 65 ? "good" : "review";
-  return <section className={`brand-v2-audit ${tone}`}><header><div><small>VERIFICAÇÃO DE CONTEÚDO</small><h3>Teste uma legenda</h3><p>Cole o texto para conferir se ele conversa com a memória da marca.</p></div>{score != null ? <strong>{score}<small>/100</small></strong> : <span>✦</span>}</header><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder="Cole aqui a legenda ou o texto que deseja revisar…" />{score != null ? <div className="brand-v2-audit-results"><article className={avoidHits.length ? "warning" : "ok"}><b>{avoidHits.length ? "Ajustar" : "Tudo certo"}</b><span>{avoidHits.length ? `Termos a evitar: ${avoidHits.join(", ")}` : "Nenhum termo proibido encontrado."}</span></article><article><b>Vocabulário</b><span>{preferredHits.length || expressionHits.length ? [...preferredHits, ...expressionHits].join(" · ") : "Nenhuma expressão característica apareceu ainda."}</span></article><article><b>Pilar relacionado</b><span>{pillarHits.length ? pillarHits.map((item) => item.name).join(" · ") : "Não identificamos conexão clara com um pilar."}</span></article><article><b>Tom esperado</b><span>{brain.voice || "Defina o tom de voz para receber uma orientação mais completa."}</span></article></div> : <p className="brand-v2-audit-empty">A análise acontece enquanto você escreve, sem alterar o conteúdo original.</p>}</section>;
+  return <section className={`brand-v2-audit ${tone}`}><header><div><small>{t("VERIFICAÇÃO DE CONTEÚDO")}</small><h3>{t("Teste uma legenda")}</h3><p>{t("Cole o texto para conferir se ele conversa com a memória da marca.")}</p></div>{score != null ? <strong>{score}<small>/100</small></strong> : <span>✦</span>}</header><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder={t("Cole aqui a legenda ou o texto que deseja revisar…")} />{score != null ? <div className="brand-v2-audit-results"><article className={avoidHits.length ? "warning" : "ok"}><b>{t(avoidHits.length ? "Ajustar" : "Tudo certo")}</b><span>{avoidHits.length ? `${t("Termos a evitar")}: ${avoidHits.join(", ")}` : t("Nenhum termo proibido encontrado.")}</span></article><article><b>{t("Vocabulário")}</b><span>{preferredHits.length || expressionHits.length ? [...preferredHits, ...expressionHits].join(" · ") : t("Nenhuma expressão característica apareceu ainda.")}</span></article><article><b>{t("Pilar relacionado")}</b><span>{pillarHits.length ? pillarHits.map((item) => item.name).join(" · ") : t("Não identificamos conexão clara com um pilar.")}</span></article><article><b>{t("Tom esperado")}</b><span>{brain.voice || t("Defina o tom de voz para receber uma orientação mais completa.")}</span></article></div> : <p className="brand-v2-audit-empty">{t("A análise acontece enquanto você escreve, sem alterar o conteúdo original.")}</p>}</section>;
 }
 
 function BrandBrainExperience({ slug, clientName, portal = false, allowEdit = true }: { slug: string; clientName: string; portal?: boolean; allowEdit?: boolean }) {
+  const { t, localeTag } = usePortalTranslation();
   const recoveryKey = `designhub-v2-brand-brain-draft:${portal ? "portal" : "admin"}:${slug}`;
   const [snapshot, setSnapshot] = useState<BrandBrainSnapshot | null>(null);
   const [brain, setBrain] = useState<BrandBrain>(EMPTY_BRAND_BRAIN);
@@ -5849,7 +5873,7 @@ function BrandBrainExperience({ slug, clientName, portal = false, allowEdit = tr
       recoveryCheckedRef.current = true;
       setSnapshot(result); setBrain(recovered ? normalizeBrandBrain(recovered) : publishedBrain);
       setDraftState(recovered ? "recovered" : "idle");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível carregar o Brand Brain."); }
+    } catch (error) { setMessage(error instanceof Error ? error.message : t("Não foi possível carregar o Brand Brain.")); }
     finally { setLoading(false); }
   }, [portal, recoveryKey, slug]);
   useEffect(() => { void load(); }, [load]);
@@ -5858,7 +5882,7 @@ function BrandBrainExperience({ slug, clientName, portal = false, allowEdit = tr
   const completion = Math.round(importantValues.filter(Boolean).length / importantValues.length * 100);
   const pending = snapshot?.revisions.filter((item) => item.status === "pending") ?? [];
   const editable = !portal || allowEdit;
-  const dateLabel = (value?: string | null) => value ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "Ainda não publicado";
+  const dateLabel = (value?: string | null) => value ? new Intl.DateTimeFormat(localeTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : t("Ainda não publicado");
   const setText = (key: keyof BrandBrain, value: string) => setBrain((current) => ({ ...current, [key]: value }));
   const setList = (key: keyof BrandBrain, value: string) => setBrain((current) => ({ ...current, [key]: value.split("\n").map((item) => item.trim()).filter(Boolean) }));
   const listValue = (key: keyof BrandBrain) => ((brain[key] as string[]) ?? []).join("\n");
@@ -5884,13 +5908,13 @@ function BrandBrainExperience({ slug, clientName, portal = false, allowEdit = tr
     setSaving(true); setMessage("");
     try {
       const result = portal ? await savePortalBrandBrainBySlug(slug, brain, summary) : await saveBrandBrainBySlug(slug, brain, summary);
-      setMessage(result.pending ? "Sugestão enviada para a equipe. Ela ficará pendente até a aprovação." : "Brand Brain atualizado e uma nova versão foi registrada.");
+      setMessage(t(result.pending ? "Sugestão enviada para a equipe. Ela ficará pendente até a aprovação." : "Brand Brain atualizado e uma nova versão foi registrada."));
       try { window.localStorage.removeItem(recoveryKey); } catch { /* Recovery remains optional. */ }
       publishedBrainRef.current = JSON.stringify(brain);
       setDraftSavedAt(new Date());
       setDraftState("saved");
       setSummary(""); await load();
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível salvar."); }
+    } catch (error) { setMessage(error instanceof Error ? error.message : t("Não foi possível salvar.")); }
     finally { setSaving(false); }
   };
   const decide = async (revisionId: string, approved: boolean) => {
@@ -5903,20 +5927,20 @@ function BrandBrainExperience({ slug, clientName, portal = false, allowEdit = tr
     try {
       if (portal) await addPortalBrandBrainCommentBySlug(slug, { commentText: comment.trim(), sectionKey: section });
       else await addBrandBrainCommentBySlug(slug, { commentText: comment.trim(), sectionKey: section });
-      setComment(""); setMessage("Comentário enviado."); await load();
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível comentar."); }
+      setComment(""); setMessage(t("Comentário enviado.")); await load();
+    } catch (error) { setMessage(error instanceof Error ? error.message : t("Não foi possível comentar.")); }
     finally { setCommenting(false); }
   };
-  const field = (key: keyof BrandBrain, label: string, hint: string, large = false) => <label className="brand-v2-field"><span>{label}</span><small>{hint}</small><textarea disabled={!editable} className={large ? "large" : ""} value={(brain[key] as string) ?? ""} onChange={(event) => setText(key, event.target.value)} /></label>;
-  const listField = (key: keyof BrandBrain, label: string, hint: string) => <label className="brand-v2-field"><span>{label}</span><small>{hint}</small><textarea disabled={!editable} value={listValue(key)} onChange={(event) => setList(key, event.target.value)} placeholder="Um item por linha" /></label>;
+  const field = (key: keyof BrandBrain, label: string, hint: string, large = false) => <label className="brand-v2-field"><span>{t(label)}</span><small>{t(hint)}</small><textarea disabled={!editable} className={large ? "large" : ""} value={(brain[key] as string) ?? ""} onChange={(event) => setText(key, event.target.value)} /></label>;
+  const listField = (key: keyof BrandBrain, label: string, hint: string) => <label className="brand-v2-field"><span>{t(label)}</span><small>{t(hint)}</small><textarea disabled={!editable} value={listValue(key)} onChange={(event) => setList(key, event.target.value)} placeholder={t("Um item por linha")} /></label>;
 
-  if (loading) return <section className="brand-v2-loading">Organizando a memória da marca…</section>;
+  if (loading) return <section className="brand-v2-loading">{t("Organizando a memória da marca…")}</section>;
   return <section className={`brand-v2 ${portal ? "portal-brand-brain" : ""}`}>
     <header className="brand-v2-hero">
-      <div><span className="brand-v2-kicker">✦ Brand Brain</span><h1>{clientName}</h1><p>A fonte de verdade da marca para estratégia, conteúdo e direção visual.</p><div className="brand-v2-meta"><b>Versão {snapshot?.meta.version || "inicial"}</b><span>Atualizado {dateLabel(snapshot?.meta.updatedAt)}</span>{pending.length ? <em>{pending.length} sugestão{pending.length > 1 ? "ões" : ""} pendente{pending.length > 1 ? "s" : ""}</em> : <em className="ok">Tudo alinhado</em>}</div></div>
-      <div className="brand-v2-progress"><strong>{completion}%</strong><span>da identidade preenchida</span><i><b style={{ width: `${completion}%` }} /></i></div>
+      <div><span className="brand-v2-kicker">✦ Brand Brain</span><h1>{clientName}</h1><p>{t("A fonte de verdade da marca para estratégia, conteúdo e direção visual.")}</p><div className="brand-v2-meta"><b>{t("Versão")} {snapshot?.meta.version || t("inicial")}</b><span>{t("Atualizado")} {dateLabel(snapshot?.meta.updatedAt)}</span>{pending.length ? <em>{pending.length} {t(pending.length === 1 ? "sugestão pendente" : "sugestões pendentes")}</em> : <em className="ok">{t("Tudo alinhado")}</em>}</div></div>
+      <div className="brand-v2-progress"><strong>{completion}%</strong><span>{t("da identidade preenchida")}</span><i><b style={{ width: `${completion}%` }} /></i></div>
     </header>
-    <nav className="brand-v2-nav">{([ ["overview", "Visão geral"], ["essence", "Essência"], ["audience", "Público"], ["voice", "Voz"], ["content", "Conteúdo"], ["visual", "Visual"], ["history", "Histórico"] ] as Array<[BrandBrainSection, string]>).map(([id, label]) => <button key={id} className={section === id ? "active" : ""} onClick={() => setSection(id)}>{label}{id === "history" && pending.length ? <b>{pending.length}</b> : null}</button>)}</nav>
+    <nav className="brand-v2-nav">{([ ["overview", "Visão geral"], ["essence", "Essência"], ["audience", "Público"], ["voice", "Voz"], ["content", "Conteúdo"], ["visual", "Visual"], ["history", "Histórico"] ] as Array<[BrandBrainSection, string]>).map(([id, label]) => <button key={id} className={section === id ? "active" : ""} onClick={() => setSection(id)}>{t(label)}{id === "history" && pending.length ? <b>{pending.length}</b> : null}</button>)}</nav>
 
     {section === "overview" ? <div className="brand-v2-overview">
       <article className="brand-v2-statement"><small>POSICIONAMENTO</small><h2>{brain.positioning || "Defina o espaço único que a marca deseja ocupar."}</h2><p>{brain.brandPromise || "A promessa central da marca aparecerá aqui."}</p></article>
@@ -6118,6 +6142,7 @@ function ContractsWorkspace({ newContractSignal = 0 }: { newContractSignal?: num
 }
 
 function ClientContractAcceptance({ slug, accountName }: { slug: string; accountName: string }) {
+  const { t } = usePortalTranslation();
   const [contract, setContract] = useState<ContractRecord | null>(null);
   const [accepted, setAccepted] = useState(false);
   useEffect(() => {
@@ -6130,7 +6155,7 @@ function ClientContractAcceptance({ slug, accountName }: { slug: string; account
     const next = readContractRecords().map((item) => item.id === contract.id ? { ...item, status: "accepted" as const, acceptedAt: new Date().toISOString() } : item);
     writeContractRecords(next); window.localStorage.setItem(`designhub-v2-contract-accepted:${slug}:${contract.id}`, "1"); setAccepted(true);
   };
-  return <div className="contract-acceptance-backdrop"><section className="contract-acceptance-modal"><header><span>PRIMEIRO ACESSO</span><h1>Antes de começar, leia seu contrato</h1><p>{accountName}, este documento foi disponibilizado para sua conta. Revise os termos com calma.</p></header><div className="contract-acceptance-paper"><ContractDocumentPreview contract={contract} clientName={accountName} /></div><footer><small>Ao clicar, você confirma que leu e está de acordo com os termos apresentados.</small><button className="gradient-button" onClick={accept}>Li e aceito o contrato</button></footer></section></div>;
+  return <div className="contract-acceptance-backdrop"><section className="contract-acceptance-modal"><header><span>{t("PRIMEIRO ACESSO")}</span><h1>{t("Antes de começar, leia seu contrato")}</h1><p>{accountName}, {t("este documento foi disponibilizado para sua conta. Revise os termos com calma.")}</p></header><div className="contract-acceptance-paper"><ContractDocumentPreview contract={contract} clientName={accountName} /></div><footer><small>{t("Ao clicar, você confirma que leu e está de acordo com os termos apresentados.")}</small><button className="gradient-button" onClick={accept}>{t("Li e aceito o contrato")}</button></footer></section></div>;
 }
 
 function InternalAreaPage({ session, onLogout }: { session: SessionUser | null; onLogout: () => void }) {
