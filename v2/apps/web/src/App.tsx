@@ -1651,11 +1651,14 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
 }
 
 function DashboardTasksWidget({ posts }: { posts: DashboardUpcomingPost[] }) {
+  const [expanded, setExpanded] = useState(false);
   const postCount = posts.length;
+  const displayedPosts = expanded ? posts : posts.slice(0, 3);
+  const hiddenCount = Math.max(0, posts.length - displayedPosts.length);
   return <section className="dashboard-tasks-widget">
     <header><div><span className="dashboard-task-icon">◴</span><h3>Próximos posts</h3></div><span className="dashboard-task-count">Próximos 3 dias ({postCount})</span></header>
     <div className="dashboard-task-rows">
-      {posts.map((post) => <article key={post.id}>
+      {displayedPosts.map((post) => <article key={post.id}>
         <span className="dashboard-task-dot" />
         <span className="dashboard-task-avatar">{post.clientLogoUrl ? <img src={post.clientLogoUrl} alt="" /> : post.clientName.slice(0, 2).toUpperCase()}</span>
         <div><strong>{post.title}</strong><small>{post.clientName}</small></div>
@@ -1663,12 +1666,12 @@ function DashboardTasksWidget({ posts }: { posts: DashboardUpcomingPost[] }) {
         <span className="dashboard-task-date">◷ {formatDashboardDate(post.scheduledAt)}</span>
       </article>)}
     </div>
-    <button className="dashboard-task-link">Ver todas as tarefas <span>→</span></button>
+    {hiddenCount > 0 ? <button className="dashboard-task-link" type="button" onClick={() => setExpanded(true)}>Ver mais...</button> : null}
   </section>;
 }
 
 function DashboardAgendaWidget({ events }: { events: AgendaEvent[] }) {
-  return <section className="dashboard-tasks-widget dashboard-agenda-widget"><header><div><span className="dashboard-task-icon">▣</span><h3>Agenda de hoje</h3></div><span className="dashboard-task-count">{events.length} {events.length === 1 ? "compromisso" : "compromissos"}</span></header><div className="dashboard-task-rows">{events.map((event) => <article key={event.id}><span className="dashboard-task-dot" style={{ backgroundColor: event.color }} /><span className="agenda-time">{formatAgendaTime(event.startsAt)}</span><div><strong>{event.title}</strong><small>{event.clientName ?? "Compromisso"}</small></div><span className={event.isCompleted ? "agenda-state complete" : "agenda-state"}>{event.isCompleted ? "Concluído" : "Hoje"}</span></article>)}</div><NavLink to="/agenda" className="dashboard-task-link">Ver agenda completa <span>→</span></NavLink></section>;
+  return <section className="dashboard-tasks-widget dashboard-agenda-widget"><header><div><span className="dashboard-task-icon">▣</span><h3>Agenda de hoje</h3></div><span className="dashboard-task-count">{events.length} {events.length === 1 ? "compromisso" : "compromissos"}</span></header><div className="dashboard-task-rows">{events.map((event) => <article key={event.id}><span className="dashboard-task-dot" style={{ backgroundColor: event.color }} /><span className="agenda-time">{formatAgendaTime(event.startsAt)}</span><div><strong>{event.title}</strong><small>{event.clientName ?? "Compromisso"}</small></div><span className={event.isCompleted ? "agenda-state complete" : "agenda-state"}>{event.isCompleted ? "Concluído" : "Hoje"}</span></article>)}</div><NavLink to="/agenda" className="dashboard-task-link dashboard-agenda-link"><UiIcon name="calendar" /><strong>Ver agenda completa</strong><span>→</span></NavLink></section>;
 }
 
 function formatDashboardDate(value: string) {
