@@ -3306,11 +3306,17 @@ button {
 .dashboard-clients-full .client-showcase-head h3 {
   color: var(--dashboard-widget-ink) !important;
   font-family: var(--type-widget-heading-family);
+  font-size: var(--type-widget-heading-size) !important;
+  line-height: var(--type-widget-heading-leading);
 }
 .dashboard-task-rows strong,
 .dashboard-list p,
 .dashboard-submission-copy strong,
-.dashboard-activity-copy strong,
+.dashboard-activity-copy strong {
+  color: var(--dashboard-widget-ink) !important;
+  font-size: 0.78rem !important;
+  line-height: 1.3;
+}
 .dashboard-client-card strong,
 .dashboard-clients-full .client-showcase-card strong {
   color: var(--dashboard-widget-ink) !important;
@@ -3318,10 +3324,28 @@ button {
 .dashboard-task-rows small,
 .dashboard-list small,
 .dashboard-submission-copy p,
-.dashboard-activity-copy small,
+.dashboard-activity-copy small {
+  color: var(--dashboard-widget-ink-muted) !important;
+  font-size: var(--type-caption-size) !important;
+  line-height: var(--type-caption-leading);
+}
 .dashboard-client-card span,
 .dashboard-clients-full .client-showcase-card small {
   color: var(--dashboard-widget-ink-muted) !important;
+}
+.dashboard-task-count,
+.dashboard-task-status,
+.dashboard-task-date,
+.dashboard-submissions-head > span,
+.dashboard-activity-kind,
+.dashboard-activity-row time {
+  font-size: 0.66rem !important;
+}
+.dashboard-task-link,
+.dashboard-link,
+.dashboard-agenda-link strong,
+.dashboard-activity-actions button {
+  font-size: 0.72rem !important;
 }
 .dashboard-grid button,
 .dashboard-bottom-grid button,
