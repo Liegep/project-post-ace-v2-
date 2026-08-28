@@ -236,7 +236,7 @@ export type ClientTagDefinition = { id: string; name: string; color: string };
 export type HashtagGroup = { id: string; name: string; hashtags: string[] };
 export type DashboardTask = { id: string; title: string; deadlineAt: string; clientLabel: string; clientName: string; clientLogoUrl?: string | null };
 export type DashboardSubmission = { id: string; title: string; createdAt: string; clientName: string; clientLogoUrl?: string | null };
-export type DashboardClientActivity = { id: string; cardId: string | null; title: string; occurredAt: string; clientName: string; clientSlug: string; clientLogoUrl?: string | null; activityType: "approved" | "changes_requested" | "comment" | "brand_brain"; detail: string };
+export type DashboardClientActivity = { id: string; cardId: string | null; title: string; occurredAt: string; clientName: string; clientSlug: string; clientLogoUrl?: string | null; activityType: "approved" | "changes_requested" | "comment" | "brand_brain" | "contract_accepted" | "proposal_accepted"; detail: string };
 export type DashboardUpcomingPost = { id: string; title: string; scheduledAt: string; clientLabel: string; clientName: string; clientLogoUrl?: string | null };
 export type AgendaLabel = { id: string; name: string; color: string };
 export type AgendaRecurrence = "none" | "weekdays" | "weekly" | "monthly_nth_weekday";
@@ -996,6 +996,15 @@ export async function listAdminHashtagGroupsBySlug(slug: string) {
 
 export async function loadDashboardOverview() {
   return fetchJson<{ dueTasks: DashboardTask[]; upcomingPosts: DashboardUpcomingPost[]; agendaToday: AgendaEvent[]; clientSubmissions: DashboardSubmission[]; clientActivities: DashboardClientActivity[] }>("/api/dashboard/overview");
+}
+
+export async function recordPortalContractAcceptance(slug: string, input: { sourceId: string; title: string; detail?: string }) {
+  const account = await findPortalAccountBySlug(slug);
+  return sendJson<{ ok: true }>(`/api/portal/accounts/${account.clientAccountId}/feedback-events`, { method: "POST", body: JSON.stringify({ sourceType: "contract", activityType: "contract_accepted", ...input }) });
+}
+
+export async function recordPublicProposalAcceptance(input: { sourceId: string; clientName: string; title: string; detail?: string }) {
+  return sendJson<{ ok: true }>("/api/public/client-feedback-events", { method: "POST", body: JSON.stringify({ sourceType: "proposal", activityType: "proposal_accepted", ...input }) });
 }
 
 export async function loadAgendaEvents(from: string, to: string) { return fetchJson<{ items: AgendaEvent[] }>(`/api/agenda/events?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`); }

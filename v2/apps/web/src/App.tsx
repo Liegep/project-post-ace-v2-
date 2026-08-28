@@ -43,6 +43,8 @@ import {
   listAdminHashtagGroupsBySlug,
   type HashtagGroup,
   loadDashboardOverview,
+  recordPortalContractAcceptance,
+  recordPublicProposalAcceptance,
   type DashboardSubmission,
   type DashboardClientActivity,
   type DashboardUpcomingPost,
@@ -1903,7 +1905,7 @@ function DashboardClientSubmissionsWidget({ items, userId }: { items: DashboardS
 
 function DashboardClientActivitiesWidget({ items, onSchedule }: { items: DashboardClientActivity[]; onSchedule: (item: DashboardClientActivity) => void }) {
   const [expanded, setExpanded] = useState(false);
-  const activityLabel = (item: DashboardClientActivity) => item.activityType === "approved" ? "Aprovou o conteúdo" : item.activityType === "changes_requested" ? "Solicitou alterações" : item.activityType === "brand_brain" ? "Sugeriu uma atualização da marca" : "Deixou um feedback";
+  const activityLabel = (item: DashboardClientActivity) => item.activityType === "approved" ? "Aprovou o conteúdo" : item.activityType === "changes_requested" ? "Solicitou alterações" : item.activityType === "brand_brain" ? "Sugeriu uma atualização da marca" : item.activityType === "contract_accepted" ? "Aceitou o contrato" : item.activityType === "proposal_accepted" ? "Aceitou a proposta" : "Deixou um feedback";
   const activityTime = (value: string) => {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "Agora";
@@ -1928,11 +1930,11 @@ function DashboardClientActivitiesWidget({ items, onSchedule }: { items: Dashboa
   };
 
   return <section className="dashboard-list dashboard-client-activities compact">
-    <header className="dashboard-submissions-head"><div><h3>Feedback dos clientes</h3><small>Comentários, aprovações e alterações</small></div><span>{mergedItems.length}</span></header>
+    <header className="dashboard-submissions-head"><div><h3>Feedback dos clientes</h3><small>Comentários, aprovações, aceites e alterações</small></div><span>{mergedItems.length}</span></header>
     <div className="dashboard-activity-list">{displayedItems.map((item) => <article key={item.id} className={`dashboard-activity-row ${item.activityType}`}>
       <span className="dashboard-submission-avatar">{item.clientLogoUrl ? <img src={item.clientLogoUrl} alt={`Logo de ${item.clientName}`} /> : item.clientName.slice(0, 2).toUpperCase()}</span>
-      <div className="dashboard-activity-copy"><span className="dashboard-activity-kind">{item.activityType === "approved" ? "✓" : item.activityType === "changes_requested" ? "↻" : item.activityType === "brand_brain" ? "✦" : "💬"} {activityLabel(item)}</span><strong>{item.title}</strong><small>{item.clientName}{item.detail ? ` · “${item.detail}”` : ""}</small></div>
-      <div className="dashboard-activity-actions"><time title="Data do retorno do cliente">{activityTime(item.occurredAt)}</time>{item.activityType === "brand_brain" ? <button type="button" onClick={() => { window.location.hash = `/admin/${item.clientSlug}?view=brand`; }}><UiIcon name="spark" />Revisar</button> : item.activityType === "changes_requested" ? <button type="button" onClick={() => openCard(item)}><UiIcon name="eye" />Ver</button> : <button type="button" onClick={() => onSchedule(item)}><UiIcon name="calendar" />Agendar</button>}</div>
+      <div className="dashboard-activity-copy"><span className="dashboard-activity-kind">{item.activityType === "approved" || item.activityType === "contract_accepted" || item.activityType === "proposal_accepted" ? "✓" : item.activityType === "changes_requested" ? "↻" : item.activityType === "brand_brain" ? "✦" : "💬"} {activityLabel(item)}</span><strong>{item.title}</strong><small>{item.clientName}{item.detail ? ` · “${item.detail}”` : ""}</small></div>
+      <div className="dashboard-activity-actions"><time title="Data do retorno do cliente">{activityTime(item.occurredAt)}</time>{item.activityType === "brand_brain" ? <button type="button" onClick={() => { window.location.hash = `/admin/${item.clientSlug}?view=brand`; }}><UiIcon name="spark" />Revisar</button> : item.activityType === "contract_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/contratos"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "proposal_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/propostas"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "changes_requested" ? <button type="button" onClick={() => openCard(item)}><UiIcon name="eye" />Ver</button> : <button type="button" onClick={() => onSchedule(item)}><UiIcon name="calendar" />Agendar</button>}</div>
     </article>)}</div>
     {hiddenCount > 0 ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded(true)}>Ver mais...</button> : null}
   </section>;
@@ -6070,7 +6072,12 @@ function PublicProposalPage() {
   const expired = new Date(proposal.expiresAt).getTime() < Date.now();
   if (expired) return <main className="public-proposal-page"><section><span>DESIGN HUB</span><h1>Esta proposta expirou.</h1><p>Peça à equipe uma nova versão para continuar.</p></section></main>;
   const copy = getProposalLocale(proposal.locale);
-  const decide = (status: "accepted" | "refused") => { setDecision(status); const next = readLocalProposals().map((item) => item.id === proposal.id ? { ...item, status } : item); window.localStorage.setItem(PROPOSALS_STORAGE_KEY, JSON.stringify(next)); };
+  const decide = (status: "accepted" | "refused") => {
+    setDecision(status);
+    const next = readLocalProposals().map((item) => item.id === proposal.id ? { ...item, status } : item);
+    window.localStorage.setItem(PROPOSALS_STORAGE_KEY, JSON.stringify(next));
+    if (status === "accepted") void recordPublicProposalAcceptance({ sourceId: proposal.token, clientName: proposal.clientName || "Cliente", title: proposal.proposalType || "Proposta comercial", detail: proposal.plan || "Proposta aceita pelo cliente" }).catch(() => undefined);
+  };
   return <main className="public-proposal-page"><div className="public-proposal-orb one" /><div className="public-proposal-orb two" /><header className="public-proposal-brand"><img src={liegePaschoaliniLogo} alt="Liege Paschoalini Studio" /><div><b>LIEGE PASCHOALINI STUDIO</b></div></header><ProposalClientPreview proposal={proposal} /><section className="public-proposal-decision">{decision ? <><span className={decision}>✓</span><h2>{decision === "accepted" ? copy.accepted : copy.refused}</h2><p>{copy.answer}</p></> : <><p>{copy.until} {new Date(proposal.expiresAt).toLocaleDateString(copy.code)}.</p><h2>{copy.continueTogether}</h2><div><button className="gradient-button" onClick={() => decide("accepted")}>{copy.accept}</button><button className="public-proposal-refuse" onClick={() => decide("refused")}>{copy.refuse}</button></div></>}</section></main>;
 }
 
@@ -6158,6 +6165,7 @@ function ClientContractAcceptance({ slug, accountName }: { slug: string; account
   const accept = () => {
     const next = readContractRecords().map((item) => item.id === contract.id ? { ...item, status: "accepted" as const, acceptedAt: new Date().toISOString() } : item);
     writeContractRecords(next); window.localStorage.setItem(`designhub-v2-contract-accepted:${slug}:${contract.id}`, "1"); setAccepted(true);
+    void recordPortalContractAcceptance(slug, { sourceId: contract.id, title: contract.title, detail: contract.type || "Contrato aceito pelo cliente" }).catch(() => undefined);
   };
   return <div className="contract-acceptance-backdrop"><section className="contract-acceptance-modal"><header><span>{t("PRIMEIRO ACESSO")}</span><h1>{t("Antes de começar, leia seu contrato")}</h1><p>{accountName}, {t("este documento foi disponibilizado para sua conta. Revise os termos com calma.")}</p></header><div className="contract-acceptance-paper"><ContractDocumentPreview contract={contract} clientName={accountName} /></div><footer><small>{t("Ao clicar, você confirma que leu e está de acordo com os termos apresentados.")}</small><button className="gradient-button" onClick={accept}>{t("Li e aceito o contrato")}</button></footer></section></div>;
 }

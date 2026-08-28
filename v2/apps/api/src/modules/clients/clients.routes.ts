@@ -28,9 +28,30 @@ import {
   getBrandBrainSnapshot,
   saveOfficialBrandBrain,
 } from "./brand-brain.service.js";
+import { ensureClientFeedbackEventsTable, recordClientFeedbackEvent } from "./client-feedback.service.js";
 
 export const clientRoutes: FastifyPluginAsync = async (app) => {
   await ensureBrandBrainTables(app.db);
+  await ensureClientFeedbackEventsTable(app.db);
+
+  app.post("/portal/accounts/:clientAccountId/feedback-events", async (request) => {
+    const { clientAccountId } = request.params as { clientAccountId: string };
+    assertClientAccess(request, clientAccountId, ["admin", "colaborador", "cliente"]);
+    const body = request.body as { sourceType?: string; sourceId?: string; activityType?: string; title?: string; detail?: string };
+    if (body.sourceType !== "contract" || body.activityType !== "contract_accepted" || !body.sourceId?.trim() || !body.title?.trim()) throw app.httpErrors.badRequest("Evento de aceite inválido.");
+    const account = await findClientAccountById(app.db, clientAccountId);
+    if (!account) throw app.httpErrors.notFound("Cliente não encontrado.");
+    await recordClientFeedbackEvent(app.db, { clientAccountId, clientName: account.name, sourceType: "contract", sourceId: body.sourceId, activityType: "contract_accepted", title: body.title, detail: body.detail });
+    return { ok: true };
+  });
+
+  app.post("/public/client-feedback-events", async (request) => {
+    const body = request.body as { sourceType?: string; sourceId?: string; activityType?: string; clientName?: string; title?: string; detail?: string };
+    if (body.sourceType !== "proposal" || body.activityType !== "proposal_accepted" || !body.sourceId?.trim() || !body.clientName?.trim() || !body.title?.trim()) throw app.httpErrors.badRequest("Evento de aceite inválido.");
+    const [accounts] = await app.db.query<RowDataPacket[]>("SELECT id, name FROM client_accounts WHERE LOWER(name) = LOWER(?) LIMIT 1", [body.clientName.trim()]);
+    await recordClientFeedbackEvent(app.db, { clientAccountId: accounts[0]?.id ?? null, clientName: accounts[0]?.name ?? body.clientName, sourceType: "proposal", sourceId: body.sourceId, activityType: "proposal_accepted", title: body.title, detail: body.detail });
+    return { ok: true };
+  });
   app.get("/clients/:clientAccountId/brand-brain", async (request) => {
     const { clientAccountId } = request.params as { clientAccountId: string };
     assertClientAccess(request, clientAccountId, ["admin", "colaborador", "cliente"]);
@@ -145,6 +166,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
       [clientSubmissions],
       [clientActivities],
       [brandBrainActivities],
+      [documentActivities],
       [upcomingPosts],
       [agendaToday],
     ] = await Promise.all([
@@ -185,6 +207,14 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         "WHERE r.status = 'pending' AND r.author_role = 'cliente'", brandScopeSql,
         "ORDER BY r.created_at DESC LIMIT 8",
       ].join(" "), params),
+      app.db.query<RowDataPacket[]>([
+        "SELECT CONCAT('document-', e.id) AS id, NULL AS cardId, e.title, e.occurred_at AS occurredAt,",
+        "COALESCE(a.name, e.client_name) AS clientName, COALESCE(a.slug, '') AS clientSlug, a.logo_url AS clientLogoUrl,",
+        "e.activity_type AS activityType, COALESCE(e.detail, '') AS detail",
+        "FROM client_feedback_events e LEFT JOIN client_accounts a ON a.id = e.client_account_id WHERE 1=1",
+        scope.mode === "global" ? "" : `AND e.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")})`,
+        "ORDER BY e.occurred_at DESC LIMIT 8",
+      ].join(" "), params),
       app.db.query<RowDataPacket[]>(
         ["SELECT c.id, c.title, c.scheduled_at AS scheduledAt, c.client_label AS clientLabel, a.name AS clientName, a.logo_url AS clientLogoUrl FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id WHERE c.archived = 0 AND c.scheduled_at >= ? AND c.scheduled_at < ?", scopeSql, "ORDER BY c.scheduled_at ASC LIMIT 6"].join(" "),
         [todayStart, threeDaysEnd, ...params],
@@ -194,7 +224,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         [todayStart, tomorrowStart, ...(scope.mode === "global" ? [] : scope.clientIds)],
       ),
     ]);
-    const combinedClientActivities = [...clientActivities, ...brandBrainActivities]
+    const combinedClientActivities = [...clientActivities, ...brandBrainActivities, ...documentActivities]
       .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
       .slice(0, 8);
     return { dueTasks, upcomingPosts, agendaToday, clientSubmissions, clientActivities: combinedClientActivities };

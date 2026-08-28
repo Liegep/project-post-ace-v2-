@@ -201,6 +201,21 @@ CREATE TABLE IF NOT EXISTS agenda_labels (
   CONSTRAINT fk_agenda_labels_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS client_feedback_events (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  client_account_id CHAR(36) NULL,
+  client_name VARCHAR(190) NOT NULL,
+  source_type ENUM('contract', 'proposal') NOT NULL,
+  source_id VARCHAR(120) NOT NULL,
+  activity_type ENUM('contract_accepted', 'proposal_accepted') NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  detail VARCHAR(500) NULL,
+  occurred_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_client_feedback_source (source_type, source_id, activity_type),
+  KEY idx_client_feedback_account_date (client_account_id, occurred_at),
+  CONSTRAINT fk_client_feedback_account FOREIGN KEY (client_account_id) REFERENCES client_accounts (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS card_comments (
   id CHAR(36) NOT NULL PRIMARY KEY,
   card_id CHAR(36) NOT NULL,
