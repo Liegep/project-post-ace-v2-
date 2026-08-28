@@ -88,6 +88,26 @@
   grid-template-columns: 8px 48px minmax(0, 1fr) auto;
 }
 
+.dashboard-agenda-header-actions { display: flex; align-items: center; gap: 7px; }
+.dashboard-agenda-add { display: inline-flex; min-height: 28px; padding: 0 9px; align-items: center; gap: 4px; border: 1px solid rgba(101, 91, 222, .2); border-radius: 999px; color: #6258d2; background: rgba(240, 239, 255, .88); font: inherit; font-size: .68rem; font-weight: 700; cursor: pointer; }
+.dashboard-agenda-add:hover { border-color: rgba(101, 91, 222, .38); background: #eae8ff; }
+.dashboard-agenda-add span { font-size: 1rem; line-height: 1; }
+.dashboard-agenda-complete { display: grid; width: 29px; height: 29px; place-items: center; padding: 0; border: 1px solid #cfd7e8; border-radius: 9px; color: #7d89a3; background: rgba(255,255,255,.82); cursor: pointer; transition: color .16s ease, border-color .16s ease, background .16s ease, transform .16s ease; }
+.dashboard-agenda-complete:hover { border-color: #75d4aa; color: #16875e; background: #e6f8ef; transform: scale(1.04); }
+.dashboard-agenda-complete:disabled { cursor: wait; opacity: .55; }
+.dashboard-agenda-complete svg { width: 15px; height: 15px; }
+.dashboard-agenda-empty { margin: 6px 0 0; padding: 18px 12px; border: 1px dashed #d8deeb; border-radius: 11px; color: #8792aa; font-size: .75rem; text-align: center; }
+.dashboard-agenda-error { margin: 8px 0 0; color: #c84f5b; font-size: .72rem; }
+.dashboard-agenda-quick-backdrop { z-index: 170; backdrop-filter: blur(7px); }
+.dashboard-agenda-quick-modal { width: min(590px, calc(100vw - 36px)); display: grid; gap: 17px; padding: 27px; border: 1px solid rgba(255,255,255,.9); border-radius: 24px; color: #253250; background: linear-gradient(145deg, rgba(255,255,255,.96), rgba(246,248,255,.94)); box-shadow: 0 28px 85px rgba(35,45,82,.28); }
+.dashboard-agenda-quick-modal > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding-bottom: 14px; border-bottom: 1px solid #e7eaf2; }
+.dashboard-agenda-quick-modal h2 { margin: 4px 0 0; color: #253250; font-size: 1.35rem; }
+.dashboard-agenda-quick-modal .icon-close { flex: 0 0 auto; }
+.dashboard-agenda-quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+.dashboard-agenda-quick-modal footer { display: flex; justify-content: flex-end; gap: 9px; padding-top: 3px; }
+.dashboard-agenda-quick-modal footer button { width: auto; }
+@media (max-width: 600px) { .dashboard-agenda-header-actions { align-items: flex-end; flex-direction: column-reverse; }.dashboard-agenda-quick-grid { grid-template-columns: 1fr; }.dashboard-agenda-quick-modal { padding: 21px; } }
+
 .agenda-time {
   color: #4f55d6;
   font-weight: 800;

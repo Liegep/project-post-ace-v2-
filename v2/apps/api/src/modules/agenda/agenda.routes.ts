@@ -47,7 +47,7 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
     const input = updateAgendaEventSchema.parse(request.body);
     const updates: string[] = [];
     const values: unknown[] = [];
-    const mappings: Array<[keyof typeof input, string]> = [["title", "title"], ["taskDescription", "task_description"], ["startsAt", "starts_at"], ["endsAt", "ends_at"], ["color", "color"], ["clientAccountId", "client_account_id"], ["labelId", "agenda_label_id"], ["recurrenceType", "recurrence_type"], ["repeatUntil", "repeat_until"], ["meetLink", "meet_link"]];
+    const mappings: Array<[keyof typeof input, string]> = [["title", "title"], ["taskDescription", "task_description"], ["startsAt", "starts_at"], ["endsAt", "ends_at"], ["color", "color"], ["clientAccountId", "client_account_id"], ["labelId", "agenda_label_id"], ["recurrenceType", "recurrence_type"], ["repeatUntil", "repeat_until"], ["meetLink", "meet_link"], ["isCompleted", "is_completed"]];
     for (const [key, column] of mappings) if (key in input) { updates.push(`${column} = ?`); values.push(input[key] ?? null); }
     if (!updates.length) return { ok: true };
     values.push(eventId, request.auth!.user.id);

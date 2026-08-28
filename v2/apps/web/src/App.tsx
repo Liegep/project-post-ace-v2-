@@ -1630,7 +1630,15 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
           <div className="dashboard-grid">
             <DashboardCommemorativeWidget clients={clients} />
             {upcomingPosts.length > 0 ? <DashboardTasksWidget posts={upcomingPosts} /> : null}
-            {agendaToday.length > 0 ? <DashboardAgendaWidget events={agendaToday} /> : null}
+            <DashboardAgendaWidget
+              events={agendaToday}
+              canPersist={session.source === "api"}
+              onCreated={(created) => {
+                if (localDateKey(new Date(created.startsAt)) !== localDateKey(new Date())) return;
+                setAgendaToday((current) => [...current, created].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()));
+              }}
+              onCompleted={(eventId) => setAgendaToday((current) => current.filter((event) => event.id !== eventId))}
+            />
             <DashboardList title="Posts para Hoje" items={["02:00  EP. 237 - ÁUDIOS - Spotify", "02:00  EP. 237 - VÍDEOS - EP Youtube", "11:00  3 - Piccoli assaggi", "22:00  Viagem & Cia"]} action="Ver todos os posts" />
             {clientActivities.length > 0 ? <DashboardClientActivitiesWidget items={clientActivities} onSchedule={setScheduleActivity} /> : null}
             {internalMessages.length > 0 ? <DashboardInternalMessagesWidget items={internalMessages} onOpen={(item) => { if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; }} /> : null}
@@ -1678,8 +1686,63 @@ function DashboardTasksWidget({ posts }: { posts: DashboardUpcomingPost[] }) {
   </section>;
 }
 
-function DashboardAgendaWidget({ events }: { events: AgendaEvent[] }) {
-  return <section className="dashboard-tasks-widget dashboard-agenda-widget"><header><div><span className="dashboard-task-icon">▣</span><h3>Agenda de hoje</h3></div><span className="dashboard-task-count">{events.length} {events.length === 1 ? "compromisso" : "compromissos"}</span></header><div className="dashboard-task-rows">{events.map((event) => <article key={event.id}><span className="dashboard-task-dot" style={{ backgroundColor: event.color }} /><span className="agenda-time">{formatAgendaTime(event.startsAt)}</span><div><strong>{event.title}</strong><small>{event.clientName ?? "Compromisso"}</small></div><span className={event.isCompleted ? "agenda-state complete" : "agenda-state"}>{event.isCompleted ? "Concluído" : "Hoje"}</span></article>)}</div><NavLink to="/agenda" className="dashboard-task-link dashboard-agenda-link"><UiIcon name="calendar" /><strong>Ver agenda completa</strong><span>→</span></NavLink></section>;
+function DashboardAgendaWidget({ events, canPersist, onCreated, onCompleted }: { events: AgendaEvent[]; canPersist: boolean; onCreated: (event: AgendaEvent) => void; onCompleted: (eventId: string) => void }) {
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [labels, setLabels] = useState<AgendaLabel[]>([]);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [startsAt, setStartsAt] = useState("");
+  const [labelId, setLabelId] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [completingId, setCompletingId] = useState("");
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!quickOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape" && !saving) setQuickOpen(false); };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [quickOpen, saving]);
+
+  const openQuickCreate = () => {
+    const next = new Date();
+    next.setMinutes(Math.ceil((next.getMinutes() + 1) / 15) * 15, 0, 0);
+    setTitle(""); setDescription(""); setStartsAt(toDateTimeLocal(next.toISOString())); setLabelId(""); setError("");
+    setQuickOpen(true);
+    void loadAgendaLabels().then((result) => setLabels(result.items)).catch(() => setLabels([]));
+  };
+
+  const submitQuickEvent = async (submitEvent: FormEvent<HTMLFormElement>) => {
+    submitEvent.preventDefault();
+    if (!canPersist) { setError("Entre com seu e-mail e senha para salvar compromissos no banco."); return; }
+    if (!title.trim() || !startsAt) { setError("Preencha o nome e a data do compromisso."); return; }
+    setSaving(true); setError("");
+    try {
+      const selectedLabel = labels.find((label) => label.id === labelId);
+      const result = await createAgendaEvent({ title: title.trim(), taskDescription: description.trim() || null, startsAt, color: selectedLabel?.color ?? "#c9f7df", labelId: labelId || null, recurrenceType: "none" });
+      onCreated({ id: result.id, title: title.trim(), taskDescription: description.trim() || null, startsAt, color: selectedLabel?.color ?? "#c9f7df", isCompleted: false, labelId: labelId || null, labelName: selectedLabel?.name ?? null });
+      setQuickOpen(false);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível salvar o compromisso."); }
+    finally { setSaving(false); }
+  };
+
+  const completeEvent = async (agendaEvent: AgendaEvent) => {
+    if (!canPersist || completingId) return;
+    setCompletingId(agendaEvent.id); setError("");
+    try { await updateAgendaEvent(agendaEvent.sourceEventId ?? agendaEvent.id, { isCompleted: true }); onCompleted(agendaEvent.id); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível concluir o compromisso."); }
+    finally { setCompletingId(""); }
+  };
+
+  return <>
+    <section className="dashboard-tasks-widget dashboard-agenda-widget">
+      <header><div><span className="dashboard-task-icon">▣</span><h3>Agenda de hoje</h3></div><div className="dashboard-agenda-header-actions"><button type="button" className="dashboard-agenda-add" onClick={openQuickCreate}><span>＋</span>Novo</button><span className="dashboard-task-count">{events.length} {events.length === 1 ? "compromisso" : "compromissos"}</span></div></header>
+      {events.length ? <div className="dashboard-task-rows">{events.map((agendaEvent) => <article key={agendaEvent.id}><span className="dashboard-task-dot" style={{ backgroundColor: agendaEvent.color }} /><span className="agenda-time">{formatAgendaTime(agendaEvent.startsAt)}</span><div><strong>{agendaEvent.title}</strong><small>{agendaEvent.labelName ?? agendaEvent.clientName ?? "Compromisso"}</small></div><button type="button" className="dashboard-agenda-complete" disabled={completingId === agendaEvent.id} onClick={() => void completeEvent(agendaEvent)} aria-label={`Marcar ${agendaEvent.title} como feito`} title="Marcar como feito"><UiIcon name="check" /></button></article>)}</div> : <p className="dashboard-agenda-empty">Nenhum compromisso pendente para hoje.</p>}
+      {error && !quickOpen ? <p className="dashboard-agenda-error">{error}</p> : null}
+      <NavLink to="/agenda" className="dashboard-task-link dashboard-agenda-link"><UiIcon name="calendar" /><strong>Ver agenda completa</strong><span>→</span></NavLink>
+    </section>
+    {quickOpen ? createPortal(<div className="modal-backdrop dashboard-agenda-quick-backdrop" onMouseDown={() => { if (!saving) setQuickOpen(false); }}><form className="dashboard-agenda-quick-modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={submitQuickEvent}><header><div><p className="eyebrow">Agenda de hoje</p><h2>Novo compromisso rápido</h2></div><button type="button" className="icon-close" onClick={() => { if (!saving) setQuickOpen(false); }} aria-label="Fechar">×</button></header><label className="field-stack"><span>Nome</span><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Revisar calendário do cliente" required /></label><label className="field-stack"><span>Descrição</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Detalhes ou observações do compromisso" /></label><div className="dashboard-agenda-quick-grid"><label className="field-stack"><span>Data e horário</span><input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} required /></label><label className="field-stack"><span>Etiqueta</span><select value={labelId} onChange={(event) => setLabelId(event.target.value)}><option value="">Sem etiqueta</option>{labels.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}</select></label></div>{error ? <p className="form-feedback error-text">{error}</p> : null}<footer><button type="button" className="ghost-button" disabled={saving} onClick={() => setQuickOpen(false)}>Cancelar</button><button type="submit" className="gradient-button" disabled={saving}>{saving ? "Salvando..." : "Adicionar compromisso"}</button></footer></form></div>, document.body) : null}
+  </>;
 }
 
 function formatDashboardDate(value: string) {
