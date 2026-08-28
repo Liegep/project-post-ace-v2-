@@ -402,7 +402,7 @@ function navClass(isActive: boolean) {
 
 type PageMetric = { label: string; value: string | number; note: string; icon: ReactNode; tone?: string };
 
-function WorkspaceNavbar({ session, onLogout, onCreateClient, clientKanban = false, workspaceContext }: { session: SessionUser; onLogout: () => void; onCreateClient?: () => void; clientKanban?: boolean; workspaceContext?: ReactNode }) {
+function WorkspaceNavbar({ session, onLogout, clientKanban = false, workspaceContext }: { session: SessionUser; onLogout: () => void; clientKanban?: boolean; workspaceContext?: ReactNode }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [messages, setMessages] = useState<InternalApprovalRecord[]>(() => loadInternalApprovalMessages(session.id));
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => { try { return JSON.parse(window.localStorage.getItem(`designhub-v2-read-notifications:${session.id}`) ?? "[]") as string[]; } catch { return []; } });
@@ -414,8 +414,7 @@ function WorkspaceNavbar({ session, onLogout, onCreateClient, clientKanban = fal
   return <div className={`dashboard-nav workspace-navbar${clientKanban ? " client-kanban-navbar" : ""}`}>
     {!clientKanban ? <NavLink to="/dashboard" className="dashboard-nav-brand" aria-label="Abrir dashboard"><span className="brand-badge"><img src={designHubV2Logo} alt="Design Hub" /></span><strong>Design Hub</strong></NavLink> : null}
     {workspaceContext}
-    <nav className="dashboard-nav-links" aria-label="Navegação da operação"><NavLink to="/area/equipe">Equipe</NavLink><NavLink to={`/admin/${session.assignedAdminSlugs[0] ?? "aplikasi"}`}>Social</NavLink></nav>
-    {onCreateClient ? <button className="gradient-button dashboard-create-button" onClick={onCreateClient}>＋ Clientes</button> : <NavLink className="gradient-button dashboard-create-button" to="/dashboard">Clientes</NavLink>}
+    <nav className="dashboard-nav-links" aria-label="Navegação da operação"><NavLink to="/area/equipe">Equipe</NavLink></nav>
     <div className="dashboard-user"><button className="dashboard-icon-button" type="button" aria-label="Links rápidos"><UiIcon name="link" /></button><div className="notification-menu" ref={notificationMenuRef}><button className={`dashboard-icon-button ${unreadMessages.length ? "has-notification" : ""}`} type="button" aria-label="Notificações" onClick={() => setNotificationsOpen((open) => !open)}><UiIcon name="bell" />{unreadMessages.length ? <span aria-hidden="true">{unreadMessages.length > 9 ? "9+" : unreadMessages.length}</span> : null}</button>{notificationsOpen ? <div className="notification-popover"><header><strong>Notificações</strong><b>{unreadMessages.length}</b></header>{messages.length ? messages.slice(0, 5).map((item) => <button key={item.id} className={readNotificationIds.includes(item.id) ? "read" : ""} onClick={() => { markNotificationRead(item.id); if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; setNotificationsOpen(false); }}><span>♙</span><div><strong>{readNotificationIds.includes(item.id) ? "Aprovação interna" : "Nova aprovação interna"}</strong><small>{item.cardTitle}</small></div></button>) : <p>Nenhuma notificação nova.</p>}</div> : null}</div><ProfileMenu session={session} onLogout={onLogout} /></div>
   </div>;
 }
@@ -747,7 +746,7 @@ function Sidebar({ session }: { session: SessionUser }) {
   );
 }
 
-function AdminRail({ session }: { session: SessionUser }) {
+function AdminRail({ session, onCreateClient }: { session: SessionUser; onCreateClient?: () => void }) {
   const [isCollapsed, setIsCollapsed] = useState(() => {
     try {
       return window.localStorage.getItem("designhub-v2-admin-rail-collapsed") === "1";
@@ -784,6 +783,20 @@ function AdminRail({ session }: { session: SessionUser }) {
   return (
     <aside className={isCollapsed ? "admin-rail glass collapsed" : "admin-rail glass"}>
       <div className="admin-rail-stack">
+        {session.role === "super_admin" || session.role === "admin" ? (
+          onCreateClient ? <button
+            type="button"
+            className="admin-rail-button admin-rail-create-client"
+            onClick={onCreateClient}
+            aria-label="Adicionar novo cliente"
+            title="Adicionar novo cliente"
+          ><UiIcon name="plus" className="admin-rail-glyph" /></button> : <NavLink
+            to="/dashboard?createClient=1"
+            className="admin-rail-button admin-rail-create-client"
+            aria-label="Adicionar novo cliente"
+            title="Adicionar novo cliente"
+          ><UiIcon name="plus" className="admin-rail-glyph" /></NavLink>
+        ) : null}
         {items.map((item) => (
           (
             <NavLink
@@ -1365,10 +1378,12 @@ function DashboardInternalMessagesWidget({ items, onOpen }: { items: InternalApp
   const [dismissedIds, setDismissedIds] = useState<string[]>(() => { try { return JSON.parse(window.localStorage.getItem(DISMISSED_INTERNAL_MESSAGES_KEY) ?? "[]") as string[]; } catch { return []; } });
   const visibleItems = items.filter((item) => !dismissedIds.includes(item.id));
   if (!visibleItems.length) return null;
-  return <section className="dashboard-widget dashboard-internal-messages"><header className="dashboard-widget-head"><div><p className="eyebrow">Equipe</p><h3>Mensagens internas</h3><small>Cards enviados para sua revisão</small></div><span>{visibleItems.length}</span></header>{visibleItems.length ? <div className="dashboard-internal-list">{visibleItems.slice(0, 5).map((item) => <div className="dashboard-internal-row" key={item.id}><button className="dashboard-internal-open" onClick={() => onOpen(item)}><span className="internal-message-icon">♙</span><div><strong>{item.cardTitle}</strong><small>{item.message}</small></div><time>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.createdAt))}</time></button><button className="dashboard-internal-dismiss" aria-label="Fechar mensagem" title="Fechar mensagem" onClick={() => setDismissedIds((current) => { const next = [...current, item.id]; window.localStorage.setItem(DISMISSED_INTERNAL_MESSAGES_KEY, JSON.stringify(next)); return next; })}>×</button></div>)}</div> : <div className="dashboard-internal-empty">Nenhuma mensagem interna por enquanto.</div>}</section>;
+  return <section className="dashboard-widget dashboard-internal-messages"><header className="dashboard-widget-head"><div><p className="eyebrow">Equipe</p><h3>Mensagens internas</h3><small>Cards enviados para sua revisão</small></div><span>{visibleItems.length}</span></header>{visibleItems.length ? <div className="dashboard-internal-list">{visibleItems.slice(0, 5).map((item) => <div className="dashboard-internal-row" key={item.id}><button className="dashboard-internal-open" onClick={() => onOpen(item)}><span className="dashboard-item-bullet" aria-hidden="true" /><span className="internal-message-icon">♙</span><div><strong>{item.cardTitle}</strong><small>{item.message}</small></div><time>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.createdAt))}</time></button><button className="dashboard-internal-dismiss" aria-label="Fechar mensagem" title="Fechar mensagem" onClick={() => setDismissedIds((current) => { const next = [...current, item.id]; window.localStorage.setItem(DISMISSED_INTERNAL_MESSAGES_KEY, JSON.stringify(next)); return next; })}>×</button></div>)}</div> : <div className="dashboard-internal-empty">Nenhuma mensagem interna por enquanto.</div>}</section>;
 }
 
 function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: () => void }) {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [clients, setClients] = useState<AdminClientOption[]>([]);
   const [upcomingPosts, setUpcomingPosts] = useState<DashboardUpcomingPost[]>([]);
@@ -1408,6 +1423,11 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
     const interval = window.setInterval(() => setCurrentTime(new Date()), 60_000);
     return () => window.clearInterval(interval);
   }, []);
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get("createClient") !== "1") return;
+    setCreateOpen(true);
+    navigate("/dashboard", { replace: true });
+  }, [location.search, navigate]);
   useEffect(() => {
     if (!scheduledNotice) return;
     const timeout = window.setTimeout(() => setScheduledNotice(null), 2_300);
@@ -1616,11 +1636,11 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
 
   return (
     <div className="page-grid admin-layout dashboard-layout">
-      <AdminRail session={session} />
+      <AdminRail session={session} onCreateClient={() => setCreateOpen(true)} />
       <main className="main-column">
         <section className="dashboard-shell">
           <div className="dashboard-hero-panel">
-            <WorkspaceNavbar session={session} onLogout={onLogout} onCreateClient={() => setCreateOpen(true)} />
+            <WorkspaceNavbar session={session} onLogout={onLogout} />
             <div className="dashboard-welcome">
               <div className="dashboard-welcome-copy"><p className="eyebrow">Dashboard</p><h1>{greeting}, {session.name.split(" ")[0]}</h1><p className="dashboard-date">{new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(currentTime)}</p></div>
               <div className="dashboard-welcome-aside"><div className="dashboard-orbs" aria-hidden="true"><i /><i /><i /></div><div className="dashboard-metrics dashboard-metrics-inline"><article className="dashboard-metric clients"><UiIcon name="users" /><div><span>Clientes ativos</span><strong>{loading ? "-" : clients.length}</strong><small>Contas em andamento</small></div></article><article className="dashboard-metric posts"><UiIcon name="calendar" /><div><span>Posts este mês</span><strong>128</strong><small>+18% vs mês anterior</small></div></article><article className="dashboard-metric pending"><UiIcon name="clock" /><div><span>Pendentes</span><strong>24</strong><small className="dashboard-alert">8 vencem hoje</small></div></article><article className="dashboard-metric approved"><UiIcon name="check" /><div><span>Aprovados</span><strong>88</strong><small>+20% vs mês anterior</small></div></article></div></div>
@@ -1955,6 +1975,7 @@ function DashboardClientSubmissionsWidget({ items, userId }: { items: DashboardS
   return <section className="dashboard-list dashboard-client-submissions compact">
     <header className="dashboard-submissions-head"><h3>Sugestões dos clientes</h3><span>{visibleItems.length}</span></header>
     <div className="dashboard-submission-list">{displayedItems.map((item) => <article key={item.id}>
+      <span className="dashboard-item-bullet" aria-hidden="true" />
       <span className="dashboard-submission-avatar">
         {item.clientLogoUrl ? <img src={item.clientLogoUrl} alt={`Logo de ${item.clientName}`} /> : item.clientName.slice(0, 2).toUpperCase()}
       </span>
@@ -1968,7 +1989,9 @@ function DashboardClientSubmissionsWidget({ items, userId }: { items: DashboardS
 
 function DashboardClientActivitiesWidget({ items, onSchedule }: { items: DashboardClientActivity[]; onSchedule: (item: DashboardClientActivity) => void }) {
   const [expanded, setExpanded] = useState(false);
-  const activityLabel = (item: DashboardClientActivity) => item.activityType === "approved" ? "Aprovou o conteúdo" : item.activityType === "changes_requested" ? "Solicitou alterações" : item.activityType === "brand_brain" ? "Sugeriu uma atualização da marca" : item.activityType === "contract_accepted" ? "Aceitou o contrato" : item.activityType === "proposal_accepted" ? "Aceitou a proposta" : "Deixou um feedback";
+  const isNotApproved = (item: DashboardClientActivity) => item.activityType === "comment" && /^(n[aã]o|nao aprovado|não aprovado|reprovad|not approved)\b/i.test(item.detail.trim());
+  const activityTone = (item: DashboardClientActivity) => item.activityType === "approved" || item.activityType === "contract_accepted" || item.activityType === "proposal_accepted" ? "approved" : item.activityType === "changes_requested" ? "changes_requested" : isNotApproved(item) ? "not_approved" : item.activityType;
+  const activityLabel = (item: DashboardClientActivity) => item.activityType === "approved" ? "Aprovou o conteúdo" : item.activityType === "changes_requested" ? "Solicitou alterações" : item.activityType === "brand_brain" ? "Sugeriu uma atualização da marca" : item.activityType === "contract_accepted" ? "Aceitou o contrato" : item.activityType === "proposal_accepted" ? "Aceitou a proposta" : isNotApproved(item) ? "Não aprovou o conteúdo" : "Deixou um feedback";
   const activityTime = (value: string) => {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "Agora";
@@ -1994,11 +2017,15 @@ function DashboardClientActivitiesWidget({ items, onSchedule }: { items: Dashboa
 
   return <section className="dashboard-list dashboard-client-activities compact">
     <header className="dashboard-submissions-head"><div><h3>Feedback dos clientes</h3><small>Comentários, aprovações, aceites e alterações</small></div><span>{mergedItems.length}</span></header>
-    <div className="dashboard-activity-list">{displayedItems.map((item) => <article key={item.id} className={`dashboard-activity-row ${item.activityType}`}>
-      <span className="dashboard-submission-avatar">{item.clientLogoUrl ? <img src={item.clientLogoUrl} alt={`Logo de ${item.clientName}`} /> : item.clientName.slice(0, 2).toUpperCase()}</span>
-      <div className="dashboard-activity-copy"><span className="dashboard-activity-kind">{item.activityType === "approved" || item.activityType === "contract_accepted" || item.activityType === "proposal_accepted" ? "✓" : item.activityType === "changes_requested" ? "↻" : item.activityType === "brand_brain" ? "✦" : "💬"} {activityLabel(item)}</span><strong>{item.title}</strong><small>{item.clientName}{item.detail ? ` · “${item.detail}”` : ""}</small></div>
-      <div className="dashboard-activity-actions"><time title="Data do retorno do cliente">{activityTime(item.occurredAt)}</time>{item.activityType === "brand_brain" ? <button type="button" onClick={() => { window.location.hash = `/admin/${item.clientSlug}?view=brand`; }}><UiIcon name="spark" />Revisar</button> : item.activityType === "contract_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/contratos"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "proposal_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/propostas"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "changes_requested" ? <button type="button" onClick={() => openCard(item)}><UiIcon name="eye" />Ver</button> : <button type="button" onClick={() => onSchedule(item)}><UiIcon name="calendar" />Agendar</button>}</div>
-    </article>)}</div>
+    <div className="dashboard-activity-list">{displayedItems.map((item) => {
+      const tone = activityTone(item);
+      return <article key={item.id} className={`dashboard-activity-row ${tone}`}>
+        <span className="dashboard-item-bullet" aria-hidden="true" />
+        <span className="dashboard-submission-avatar">{item.clientLogoUrl ? <img src={item.clientLogoUrl} alt={`Logo de ${item.clientName}`} /> : item.clientName.slice(0, 2).toUpperCase()}</span>
+        <div className="dashboard-activity-copy"><span className="dashboard-activity-kind">{tone === "approved" ? "✓" : tone === "changes_requested" ? "↻" : tone === "not_approved" ? "×" : item.activityType === "brand_brain" ? "✦" : "💬"} {activityLabel(item)}</span><strong>{item.title}</strong><small>{item.clientName}{item.detail ? ` · “${item.detail}”` : ""}</small></div>
+        <div className="dashboard-activity-actions"><time title="Data do retorno do cliente">{activityTime(item.occurredAt)}</time>{item.activityType === "brand_brain" ? <button type="button" onClick={() => { window.location.hash = `/admin/${item.clientSlug}?view=brand`; }}><UiIcon name="spark" />Revisar</button> : item.activityType === "contract_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/contratos"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "proposal_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/propostas"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "changes_requested" || tone === "not_approved" ? <button type="button" onClick={() => openCard(item)}><UiIcon name="eye" />Ver</button> : <button type="button" onClick={() => onSchedule(item)}><UiIcon name="calendar" />Agendar</button>}</div>
+      </article>;
+    })}</div>
     {hiddenCount > 0 ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded(true)}>Ver mais...</button> : null}
   </section>;
 }
