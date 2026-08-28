@@ -96,6 +96,10 @@
 .dashboard-agenda-complete:hover { border-color: #75d4aa; color: #16875e; background: #e6f8ef; transform: scale(1.04); }
 .dashboard-agenda-complete:disabled { cursor: wait; opacity: .55; }
 .dashboard-agenda-complete svg { width: 15px; height: 15px; }
+.dashboard-agenda-widget .dashboard-task-rows article.completed { border-color: #bee9d5; background: linear-gradient(135deg, rgba(235,250,243,.96), rgba(245,253,249,.9)); }
+.dashboard-agenda-widget .dashboard-task-rows article.completed strong { color: #267a5d !important; text-decoration: line-through; text-decoration-color: rgba(38,122,93,.38); }
+.dashboard-agenda-widget .dashboard-task-rows article.completed small, .dashboard-agenda-widget .dashboard-task-rows article.completed .agenda-time { color: #4b9a7d !important; }
+.dashboard-agenda-complete.completed, .dashboard-agenda-complete.completed:hover { border-color: #72d1a8; color: #fff; background: #35b987; opacity: 1; transform: none; cursor: default; }
 .dashboard-agenda-empty { margin: 6px 0 0; padding: 18px 12px; border: 1px dashed #d8deeb; border-radius: 11px; color: #8792aa; font-size: .75rem; text-align: center; }
 .dashboard-agenda-error { margin: 8px 0 0; color: #c84f5b; font-size: .72rem; }
 .dashboard-agenda-quick-backdrop { z-index: 170; backdrop-filter: blur(7px); }
