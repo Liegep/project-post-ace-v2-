@@ -5656,16 +5656,16 @@ function LoginPage({
           <div className="login-brand-mark" aria-label="Design Hub V2">
             <img src={designHubV2Logo} alt="Logo Design Hub V2" />
           </div>
-          <div className="login-kicker"><span className="login-live-dot" />DESIGN HUB · WORKSPACE CRIATIVO</div>
-          <h1>Sua operação criativa, em perfeita sintonia.</h1>
+          <div className="login-kicker"><span className="login-live-dot" />DESIGN HUB · SEU ESPAÇO CRIATIVO</div>
+          <h1>Bem-vindo ao seu espaço criativo.</h1>
           <p className="hero-copy">
-            Entre no seu espaço para organizar clientes, conteúdos e aprovações com clareza.
+            Acesse para acompanhar projetos, conteúdos e aprovações em um só lugar.
           </p>
 
           <form className="login-form" onSubmit={submit}>
             <label className="field-stack">
-              <span>Usuário ou e-mail</span>
-              <input autoComplete="username" autoFocus placeholder="Digite seu usuário" value={email} onChange={(event) => setEmail(event.target.value)} />
+              <span>E-mail</span>
+              <input type="email" autoComplete="username" autoFocus placeholder="Digite seu e-mail" value={email} onChange={(event) => setEmail(event.target.value)} />
             </label>
             <label className="field-stack">
               <span>Senha</span>
@@ -5689,12 +5689,12 @@ function LoginPage({
           <span className="login-orb orb-a" /><span className="login-orb orb-b" /><span className="login-orb orb-c" />
           <div className="login-showcase-copy">
             <p className="eyebrow">VISÃO COMPLETA</p>
-            <h2>Do briefing à aprovação.</h2>
-            <p>Um fluxo elegante para manter projetos, equipe e clientes sempre alinhados.</p>
+            <h2>Tudo em um só lugar.</h2>
+            <p>Projetos, conteúdos e decisões organizados para uma experiência simples e transparente.</p>
           </div>
           <div className="login-product-preview" aria-hidden="true">
             <div className="login-preview-topbar"><span /><span /><span /><b>Design Hub</b><em>•••</em></div>
-            <div className="login-preview-greeting"><small>HOJE</small><strong>Bom dia, Liege</strong><span>8 projetos em movimento</span></div>
+            <div className="login-preview-greeting"><small>HOJE</small><strong>Olá, seja bem-vindo</strong><span>Acompanhe tudo o que está acontecendo</span></div>
             <div className="login-preview-metrics">
               <div><span className="blue">12</span><small>Em criação</small></div>
               <div><span className="violet">5</span><small>Aprovações</small></div>
