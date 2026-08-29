@@ -5628,8 +5628,8 @@ function LoginPage({
   session: SessionUser | null;
   onLogin: (email: string, password: string) => Promise<boolean>;
 }) {
-  const [email, setEmail] = useState(demoUsers[0]?.email ?? "");
-  const [password, setPassword] = useState(demoUsers[0]?.password ?? "");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
@@ -5656,54 +5656,58 @@ function LoginPage({
           <div className="login-brand-mark" aria-label="Design Hub V2">
             <img src={designHubV2Logo} alt="Logo Design Hub V2" />
           </div>
-          <div className="login-kicker"><span className="login-live-dot" />DESIGN HUB · ESPAÇO DE OPERAÇÃO</div>
-          <h1>Seu trabalho, mais leve e mais bonito.</h1>
+          <div className="login-kicker"><span className="login-live-dot" />DESIGN HUB · WORKSPACE CRIATIVO</div>
+          <h1>Sua operação criativa, em perfeita sintonia.</h1>
           <p className="hero-copy">
-            Acesse seu espaço para organizar clientes, conteúdos e aprovações com clareza.
+            Entre no seu espaço para organizar clientes, conteúdos e aprovações com clareza.
           </p>
 
           <form className="login-form" onSubmit={submit}>
             <label className="field-stack">
-              <span>E-mail</span>
-              <input value={email} onChange={(event) => setEmail(event.target.value)} />
+              <span>Usuário ou e-mail</span>
+              <input autoComplete="username" autoFocus placeholder="Digite seu usuário" value={email} onChange={(event) => setEmail(event.target.value)} />
             </label>
             <label className="field-stack">
               <span>Senha</span>
               <input
                 type="password"
+                autoComplete="current-password"
+                placeholder="Digite sua senha"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
               />
             </label>
             <button className="gradient-button login-submit" type="submit" disabled={submitting}>
-              {submitting ? "Entrando..." : "Entrar"}
+              {submitting ? "Entrando..." : <>Entrar no Design Hub <span aria-hidden="true">→</span></>}
             </button>
             {error ? <p className="form-feedback error-text">{error}</p> : null}
           </form>
+          <p className="login-security-note"><span aria-hidden="true">●</span> Acesso protegido ao seu workspace</p>
         </article>
 
-        <aside className="glass login-panel login-demo-panel">
-          <div className="login-demo-visual"><span className="login-orb orb-a" /><span className="login-orb orb-b" /><span className="login-orb orb-c" /><div className="login-visual-card"><b>✦</b><span>Uma operação<br /><strong>em sintonia.</strong></span></div></div>
-          <div className="login-demo-heading"><p className="eyebrow">Acesso rápido</p><h2>Escolha um perfil</h2><p>Entre como equipe ou cliente para explorar a experiência.</p></div>
-          <div className="demo-user-list">
-            {demoUsers.map((user) => (
-              <button
-                key={user.id}
-                className="demo-user-card"
-                onClick={() => {
-                  setEmail(user.email);
-                  setPassword(user.password);
-                  setError("");
-                }}
-              >
-                <div>
-                  <strong>{user.name}</strong>
-                  <p>{roleLabel(user.role)}</p>
-                </div>
-                <span>{user.email}</span>
-              </button>
-            ))}
+        <aside className="glass login-panel login-demo-panel login-showcase-panel" aria-label="Visão geral do Design Hub">
+          <span className="login-orb orb-a" /><span className="login-orb orb-b" /><span className="login-orb orb-c" />
+          <div className="login-showcase-copy">
+            <p className="eyebrow">VISÃO COMPLETA</p>
+            <h2>Do briefing à aprovação.</h2>
+            <p>Um fluxo elegante para manter projetos, equipe e clientes sempre alinhados.</p>
           </div>
+          <div className="login-product-preview" aria-hidden="true">
+            <div className="login-preview-topbar"><span /><span /><span /><b>Design Hub</b><em>•••</em></div>
+            <div className="login-preview-greeting"><small>HOJE</small><strong>Bom dia, Liege</strong><span>8 projetos em movimento</span></div>
+            <div className="login-preview-metrics">
+              <div><span className="blue">12</span><small>Em criação</small></div>
+              <div><span className="violet">5</span><small>Aprovações</small></div>
+              <div><span className="green">8</span><small>Agendados</small></div>
+            </div>
+            <div className="login-preview-activity">
+              <header><strong>Atividade recente</strong><small>AO VIVO</small></header>
+              <div><i className="violet" /><span><b>Conteúdo aprovado</b><small>Novo Cliente · agora</small></span><em>✓</em></div>
+              <div><i className="blue" /><span><b>Nova pauta adicionada</b><small>Equipe criativa · 8 min</small></span><em>→</em></div>
+              <div><i className="orange" /><span><b>Alteração solicitada</b><small>Campanha de agosto · 14 min</small></span><em>↗</em></div>
+            </div>
+          </div>
+          <div className="login-showcase-status"><span><i /> Sistema operacional</span><small>Design Hub 2.0</small></div>
         </aside>
       </section>
     </main>
