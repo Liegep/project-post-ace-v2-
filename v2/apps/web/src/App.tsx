@@ -1679,6 +1679,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
             {internalMessages.length > 0 ? <DashboardInternalMessagesWidget items={internalMessages} onOpen={(item) => { if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; }} /> : null}
             {clientSubmissions.length > 0 ? <DashboardClientSubmissionsWidget items={clientSubmissions} userId={session.id} /> : null}
           </div>
+          <div className="dashboard-section-divider" aria-hidden="true"><span /></div>
           <section className="dashboard-clients-panel dashboard-clients-full">
             <div className="dashboard-section-head"><div><p className="eyebrow">Projetos</p><h2>Clientes</h2></div></div>
             <div className="dashboard-client-tabs" role="tablist" aria-label="Filtrar clientes">
