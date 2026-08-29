@@ -783,6 +783,19 @@ function AdminRail({ session, onCreateClient }: { session: SessionUser; onCreate
   return (
     <aside className={isCollapsed ? "admin-rail glass collapsed" : "admin-rail glass"}>
       <div className="admin-rail-stack">
+        {items.map((item) => (
+          (
+            <NavLink
+              key={item.label}
+              to={item.to}
+              className={({ isActive }) => isActive ? "admin-rail-button active" : "admin-rail-button"}
+              aria-label={`Ir para ${item.label}`}
+              title={item.label}
+            >
+              <UiIcon name={item.icon} className="admin-rail-glyph" />
+            </NavLink>
+          )
+        ))}
         {session.role === "super_admin" || session.role === "admin" ? (
           onCreateClient ? <button
             type="button"
@@ -797,19 +810,6 @@ function AdminRail({ session, onCreateClient }: { session: SessionUser; onCreate
             title="Adicionar novo cliente"
           ><UiIcon name="plus" className="admin-rail-glyph" /></NavLink>
         ) : null}
-        {items.map((item) => (
-          (
-            <NavLink
-              key={item.label}
-              to={item.to}
-              className={({ isActive }) => isActive ? "admin-rail-button active" : "admin-rail-button"}
-              aria-label={`Ir para ${item.label}`}
-              title={item.label}
-            >
-              <UiIcon name={item.icon} className="admin-rail-glyph" />
-            </NavLink>
-          )
-        ))}
       </div>
       <div className="admin-rail-foot">
         <button
