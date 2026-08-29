@@ -762,7 +762,7 @@ function AdminRail({ session, onCreateClient }: { session: SessionUser; onCreate
       { icon: "check" as const, to: "/area/contratos", label: "Contratos" },
     ] : []),
     { icon: "spark" as const, to: "/area/datas-comemorativas", label: "Datas comemorativas" },
-    { icon: "file" as const, to: "/area/briefs-design", label: "Briefs de design" },
+    { icon: "brush" as const, to: "/area/briefs-design", label: "Briefs de design" },
     { icon: "calendar" as const, to: "/area/calendario-social", label: "Calendário social" },
     { icon: "users" as const, to: "/area/equipe", label: "Equipe" },
   ];
@@ -5704,28 +5704,140 @@ const INTERNAL_AREAS: Record<string, { title: string; description: string; restr
   equipe: { title: "Equipe", description: "Acompanhe as pessoas e responsabilidades do seu time." },
 };
 
+type DesignBriefFieldType = "short" | "long" | "choice" | "checklist" | "link" | "file";
+type DesignBriefField = { id: string; type: DesignBriefFieldType; label: string; help: string; required: boolean; options: string[] };
+type DesignBriefDraft = { id: string; title: string; introduction: string; fields: DesignBriefField[]; createdAt: string; updatedAt: string };
+type DesignBriefTemplate = { id: string; name: string; introduction: string; fields: DesignBriefField[]; createdAt: string };
+
+const DESIGN_BRIEF_RECOVERY_KEY = "designhub-v2-design-brief-current-draft";
+const DESIGN_BRIEF_RECORDS_KEY = "designhub-v2-design-briefs";
+const DESIGN_BRIEF_TEMPLATES_KEY = "designhub-v2-design-brief-templates";
+const DESIGN_BRIEF_FIELD_LIBRARY: Array<{ type: DesignBriefFieldType; icon: string; label: string; defaultLabel: string }> = [
+  { type: "short", icon: "T", label: "Resposta curta", defaultLabel: "Nome ou informação curta" },
+  { type: "long", icon: "≡", label: "Texto longo", defaultLabel: "Conte um pouco mais" },
+  { type: "choice", icon: "○", label: "Escolha única", defaultLabel: "Escolha uma opção" },
+  { type: "checklist", icon: "✓", label: "Checklist", defaultLabel: "Selecione as opções" },
+  { type: "link", icon: "↗", label: "Link", defaultLabel: "Link de referência" },
+  { type: "file", icon: "↑", label: "Anexo", defaultLabel: "Envie seus arquivos" },
+];
+
+function createDesignBriefId() {
+  return typeof window.crypto?.randomUUID === "function"
+    ? window.crypto.randomUUID()
+    : `brief-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function makeDesignBriefField(type: DesignBriefFieldType, label?: string, help = ""): DesignBriefField {
+  return { id: createDesignBriefId(), type, label: label ?? DESIGN_BRIEF_FIELD_LIBRARY.find((item) => item.type === type)?.defaultLabel ?? "Novo campo", help, required: false, options: type === "choice" || type === "checklist" ? ["Opção 1", "Opção 2"] : [] };
+}
+
+function cloneDesignBriefFields(fields: DesignBriefField[]) {
+  return fields.map((field) => ({ ...field, id: createDesignBriefId(), options: [...field.options] }));
+}
+
+function readDesignBriefTemplates(): DesignBriefTemplate[] {
+  try { const value = JSON.parse(window.localStorage.getItem(DESIGN_BRIEF_TEMPLATES_KEY) ?? "[]"); return Array.isArray(value) ? value : []; } catch { return []; }
+}
+
+function DesignBriefClientPaper({ title, introduction, fields, interactive = false, selectedFieldId, onSelectField }: { title: string; introduction: string; fields: DesignBriefField[]; interactive?: boolean; selectedFieldId?: string | null; onSelectField?: (id: string) => void }) {
+  return <article className={`design-brief-paper${interactive ? " interactive" : ""}`}>
+    <header><span className="design-brief-paper-logo"><UiIcon name="brush" /></span><div><small>BRIEF DE DESIGN</small><strong>Design Hub</strong></div></header>
+    <section className="design-brief-paper-intro"><p>FORMULÁRIO CRIATIVO</p><h1>{title.trim() || "Título do seu brief"}</h1><span>{introduction.trim() || "Preencha as informações abaixo para que possamos transformar sua ideia em um projeto visual claro e consistente."}</span></section>
+    <div className="design-brief-paper-fields">{fields.length ? fields.map((field, index) => <button type="button" key={field.id} className={`design-brief-paper-field${selectedFieldId === field.id ? " selected" : ""}`} onClick={() => onSelectField?.(field.id)} disabled={!interactive}>
+      <span className="design-brief-field-number">{String(index + 1).padStart(2, "0")}</span>
+      <div><label>{field.label || "Campo sem título"}{field.required ? <b> *</b> : null}</label>{field.help ? <small>{field.help}</small> : null}
+        {field.type === "long" ? <span className="design-brief-answer long" /> : field.type === "choice" || field.type === "checklist" ? <span className="design-brief-options">{field.options.filter(Boolean).map((option) => <i key={option}><em>{field.type === "choice" ? "○" : "□"}</em>{option}</i>)}</span> : field.type === "file" ? <span className="design-brief-upload"><UiIcon name="download" />Clique ou arraste seus arquivos</span> : <span className="design-brief-answer">{field.type === "link" ? "https://" : "Sua resposta"}</span>}
+      </div>
+    </button>) : <div className="design-brief-paper-empty"><UiIcon name="plus" /><strong>Adicione o primeiro campo</strong><span>Use o painel ao lado para montar este brief.</span></div>}</div>
+    <footer><span>DESIGN HUB · DIRECIONAMENTO CRIATIVO</span><b>{fields.length} {fields.length === 1 ? "pergunta" : "perguntas"}</b></footer>
+  </article>;
+}
+
 function DesignBriefsWorkspace() {
-  const recoveryKey = "designhub-v2-design-brief-current-draft";
-  const recoveredDraft = useMemo(() => readRecoveryDraft<{ title: string; objective: string; references: string }>(recoveryKey), []);
+  const recoveredDraft = useMemo(() => readRecoveryDraft<Partial<DesignBriefDraft> & { objective?: string; references?: string }>(DESIGN_BRIEF_RECOVERY_KEY), []);
+  const migratedFields = useMemo(() => recoveredDraft?.fields?.length ? recoveredDraft.fields : [
+    ...(recoveredDraft?.objective ? [makeDesignBriefField("long", "Objetivo", recoveredDraft.objective)] : []),
+    ...(recoveredDraft?.references ? [makeDesignBriefField("long", "Referências e direcionamento", recoveredDraft.references)] : []),
+  ], [recoveredDraft]);
+  const [briefId, setBriefId] = useState(() => recoveredDraft?.id ?? createDesignBriefId());
   const [title, setTitle] = useState(recoveredDraft?.title ?? "");
-  const [objective, setObjective] = useState(recoveredDraft?.objective ?? "");
-  const [references, setReferences] = useState(recoveredDraft?.references ?? "");
+  const [introduction, setIntroduction] = useState(recoveredDraft?.introduction ?? "");
+  const [fields, setFields] = useState<DesignBriefField[]>(migratedFields);
+  const [selectedFieldId, setSelectedFieldId] = useState<string | null>(migratedFields[0]?.id ?? null);
+  const [templates, setTemplates] = useState<DesignBriefTemplate[]>(readDesignBriefTemplates);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [templateName, setTemplateName] = useState("");
   const [saved, setSaved] = useState(false);
   const [draftState, setDraftState] = useState<AutosaveState>(recoveredDraft ? "recovered" : "idle");
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
   const committedDraftRef = useRef("");
+  const selectedField = fields.find((field) => field.id === selectedFieldId) ?? null;
+
   useEffect(() => {
-    const draftJson = JSON.stringify({ title, objective, references });
-    if (draftJson === committedDraftRef.current || (!title && !objective && !references)) return;
+    const draft = { id: briefId, title, introduction, fields, updatedAt: new Date().toISOString() };
+    const draftJson = JSON.stringify(draft);
+    if (draftJson === committedDraftRef.current || (!title && !introduction && fields.length === 0)) return;
     setDraftState((current) => current === "recovered" ? current : "pending");
     const timeout = window.setTimeout(() => {
-      try { window.localStorage.setItem(recoveryKey, draftJson); setDraftSavedAt(new Date()); setDraftState("saved"); }
+      try { window.localStorage.setItem(DESIGN_BRIEF_RECOVERY_KEY, draftJson); setDraftSavedAt(new Date()); setDraftState("saved"); }
       catch { setDraftState("error"); }
     }, 600);
     return () => window.clearTimeout(timeout);
-  }, [objective, references, title]);
-  const save = () => { if (!title.trim()) return; const key = "designhub-v2-design-briefs"; const current = JSON.parse(window.localStorage.getItem(key) ?? "[]") as unknown[]; window.localStorage.setItem(key, JSON.stringify([{ id: crypto.randomUUID(), title: title.trim(), objective: objective.trim(), references: references.trim(), createdAt: new Date().toISOString() }, ...current])); committedDraftRef.current = JSON.stringify({ title, objective, references }); window.localStorage.removeItem(recoveryKey); setDraftSavedAt(new Date()); setDraftState("saved"); setSaved(true); };
-  return <section className="design-briefs-workspace glass"><header><div><p className="eyebrow">DIRECIONAMENTO CRIATIVO</p><h2>Novo brief de design</h2><p>Organize referências, objetivos e orientações para a equipe criar com clareza.</p></div><span className="design-briefs-mark">✦</span></header><div className="design-briefs-grid"><label>Título do projeto<input autoFocus value={title} onChange={(event) => { setTitle(event.target.value); setSaved(false); }} placeholder="Ex.: Campanha de lançamento" /></label><label>Objetivo<textarea value={objective} onChange={(event) => { setObjective(event.target.value); setSaved(false); }} placeholder="Qual resultado a peça deve alcançar?" /></label><label className="wide">Referências e direcionamento<textarea value={references} onChange={(event) => { setReferences(event.target.value); setSaved(false); }} placeholder="Cores, estilo, formatos, links e observações para o design..." /></label></div><footer><AutosaveIndicator state={draftState} savedAt={draftSavedAt} savedLabel="Rascunho protegido" /><button className="gradient-button" disabled={!title.trim()} onClick={save}>{saved ? "✓ Brief salvo" : "Salvar brief"}</button></footer></section>;
+  }, [briefId, fields, introduction, title]);
+
+  useEffect(() => {
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      setPreviewOpen(false);
+      setTemplateModalOpen(false);
+    };
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
+  }, []);
+
+  const markChanged = () => setSaved(false);
+  const addField = (type: DesignBriefFieldType) => { const field = makeDesignBriefField(type); setFields((current) => [...current, field]); setSelectedFieldId(field.id); markChanged(); };
+  const updateSelectedField = (patch: Partial<DesignBriefField>) => { if (!selectedFieldId) return; setFields((current) => current.map((field) => field.id === selectedFieldId ? { ...field, ...patch } : field)); markChanged(); };
+  const removeSelectedField = () => { if (!selectedFieldId) return; const next = fields.filter((field) => field.id !== selectedFieldId); setFields(next); setSelectedFieldId(next[0]?.id ?? null); markChanged(); };
+  const saveBrief = () => {
+    if (!title.trim()) return;
+    const now = new Date().toISOString();
+    let current: DesignBriefDraft[] = [];
+    try { current = JSON.parse(window.localStorage.getItem(DESIGN_BRIEF_RECORDS_KEY) ?? "[]") as DesignBriefDraft[]; } catch { current = []; }
+    const existing = current.find((item) => item.id === briefId);
+    const record: DesignBriefDraft = { id: briefId, title: title.trim(), introduction: introduction.trim(), fields, createdAt: existing?.createdAt ?? now, updatedAt: now };
+    window.localStorage.setItem(DESIGN_BRIEF_RECORDS_KEY, JSON.stringify([record, ...current.filter((item) => item.id !== briefId)]));
+    committedDraftRef.current = JSON.stringify({ id: briefId, title, introduction, fields, updatedAt: record.updatedAt });
+    window.localStorage.removeItem(DESIGN_BRIEF_RECOVERY_KEY); setDraftSavedAt(new Date()); setDraftState("saved"); setSaved(true);
+  };
+  const clearBrief = () => {
+    if ((title || introduction || fields.length) && !window.confirm("Excluir este brief e começar uma folha vazia?")) return;
+    setBriefId(createDesignBriefId()); setTitle(""); setIntroduction(""); setFields([]); setSelectedFieldId(null); setSaved(false); setDraftState("idle"); setDraftSavedAt(null); committedDraftRef.current = ""; window.localStorage.removeItem(DESIGN_BRIEF_RECOVERY_KEY);
+  };
+  const saveTemplate = () => {
+    if (!templateName.trim() || fields.length === 0) return;
+    const template: DesignBriefTemplate = { id: createDesignBriefId(), name: templateName.trim(), introduction: introduction.trim(), fields: cloneDesignBriefFields(fields), createdAt: new Date().toISOString() };
+    const next = [template, ...templates]; setTemplates(next); window.localStorage.setItem(DESIGN_BRIEF_TEMPLATES_KEY, JSON.stringify(next)); setTemplateName(""); setTemplateModalOpen(false);
+  };
+  const applyTemplate = (template: DesignBriefTemplate) => {
+    const nextFields = cloneDesignBriefFields(template.fields); setBriefId(createDesignBriefId()); setTitle(template.name); setIntroduction(template.introduction); setFields(nextFields); setSelectedFieldId(nextFields[0]?.id ?? null); setSaved(false);
+  };
+  const deleteTemplate = (id: string) => {
+    if (!window.confirm("Excluir este template da biblioteca?")) return;
+    const next = templates.filter((template) => template.id !== id); setTemplates(next); window.localStorage.setItem(DESIGN_BRIEF_TEMPLATES_KEY, JSON.stringify(next));
+  };
+
+  return <section className="design-brief-builder">
+    <header className="design-brief-builder-toolbar"><div><p className="eyebrow">EDITOR DE BRIEF</p><h2>Monte o formulário do cliente</h2><AutosaveIndicator state={draftState} savedAt={draftSavedAt} savedLabel="Rascunho protegido" /></div><div><button className="ghost-button" onClick={() => setPreviewOpen(true)}><UiIcon name="eye" />Prévia</button><button className="design-brief-delete-button" onClick={clearBrief}><UiIcon name="trash" />Excluir</button><button className="ghost-button" disabled={fields.length === 0} onClick={() => { setTemplateName(title.trim() || "Novo modelo de brief"); setTemplateModalOpen(true); }}><UiIcon name="copy" />Salvar como template</button><button className="gradient-button" disabled={!title.trim()} onClick={saveBrief}>{saved ? "✓ Brief salvo" : "Salvar brief"}</button></div></header>
+    <div className="design-brief-builder-grid">
+      <aside className="design-brief-field-palette glass"><header><span>CAMPOS</span><h3>Adicionar à folha</h3><p>Clique em um tipo para incluir uma nova pergunta.</p></header><div>{DESIGN_BRIEF_FIELD_LIBRARY.map((item) => <button key={item.type} onClick={() => addField(item.type)}><b>{item.icon}</b><span>{item.label}</span><UiIcon name="plus" /></button>)}</div><section className="design-brief-document-settings"><span>DOCUMENTO</span><label>Título<input value={title} onChange={(event) => { setTitle(event.target.value); markChanged(); }} placeholder="Ex.: Identidade visual" /></label><label>Introdução<textarea value={introduction} onChange={(event) => { setIntroduction(event.target.value); markChanged(); }} placeholder="Uma breve orientação para o cliente..." /></label></section></aside>
+      <main className="design-brief-canvas"><div className="design-brief-canvas-label"><span>PRÉVIA AO VIVO</span><small>Como o cliente receberá o brief</small></div><DesignBriefClientPaper title={title} introduction={introduction} fields={fields} interactive selectedFieldId={selectedFieldId} onSelectField={setSelectedFieldId} /></main>
+      <aside className="design-brief-inspector glass"><header><span>PROPRIEDADES</span><h3>{selectedField ? "Editar campo" : "Selecione um campo"}</h3></header>{selectedField ? <div className="design-brief-inspector-form"><label>Pergunta<input value={selectedField.label} onChange={(event) => updateSelectedField({ label: event.target.value })} /></label><label>Texto de ajuda<textarea value={selectedField.help} onChange={(event) => updateSelectedField({ help: event.target.value })} placeholder="Explique o que precisa ser informado" /></label>{selectedField.type === "choice" || selectedField.type === "checklist" ? <label>Opções<textarea value={selectedField.options.join("\n")} onChange={(event) => updateSelectedField({ options: event.target.value.split("\n") })} placeholder={"Uma opção por linha"} /></label> : null}<label className="design-brief-required"><input type="checkbox" checked={selectedField.required} onChange={(event) => updateSelectedField({ required: event.target.checked })} /><span>Resposta obrigatória</span></label><button className="design-brief-remove-field" onClick={removeSelectedField}><UiIcon name="trash" />Remover este campo</button></div> : <p className="design-brief-inspector-empty">Clique em uma pergunta na folha para editar seus detalhes.</p>}<section className="design-brief-template-library"><header><div><span>BIBLIOTECA</span><h3>Templates</h3></div><b>{templates.length}</b></header>{templates.length ? <div>{templates.map((template) => <article key={template.id}><button onClick={() => applyTemplate(template)}><strong>{template.name}</strong><small>{template.fields.length} campos</small></button><button aria-label={`Excluir template ${template.name}`} title="Excluir template" onClick={() => deleteTemplate(template.id)}>×</button></article>)}</div> : <p>Seus modelos reutilizáveis aparecerão aqui.</p>}</section></aside>
+    </div>
+    {previewOpen ? createPortal(<div className="modal-backdrop design-brief-preview-backdrop" onClick={() => setPreviewOpen(false)}><section className="design-brief-preview-modal" onClick={(event) => event.stopPropagation()}><header><div><span>PRÉVIA PARA O CLIENTE</span><h2>Como o brief será recebido</h2></div><button className="icon-close" aria-label="Fechar prévia" onClick={() => setPreviewOpen(false)}>×</button></header><div><DesignBriefClientPaper title={title} introduction={introduction} fields={fields} /></div><footer><button className="gradient-button" onClick={() => setPreviewOpen(false)}>Voltar para edição</button></footer></section></div>, document.body) : null}
+    {templateModalOpen ? createPortal(<div className="modal-backdrop" onClick={() => setTemplateModalOpen(false)}><section className="design-brief-template-modal" onClick={(event) => event.stopPropagation()}><header><div><span>NOVO TEMPLATE</span><h2>Salvar na biblioteca</h2><p>Todos os campos desta folha poderão ser reutilizados.</p></div><button className="icon-close" aria-label="Fechar template" onClick={() => setTemplateModalOpen(false)}>×</button></header><label>Nome do template<input autoFocus value={templateName} onChange={(event) => setTemplateName(event.target.value)} placeholder="Ex.: Brief para identidade visual" /></label><footer><button className="ghost-button" onClick={() => setTemplateModalOpen(false)}>Cancelar</button><button className="gradient-button" disabled={!templateName.trim()} onClick={saveTemplate}>Salvar template</button></footer></section></div>, document.body) : null}
+  </section>;
 }
 
 function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards: BoardCard[]; appointments: AgendaEvent[]; onSelectCard: (id: string) => void }) {
@@ -6272,7 +6384,7 @@ function InternalAreaPage({ session, onLogout }: { session: SessionUser | null; 
   const metrics = area === "equipe" ? [{ label: "Papéis", value: "4", note: "Níveis de acesso", icon: <UiIcon name="users" />, tone: "clients" }, { label: "Clientes", value: "—", note: "Atribuições ativas", icon: <UiIcon name="link" />, tone: "posts" }] : area === "relatorios" ? [{ label: "Relatórios", value: "—", note: "Períodos disponíveis", icon: <UiIcon name="file" />, tone: "posts" }, { label: "Indicadores", value: "—", note: "Acompanhe resultados", icon: <UiIcon name="check" />, tone: "approved" }] : area === "faturamento" ? [{ label: "Faturas", value: "—", note: "Lançamentos da operação", icon: <UiIcon name="receipt" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Cobranças centralizadas", icon: <UiIcon name="check" />, tone: "approved" }] : [{ label: "Em andamento", value: "—", note: "Dados desta área", icon: <UiIcon name="clock" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Operação centralizada", icon: <UiIcon name="check" />, tone: "approved" }];
   const content = area === "relatorios" ? <ReportsWorkspace newReportSignal={reportCreationVersion} /> : area === "faturamento" ? <BillingWorkspace session={session} newInvoiceSignal={invoiceCreationVersion} /> : area === "propostas" ? <ProposalsWorkspace newProposalSignal={proposalCreationVersion} /> : area === "contratos" ? <ContractsWorkspace newContractSignal={contractCreationVersion} /> : area === "equipe" ? <TeamManagementWorkspace session={session} newMemberSignal={memberCreationVersion} /> : area === "datas-comemorativas" ? <CommemorativeDatesWorkspace /> : area === "calendario-social" ? <SocialCalendarWorkspace /> : area === "briefs-design" ? <DesignBriefsWorkspace /> : <section className="internal-area-card glass"><div className="internal-area-empty"><UiIcon name="spark" /><strong>Esta página é privada para o seu nível de acesso.</strong><span>O conteúdo desta área será organizado aqui.</span></div></section>;
   const action = area === "relatorios" ? <button className="gradient-button page-context-action" onClick={() => setReportCreationVersion((current) => current + 1)}>+ Novo relatório</button> : area === "faturamento" ? <button className="gradient-button page-context-action" onClick={() => setInvoiceCreationVersion((current) => current + 1)}>+ Nova fatura</button> : area === "propostas" ? <button className="gradient-button page-context-action" onClick={() => setProposalCreationVersion((current) => current + 1)}>+ Nova proposta</button> : area === "contratos" ? <button className="gradient-button page-context-action" onClick={() => setContractCreationVersion((current) => current + 1)}>+ Novo contrato</button> : area === "equipe" && session.role === "super_admin" ? <button className="gradient-button page-context-action" onClick={() => setMemberCreationVersion((current) => current + 1)}>+ Novo membro</button> : null;
-  const titleIcon = area === "equipe" ? <UiIcon name="users" /> : area === "relatorios" || area === "briefs-design" ? <UiIcon name="file" /> : area === "faturamento" ? <UiIcon name="receipt" /> : area === "propostas" ? <UiIcon name="send" /> : area === "contratos" ? <UiIcon name="check" /> : area === "calendario-social" ? <UiIcon name="calendar" /> : area === "datas-comemorativas" ? <UiIcon name="spark" /> : undefined;
+  const titleIcon = area === "equipe" ? <UiIcon name="users" /> : area === "briefs-design" ? <UiIcon name="brush" /> : area === "relatorios" ? <UiIcon name="file" /> : area === "faturamento" ? <UiIcon name="receipt" /> : area === "propostas" ? <UiIcon name="send" /> : area === "contratos" ? <UiIcon name="check" /> : area === "calendario-social" ? <UiIcon name="calendar" /> : area === "datas-comemorativas" ? <UiIcon name="spark" /> : undefined;
   return <div className="page-grid admin-layout internal-area-layout"><AdminRail session={session} /><main className="main-column"><WorkspaceNavbar session={session} onLogout={onLogout} /><PageContextBanner eyebrow="Área da operação" title={page.title} description={page.description} metrics={metrics} action={action} titleClassName={["relatorios", "faturamento", "propostas", "equipe", "calendario-social", "briefs-design", "datas-comemorativas", "contratos"].includes(area) ? "billing-banner-title" : undefined} titleIcon={titleIcon} />{content}</main></div>;
 }
 
