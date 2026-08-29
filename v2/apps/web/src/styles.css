@@ -707,6 +707,14 @@ button {
 .about-workspace-meta strong { color: #4f46cf; font-size: 1.35rem; font-variant-numeric: tabular-nums; }
 .about-workspace-copy > small { margin-top: 13px; color: #9aa3b3; font-size: .66rem; }
 @media (max-width: 760px) { .about-workspace { grid-template-columns: 1fr; text-align: center; }.about-workspace-copy { justify-items: center; }.about-workspace-mark { width: 150px; }.about-workspace-meta { grid-template-columns: 1fr 1fr; }.about-workspace-copy h2 { font-size: 2.15rem; } }
+.modal-backdrop.about-modal-backdrop { z-index: 170; padding: 22px; }
+.about-modal { position: relative; width: min(760px, 100%); max-height: calc(100vh - 44px); overflow: auto; border: 1px solid rgba(255,255,255,.92); border-radius: 30px; background: rgba(248,250,255,.96); box-shadow: 0 32px 90px rgba(32,39,74,.3); }
+.about-modal-close { position: absolute; z-index: 5; top: 18px; right: 18px; }
+.about-workspace.compact { grid-template-columns: 190px minmax(0,1fr); min-height: 0; gap: 34px; padding: 52px 48px 44px; border: 0; border-radius: inherit; box-shadow: none; }
+.about-workspace.compact .about-workspace-mark { width: 170px; }
+.about-workspace.compact .about-workspace-copy h2 { font-size: clamp(2rem, 4.5vw, 3.15rem); }
+.about-workspace.compact .about-workspace-copy > p:not(.eyebrow) { font-size: .86rem; }
+@media (max-width: 660px) { .modal-backdrop.about-modal-backdrop { padding: 12px; }.about-workspace.compact { grid-template-columns: 1fr; gap: 22px; padding: 54px 24px 32px; text-align: center; }.about-workspace.compact .about-workspace-mark { width: 130px; }.about-workspace.compact .about-workspace-copy { justify-items: center; }.about-workspace.compact .about-workspace-meta { grid-template-columns: 1fr 1fr; } }
 
 .commemorative-workspace { display: grid; gap: 24px; padding: clamp(22px, 3vw, 38px); border-radius: 28px; }
 .commemorative-workspace-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
