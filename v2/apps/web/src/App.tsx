@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { createPortal } from "react-dom";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
 import { zipSync } from "fflate";
+import webPackage from "../package.json";
 import {
   addAdminCardCommentBySlug,
   addPortalCardCommentBySlug,
@@ -809,6 +810,12 @@ function AdminRail({ session, onCreateClient }: { session: SessionUser; onCreate
             title="Adicionar novo cliente"
           ><UiIcon name="plus" className="admin-rail-glyph" /></NavLink>
         ) : null}
+        <NavLink
+          to="/area/sobre"
+          className={({ isActive }) => isActive ? "admin-rail-button active" : "admin-rail-button"}
+          aria-label="Ir para Sobre"
+          title="Sobre"
+        ><UiIcon name="help" className="admin-rail-glyph" /></NavLink>
       </div>
       <div className="admin-rail-foot">
         <button
@@ -5702,7 +5709,25 @@ const INTERNAL_AREAS: Record<string, { title: string; description: string; restr
   "briefs-design": { title: "Briefs de design", description: "Organize as referências e direcionamentos criativos." },
   "calendario-social": { title: "Calendário social", description: "Visualize o planejamento de conteúdo nas redes sociais." },
   equipe: { title: "Equipe", description: "Acompanhe as pessoas e responsabilidades do seu time." },
+  sobre: { title: "Sobre", description: "Informações sobre esta versão do Design Hub." },
 };
+
+function AboutWorkspace() {
+  const year = new Date().getFullYear();
+  return <section className="about-workspace glass">
+    <div className="about-workspace-mark"><img src={designHubV2Logo} alt="Design Hub" /></div>
+    <div className="about-workspace-copy">
+      <p className="eyebrow">DESIGN HUB</p>
+      <h2>Seu espaço de criação e gestão</h2>
+      <p>Um ambiente pensado para organizar clientes, conteúdo, aprovações e toda a rotina criativa em um só lugar.</p>
+      <div className="about-workspace-meta">
+        <article><span>Versão do programa</span><strong>v{webPackage.version}</strong></article>
+        <article><span>Ano</span><strong>{year}</strong></article>
+      </div>
+      <small>© {year} Design Hub. Todos os direitos reservados.</small>
+    </div>
+  </section>;
+}
 
 type DesignBriefFieldType = "short" | "long" | "choice" | "checklist" | "link" | "file";
 type DesignBriefField = { id: string; type: DesignBriefFieldType; label: string; help: string; required: boolean; options: string[] };
@@ -6381,11 +6406,11 @@ function InternalAreaPage({ session, onLogout }: { session: SessionUser | null; 
   const page = INTERNAL_AREAS[area];
   if (!session || session.role === "client") return <Navigate to={getDefaultRoute(session)} replace />;
   if (!page || (page.restricted && session.role === "collaborator")) return <Navigate to="/dashboard" replace />;
-  const metrics = area === "equipe" ? [{ label: "Papéis", value: "4", note: "Níveis de acesso", icon: <UiIcon name="users" />, tone: "clients" }, { label: "Clientes", value: "—", note: "Atribuições ativas", icon: <UiIcon name="link" />, tone: "posts" }] : area === "relatorios" ? [{ label: "Relatórios", value: "—", note: "Períodos disponíveis", icon: <UiIcon name="file" />, tone: "posts" }, { label: "Indicadores", value: "—", note: "Acompanhe resultados", icon: <UiIcon name="check" />, tone: "approved" }] : area === "faturamento" ? [{ label: "Faturas", value: "—", note: "Lançamentos da operação", icon: <UiIcon name="receipt" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Cobranças centralizadas", icon: <UiIcon name="check" />, tone: "approved" }] : [{ label: "Em andamento", value: "—", note: "Dados desta área", icon: <UiIcon name="clock" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Operação centralizada", icon: <UiIcon name="check" />, tone: "approved" }];
-  const content = area === "relatorios" ? <ReportsWorkspace newReportSignal={reportCreationVersion} /> : area === "faturamento" ? <BillingWorkspace session={session} newInvoiceSignal={invoiceCreationVersion} /> : area === "propostas" ? <ProposalsWorkspace newProposalSignal={proposalCreationVersion} /> : area === "contratos" ? <ContractsWorkspace newContractSignal={contractCreationVersion} /> : area === "equipe" ? <TeamManagementWorkspace session={session} newMemberSignal={memberCreationVersion} /> : area === "datas-comemorativas" ? <CommemorativeDatesWorkspace /> : area === "calendario-social" ? <SocialCalendarWorkspace /> : area === "briefs-design" ? <DesignBriefsWorkspace /> : <section className="internal-area-card glass"><div className="internal-area-empty"><UiIcon name="spark" /><strong>Esta página é privada para o seu nível de acesso.</strong><span>O conteúdo desta área será organizado aqui.</span></div></section>;
+  const metrics = area === "sobre" ? [{ label: "Versão", value: `v${webPackage.version}`, note: "Design Hub V2", icon: <UiIcon name="help" />, tone: "posts" }, { label: "Ano", value: String(new Date().getFullYear()), note: "Versão atual", icon: <UiIcon name="calendar" />, tone: "approved" }] : area === "equipe" ? [{ label: "Papéis", value: "4", note: "Níveis de acesso", icon: <UiIcon name="users" />, tone: "clients" }, { label: "Clientes", value: "—", note: "Atribuições ativas", icon: <UiIcon name="link" />, tone: "posts" }] : area === "relatorios" ? [{ label: "Relatórios", value: "—", note: "Períodos disponíveis", icon: <UiIcon name="file" />, tone: "posts" }, { label: "Indicadores", value: "—", note: "Acompanhe resultados", icon: <UiIcon name="check" />, tone: "approved" }] : area === "faturamento" ? [{ label: "Faturas", value: "—", note: "Lançamentos da operação", icon: <UiIcon name="receipt" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Cobranças centralizadas", icon: <UiIcon name="check" />, tone: "approved" }] : [{ label: "Em andamento", value: "—", note: "Dados desta área", icon: <UiIcon name="clock" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Operação centralizada", icon: <UiIcon name="check" />, tone: "approved" }];
+  const content = area === "sobre" ? <AboutWorkspace /> : area === "relatorios" ? <ReportsWorkspace newReportSignal={reportCreationVersion} /> : area === "faturamento" ? <BillingWorkspace session={session} newInvoiceSignal={invoiceCreationVersion} /> : area === "propostas" ? <ProposalsWorkspace newProposalSignal={proposalCreationVersion} /> : area === "contratos" ? <ContractsWorkspace newContractSignal={contractCreationVersion} /> : area === "equipe" ? <TeamManagementWorkspace session={session} newMemberSignal={memberCreationVersion} /> : area === "datas-comemorativas" ? <CommemorativeDatesWorkspace /> : area === "calendario-social" ? <SocialCalendarWorkspace /> : area === "briefs-design" ? <DesignBriefsWorkspace /> : <section className="internal-area-card glass"><div className="internal-area-empty"><UiIcon name="spark" /><strong>Esta página é privada para o seu nível de acesso.</strong><span>O conteúdo desta área será organizado aqui.</span></div></section>;
   const action = area === "relatorios" ? <button className="gradient-button page-context-action" onClick={() => setReportCreationVersion((current) => current + 1)}>+ Novo relatório</button> : area === "faturamento" ? <button className="gradient-button page-context-action" onClick={() => setInvoiceCreationVersion((current) => current + 1)}>+ Nova fatura</button> : area === "propostas" ? <button className="gradient-button page-context-action" onClick={() => setProposalCreationVersion((current) => current + 1)}>+ Nova proposta</button> : area === "contratos" ? <button className="gradient-button page-context-action" onClick={() => setContractCreationVersion((current) => current + 1)}>+ Novo contrato</button> : area === "equipe" && session.role === "super_admin" ? <button className="gradient-button page-context-action" onClick={() => setMemberCreationVersion((current) => current + 1)}>+ Novo membro</button> : null;
-  const titleIcon = area === "equipe" ? <UiIcon name="users" /> : area === "briefs-design" ? <UiIcon name="brush" /> : area === "relatorios" ? <UiIcon name="file" /> : area === "faturamento" ? <UiIcon name="receipt" /> : area === "propostas" ? <UiIcon name="send" /> : area === "contratos" ? <UiIcon name="check" /> : area === "calendario-social" ? <UiIcon name="calendar" /> : area === "datas-comemorativas" ? <UiIcon name="spark" /> : undefined;
-  return <div className="page-grid admin-layout internal-area-layout"><AdminRail session={session} /><main className="main-column"><WorkspaceNavbar session={session} onLogout={onLogout} /><PageContextBanner eyebrow="Área da operação" title={page.title} description={page.description} metrics={metrics} action={action} titleClassName={["relatorios", "faturamento", "propostas", "equipe", "calendario-social", "briefs-design", "datas-comemorativas", "contratos"].includes(area) ? "billing-banner-title" : undefined} titleIcon={titleIcon} />{content}</main></div>;
+  const titleIcon = area === "sobre" ? <UiIcon name="help" /> : area === "equipe" ? <UiIcon name="users" /> : area === "briefs-design" ? <UiIcon name="brush" /> : area === "relatorios" ? <UiIcon name="file" /> : area === "faturamento" ? <UiIcon name="receipt" /> : area === "propostas" ? <UiIcon name="send" /> : area === "contratos" ? <UiIcon name="check" /> : area === "calendario-social" ? <UiIcon name="calendar" /> : area === "datas-comemorativas" ? <UiIcon name="spark" /> : undefined;
+  return <div className="page-grid admin-layout internal-area-layout"><AdminRail session={session} /><main className="main-column"><WorkspaceNavbar session={session} onLogout={onLogout} /><PageContextBanner eyebrow="Área da operação" title={page.title} description={page.description} metrics={metrics} action={action} titleClassName={["relatorios", "faturamento", "propostas", "equipe", "calendario-social", "briefs-design", "datas-comemorativas", "contratos", "sobre"].includes(area) ? "billing-banner-title" : undefined} titleIcon={titleIcon} />{content}</main></div>;
 }
 
 function SocialCalendarWorkspace() {
