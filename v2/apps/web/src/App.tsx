@@ -2533,7 +2533,17 @@ function AdminWorkspacePage({
                     deleteAdminCardBySlug(slug, cardId).then(() => setRefreshKey((value) => value + 1));
                   }
                 }}
-              /> : workspaceViewChanging ? <div className="archived-empty">Carregando quadro...</div> : <div
+              /> : workspaceViewChanging ? <div className="archived-empty">Carregando quadro...</div> : <><nav className="kanban-mobile-column-nav" aria-label="Ir para uma coluna">
+                {data.columns.map((column, columnIndex) => <button
+                  key={column.id}
+                  type="button"
+                  onClick={(event) => {
+                    const scroller = event.currentTarget.closest(".board-layout")?.querySelector<HTMLElement>(".columns-scroll");
+                    const target = scroller?.querySelector<HTMLElement>(`[data-column-index="${columnIndex}"]`);
+                    if (scroller && target) scroller.scrollTo({ left: target.offsetLeft - scroller.offsetLeft, behavior: "smooth" });
+                  }}
+                ><i style={{ backgroundColor: column.color }} /><span>{column.name}</span><b>{column.cards.length}</b></button>)}
+              </nav><div
                 className={draggedColumnId ? "columns-scroll columns-reordering" : "columns-scroll"}
                 onDragOver={(event) => {
                   if (!draggedColumnId) return;
@@ -2551,6 +2561,7 @@ function AdminWorkspacePage({
                   <div
                     key={column.id}
                     data-column-drag-slot
+                    data-column-index={columnIndex}
                     className={draggedColumnId === column.id ? "column-drag-slot dragging" : "column-drag-slot"}
                   >
                     {columnDropIndex === columnIndex ? <div className="column-drop-indicator"><span>Soltar coluna aqui</span></div> : null}
@@ -2711,7 +2722,7 @@ function AdminWorkspacePage({
                     + Criar nova coluna
                   </button>
                 </section>
-              </div>}
+              </div></>}
 
               <WorkspaceDrawer slug={slug} userId={session.id} initialQuickLinks={data.quickLinks} columns={data.columns} tags={data.tagDefinitions} onPautaCountChange={updatePautasCount} />
               {/*
