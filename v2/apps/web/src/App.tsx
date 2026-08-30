@@ -6253,6 +6253,12 @@ function readLocalProposals(): LocalProposal[] {
   catch { return []; }
 }
 
+function createLocalProposalId(prefix = "proposal") {
+  return typeof window.crypto?.randomUUID === "function"
+    ? window.crypto.randomUUID()
+    : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 function ProposalClientPreview({ proposal }: { proposal: LocalProposal }) {
   const total = proposal.services.reduce((sum, service) => sum + Number(service.value || 0), 0);
   const copy = getProposalLocale(proposal.locale);
@@ -6272,8 +6278,8 @@ function ProposalsWorkspace({ newProposalSignal = 0 }: { newProposalSignal?: num
   const selected = proposals.find((proposal) => proposal.id === selectedId) ?? null;
   const persist = (next: LocalProposal[]) => { setProposals(next); window.localStorage.setItem(PROPOSALS_STORAGE_KEY, JSON.stringify(next)); };
   const create = () => {
-    const id = crypto.randomUUID();
-    const proposal: LocalProposal = { id, token: crypto.randomUUID().split("-").join(""), clientName: "", email: "", locale: "Português", proposalType: "Projeto", plan: "", pieces: 0, scope: "", investment: "", currency: "R$", expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(), status: "draft", services: [{ name: "", value: 0, description: "" }] };
+    const id = createLocalProposalId();
+    const proposal: LocalProposal = { id, token: createLocalProposalId("token").split("-").join(""), clientName: "", email: "", locale: "Português", proposalType: "Projeto", plan: "", pieces: 0, scope: "", investment: "", currency: "R$", expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(), status: "draft", services: [{ name: "", value: 0, description: "" }] };
     persist([proposal, ...proposals]); setSelectedId(id); setView("editor");
   };
   useEffect(() => { if (newProposalSignal > 0) create(); }, [newProposalSignal]);

@@ -5664,3 +5664,769 @@ button {
 /* Visão geral clássica, com glassmorphism do v2. */
 .brand-v2-overview{grid-template-columns:1fr}.brand-v2-voice-banner{display:grid;grid-template-columns:58px 1fr auto;gap:16px;align-items:center;padding:18px 22px;border:1px solid rgba(255,255,255,.85);border-radius:19px;color:#202a48;background:rgba(255,255,255,.66);box-shadow:0 14px 38px rgba(50,58,94,.08);backdrop-filter:blur(18px);text-align:left;font:inherit;cursor:pointer}.brand-v2-voice-banner>span,.brand-v2-section-icon{display:grid;place-items:center;width:52px;height:52px;border-radius:15px;color:#ef4160;background:linear-gradient(145deg,#ffe7ec,#fff1f4);font-size:1.45rem}.brand-v2-voice-banner>div{display:grid;gap:5px}.brand-v2-voice-banner small,.brand-v2-visual-summary header small{color:#6f788d;font-size:.69rem;font-weight:800;letter-spacing:.16em}.brand-v2-voice-banner strong{font-size:1rem;line-height:1.4}.brand-v2-voice-banner em{color:#737c8e;font-style:normal;font-weight:800}.brand-v2-pillars-chart,.brand-v2-visual-summary{border:1px solid rgba(255,255,255,.88)!important;background:rgba(255,255,255,.7)!important;box-shadow:0 16px 44px rgba(50,58,94,.08)!important;backdrop-filter:blur(20px)}.brand-v2-pillars-chart>header,.brand-v2-visual-summary>header{display:flex;align-items:center;justify-content:space-between}.brand-v2-pillars-chart>header>div,.brand-v2-visual-summary>header>div{display:grid;grid-template-columns:52px 1fr;column-gap:14px;align-items:center}.brand-v2-pillars-chart .brand-v2-section-icon{grid-row:1/3;color:#6c4ee9;background:linear-gradient(145deg,#ece7ff,#f5f2ff)}.brand-v2-pillars-chart header small{align-self:end}.brand-v2-pillars-chart header h3{align-self:start}.brand-v2-pillars-chart header button,.brand-v2-visual-summary header button{border:0;color:#6e7789;background:transparent;font:inherit;font-weight:800;cursor:pointer}.brand-v2-segmented-bar{display:flex!important;grid-template-columns:none!important;gap:0!important;height:11px;overflow:hidden;margin:20px 0!important;border-radius:999px;background:#edf0f5}.brand-v2-segmented-bar i{display:block!important;width:auto!important;height:100%!important;border-radius:0!important}.brand-v2-pillar-list{display:grid!important;gap:11px!important;margin:0!important}.brand-v2-pillar-list>div{display:grid!important;grid-template-columns:9px minmax(190px,1fr) minmax(100px,170px) 42px!important;gap:11px!important;align-items:center!important;margin:0!important}.brand-v2-pillar-list>div>i{width:8px!important;height:8px!important;border-radius:50%!important}.brand-v2-pillar-list>div>span{display:flex!important;gap:6px!important;min-width:0}.brand-v2-pillar-list>div>span strong,.brand-v2-pillar-list>div>span small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.brand-v2-pillar-list>div>em{height:7px;overflow:hidden;border-radius:99px;background:#e9edf2}.brand-v2-pillar-list>div>em b{display:block;height:100%;border-radius:inherit}.brand-v2-pillar-list>div>strong{text-align:right;font-size:.82rem}.brand-v2-visual-summary{padding:24px!important}.brand-v2-visual-summary .brand-v2-section-icon{color:#c026d3;background:linear-gradient(145deg,#f8e7ff,#fff0fb)}.brand-v2-visual-summary h3{margin:21px 0 11px;font-size:.74rem;letter-spacing:.14em;text-transform:uppercase}.brand-v2-color-chips{display:flex;gap:9px;flex-wrap:wrap}.brand-v2-color-chips span{display:flex;align-items:center;gap:8px;padding:7px 11px;border:1px solid rgba(229,231,239,.9);border-radius:999px;background:rgba(255,255,255,.78);font-size:.78rem;font-weight:700}.brand-v2-color-chips i{width:22px;height:22px;border:2px solid rgba(255,255,255,.85);border-radius:50%;box-shadow:0 0 0 1px rgba(46,53,77,.12)}.brand-v2-type-preview{display:grid;gap:7px;padding:18px;border:1px solid rgba(222,226,236,.85);border-radius:15px;background:rgba(250,251,255,.75)}.brand-v2-type-preview small{color:#727c90}.brand-v2-type-preview strong{font-size:1.65rem}.brand-v2-type-preview p{margin:0;color:#667187;font-size:1rem}
 .brand-v2-explore{display:grid;gap:12px}.brand-v2-explore>h3{margin:8px 0 0}.brand-v2-explore>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.brand-v2-explore button{display:grid;grid-template-columns:44px 1fr;gap:8px 12px;min-height:145px;padding:17px;border:1px solid rgba(255,255,255,.84);border-radius:17px;color:#202a48;background:rgba(255,255,255,.66);box-shadow:0 12px 34px rgba(53,61,93,.07);backdrop-filter:blur(16px);text-align:left;font:inherit;cursor:pointer;transition:.2s ease}.brand-v2-explore button:hover{transform:translateY(-3px);box-shadow:0 17px 38px rgba(53,61,93,.11)}.brand-v2-explore button>span{display:grid;place-items:center;width:42px;height:42px;border-radius:13px;background:rgba(255,255,255,.55);font-size:1.35rem}.brand-v2-explore button>b{justify-self:end;font-size:1.6rem}.brand-v2-explore button>strong,.brand-v2-explore button>p{grid-column:1/-1}.brand-v2-explore button>strong{align-self:end;font-size:1rem}.brand-v2-explore button>p{margin:0;color:#68748b;font-size:.79rem;line-height:1.4}.brand-v2-explore .blue{background:linear-gradient(145deg,rgba(234,247,255,.82),rgba(255,255,255,.67))}.brand-v2-explore .purple{background:linear-gradient(145deg,rgba(243,237,255,.85),rgba(255,255,255,.67))}.brand-v2-explore .rose{background:linear-gradient(145deg,rgba(255,237,242,.85),rgba(255,255,255,.67))}.brand-v2-explore .sand{background:linear-gradient(145deg,rgba(255,246,232,.85),rgba(255,255,255,.67))}.brand-v2-explore .mint{background:linear-gradient(145deg,rgba(235,250,244,.85),rgba(255,255,255,.67))}.brand-v2-explore .lilac{background:linear-gradient(145deg,rgba(252,236,255,.85),rgba(255,255,255,.67))}.brand-v2-typography-live{display:grid;gap:10px;padding:22px;border:1px solid rgba(255,255,255,.88);border-radius:19px;background:linear-gradient(140deg,rgba(245,249,255,.75),rgba(255,244,254,.72));box-shadow:0 15px 38px rgba(53,61,93,.08);backdrop-filter:blur(18px)}.brand-v2-typography-live>small{font-size:.7rem;font-weight:800;letter-spacing:.14em}.brand-v2-typography-live>div{display:grid;gap:9px;padding:20px;border:1px solid rgba(221,225,235,.85);border-radius:15px;background:rgba(255,255,255,.67)}.brand-v2-typography-live span{color:#737d90;font-size:.79rem}.brand-v2-typography-live h2{margin:0;font-size:2rem}.brand-v2-typography-live p{margin:0;color:#657085;font-size:1.05rem}.brand-v2-typography-live em{color:#7c5fc3}@media(max-width:900px){.brand-v2-explore>div{grid-template-columns:repeat(2,minmax(0,1fr))}.brand-v2-pillar-list>div{grid-template-columns:9px minmax(140px,1fr) 100px 40px!important}}@media(max-width:620px){.brand-v2-voice-banner{grid-template-columns:48px 1fr}.brand-v2-voice-banner>span{width:44px;height:44px}.brand-v2-voice-banner em{display:none}.brand-v2-explore>div{grid-template-columns:1fr}.brand-v2-pillar-list>div{grid-template-columns:9px 1fr 38px!important}.brand-v2-pillar-list>div>em{display:none}.brand-v2-pillars-chart>header>div,.brand-v2-visual-summary>header>div{grid-template-columns:44px 1fr}.brand-v2-section-icon{width:44px;height:44px}.brand-v2-color-chips span{font-size:.7rem}}
+
+/* Mobile sweep: portal do cliente e áreas administrativas. */
+@media (max-width: 820px) {
+  html,
+  body,
+  #root {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+
+  button,
+  a,
+  input,
+  select,
+  textarea {
+    touch-action: manipulation;
+  }
+
+  .app-shell {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    padding: 10px;
+  }
+
+  /* O portal vira uma experiência mobile, sem a sidebar de desktop empilhada. */
+  .portal-page {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .portal-sidebar {
+    position: sticky !important;
+    z-index: 90;
+    top: max(8px, env(safe-area-inset-top));
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    align-items: center;
+    gap: 8px 9px;
+    box-sizing: border-box;
+    width: 100%;
+    margin: 0 0 12px;
+    padding: 10px 11px 9px;
+    border-radius: 20px;
+    background: rgba(247, 250, 255, .86);
+    box-shadow: 0 14px 34px rgba(52, 64, 108, .14);
+    backdrop-filter: blur(26px);
+  }
+
+  .portal-brand-zone {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .portal-brand-zone .brand-lockup.compact {
+    gap: 0;
+  }
+
+  .portal-brand-zone .brand-lockup.compact > div:last-child {
+    display: none;
+  }
+
+  .portal-brand-zone .brand-badge {
+    width: 42px;
+    height: 42px;
+  }
+
+  .portal-sidebar-create-post {
+    grid-column: 2;
+    grid-row: 1;
+    grid-template-columns: 34px minmax(0, 1fr);
+    width: auto;
+    min-width: 0;
+    margin: 0;
+    padding: 7px 10px;
+    border-radius: 13px;
+    box-shadow: none;
+  }
+
+  .portal-sidebar-create-post > span {
+    width: 34px;
+    height: 34px;
+    border-radius: 10px;
+  }
+
+  .portal-sidebar-create-post strong {
+    overflow: hidden;
+    font-size: .76rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .portal-sidebar-create-post small {
+    display: none;
+  }
+
+  .portal-user-card {
+    grid-column: 3;
+    grid-row: 1;
+    margin: 0;
+    padding: 5px;
+    border-radius: 14px;
+  }
+
+  .portal-user-trigger {
+    gap: 4px;
+  }
+
+  .portal-user-card .portal-client-avatar {
+    width: 38px;
+    height: 38px;
+  }
+
+  .portal-user-card .session-copy {
+    display: none;
+  }
+
+  .portal-user-trigger .session-caret {
+    width: 14px;
+  }
+
+  .portal-user-card .profile-popover {
+    position: fixed;
+    top: 72px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-height: calc(100dvh - 92px);
+    overflow-y: auto;
+  }
+
+  .portal-nav {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 2px 0;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .portal-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  .portal-nav-item {
+    flex: 0 0 auto;
+    min-height: 40px;
+    padding: 9px 12px;
+    border-radius: 12px;
+    white-space: nowrap;
+  }
+
+  .portal-main,
+  .portal-primary,
+  .portal-secondary {
+    min-width: 0;
+  }
+
+  .portal-main,
+  .portal-grid,
+  .portal-primary,
+  .portal-secondary {
+    gap: 12px;
+  }
+
+  .portal-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .board-shell {
+    min-width: 0;
+    border-radius: 20px;
+  }
+
+  .board-topbar {
+    align-items: stretch;
+    min-height: 0;
+    padding: 0 10px;
+  }
+
+  .board-topbar .tab-strip {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    gap: 12px;
+    min-width: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .board-topbar .tab-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .board-topbar .tab {
+    flex: 0 0 auto;
+    min-height: 54px;
+    font-size: .82rem;
+    white-space: nowrap;
+  }
+
+  .portal-search-shortcut {
+    flex: 0 0 44px;
+    width: 44px;
+    min-height: 44px;
+    margin-block: 5px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .portal-search-shortcut span {
+    display: none;
+  }
+
+  .portal-approval-board {
+    padding: 10px;
+  }
+
+  .portal-pautas-approval,
+  .portal-content-approval,
+  .portal-secondary .widget-card {
+    padding: 16px;
+    border-radius: 18px;
+  }
+
+  .portal-pautas-approval > header,
+  .portal-content-approval > header,
+  .portal-profile-view > header,
+  .portal-invoices-head {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .portal-pauta-grid,
+  .portal-card-list {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portal-pauta-card {
+    grid-template-columns: 42px minmax(0, 1fr);
+    min-height: 0;
+    padding: 13px;
+  }
+
+  .portal-pauta-review {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .portal-columns-scroll {
+    display: grid;
+    grid-auto-flow: row;
+    grid-template-columns: minmax(0, 1fr);
+    grid-auto-columns: auto;
+    gap: 10px;
+    overflow: visible;
+    padding: 0;
+  }
+
+  .portal-column {
+    box-sizing: border-box;
+    width: auto;
+    padding: 12px;
+  }
+
+  .portal-card {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: none;
+  }
+
+  .portal-invoice-row {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .portal-invoice-value,
+  .portal-invoice-actions {
+    grid-column: 2;
+    justify-content: flex-start;
+    justify-items: start;
+  }
+
+  /* Calendários continuam completos, mas passam a rolar sem esmagar os dias. */
+  .client-kanban-calendar,
+  .social-calendar-workspace {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .client-kanban-calendar > header,
+  .client-calendar-column-legend,
+  .client-kanban-calendar > p,
+  .social-calendar-toolbar,
+  .social-calendar-summary {
+    position: sticky;
+    z-index: 3;
+    left: 0;
+    box-sizing: border-box;
+    width: calc(100vw - 40px);
+    min-width: 330px;
+  }
+
+  .client-kanban-calendar > header {
+    justify-content: space-between;
+  }
+
+  .client-kanban-calendar > header h2 {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 1.08rem;
+  }
+
+  .client-calendar-weekdays,
+  .client-calendar-grid,
+  .social-calendar-weekdays,
+  .social-calendar-grid {
+    min-width: 630px;
+  }
+
+  .client-calendar-day,
+  .social-calendar-day {
+    min-height: 96px;
+  }
+
+  /* No admin, a navegação vira uma barra inferior acessível com o polegar. */
+  .admin-layout,
+  .admin-layout:has(> .admin-rail.collapsed) {
+    display: block;
+    min-height: 100dvh;
+    height: auto;
+    padding-bottom: calc(78px + env(safe-area-inset-bottom));
+    overflow: visible;
+  }
+
+  .admin-layout > .main-column {
+    min-width: 0;
+    min-height: 0;
+    overflow: visible;
+  }
+
+  .admin-rail,
+  .admin-rail.collapsed {
+    position: fixed !important;
+    z-index: 140;
+    top: auto;
+    right: 8px;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    left: 8px;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    width: auto;
+    height: 64px;
+    min-height: 0;
+    padding: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-radius: 20px;
+    background: rgba(249, 250, 255, .92);
+    box-shadow: 0 12px 38px rgba(41, 52, 95, .2);
+    backdrop-filter: blur(24px);
+    scrollbar-width: none;
+  }
+
+  .admin-rail::-webkit-scrollbar {
+    display: none;
+  }
+
+  .admin-rail-stack,
+  .admin-rail.collapsed .admin-rail-stack {
+    display: flex;
+    flex: 0 0 auto;
+    gap: 6px;
+    visibility: visible;
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .admin-rail-foot {
+    display: none;
+  }
+
+  .admin-rail-button,
+  .admin-rail.collapsed .admin-rail-button {
+    flex: 0 0 46px;
+    width: 46px;
+    height: 46px;
+  }
+
+  .workspace-navbar {
+    min-width: 0;
+    min-height: 60px;
+    gap: 8px;
+  }
+
+  .workspace-navbar .dashboard-nav-brand strong,
+  .dashboard-user .profile-menu .session-copy {
+    display: none;
+  }
+
+  .workspace-navbar .dashboard-nav-brand .brand-badge {
+    width: 42px;
+    height: 42px;
+  }
+
+  .dashboard-user {
+    margin-left: auto;
+  }
+
+  .page-context-banner,
+  .client-kanban-navbar > .page-context-banner {
+    align-items: flex-start;
+    flex-direction: column;
+    width: 100%;
+    padding: 19px;
+  }
+
+  .page-context-aside {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch;
+    width: 100%;
+    overflow: visible;
+  }
+
+  .page-context-aside .dashboard-metrics,
+  .client-kanban-navbar .page-context-aside .dashboard-metrics {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+    width: 100%;
+    min-width: 0;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .page-context-action {
+    width: 100%;
+  }
+
+  .page-context-copy > p:last-child {
+    overflow-wrap: anywhere;
+  }
+
+  .page-context-title {
+    font-size: clamp(1.55rem, 8vw, 2.25rem);
+  }
+
+  .client-kanban-navbar {
+    min-height: 0;
+  }
+
+  /* A gaveta operacional não cobre mais colunas ou botões no celular. */
+  .workspace-drawer-shell,
+  .kanban-admin-layout .workspace-drawer-shell {
+    position: fixed;
+    z-index: 125;
+    top: auto;
+    right: 8px;
+    bottom: calc(80px + env(safe-area-inset-bottom));
+    left: 8px;
+    display: flex;
+    flex-direction: column-reverse;
+    align-items: stretch;
+    transform: none;
+  }
+
+  .workspace-drawer-rail {
+    display: flex;
+    gap: 6px;
+    box-sizing: border-box;
+    width: 100%;
+    padding: 6px;
+    overflow-x: auto;
+    border: 1px solid rgba(221, 226, 239, .9);
+    border-radius: 17px;
+    background: rgba(250, 251, 255, .92);
+    box-shadow: 0 10px 30px rgba(50, 61, 102, .16);
+    backdrop-filter: blur(22px);
+    scrollbar-width: none;
+  }
+
+  .workspace-drawer-rail::-webkit-scrollbar {
+    display: none;
+  }
+
+  .workspace-drawer-rail button,
+  .workspace-drawer-rail button:hover,
+  .workspace-drawer-shell.open .workspace-drawer-rail button.active {
+    flex: 0 0 44px;
+    width: 44px;
+    min-height: 44px;
+    padding: 0 10px;
+    border: 1px solid #e3e8f2;
+    border-radius: 12px;
+    transform: none;
+  }
+
+  .workspace-drawer-rail button b {
+    display: none;
+  }
+
+  .workspace-drawer-panel {
+    box-sizing: border-box;
+    width: 100%;
+    max-height: 58dvh;
+    margin-bottom: 8px;
+    border-radius: 18px;
+  }
+
+  .kanban-admin-layout {
+    height: auto;
+    min-height: 100dvh;
+    max-height: none;
+    overflow: visible;
+  }
+
+  .kanban-admin-layout > .main-column,
+  .kanban-admin-layout .workspace,
+  .kanban-admin-layout .board-shell {
+    height: auto;
+    min-height: calc(100dvh - 160px);
+    overflow: visible;
+  }
+
+  .kanban-admin-layout .board-layout {
+    height: auto;
+    min-height: calc(100dvh - 180px);
+    padding-inline-end: 0;
+    overflow: visible;
+  }
+
+  .kanban-admin-layout .columns-scroll {
+    min-height: 62dvh;
+    height: auto;
+    overflow-x: auto;
+  }
+
+  .kanban-admin-layout .kanban-column {
+    min-height: 58dvh;
+    height: auto;
+  }
+
+  .kanban-admin-layout .column-cards-scroll {
+    max-height: none;
+    overflow-y: visible;
+  }
+
+  .modal-backdrop,
+  .admin-card-backdrop,
+  .workspace-drawer-modal-backdrop,
+  .contract-acceptance-backdrop {
+    box-sizing: border-box;
+    padding: 10px;
+  }
+
+  .modal-panel,
+  .column-editor,
+  .card-editor,
+  .workspace-drawer-modal-backdrop .workspace-drawer-modal,
+  .contract-preview-modal,
+  .contract-template-modal,
+  .contract-acceptance-modal,
+  .billing-line-modal {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - 20px);
+    padding: 18px;
+    border-radius: 20px;
+  }
+
+  .admin-card-editor {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    max-height: calc(100dvh - 20px);
+  }
+
+  .admin-card-main,
+  .admin-card-side {
+    padding: 58px 18px 24px;
+  }
+
+  .admin-card-main {
+    border-right: 0;
+    border-bottom: 1px solid rgba(255, 255, 255, .18);
+  }
+
+  .admin-card-side {
+    padding-top: 24px;
+  }
+
+  .editor-media-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .editor-media-thumb,
+  .editor-add-media {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .contracts-workspace,
+  .reports-workspace,
+  .pautas-workspace,
+  .proposals-workspace,
+  .brand-v2 {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 14px;
+  }
+
+  .contracts-workspace-grid,
+  .reports-layout,
+  .portal-reports-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .contracts-library,
+  .reports-history {
+    position: static;
+  }
+
+  .contract-preview-meta,
+  .report-form-top,
+  .report-metrics-editor,
+  .report-detail-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .contract-document-preview {
+    padding: 20px;
+  }
+
+  .pautas-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pautas-toolbar input,
+  .pautas-toolbar select {
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .notification-popover {
+    position: fixed;
+    top: 72px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-height: calc(100dvh - 92px);
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .portal-sidebar-create-post {
+    grid-template-columns: 34px;
+    justify-self: start;
+    padding: 6px;
+  }
+
+  .portal-sidebar-create-post > div {
+    display: none;
+  }
+
+  .portal-card-detail-modal {
+    width: 100%;
+    min-height: 100dvh;
+    max-height: 100dvh;
+    padding: 16px;
+    border-radius: 0;
+  }
+
+  .modal-backdrop:has(.portal-card-detail-modal) {
+    align-items: stretch;
+    padding: 0;
+  }
+
+  .portal-card-detail-modal .modal-grid,
+  .portal-card-detail-modal .modal-actions,
+  .portal-text-actions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .portal-approved-card {
+    grid-template-columns: 76px minmax(0, 1fr);
+  }
+
+  .portal-approved-preview {
+    min-height: 76px;
+  }
+
+  .dashboard-shell,
+  .dashboard-welcome,
+  .widget-card,
+  .client-showcase-card {
+    padding: 14px;
+  }
+
+  .dashboard-metrics,
+  .report-kpis,
+  .commemorative-country-grid,
+  .editor-media-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .client-showcase-actions {
+    grid-template-columns: minmax(0, 1fr) repeat(4, 42px);
+  }
+
+  .client-showcase-actions .gradient-button {
+    grid-column: 1 / -1;
+  }
+
+  .contract-acceptance-modal > footer,
+  .contract-document-preview > footer,
+  .contracts-form-card > footer,
+  .billing-line-modal-head {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .contract-acceptance-modal > footer button,
+  .contracts-form-card > footer button {
+    width: 100%;
+  }
+
+  .admin-card-close {
+    top: 12px;
+    right: 12px;
+    width: 42px;
+    height: 42px;
+    font-size: 31px;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .portal-sidebar-create-post:hover,
+  .client-showcase-card:hover,
+  .dashboard-widget:hover,
+  .brand-v2-explore button:hover,
+  .report-kpis article:hover,
+  .report-detail-grid article:hover {
+    transform: none;
+  }
+}
