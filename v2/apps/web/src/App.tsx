@@ -6626,11 +6626,10 @@ function mapPublicApprovalCard(card: { id: string; title: string; caption: strin
 }
 
 export function App() {
-  const location = useLocation();
   const [session, setSession] = useState<SessionUser | null>(() => readStoredSession());
   const [bootingSession, setBootingSession] = useState(() => readStoredSession() === null && Boolean(readStoredAccessToken()));
   const [globalSuccess, setGlobalSuccess] = useState<{ id: string; title: string; detail: string; tone?: "success" | "neutral" } | null>(null);
-  const showGlobalHeader = bootingSession || location.pathname === "/login";
+  const showGlobalHeader = bootingSession;
 
   useEffect(() => {
     const showSuccess = (event: Event) => setGlobalSuccess((event as CustomEvent<{ id: string; title: string; detail: string; tone?: "success" | "neutral" }>).detail);
