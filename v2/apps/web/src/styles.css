@@ -6023,6 +6023,13 @@ button {
     overflow: visible;
   }
 
+  /* A animação de entrada deixava um transform persistente no contêiner e
+     fazia modais fixos se alinharem pela página longa, não pelo viewport. */
+  .internal-area-layout > .main-column {
+    animation: none;
+    transform: none;
+  }
+
   .admin-rail,
   .admin-rail.collapsed {
     position: fixed !important;
@@ -6361,6 +6368,132 @@ button {
   .pautas-toolbar select {
     width: 100%;
     box-sizing: border-box;
+  }
+
+  /* Equipe mobile: cartões, filtros e formulários ficam centralizados e não
+     preservam as larguras horizontais usadas no desktop. */
+  .team-management,
+  .team-member-list,
+  .team-member-card,
+  .team-member-summary,
+  .team-member-summary > div:last-child,
+  .team-member-actions {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .team-management {
+    margin-inline: auto;
+    padding: 6px 0 28px;
+  }
+
+  .team-filters {
+    justify-content: safe center;
+    gap: 7px;
+    margin: 0 auto 17px;
+  }
+
+  .team-filters button {
+    min-width: 0;
+    padding: 9px 12px;
+    font-size: .76rem;
+  }
+
+  .team-member-list {
+    gap: 12px;
+  }
+
+  .team-member-card {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 16px;
+    padding: 16px;
+    border-radius: 19px;
+  }
+
+  .team-member-summary {
+    gap: 12px;
+  }
+
+  .team-member-summary > div:last-child {
+    flex: 1 1 0;
+    width: auto;
+  }
+
+  .team-member-name {
+    align-items: flex-start;
+    gap: 7px;
+  }
+
+  .team-member-name h2,
+  .team-member-summary p,
+  .team-client-chips > span {
+    overflow-wrap: anywhere;
+  }
+
+  .team-member-name h2 {
+    font-size: 1rem;
+  }
+
+  .team-member-summary p {
+    margin: 5px 0 10px;
+    font-size: .8rem;
+  }
+
+  .team-role-badge,
+  .team-client-chips > span {
+    font-size: .68rem;
+  }
+
+  .team-member-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 42px;
+    gap: 7px;
+  }
+
+  .team-member-actions button {
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    height: auto;
+    padding: 8px;
+    font-size: .72rem;
+    line-height: 1.2;
+    text-align: center;
+    white-space: normal;
+  }
+
+  .team-member-actions button.danger {
+    width: 42px;
+  }
+
+  .team-modal {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    max-height: calc(100dvh - 20px);
+    padding: 18px;
+    border-radius: 20px;
+  }
+
+  .team-modal h2 {
+    font-size: 1.3rem;
+  }
+
+  .team-client-options {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .team-modal footer {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .team-modal footer button {
+    width: 100%;
+    min-width: 0;
   }
 
   .notification-popover {
