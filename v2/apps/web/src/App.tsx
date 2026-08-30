@@ -4139,12 +4139,14 @@ function ClientProfileMenu({ session, slug, onLogout, clientLogoUrl, accountName
   const { t } = usePortalTranslation();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [logoFailed, setLogoFailed] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [dialog, setDialog] = useState<"password" | "accounts" | null>(null);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [message, setMessage] = useState("");
   const [saving, setSaving] = useState(false);
+  useEffect(() => setLogoFailed(false), [clientLogoUrl]);
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); setDialog(null); } };
     window.addEventListener("keydown", closeOnEscape);
@@ -4165,22 +4167,23 @@ function ClientProfileMenu({ session, slug, onLogout, clientLogoUrl, accountName
     finally { setSaving(false); }
   };
   const hasMultipleAccounts = session.assignedPortalSlugs.length > 1;
+  const avatarFallback = (accountName || session.name || "Cliente").slice(0, 2).toUpperCase();
   return (
     <div className="profile-menu portal-user-card glass-subtle profile-menu-upward" ref={menuRef}>
-      <button className="portal-user-trigger" onClick={() => setOpen((value) => !value)} aria-expanded={open}>
-        <span className="portal-client-avatar">{clientLogoUrl ? <img src={clientLogoUrl} alt="" /> : accountName.slice(0, 2).toUpperCase()}</span>
+      <button className="portal-user-trigger" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-haspopup="menu" aria-label={`${t("Trocar de conta")}: ${accountName || session.name}`}>
+        <span className="portal-client-avatar">{clientLogoUrl && !logoFailed ? <img src={clientLogoUrl} alt="" onError={() => setLogoFailed(true)} /> : avatarFallback}</span>
         <span className="session-copy"><strong>{accountName}</strong><span>{roleLabel(session.role)}</span></span>
         <UiIcon name="chevron-down" className="session-caret" />
       </button>
       {open ? (
-        <div className="profile-popover profile-popover-up">
+        <div className="profile-popover profile-popover-up portal-profile-popover" role="menu">
           <button onClick={() => show("password")}><span>⚿</span>{t("Alterar Senha")}</button>
           {hasMultipleAccounts ? <button onClick={() => show("accounts")}><span>♧</span>{t("Trocar de conta")}</button> : null}
           <hr />
           <button className="profile-logout" onClick={onLogout}><span>⇥</span>{t("Sair")}</button>
         </div>
       ) : null}
-      {dialog ? (
+      {dialog ? createPortal((
         <div className="profile-modal-backdrop" onMouseDown={() => setDialog(null)}>
           <section className="profile-modal" onMouseDown={(event) => event.stopPropagation()}>
             <header>
@@ -4206,7 +4209,7 @@ function ClientProfileMenu({ session, slug, onLogout, clientLogoUrl, accountName
             {message ? <p className="profile-message">{message}</p> : null}
           </section>
         </div>
-      ) : null}
+      ), document.body) : null}
     </div>
   );
 }
