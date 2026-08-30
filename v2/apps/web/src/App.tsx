@@ -4478,6 +4478,9 @@ function ClientPortalWorkspacePage({
   const clientLocaleTag = portalLocaleTag(portalLocale);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [portalView, setPortalView] = useState<"board" | "approved" | "texts" | "reports" | "invoices" | "tracker" | "archived" | "search" | "brand">("board");
+  const [portalMobileMenuOpen, setPortalMobileMenuOpen] = useState(false);
+  const portalMobileMenuButtonRef = useRef<HTMLButtonElement>(null);
+  const portalNavRef = useRef<HTMLElement>(null);
   const [boardSubView, setBoardSubView] = useState<"board" | "calendar">("board");
   const [portalAppointments, setPortalAppointments] = useState<AgendaEvent[]>([]);
   const [portalInvoices, setPortalInvoices] = useState<BillingInvoice[]>([]);
@@ -4505,6 +4508,22 @@ function ClientPortalWorkspacePage({
     [slug],
   );
   const detail = useCardDetail(data, selectedCardId, loadCardDetail, refreshKey);
+  useEffect(() => {
+    const closePortalMenu = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPortalMobileMenuOpen(false);
+    };
+    window.addEventListener("keydown", closePortalMenu);
+    return () => window.removeEventListener("keydown", closePortalMenu);
+  }, []);
+  useEffect(() => {
+    if (!portalMobileMenuOpen) return;
+    const closePortalMenu = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (!portalMobileMenuButtonRef.current?.contains(target) && !portalNavRef.current?.contains(target)) setPortalMobileMenuOpen(false);
+    };
+    document.addEventListener("mousedown", closePortalMenu);
+    return () => document.removeEventListener("mousedown", closePortalMenu);
+  }, [portalMobileMenuOpen]);
   useEffect(() => {
     if (!data.accountName || !data.permissions.allowClientViewInvoices) {
       setPortalInvoices([]);
@@ -4692,9 +4711,11 @@ function ClientPortalWorkspacePage({
           </div>
         </div>
 
+        <button ref={portalMobileMenuButtonRef} type="button" className="portal-mobile-nav-trigger" onClick={() => setPortalMobileMenuOpen((value) => !value)} aria-expanded={portalMobileMenuOpen} aria-controls="portal-navigation" aria-label={tr("Portal do cliente")}><span aria-hidden="true"><i /><i /><i /></span></button>
+
         {data.permissions.allowClientCreatePost ? <button className="portal-sidebar-create-post" onClick={() => { setPostError(""); setCreatePostOpen(true); }}><span>＋</span><div><strong>{tr("Sugerir post")}</strong><small>{tr("Enviar uma ideia")}</small></div></button> : null}
 
-        <nav className="portal-nav">
+        <nav ref={portalNavRef} id="portal-navigation" className={`portal-nav${portalMobileMenuOpen ? " mobile-open" : ""}`}>
           {[
             { view: "board" as const, label: tr("Aprovações"), count: approvalPortalCards.length },
             { view: "texts" as const, label: tr("Textos"), count: portalTexts.filter((item) => item.status !== "Aprovado").length },
@@ -4706,7 +4727,7 @@ function ClientPortalWorkspacePage({
             ...(data.permissions.allowClientViewInvoices ? [{ view: "invoices" as const, label: tr("Faturas"), count: portalInvoices.filter((invoice) => !viewedInvoiceIds.includes(invoice.id)).length }] : []),
             ...(data.permissions.allowClientViewReports ? [{ view: "reports" as const, label: tr("Relatórios"), count: portalReportsCount }] : []),
           ].map(({ view, label, count }) => (
-            <button key={view} data-portal-view={view === "approved" ? "approved" : undefined} onClick={() => setPortalView(view)} className={`${portalView === view ? "portal-nav-item active" : "portal-nav-item"}${view === "approved" && approvedTransfer ? " receiving-approval" : ""}`}>
+            <button key={view} data-portal-view={view === "approved" ? "approved" : undefined} onClick={() => { setPortalView(view); setPortalMobileMenuOpen(false); }} className={`${portalView === view ? "portal-nav-item active" : "portal-nav-item"}${view === "approved" && approvedTransfer ? " receiving-approval" : ""}`}>
               <span>{label}</span>
               {count > 0 ? <b className="portal-nav-count">{count}</b> : null}
             </button>
