@@ -2803,7 +2803,7 @@ button {
 .bulk-action-bar { position: fixed; z-index: 50; left: 50%; bottom: 22px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 32px); padding: 12px 14px; border: 1px solid rgba(214, 219, 232, .95); border-radius: 16px; background: rgba(255,255,255,.98); box-shadow: 0 14px 34px rgba(24, 35, 62, .2); color: #1d2744; }
 .bulk-action-bar strong { padding: 0 8px; font-size: .85rem; white-space: nowrap; }.bulk-action-bar button, .bulk-action-bar select { min-height: 36px; padding: 0 10px; border: 1px solid #e0e5ef; border-radius: 9px; background: #fff; color: #35415f; font: inherit; font-size: .8rem; font-weight: 700; }.bulk-action-bar button:hover:not(:disabled) { background: #f3efff; color: #7040d1; }.bulk-action-bar .danger { color: #db3437; }.bulk-action-bar .bulk-close { border: 0; font-size: 1.3rem; }
 
-.workspace-drawer-shell { position: fixed; z-index: 45; right: 0; top: 50%; display: flex; flex-direction: row-reverse; align-items: center; transform: translateY(-50%); }.workspace-drawer-shell.open .workspace-drawer-rail { margin-right: 0; }.workspace-drawer-rail { width: 54px; padding: 10px 0; display: grid; gap: 10px; overflow: visible; position: relative; z-index: 2; }.workspace-drawer-rail button { width: 54px; min-height: 54px; overflow: hidden; border: 1px solid #e3e8f2; border-right: 0; border-radius: 14px 0 0 14px; background: rgba(255,255,255,.96); box-shadow: -5px 7px 18px rgba(53,65,93,.12); color: #73809a; display: flex; align-items: center; gap: 12px; padding: 0 16px; font: inherit; font-weight: 700; white-space: nowrap; cursor: pointer; transition: width .18s ease, transform .18s ease, background .18s ease, color .18s ease; }.workspace-drawer-rail button:hover { width: 176px; transform: translateX(-122px); background: #ecfdf5; color: #089b68; }.workspace-drawer-shell.open .workspace-drawer-rail button.active { width: 54px; transform: none; background: linear-gradient(110deg,#23c39b,#7048e8); color: #fff; box-shadow: -5px 7px 18px rgba(63,77,138,.22); }.workspace-drawer-rail span { font-size: 22px; flex: 0 0 auto; }.workspace-drawer-rail b { overflow: hidden; text-overflow: clip; }.workspace-drawer-panel { width: min(330px, calc(100vw - 72px)); max-height: min(720px, calc(100vh - 48px)); padding: 20px; border: 1px solid #e3e8f2; border-radius: 18px 0 0 18px; background: rgba(250,251,255,.98); box-shadow: -12px 12px 32px rgba(53,65,93,.15); overflow-y: auto; position: relative; z-index: 1; }.workspace-drawer-panel header { display:flex; justify-content:space-between; align-items:baseline; border-bottom:1px solid #e4e8f0; padding-bottom:14px; }.workspace-drawer-panel header > div { display:flex; align-items:center; gap:10px; }.workspace-drawer-panel h3 { margin:0; color:#1d2744; font-size:1.25rem; }.workspace-drawer-panel header small { color:#8792a9; }.workspace-drawer-close { width:30px; height:30px; border:0; border-radius:50%; background:#eef1f7; color:#4f5b75; font-size:1.5rem; line-height:1; cursor:pointer; }.workspace-drawer-close:hover { background:#e2e7f0; color:#202a43; }.drawer-compose { display:grid; gap:10px; margin:18px 0; }.drawer-compose textarea { min-height:92px; resize:vertical; padding:12px; border:1px solid #dce3ef; border-radius:12px; font:inherit; }.drawer-compose > div { display:flex; gap:8px; }.drawer-compose button,.drawer-link-actions button,.drawer-ideas-form button { padding:9px 11px; border:0; border-radius:9px; background:#6d4be6; color:#fff; font:inherit; font-weight:700; }.drawer-attachment { padding:9px 11px; border:1px solid #dce3ef; border-radius:9px; color:#65718a; font-size:.82rem; font-weight:700; }.drawer-attachment input { display:none; }.drawer-card-list,.drawer-link-list { display:grid; gap:10px; }.drawer-card-list article,.drawer-link-list article { padding:13px; border:1px solid #e1e6ef; border-radius:12px; background:#fff; color:#35415d; display:grid; gap:8px; }.drawer-card-list a { color:#5d42d8; font-weight:700; }.drawer-link-actions { display:flex; flex-wrap:wrap; gap:7px; margin:16px 0; }.drawer-link-actions button:not(:first-child),.drawer-secondary-action { background:#edf1f8 !important; color:#596680 !important; }.drawer-link-list h4 { margin:14px 0 2px; color:#6a7590; font-size:.78rem; letter-spacing:.08em; text-transform:uppercase; }.drawer-link-list h4 input,.drawer-link-list article input { width:100%; box-sizing:border-box; padding:8px; border:1px solid #dce3ef; border-radius:7px; font:inherit; }.drawer-link-list article { grid-template-columns:1fr auto auto; }.drawer-link-list article input:nth-child(2) { grid-column:1 / -1; }.drawer-link-list article a { color:#283558; font-weight:700; text-decoration:none; }.drawer-ideas { display:grid; gap:14px; padding-top:16px; }.drawer-ideas-create { width:100%; }.drawer-ideas-form { display:grid; gap:10px; padding:14px; border:1px solid #dce3ef; border-radius:12px; background:#fff; }.drawer-ideas-form label { display:grid; gap:5px; color:#596680; font-size:.78rem; font-weight:800; }.drawer-ideas-form input,.drawer-ideas-form textarea { width:100%; box-sizing:border-box; padding:9px; border:1px solid #dce3ef; border-radius:8px; font:inherit; }.drawer-ideas-form textarea { min-height:64px; resize:vertical; }.drawer-ideas-form > div { display:flex; gap:8px; }.drawer-ideas .drawer-card-list small { color:#8b6d12; font-weight:800; text-transform:uppercase; letter-spacing:.06em; }
+.workspace-drawer-mobile-trigger,.workspace-drawer-mobile-dismiss{display:none}.workspace-drawer-shell { position: fixed; z-index: 45; right: 0; top: 50%; display: flex; flex-direction: row-reverse; align-items: center; transform: translateY(-50%); }.workspace-drawer-shell.open .workspace-drawer-rail { margin-right: 0; }.workspace-drawer-rail { width: 54px; padding: 10px 0; display: grid; gap: 10px; overflow: visible; position: relative; z-index: 2; }.workspace-drawer-rail button { width: 54px; min-height: 54px; overflow: hidden; border: 1px solid #e3e8f2; border-right: 0; border-radius: 14px 0 0 14px; background: rgba(255,255,255,.96); box-shadow: -5px 7px 18px rgba(53,65,93,.12); color: #73809a; display: flex; align-items: center; gap: 12px; padding: 0 16px; font: inherit; font-weight: 700; white-space: nowrap; cursor: pointer; transition: width .18s ease, transform .18s ease, background .18s ease, color .18s ease; }.workspace-drawer-rail button:hover { width: 176px; transform: translateX(-122px); background: #ecfdf5; color: #089b68; }.workspace-drawer-shell.open .workspace-drawer-rail button.active { width: 54px; transform: none; background: linear-gradient(110deg,#23c39b,#7048e8); color: #fff; box-shadow: -5px 7px 18px rgba(63,77,138,.22); }.workspace-drawer-rail span { font-size: 22px; flex: 0 0 auto; }.workspace-drawer-rail b { overflow: hidden; text-overflow: clip; }.workspace-drawer-panel { width: min(330px, calc(100vw - 72px)); max-height: min(720px, calc(100vh - 48px)); padding: 20px; border: 1px solid #e3e8f2; border-radius: 18px 0 0 18px; background: rgba(250,251,255,.98); box-shadow: -12px 12px 32px rgba(53,65,93,.15); overflow-y: auto; position: relative; z-index: 1; }.workspace-drawer-panel header { display:flex; justify-content:space-between; align-items:baseline; border-bottom:1px solid #e4e8f0; padding-bottom:14px; }.workspace-drawer-panel header > div { display:flex; align-items:center; gap:10px; }.workspace-drawer-panel h3 { margin:0; color:#1d2744; font-size:1.25rem; }.workspace-drawer-panel header small { color:#8792a9; }.workspace-drawer-close { width:30px; height:30px; border:0; border-radius:50%; background:#eef1f7; color:#4f5b75; font-size:1.5rem; line-height:1; cursor:pointer; }.workspace-drawer-close:hover { background:#e2e7f0; color:#202a43; }.drawer-compose { display:grid; gap:10px; margin:18px 0; }.drawer-compose textarea { min-height:92px; resize:vertical; padding:12px; border:1px solid #dce3ef; border-radius:12px; font:inherit; }.drawer-compose > div { display:flex; gap:8px; }.drawer-compose button,.drawer-link-actions button,.drawer-ideas-form button { padding:9px 11px; border:0; border-radius:9px; background:#6d4be6; color:#fff; font:inherit; font-weight:700; }.drawer-attachment { padding:9px 11px; border:1px solid #dce3ef; border-radius:9px; color:#65718a; font-size:.82rem; font-weight:700; }.drawer-attachment input { display:none; }.drawer-card-list,.drawer-link-list { display:grid; gap:10px; }.drawer-card-list article,.drawer-link-list article { padding:13px; border:1px solid #e1e6ef; border-radius:12px; background:#fff; color:#35415d; display:grid; gap:8px; }.drawer-card-list a { color:#5d42d8; font-weight:700; }.drawer-link-actions { display:flex; flex-wrap:wrap; gap:7px; margin:16px 0; }.drawer-link-actions button:not(:first-child),.drawer-secondary-action { background:#edf1f8 !important; color:#596680 !important; }.drawer-link-list h4 { margin:14px 0 2px; color:#6a7590; font-size:.78rem; letter-spacing:.08em; text-transform:uppercase; }.drawer-link-list h4 input,.drawer-link-list article input { width:100%; box-sizing:border-box; padding:8px; border:1px solid #dce3ef; border-radius:7px; font:inherit; }.drawer-link-list article { grid-template-columns:1fr auto auto; }.drawer-link-list article input:nth-child(2) { grid-column:1 / -1; }.drawer-link-list article a { color:#283558; font-weight:700; text-decoration:none; }.drawer-ideas { display:grid; gap:14px; padding-top:16px; }.drawer-ideas-create { width:100%; }.drawer-ideas-form { display:grid; gap:10px; padding:14px; border:1px solid #dce3ef; border-radius:12px; background:#fff; }.drawer-ideas-form label { display:grid; gap:5px; color:#596680; font-size:.78rem; font-weight:800; }.drawer-ideas-form input,.drawer-ideas-form textarea { width:100%; box-sizing:border-box; padding:9px; border:1px solid #dce3ef; border-radius:8px; font:inherit; }.drawer-ideas-form textarea { min-height:64px; resize:vertical; }.drawer-ideas-form > div { display:flex; gap:8px; }.drawer-ideas .drawer-card-list small { color:#8b6d12; font-weight:800; text-transform:uppercase; letter-spacing:.06em; }
 
 .automation-rail-button:hover { background: #fff4dc !important; color: #d88900 !important; }
 .automation-modal-backdrop { position: fixed; z-index: 70; inset: 0; display: grid; place-items: center; padding: 22px; background: rgba(21, 29, 50, .42); backdrop-filter: blur(5px); }
@@ -6178,54 +6178,129 @@ button {
     min-height: 0;
   }
 
-  /* A gaveta operacional não cobre mais colunas ou botões no celular. */
+  /* No celular, a gaveta operacional vira um único menu flutuante ao alcance
+     do polegar, logo acima da navegação principal. */
   .workspace-drawer-shell,
   .kanban-admin-layout .workspace-drawer-shell {
     position: fixed;
     z-index: 125;
     top: auto;
-    right: 8px;
+    right: 12px;
     bottom: calc(80px + env(safe-area-inset-bottom));
-    left: 8px;
+    left: auto;
     display: flex;
     flex-direction: column-reverse;
-    align-items: stretch;
+    align-items: flex-end;
+    width: auto;
     transform: none;
   }
 
-  .workspace-drawer-rail {
-    display: flex;
-    gap: 6px;
-    box-sizing: border-box;
-    width: 100%;
-    padding: 6px;
-    overflow-x: auto;
-    border: 1px solid rgba(221, 226, 239, .9);
+  .workspace-drawer-mobile-trigger {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    width: 52px;
+    height: 52px;
+    flex: 0 0 52px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, .9);
     border-radius: 17px;
-    background: rgba(250, 251, 255, .92);
-    box-shadow: 0 10px 30px rgba(50, 61, 102, .16);
-    backdrop-filter: blur(22px);
-    scrollbar-width: none;
+    color: #fff;
+    background: linear-gradient(135deg, #43adf4, #7350e5);
+    box-shadow: 0 14px 30px rgba(75, 75, 184, .3), inset 0 1px 0 rgba(255, 255, 255, .35);
   }
 
-  .workspace-drawer-rail::-webkit-scrollbar {
+  .workspace-drawer-mobile-trigger > span {
+    display: grid;
+    gap: 4px;
+    width: 21px;
+  }
+
+  .workspace-drawer-mobile-trigger i {
+    display: block;
+    width: 100%;
+    height: 2px;
+    border-radius: 999px;
+    background: currentColor;
+    transition: transform .2s ease, opacity .15s ease;
+  }
+
+  .workspace-drawer-shell.mobile-menu-open .workspace-drawer-mobile-trigger > span {
     display: none;
+  }
+
+  .workspace-drawer-shell.mobile-menu-open .workspace-drawer-mobile-trigger::before {
+    content: "×";
+    margin-top: -2px;
+    font-size: 30px;
+    font-weight: 400;
+    line-height: 1;
+  }
+
+  .workspace-drawer-mobile-dismiss {
+    position: fixed;
+    z-index: 124;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: rgba(37, 43, 70, .08);
+    backdrop-filter: blur(2px);
+  }
+
+  .workspace-drawer-rail {
+    position: absolute;
+    right: 0;
+    bottom: 60px;
+    display: none;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 7px;
+    box-sizing: border-box;
+    width: min(250px, calc(100vw - 24px));
+    max-height: calc(100dvh - 170px);
+    padding: 9px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border: 1px solid rgba(221, 226, 239, .9);
+    border-radius: 19px;
+    background: rgba(250, 251, 255, .96);
+    box-shadow: 0 18px 45px rgba(42, 52, 94, .24);
+    backdrop-filter: blur(26px) saturate(150%);
+    transform-origin: right bottom;
+    animation: workspace-mobile-menu-in .2s ease-out both;
+  }
+
+  .workspace-drawer-shell.mobile-menu-open .workspace-drawer-rail {
+    display: grid;
   }
 
   .workspace-drawer-rail button,
   .workspace-drawer-rail button:hover,
   .workspace-drawer-shell.open .workspace-drawer-rail button.active {
-    flex: 0 0 44px;
-    width: 44px;
-    min-height: 44px;
-    padding: 0 10px;
+    justify-content: flex-start;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    min-height: 48px;
+    gap: 9px;
+    padding: 0 11px;
     border: 1px solid #e3e8f2;
     border-radius: 12px;
+    color: #66738e;
+    background: rgba(255, 255, 255, .88);
+    box-shadow: none;
     transform: none;
   }
 
   .workspace-drawer-rail button b {
-    display: none;
+    display: block;
+    overflow: hidden;
+    font-size: .72rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .workspace-drawer-panel {
@@ -6234,6 +6309,11 @@ button {
     max-height: 58dvh;
     margin-bottom: 8px;
     border-radius: 18px;
+  }
+
+  @keyframes workspace-mobile-menu-in {
+    from { opacity: 0; transform: translateY(10px) scale(.96); }
+    to { opacity: 1; transform: none; }
   }
 
   .kanban-admin-layout {
@@ -6253,6 +6333,11 @@ button {
     height: auto;
     min-height: calc(100dvh - 160px);
     overflow: visible;
+  }
+
+  .kanban-admin-layout > .main-column {
+    animation: none;
+    transform: none;
   }
 
   .kanban-admin-layout .board-topbar {

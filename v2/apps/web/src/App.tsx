@@ -883,6 +883,7 @@ const EMPTY_DRAWER: WorkspaceDrawerData = { notes: [], links: [], quick: [], dra
 function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, onPautaCountChange }: { slug: string; userId: string; initialQuickLinks: Array<{ label: string; href: string }>; columns: BoardColumn[]; tags: ClientTagDefinition[]; onPautaCountChange?: (count: number) => void }) {
   const [tab, setTab] = useState<"notes" | "drafts" | "links" | "quick" | "ideas" | "tracker" | "progress">("quick");
   const [isOpen, setIsOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [drawer, setDrawer] = useState<WorkspaceDrawerData>(EMPTY_DRAWER);
   const [loaded, setLoaded] = useState(false);
   const [text, setText] = useState("");
@@ -899,13 +900,13 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, onPau
   const [ideaCaption, setIdeaCaption] = useState("");
   const [ideaSaved, setIdeaSaved] = useState(false);
   useEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen && !mobileMenuOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setIsOpen(false);
+      if (event.key === "Escape") { setIsOpen(false); setMobileMenuOpen(false); }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen]);
+  }, [isOpen, mobileMenuOpen]);
   useEffect(() => { let active = true; loadAdminWorkspaceDrawerBySlug(slug).then((result) => {
     if (!active) return;
     const saved = result.data as Partial<WorkspaceDrawerData> | null;
@@ -949,11 +950,13 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, onPau
   const moveLink = (id: string, direction: -1 | 1) => { const index = items.findIndex((item) => item.id === id); const target = index + direction; if (target < 0 || target >= items.length) return; const next = [...items]; [next[index], next[target]] = [next[target], next[index]]; persist({ ...drawer, [tab === "quick" ? "quick" : "links"]: next }); };
   const saveIdea = () => { if (!ideaTitle.trim()) return; persist({ ...drawer, pautaIdeas: [{ id: crypto.randomUUID(), title: ideaTitle.trim(), description: ideaDescription.trim(), caption: ideaCaption.trim(), createdAt: new Date().toISOString() }, ...drawer.pautaIdeas] }); setIdeaTitle(""); setIdeaDescription(""); setIdeaCaption(""); setIdeaFormOpen(false); setIdeaSaved(true); window.setTimeout(() => setIdeaSaved(false), 3200); };
   const tabs = [{ id: "notes" as const, icon: "comment" as const, label: "Recados" }, { id: "drafts" as const, icon: "pencil" as const, label: "Rascunhos" }, { id: "links" as const, icon: "link" as const, label: "Links" }, { id: "ideas" as const, icon: "lightbulb" as const, label: "Ideias de Pauta" }, { id: "quick" as const, icon: "spark" as const, label: "Rápidos" }, ...(trackingActive ? [{ id: "progress" as const, icon: "clock" as const, label: "Acompanhamento" }] : []), { id: "tracker" as const, icon: "settings" as const, label: "Configurações" }];
-  const selectTab = (nextTab: typeof tab) => { setTab(nextTab); setIsOpen(true); };
+  const selectTab = (nextTab: typeof tab) => { setTab(nextTab); setMobileMenuOpen(false); setIsOpen(true); };
   return <>
-    <aside className={`workspace-drawer-shell${isOpen ? " open" : ""}`}>
-    <div className="workspace-drawer-rail"><button className="automation-rail-button" onClick={() => setAutomationOpen(true)} title="Automações"><span>ϟ</span><b>Automações</b></button>{tabs.map((item) => <button key={item.id} className={isOpen && tab === item.id ? "active" : ""} onClick={() => selectTab(item.id)} title={item.label}><UiIcon name={item.icon} className="workspace-drawer-icon" /><b>{item.label}</b></button>)}</div>
-    </aside>
+    {createPortal(<>{mobileMenuOpen ? <button type="button" className="workspace-drawer-mobile-dismiss" onClick={() => setMobileMenuOpen(false)} aria-label="Fechar menu de ferramentas" /> : null}
+    <aside className={`workspace-drawer-shell${isOpen ? " open" : ""}${mobileMenuOpen ? " mobile-menu-open" : ""}`}>
+    <button type="button" className="workspace-drawer-mobile-trigger" onClick={() => setMobileMenuOpen((open) => !open)} aria-expanded={mobileMenuOpen} aria-label={mobileMenuOpen ? "Fechar menu de ferramentas" : "Abrir menu de ferramentas"}><span aria-hidden="true"><i /><i /><i /></span></button>
+    <div className="workspace-drawer-rail"><button className="automation-rail-button" onClick={() => { setMobileMenuOpen(false); setAutomationOpen(true); }} title="Automações"><span>ϟ</span><b>Automações</b></button>{tabs.map((item) => <button key={item.id} className={isOpen && tab === item.id ? "active" : ""} onClick={() => selectTab(item.id)} title={item.label}><UiIcon name={item.icon} className="workspace-drawer-icon" /><b>{item.label}</b></button>)}</div>
+    </aside></>, document.body)}
     {isOpen ? createPortal(<div className="workspace-drawer-modal-backdrop" role="presentation" onMouseDown={() => setIsOpen(false)}><section className="workspace-drawer-panel workspace-drawer-modal" role="dialog" aria-modal="true" aria-labelledby="workspace-drawer-modal-title" onMouseDown={(event) => event.stopPropagation()}>
       <header><h3 id="workspace-drawer-modal-title">{tabs.find((item) => item.id === tab)?.label}{tab === "progress" ? <span className="drawer-title-count">{columns.reduce((count, column) => count + column.cards.length, 0)}</span> : null}</h3><div>{tab === "progress" ? <button className="tracker-header-filter" onClick={() => setTrackerFilterOpen((value) => !value)} title="Filtrar o que o cliente vê" aria-label="Filtrar o que o cliente vê">⌕</button> : <small>{loaded ? "Equipe interna" : "Carregando..."}</small>}<button className="workspace-drawer-close" onClick={() => setIsOpen(false)} aria-label="Fechar janela">×</button></div></header>
       {tab === "tracker" ? <ClientTrackerPanel slug={slug} onTrackingChange={setTrackingActive} /> : tab === "progress" ? <ProjectTrackerPanel slug={slug} columns={columns} filterOpen={trackerFilterOpen} /> : tab === "ideas" ? <section className="drawer-ideas"><div className="drawer-ideas-count"><span>💡</span><div><strong>{drawer.pautaIdeas.length} {drawer.pautaIdeas.length === 1 ? "pauta" : "pautas"}</strong><small>salvas para este cliente</small></div></div><p className="drawer-helper">Registre uma ideia rápida aqui. A organização e o envio ficam na aba Pautas.</p><button className="gradient-button drawer-ideas-create" type="button" onClick={() => { setIdeaSaved(false); setIdeaFormOpen(true); }}>+ Nova ideia de pauta</button>{ideaSaved ? <p className="drawer-idea-success">Pauta enviada para a aba Pautas.</p> : null}{ideaFormOpen ? <div className="drawer-ideas-form"><label>Título<input autoFocus value={ideaTitle} onChange={(event) => setIdeaTitle(event.target.value)} placeholder="Ex.: Carrossel com mitos e verdades" /></label><label>Descrição<textarea value={ideaDescription} onChange={(event) => setIdeaDescription(event.target.value)} placeholder="Contexto e objetivo da pauta" /></label><label>Legenda sugerida<textarea value={ideaCaption} onChange={(event) => setIdeaCaption(event.target.value)} placeholder="Primeira direção para a legenda" /></label><div><button type="button" onClick={saveIdea}>Enviar para Pautas</button><button type="button" className="drawer-secondary-action" onClick={() => setIdeaFormOpen(false)}>Cancelar</button></div></div> : null}</section> : (tab === "notes" || tab === "drafts") ? <>
