@@ -797,6 +797,9 @@ button {
 .social-calendar-event span { overflow: hidden; color: #354260; font-size: .67rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
 .social-calendar-event small { overflow: hidden; color: #7d89a0; font-size: .58rem; text-overflow: ellipsis; white-space: nowrap; }
 .social-calendar-more { display: block; margin-top: 7px; color: #5b55d5; font-size: .65rem; }
+.social-calendar-event { width: 100%; border-top: 0; border-right: 0; border-bottom: 0; font: inherit; text-align: left; cursor: pointer; }
+.social-calendar-view-switch, .social-calendar-mobile-filters, .social-calendar-mobile { display: none; }
+.social-agenda-detail-image { display: block; width: 100%; max-height: 360px; margin: 0 0 16px; border-radius: 15px; object-fit: cover; }
 .calendar-artwork-preview { position: fixed; z-index: 260; width: 270px; margin: 0; overflow: hidden; border: 1px solid rgba(255,255,255,.94); border-radius: 18px; background: rgba(255,255,255,.97); box-shadow: 0 22px 58px rgba(32,43,82,.28); animation: calendar-artwork-preview-in .16s ease-out both; backdrop-filter: blur(16px); pointer-events: none; }
 .calendar-artwork-preview img { display: block; width: 100%; height: 200px; object-fit: cover; background: #eef1f7; }
 .calendar-artwork-preview figcaption { overflow: hidden; padding: 12px 14px; color: #283653; font-size: .78rem; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
@@ -6637,6 +6640,320 @@ button {
 
   .design-brief-preview-modal .design-brief-paper {
     min-height: 0;
+  }
+
+  /* Agenda Social mobile: fluxo vertical inspirado em agendas nativas. */
+  .social-calendar-workspace {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding: 14px;
+    overflow: visible;
+    border-radius: 24px;
+  }
+
+  .social-calendar-toolbar,
+  .social-calendar-summary {
+    position: static;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .social-calendar-month-nav {
+    width: 100%;
+  }
+
+  .social-calendar-month-nav h2 {
+    flex: 1;
+    min-width: 0;
+    font-size: 1.08rem;
+  }
+
+  .social-calendar-filters {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    width: 100%;
+  }
+
+  .social-calendar-view-switch {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    padding: 4px;
+    border: 1px solid rgba(218, 224, 240, .9);
+    border-radius: 13px;
+    background: rgba(246, 248, 253, .82);
+  }
+
+  .social-calendar-view-switch button {
+    min-width: 0;
+    min-height: 38px;
+    padding: 0 4px;
+    border: 0;
+    border-radius: 9px;
+    color: #76819a;
+    background: transparent;
+    font: inherit;
+    font-size: .7rem;
+    font-weight: 800;
+  }
+
+  .social-calendar-view-switch button.active {
+    color: #fff;
+    background: linear-gradient(135deg, #4ba9f3, #7653df);
+    box-shadow: 0 7px 16px rgba(88, 85, 205, .22);
+  }
+
+  .social-calendar-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px 10px;
+  }
+
+  .social-calendar-summary strong {
+    grid-column: 1 / -1;
+  }
+
+  .social-calendar-mobile-filters {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 9px;
+  }
+
+  .social-calendar-mobile-filters label {
+    display: grid;
+    gap: 5px;
+    color: #75819a;
+    font-size: .7rem;
+    font-weight: 800;
+  }
+
+  .social-calendar-mobile-filters select {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 42px;
+    padding: 0 10px;
+    border: 1px solid #dce3ef;
+    border-radius: 11px;
+    color: #34415d;
+    background: rgba(255, 255, 255, .86);
+    font: inherit;
+  }
+
+  .social-calendar-mobile-filters .gradient-button {
+    min-height: 42px;
+    padding-inline: 12px;
+    white-space: nowrap;
+  }
+
+  .social-calendar-desktop {
+    display: none;
+  }
+
+  .social-calendar-mobile {
+    display: grid;
+    gap: 12px;
+  }
+
+  .social-agenda-day {
+    overflow: hidden;
+    border: 1px solid rgba(222, 227, 240, .92);
+    border-radius: 17px;
+    background: rgba(255, 255, 255, .66);
+    box-shadow: 0 10px 24px rgba(70, 82, 128, .07);
+  }
+
+  .social-agenda-day.today {
+    border-color: rgba(100, 91, 225, .38);
+    box-shadow: 0 12px 28px rgba(93, 82, 207, .12);
+  }
+
+  .social-agenda-day > header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 11px 12px;
+    border-bottom: 1px solid rgba(226, 230, 240, .82);
+    background: linear-gradient(135deg, rgba(242, 247, 255, .88), rgba(252, 247, 255, .78));
+  }
+
+  .social-agenda-day > header > div {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr);
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .social-agenda-day > header time {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    place-items: center;
+    border-radius: 12px;
+    color: #fff;
+    background: linear-gradient(135deg, #48a8ef, #7654df);
+    font-size: 1rem;
+    font-weight: 800;
+  }
+
+  .social-agenda-day > header span,
+  .social-agenda-day > header strong,
+  .social-agenda-day > header small {
+    display: block;
+    min-width: 0;
+  }
+
+  .social-agenda-day > header strong {
+    overflow: hidden;
+    color: #34415f;
+    font-size: .78rem;
+    text-transform: capitalize;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .social-agenda-day > header small {
+    margin-top: 2px;
+    color: #8691a6;
+    font-size: .62rem;
+    text-transform: capitalize;
+  }
+
+  .social-agenda-day > header > button {
+    display: grid;
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid rgba(105, 92, 221, .16);
+    border-radius: 11px;
+    color: #6557d8;
+    background: rgba(255, 255, 255, .88);
+    font-size: 1.15rem;
+  }
+
+  .social-agenda-items {
+    display: grid;
+    gap: 7px;
+    padding: 9px;
+  }
+
+  .social-agenda-item {
+    display: grid;
+    grid-template-columns: 43px 34px minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    min-height: 54px;
+    padding: 7px 9px;
+    border: 1px solid #e7eaf2;
+    border-radius: 12px;
+    color: inherit;
+    background: rgba(255, 255, 255, .82);
+    font: inherit;
+    text-align: left;
+  }
+
+  .social-agenda-item.appointment {
+    border-left: 4px solid var(--calendar-event-color, #8b45dd);
+  }
+
+  .social-agenda-item > img,
+  .social-agenda-item > i {
+    display: grid;
+    width: 34px;
+    height: 34px;
+    place-items: center;
+    overflow: hidden;
+    border-radius: 9px;
+    color: #6659d7;
+    background: #efedff;
+    object-fit: cover;
+    font-style: normal;
+  }
+
+  .social-agenda-item > i svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .social-agenda-item > span:not(.social-agenda-time) {
+    min-width: 0;
+  }
+
+  .social-agenda-item strong,
+  .social-agenda-item small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .social-agenda-item strong {
+    color: #34415f;
+    font-size: .72rem;
+  }
+
+  .social-agenda-item small {
+    margin-top: 3px;
+    color: #8590a5;
+    font-size: .6rem;
+  }
+
+  .social-agenda-time {
+    color: #6d7891;
+    font-size: .66rem;
+    font-weight: 800;
+  }
+
+  .social-agenda-item > b {
+    color: #8d97ab;
+    font-size: 1.15rem;
+  }
+
+  .social-agenda-empty {
+    min-height: 46px;
+    border: 1px dashed #cfd6e5;
+    border-radius: 11px;
+    color: #78849b;
+    background: transparent;
+    font: inherit;
+    font-size: .68rem;
+    font-weight: 700;
+  }
+
+  .social-agenda-year-empty {
+    display: grid;
+    min-height: 210px;
+    place-content: center;
+    justify-items: center;
+    gap: 12px;
+    color: #78849b;
+    text-align: center;
+  }
+
+  .social-agenda-year-empty > svg {
+    width: 34px;
+    height: 34px;
+    color: #6d5ddd;
+  }
+
+  .social-agenda-create-modal,
+  .social-agenda-detail-modal {
+    box-sizing: border-box;
+    width: min(100%, 520px);
+    max-height: calc(100dvh - 24px);
+    overflow-y: auto;
+  }
+
+  .social-agenda-detail-image {
+    max-height: 260px;
   }
 
   .dashboard-metrics,

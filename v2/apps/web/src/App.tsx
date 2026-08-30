@@ -6426,43 +6426,139 @@ function InternalAreaPage({ session, onLogout }: { session: SessionUser | null; 
   if (!session || session.role === "client") return <Navigate to={getDefaultRoute(session)} replace />;
   if (!page || (page.restricted && session.role === "collaborator")) return <Navigate to="/dashboard" replace />;
   const metrics = area === "equipe" ? [{ label: "Papéis", value: "4", note: "Níveis de acesso", icon: <UiIcon name="users" />, tone: "clients" }, { label: "Clientes", value: "—", note: "Atribuições ativas", icon: <UiIcon name="link" />, tone: "posts" }] : area === "relatorios" ? [{ label: "Relatórios", value: "—", note: "Períodos disponíveis", icon: <UiIcon name="file" />, tone: "posts" }, { label: "Indicadores", value: "—", note: "Acompanhe resultados", icon: <UiIcon name="check" />, tone: "approved" }] : area === "faturamento" ? [{ label: "Faturas", value: "—", note: "Lançamentos da operação", icon: <UiIcon name="receipt" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Cobranças centralizadas", icon: <UiIcon name="check" />, tone: "approved" }] : [{ label: "Em andamento", value: "—", note: "Dados desta área", icon: <UiIcon name="clock" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Operação centralizada", icon: <UiIcon name="check" />, tone: "approved" }];
-  const content = area === "relatorios" ? <ReportsWorkspace newReportSignal={reportCreationVersion} /> : area === "faturamento" ? <BillingWorkspace session={session} newInvoiceSignal={invoiceCreationVersion} /> : area === "propostas" ? <ProposalsWorkspace newProposalSignal={proposalCreationVersion} /> : area === "contratos" ? <ContractsWorkspace newContractSignal={contractCreationVersion} /> : area === "equipe" ? <TeamManagementWorkspace session={session} newMemberSignal={memberCreationVersion} /> : area === "datas-comemorativas" ? <CommemorativeDatesWorkspace /> : area === "calendario-social" ? <SocialCalendarWorkspace /> : area === "briefs-design" ? <DesignBriefsWorkspace /> : <section className="internal-area-card glass"><div className="internal-area-empty"><UiIcon name="spark" /><strong>Esta página é privada para o seu nível de acesso.</strong><span>O conteúdo desta área será organizado aqui.</span></div></section>;
+  const content = area === "relatorios" ? <ReportsWorkspace newReportSignal={reportCreationVersion} /> : area === "faturamento" ? <BillingWorkspace session={session} newInvoiceSignal={invoiceCreationVersion} /> : area === "propostas" ? <ProposalsWorkspace newProposalSignal={proposalCreationVersion} /> : area === "contratos" ? <ContractsWorkspace newContractSignal={contractCreationVersion} /> : area === "equipe" ? <TeamManagementWorkspace session={session} newMemberSignal={memberCreationVersion} /> : area === "datas-comemorativas" ? <CommemorativeDatesWorkspace /> : area === "calendario-social" ? <SocialCalendarWorkspace session={session} /> : area === "briefs-design" ? <DesignBriefsWorkspace /> : <section className="internal-area-card glass"><div className="internal-area-empty"><UiIcon name="spark" /><strong>Esta página é privada para o seu nível de acesso.</strong><span>O conteúdo desta área será organizado aqui.</span></div></section>;
   const action = area === "relatorios" ? <button className="gradient-button page-context-action" onClick={() => setReportCreationVersion((current) => current + 1)}>+ Novo relatório</button> : area === "faturamento" ? <button className="gradient-button page-context-action" onClick={() => setInvoiceCreationVersion((current) => current + 1)}>+ Nova fatura</button> : area === "propostas" ? <button className="gradient-button page-context-action" onClick={() => setProposalCreationVersion((current) => current + 1)}>+ Nova proposta</button> : area === "contratos" ? <button className="gradient-button page-context-action" onClick={() => setContractCreationVersion((current) => current + 1)}>+ Novo contrato</button> : area === "equipe" && session.role === "super_admin" ? <button className="gradient-button page-context-action" onClick={() => setMemberCreationVersion((current) => current + 1)}>+ Novo membro</button> : null;
   const titleIcon = area === "equipe" ? <UiIcon name="users" /> : area === "briefs-design" ? <UiIcon name="brush" /> : area === "relatorios" ? <UiIcon name="file" /> : area === "faturamento" ? <UiIcon name="receipt" /> : area === "propostas" ? <UiIcon name="send" /> : area === "contratos" ? <UiIcon name="check" /> : area === "calendario-social" ? <UiIcon name="calendar" /> : area === "datas-comemorativas" ? <UiIcon name="spark" /> : undefined;
   return <div className="page-grid admin-layout internal-area-layout"><AdminRail session={session} /><main className="main-column"><WorkspaceNavbar session={session} onLogout={onLogout} /><PageContextBanner eyebrow="Área da operação" title={page.title} description={page.description} metrics={metrics} action={action} titleClassName={["relatorios", "faturamento", "propostas", "equipe", "calendario-social", "briefs-design", "datas-comemorativas", "contratos"].includes(area) ? "billing-banner-title" : undefined} titleIcon={titleIcon} />{content}</main></div>;
 }
 
-function SocialCalendarWorkspace() {
+type SocialCalendarView = "day" | "week" | "month" | "year";
+type SocialCalendarContentFilter = "all" | "posts" | "appointments";
+
+function socialCalendarRange(anchor: Date, view: SocialCalendarView) {
+  if (view !== "year") return agendaViewRange(anchor, view);
+  const start = new Date(anchor.getFullYear(), 0, 1);
+  const end = new Date(anchor.getFullYear() + 1, 0, 1);
+  const count = Math.round((end.getTime() - start.getTime()) / 86_400_000);
+  const days = Array.from({ length: count }, (_, index) => {
+    const day = new Date(start);
+    day.setDate(start.getDate() + index);
+    return day;
+  });
+  return { from: start.toISOString(), to: end.toISOString(), days };
+}
+
+function moveSocialCalendarDate(date: Date, view: SocialCalendarView, direction: -1 | 1) {
+  const next = new Date(date);
+  if (view === "year") next.setFullYear(next.getFullYear() + direction);
+  else if (view === "month") next.setMonth(next.getMonth() + direction);
+  else next.setDate(next.getDate() + (view === "week" ? 7 : 1) * direction);
+  return next;
+}
+
+function formatSocialCalendarTitle(anchor: Date, view: SocialCalendarView) {
+  if (view === "year") return String(anchor.getFullYear());
+  return formatAgendaRangeTitle(anchor, view);
+}
+
+function SocialCalendarWorkspace({ session }: { session: SessionUser }) {
   const [month, setMonth] = useState(() => new Date());
+  const [calendarView, setCalendarView] = useState<SocialCalendarView>(() => window.matchMedia("(max-width: 820px)").matches ? "week" : "month");
   const [events, setEvents] = useState<CalendarEvent[]>([]);
+  const [appointments, setAppointments] = useState<AgendaEvent[]>([]);
+  const [clients, setClients] = useState<AdminClientOption[]>([]);
+  const [labels, setLabels] = useState<AgendaLabel[]>([]);
   const [selectedClient, setSelectedClient] = useState("all");
+  const [contentFilter, setContentFilter] = useState<SocialCalendarContentFilter>("all");
+  const [selectedPost, setSelectedPost] = useState<CalendarEvent | null>(null);
+  const [selectedAppointment, setSelectedAppointment] = useState<AgendaEvent | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [startsAt, setStartsAt] = useState("");
+  const [clientAccountId, setClientAccountId] = useState("");
+  const [labelId, setLabelId] = useState("");
+  const [color, setColor] = useState("#c9f7df");
+  const [saving, setSaving] = useState(false);
+  const [refresh, setRefresh] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const artworkHover = useCalendarArtworkHover();
-  const range = agendaViewRange(month, "month");
+  const range = useMemo(() => socialCalendarRange(month, calendarView), [month, calendarView]);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError("");
-    loadCalendarOverview(range.from.slice(0, 10), range.to.slice(0, 10))
-      .then((result) => { if (active) setEvents(result.events); })
-      .catch((caught) => { if (active) { setEvents([]); setError(caught instanceof Error ? caught.message : "Não foi possível carregar o calendário social."); } })
+    Promise.all([
+      loadCalendarOverview(range.from.slice(0, 10), range.to.slice(0, 10)),
+      loadAgendaEvents(range.from, range.to),
+      listAdminClients().catch(() => ({ items: [] })),
+      loadAgendaLabels().catch(() => ({ items: [] })),
+    ])
+      .then(([calendar, agenda, clientResult, labelResult]) => {
+        if (!active) return;
+        setEvents(calendar.events);
+        setAppointments(expandAgendaEvents(agenda.items, range.from, range.to));
+        setClients(clientResult.items);
+        setLabels(labelResult.items);
+      })
+      .catch(() => {
+        if (!active) return;
+        setEvents([]);
+        setAppointments([]);
+        setError("Não foi possível carregar os itens agora. Tente novamente em instantes.");
+      })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [range.from, range.to]);
+  }, [range.from, range.to, refresh]);
 
-  const clients = Array.from(new Map(events.filter((event) => event.clientSlug).map((event) => [event.clientSlug, event.clientName ?? event.clientSlug ?? "Cliente"])).entries());
-  const visibleEvents = events.filter((event) => selectedClient === "all" || event.clientSlug === selectedClient);
+  const selectedClientRecord = clients.find((client) => client.slug === selectedClient);
+  const visibleEvents = events.filter((event) => (selectedClient === "all" || event.clientSlug === selectedClient) && contentFilter !== "appointments");
+  const visibleAppointments = appointments.filter((event) => (selectedClient === "all" || event.clientAccountId === selectedClientRecord?.id) && contentFilter !== "posts");
   const eventsByDay = new Map<string, CalendarEvent[]>();
+  const appointmentsByDay = new Map<string, AgendaEvent[]>();
   visibleEvents.forEach((event) => { const key = event.publishDate.slice(0, 10); eventsByDay.set(key, [...(eventsByDay.get(key) ?? []), event]); });
+  visibleAppointments.forEach((event) => { const key = localDateKey(new Date(event.startsAt)); appointmentsByDay.set(key, [...(appointmentsByDay.get(key) ?? []), event]); });
+  const mobileDays = calendarView === "year"
+    ? range.days.filter((day) => (eventsByDay.get(localDateKey(day))?.length ?? 0) + (appointmentsByDay.get(localDateKey(day))?.length ?? 0) > 0)
+    : calendarView === "month"
+      ? range.days.filter((day) => day.getMonth() === month.getMonth() && day.getFullYear() === month.getFullYear())
+      : range.days;
 
+  function openCreateForDay(day = new Date()) {
+    const date = new Date(day);
+    date.setHours(9, 0, 0, 0);
+    setTitle(""); setDescription(""); setStartsAt(toDateTimeLocal(date.toISOString())); setClientAccountId(selectedClientRecord?.id ?? ""); setLabelId(""); setColor("#c9f7df"); setError(""); setCreateOpen(true);
+  }
+
+  async function submitAppointment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (session.source !== "api") { setError("Entre com sua conta para salvar este compromisso no calendário."); return; }
+    if (!title.trim() || !startsAt) { setError("Informe o nome e a data do compromisso."); return; }
+    setSaving(true); setError("");
+    try {
+      await createAgendaEvent({ title: title.trim(), taskDescription: description.trim() || null, startsAt, color, clientAccountId: clientAccountId || null, labelId: labelId || null, recurrenceType: "none" });
+      setCreateOpen(false); setRefresh((value) => value + 1);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível criar o compromisso."); }
+    finally { setSaving(false); }
+  }
+
+  const totalVisible = visibleEvents.length + visibleAppointments.length;
   return <section className="social-calendar-workspace glass">
-    <header className="social-calendar-toolbar"><div className="social-calendar-month-nav"><button onClick={() => setMonth((value) => new Date(value.getFullYear(), value.getMonth() - 1, 1))} aria-label="Mês anterior">‹</button><h2>{new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(month)}</h2><button onClick={() => setMonth((value) => new Date(value.getFullYear(), value.getMonth() + 1, 1))} aria-label="Próximo mês">›</button></div><div className="social-calendar-filters"><label>Cliente<select value={selectedClient} onChange={(event) => setSelectedClient(event.target.value)}><option value="all">Todos os clientes</option>{clients.map(([slug, name]) => <option key={slug} value={slug}>{name}</option>)}</select></label><button className="ghost-button" onClick={() => setMonth(new Date())}>Hoje</button></div></header>
-    <div className="social-calendar-summary"><span><i className="scheduled" /> Post agendado</span><span><i className="pending" /> Em planejamento</span><strong>{loading ? "Carregando..." : `${visibleEvents.length} ${visibleEvents.length === 1 ? "post no período" : "posts no período"}`}</strong></div>
-    {error ? <p className="form-feedback error-text">{error}</p> : null}
-    <div className="social-calendar-weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}</div>
-    <div className="social-calendar-grid">{range.days.map((day) => { const key = localDateKey(day); const dayEvents = eventsByDay.get(key) ?? []; const inMonth = day.getMonth() === month.getMonth(); return <article key={key} className={inMonth ? "social-calendar-day" : "social-calendar-day muted"}><time>{day.getDate()}</time>{dayEvents.slice(0, 4).map((event) => <div key={event.id} className="social-calendar-event" style={{ "--calendar-event-color": event.color ?? "#6861e8" } as CSSProperties} onMouseEnter={(mouseEvent) => event.mediaUrls?.[0] ? artworkHover.show(mouseEvent, event.mediaUrls[0], event.title) : undefined} onMouseMove={(mouseEvent) => event.mediaUrls?.[0] ? artworkHover.move(mouseEvent, event.mediaUrls[0], event.title) : undefined} onMouseLeave={artworkHover.hide}><span>{event.title}</span><small>{event.clientName ?? "Cliente"}</small></div>)}{dayEvents.length > 4 ? <b className="social-calendar-more">+{dayEvents.length - 4} mais</b> : null}</article>; })}</div>
+    <header className="social-calendar-toolbar">
+      <div className="social-calendar-month-nav"><button onClick={() => setMonth((value) => moveSocialCalendarDate(value, calendarView, -1))} aria-label="Período anterior">‹</button><h2>{formatSocialCalendarTitle(month, calendarView)}</h2><button onClick={() => setMonth((value) => moveSocialCalendarDate(value, calendarView, 1))} aria-label="Próximo período">›</button></div>
+      <div className="social-calendar-filters"><label>Cliente<select value={selectedClient} onChange={(event) => setSelectedClient(event.target.value)}><option value="all">Todos os clientes</option>{clients.map((client) => <option key={client.id} value={client.slug}>{client.name}</option>)}</select></label><button className="ghost-button" onClick={() => setMonth(new Date())}>Hoje</button></div>
+    </header>
+    <nav className="social-calendar-view-switch" aria-label="Visualização do calendário">{(["day", "week", "month", "year"] as SocialCalendarView[]).map((view) => <button key={view} className={calendarView === view ? "active" : ""} onClick={() => setCalendarView(view)}>{view === "day" ? "Dia" : view === "week" ? "Semana" : view === "month" ? "Mês" : "Ano"}</button>)}</nav>
+    <div className="social-calendar-summary"><span><i className="scheduled" /> Post agendado</span><span><i className="pending" /> Compromisso</span><strong>{loading ? "Carregando..." : `${totalVisible} ${totalVisible === 1 ? "item no período" : "itens no período"}`}</strong></div>
+    <div className="social-calendar-mobile-filters"><label>Mostrar<select value={contentFilter} onChange={(event) => setContentFilter(event.target.value as SocialCalendarContentFilter)}><option value="all">Tudo</option><option value="posts">Posts</option><option value="appointments">Compromissos</option></select></label><button className="gradient-button" onClick={() => openCreateForDay()}>＋ Compromisso</button></div>
+    {error && !createOpen ? <p className="form-feedback error-text">{error}</p> : null}
+    <div className="social-calendar-desktop"><div className="social-calendar-weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}</div><div className="social-calendar-grid">{range.days.map((day) => { const key = localDateKey(day); const dayEvents = eventsByDay.get(key) ?? []; const inMonth = day.getMonth() === month.getMonth(); return <article key={key} className={inMonth ? "social-calendar-day" : "social-calendar-day muted"}><time>{day.getDate()}</time>{dayEvents.slice(0, 4).map((event) => <button key={event.id} type="button" className="social-calendar-event" style={{ "--calendar-event-color": event.color ?? "#6861e8" } as CSSProperties} onMouseEnter={(mouseEvent) => event.mediaUrls?.[0] ? artworkHover.show(mouseEvent, event.mediaUrls[0], event.title) : undefined} onMouseMove={(mouseEvent) => event.mediaUrls?.[0] ? artworkHover.move(mouseEvent, event.mediaUrls[0], event.title) : undefined} onMouseLeave={artworkHover.hide} onClick={() => setSelectedPost(event)}><span>{event.title}</span><small>{event.clientName ?? "Cliente"}</small></button>)}{dayEvents.length > 4 ? <b className="social-calendar-more">+{dayEvents.length - 4} mais</b> : null}</article>; })}</div></div>
+    <div className="social-calendar-mobile">{mobileDays.length ? mobileDays.map((day) => { const key = localDateKey(day); const dayPosts = eventsByDay.get(key) ?? []; const dayAppointments = appointmentsByDay.get(key) ?? []; const isToday = key === localDateKey(new Date()); return <article className={`social-agenda-day${isToday ? " today" : ""}`} key={key}><header><div><time>{day.getDate()}</time><span><strong>{new Intl.DateTimeFormat("pt-BR", { weekday: "long" }).format(day)}</strong><small>{new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(day)}</small></span></div><button onClick={() => openCreateForDay(day)} aria-label={`Adicionar compromisso em ${new Intl.DateTimeFormat("pt-BR").format(day)}`}>＋</button></header><div className="social-agenda-items">{dayPosts.map((post) => <button key={post.id} className="social-agenda-item post" onClick={() => setSelectedPost(post)}><span className="social-agenda-time">{post.publishTime?.slice(0, 5) || "Post"}</span>{post.mediaUrls?.[0] ? <img src={post.mediaUrls[0]} alt="" /> : <i><UiIcon name="send" /></i>}<span><strong>{post.title}</strong><small>{post.clientName ?? "Cliente"} · Post agendado</small></span><b>›</b></button>)}{dayAppointments.map((appointment) => <button key={appointment.id} className="social-agenda-item appointment" style={{ "--calendar-event-color": appointment.color } as CSSProperties} onClick={() => setSelectedAppointment(appointment)}><span className="social-agenda-time">{formatAgendaTime(appointment.startsAt)}</span><i><UiIcon name="clock" /></i><span><strong>{appointment.title}</strong><small>{appointment.clientName || appointment.labelName || "Compromisso"}</small></span><b>›</b></button>)}{dayPosts.length + dayAppointments.length === 0 ? <button className="social-agenda-empty" onClick={() => openCreateForDay(day)}>＋ Adicionar compromisso</button> : null}</div></article>; }) : <div className="social-agenda-year-empty"><UiIcon name="calendar" /><strong>Nenhum item neste ano</strong><button className="gradient-button" onClick={() => openCreateForDay()}>Adicionar compromisso</button></div>}</div>
+    {createOpen ? createPortal(<div className="modal-backdrop" onMouseDown={() => { if (!saving) setCreateOpen(false); }}><form className="agenda-create-modal social-agenda-create-modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={submitAppointment}><div className="column-editor-head"><div><p className="eyebrow">Agenda social</p><h3>Novo compromisso</h3></div><button type="button" className="icon-close" onClick={() => setCreateOpen(false)} aria-label="Fechar">×</button></div><label className="field-stack">Nome<input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Revisar pauta do cliente" /></label><label className="field-stack">Descrição<textarea rows={4} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Detalhes do compromisso" /></label><label className="field-stack">Data e horário<input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} /></label><label className="field-stack">Cliente<select value={clientAccountId} onChange={(event) => setClientAccountId(event.target.value)}><option value="">Sem cliente específico</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label><label className="field-stack">Etiqueta<select value={labelId} onChange={(event) => { const next = event.target.value; setLabelId(next); const label = labels.find((item) => item.id === next); if (label) setColor(label.color); }}><option value="">Sem etiqueta</option>{labels.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}</select></label>{error ? <p className="form-feedback error-text">{error}</p> : null}<button className="gradient-button" type="submit" disabled={saving}>{saving ? "Salvando..." : "Adicionar compromisso"}</button></form></div>, document.body) : null}
+    {selectedPost ? createPortal(<div className="modal-backdrop" onMouseDown={() => setSelectedPost(null)}><section className="agenda-detail-modal social-agenda-detail-modal" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Post agendado</p><h3>{selectedPost.title}</h3></div><button className="icon-close" onClick={() => setSelectedPost(null)} aria-label="Fechar">×</button></header>{selectedPost.mediaUrls?.[0] ? <img className="social-agenda-detail-image" src={selectedPost.mediaUrls[0]} alt={selectedPost.title} /> : null}<dl><div><dt>Quando</dt><dd>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full" }).format(new Date(`${selectedPost.publishDate.slice(0, 10)}T12:00:00`))}{selectedPost.publishTime ? ` às ${selectedPost.publishTime.slice(0, 5)}` : ""}</dd></div><div><dt>Cliente</dt><dd>{selectedPost.clientName ?? "Cliente"}</dd></div><div><dt>Status</dt><dd>{selectedPost.status}</dd></div></dl></section></div>, document.body) : null}
+    {selectedAppointment ? createPortal(<div className="modal-backdrop" onMouseDown={() => setSelectedAppointment(null)}><section className="agenda-detail-modal social-agenda-detail-modal" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Compromisso</p><h3>{selectedAppointment.title}</h3></div><button className="icon-close" onClick={() => setSelectedAppointment(null)} aria-label="Fechar">×</button></header><p>{selectedAppointment.taskDescription || "Sem descrição."}</p><dl><div><dt>Quando</dt><dd>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(selectedAppointment.startsAt))}</dd></div><div><dt>Cliente</dt><dd>{selectedAppointment.clientName || "Sem cliente específico"}</dd></div><div><dt>Etiqueta</dt><dd>{selectedAppointment.labelName || "Sem etiqueta"}</dd></div></dl></section></div>, document.body) : null}
     {artworkHover.preview}
   </section>;
 }
