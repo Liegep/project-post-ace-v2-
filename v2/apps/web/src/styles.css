@@ -7976,3 +7976,82 @@ button {
     transform: none;
   }
 }
+
+/* Dashboard: containment is based on the available column width, not the viewport.
+   This keeps widgets and client cards from widening the page to the right. */
+.dashboard-layout,
+.dashboard-layout > .main-column,
+.dashboard-layout .dashboard-shell,
+.dashboard-layout .dashboard-hero-panel,
+.dashboard-layout .dashboard-welcome,
+.dashboard-layout .dashboard-grid,
+.dashboard-layout .dashboard-clients-panel,
+.dashboard-layout .dashboard-clients {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.dashboard-layout .dashboard-grid > *,
+.dashboard-layout .dashboard-clients > *,
+.dashboard-layout .dashboard-task-rows,
+.dashboard-layout .dashboard-task-rows article,
+.dashboard-layout .dashboard-list article,
+.dashboard-layout .dashboard-internal-row,
+.dashboard-layout .dashboard-internal-open {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.dashboard-clients-full {
+  container-type: inline-size;
+}
+
+@container (max-width: 1420px) {
+  .dashboard-clients-full .dashboard-clients {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 1040px) {
+  .dashboard-clients-full .dashboard-clients {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (max-width: 680px) {
+  .dashboard-clients-full .dashboard-clients {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .dashboard-layout .client-showcase-actions {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .dashboard-layout .client-showcase-actions .gradient-button {
+    grid-column: 1 / -1;
+  }
+
+  .dashboard-layout .client-icon-action {
+    width: 100%;
+  }
+
+  .dashboard-layout .dashboard-tasks-widget:not(.dashboard-agenda-widget) .dashboard-task-rows article {
+    grid-template-columns: 8px 27px minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+  }
+
+  .dashboard-layout .dashboard-tasks-widget:not(.dashboard-agenda-widget) .dashboard-task-status {
+    grid-column: 3;
+    grid-row: 2;
+    justify-self: start;
+  }
+
+  .dashboard-layout .dashboard-tasks-widget:not(.dashboard-agenda-widget) .dashboard-task-date {
+    grid-column: 4;
+    grid-row: 2;
+    justify-self: end;
+  }
+}
