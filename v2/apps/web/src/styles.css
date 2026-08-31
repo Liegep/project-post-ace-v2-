@@ -8029,6 +8029,36 @@ button {
   pointer-events: none;
 }
 
+/* Profile dialogs are portalled to the document body. Keep the entire window
+   inside the visual viewport, including iPhone safe areas and short screens. */
+.profile-modal-backdrop {
+  box-sizing: border-box;
+  overflow-y: auto;
+  padding-top: max(20px, env(safe-area-inset-top));
+  padding-right: max(20px, env(safe-area-inset-right));
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
+  padding-left: max(20px, env(safe-area-inset-left));
+}
+
+.profile-modal {
+  max-height: calc(100dvh - 40px);
+  margin: auto;
+}
+
+@media (max-width: 600px), (max-height: 560px) {
+  .profile-modal-backdrop {
+    align-items: start;
+    padding-top: max(12px, env(safe-area-inset-top));
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+    padding-left: max(12px, env(safe-area-inset-left));
+  }
+
+  .profile-modal {
+    max-height: calc(100dvh - 24px);
+  }
+}
+
 .dashboard-clients-full {
   container-type: inline-size;
 }

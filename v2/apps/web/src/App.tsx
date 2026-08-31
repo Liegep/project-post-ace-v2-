@@ -2227,7 +2227,39 @@ function ProfileMenu({ session, onLogout }: { session: SessionUser; onLogout: ()
     finally { setSaving(false); }
   };
   const initials = session.name.slice(0, 2).toUpperCase();
-  return <div className="profile-menu" ref={menuRef}><button className="session-note glass-subtle" onClick={() => setOpen((value) => !value)} aria-expanded={open}><span className="session-avatar">{avatarUrl ? <img src={avatarUrl} alt="" /> : initials}</span><span className="session-copy"><strong>{session.name}</strong><span>{roleLabel(session.role)}</span></span><UiIcon name="chevron-down" className="session-caret" /></button>{open ? <div className="profile-popover"><button onClick={() => show("profile")}><span>♙</span>Meu Perfil</button><button onClick={() => show("password")}><span>⚿</span>Alterar Senha</button><NavLink to="/agenda" onClick={() => setOpen(false)}><span>▣</span>Agenda</NavLink><button onClick={() => show("accounts")}><span>♧</span>Trocar de conta</button><hr /><button className="profile-logout" onClick={onLogout}><span>⇥</span>Sair</button></div> : null}{dialog ? <div className="profile-modal-backdrop" onMouseDown={() => setDialog(null)}><section className="profile-modal" onMouseDown={(event) => event.stopPropagation()}><header><h3>{dialog === "profile" ? "Meu Perfil" : dialog === "password" ? "Alterar Senha" : "Trocar de conta"}</h3><button onClick={() => setDialog(null)} aria-label="Fechar">×</button></header>{dialog === "profile" ? <div className="profile-edit"><span className="profile-photo-large">{avatarUrl ? <img src={avatarUrl} alt="Foto de perfil" /> : initials}</span><strong>{session.name}</strong><small>{session.email}</small><label className="profile-upload">{saving ? "Enviando foto..." : "Escolher nova foto"}<input type="file" accept="image/*" disabled={saving} onChange={(event) => void saveAvatar(event.target.files?.[0] ?? null)} /></label></div> : null}{dialog === "password" ? <div className="profile-form"><label>Senha atual<input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label><label>Nova senha<input type="password" minLength={8} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label><button className="gradient-button" disabled={saving || !currentPassword || newPassword.length < 8} onClick={() => void savePassword()}>{saving ? "Salvando..." : "Salvar nova senha"}</button></div> : null}{dialog === "accounts" ? <div className="profile-agenda">{session.assignedAdminSlugs.map((account) => <a key={account} href={`/admin/${account}`}>{account.replace(/-/g, " ")}</a>)}</div> : null}{message ? <p className="profile-message">{message}</p> : null}</section></div> : null}</div>;
+  return (
+    <div className="profile-menu" ref={menuRef}>
+      <button className="session-note glass-subtle" onClick={() => setOpen((value) => !value)} aria-expanded={open} aria-haspopup="menu">
+        <span className="session-avatar">{avatarUrl ? <img src={avatarUrl} alt="" /> : initials}</span>
+        <span className="session-copy"><strong>{session.name}</strong><span>{roleLabel(session.role)}</span></span>
+        <UiIcon name="chevron-down" className="session-caret" />
+      </button>
+      {open ? (
+        <div className="profile-popover" role="menu">
+          <button onClick={() => show("profile")}><span>♙</span>Meu Perfil</button>
+          <button onClick={() => show("password")}><span>⚿</span>Alterar Senha</button>
+          <NavLink to="/agenda" onClick={() => setOpen(false)}><span>▣</span>Agenda</NavLink>
+          <button onClick={() => show("accounts")}><span>♧</span>Trocar de conta</button>
+          <hr />
+          <button className="profile-logout" onClick={onLogout}><span>⇥</span>Sair</button>
+        </div>
+      ) : null}
+      {dialog ? createPortal((
+        <div className="profile-modal-backdrop" onMouseDown={() => setDialog(null)}>
+          <section className="profile-modal" role="dialog" aria-modal="true" aria-labelledby="admin-profile-dialog-title" onMouseDown={(event) => event.stopPropagation()}>
+            <header>
+              <h3 id="admin-profile-dialog-title">{dialog === "profile" ? "Meu Perfil" : dialog === "password" ? "Alterar Senha" : "Trocar de conta"}</h3>
+              <button onClick={() => setDialog(null)} aria-label="Fechar">×</button>
+            </header>
+            {dialog === "profile" ? <div className="profile-edit"><span className="profile-photo-large">{avatarUrl ? <img src={avatarUrl} alt="Foto de perfil" /> : initials}</span><strong>{session.name}</strong><small>{session.email}</small><label className="profile-upload">{saving ? "Enviando foto..." : "Escolher nova foto"}<input type="file" accept="image/*" disabled={saving} onChange={(event) => void saveAvatar(event.target.files?.[0] ?? null)} /></label></div> : null}
+            {dialog === "password" ? <div className="profile-form"><label>Senha atual<input name="current-password" type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label><label>Nova senha<input name="new-password" type="password" autoComplete="new-password" minLength={8} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label><button className="gradient-button" disabled={saving || !currentPassword || newPassword.length < 8} onClick={() => void savePassword()}>{saving ? "Salvando..." : "Salvar nova senha"}</button></div> : null}
+            {dialog === "accounts" ? <div className="profile-agenda">{session.assignedAdminSlugs.map((account) => <a key={account} href={`/admin/${account}`}>{account.replace(/-/g, " ")}</a>)}</div> : null}
+            {message ? <p className="profile-message">{message}</p> : null}
+          </section>
+        </div>
+      ), document.body) : null}
+    </div>
+  );
 }
 
 function AdminWorkspacePage({
