@@ -4192,8 +4192,8 @@ function ClientProfileMenu({ session, slug, onLogout, clientLogoUrl, accountName
             </header>
             {dialog === "password" ? (
               <div className="profile-form">
-                <label>{t("Senha atual")}<input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
-                <label>{t("Nova senha")}<input type="password" minLength={8} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label>
+                <label>{t("Senha atual")}<input name="current-password" type="password" autoComplete="current-password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
+                <label>{t("Nova senha")}<input name="new-password" type="password" autoComplete="new-password" minLength={8} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label>
                 <button className="gradient-button" disabled={saving || !currentPassword || newPassword.length < 8} onClick={() => void savePassword()}>{saving ? t("Salvando...") : t("Salvar nova senha")}</button>
               </div>
             ) : null}
@@ -5707,16 +5707,19 @@ function LoginPage({
             Acesse para acompanhar projetos, conteúdos e aprovações em um só lugar.
           </p>
 
-          <form className="login-form" onSubmit={submit}>
-            <label className="field-stack">
+          <form id="designhub-login" name="login" className="login-form" method="post" action="/api/auth/login" autoComplete="on" onSubmit={submit}>
+            <label className="field-stack" htmlFor="login-username">
               <span>E-mail</span>
-              <input type="email" autoComplete="username" autoFocus placeholder="Digite seu e-mail" value={email} onChange={(event) => setEmail(event.target.value)} />
+              <input id="login-username" name="username" type="email" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} inputMode="email" enterKeyHint="next" autoFocus placeholder="Digite seu e-mail" value={email} onChange={(event) => setEmail(event.target.value)} />
             </label>
-            <label className="field-stack">
+            <label className="field-stack" htmlFor="login-password">
               <span>Senha</span>
               <input
+                id="login-password"
+                name="password"
                 type="password"
                 autoComplete="current-password"
+                enterKeyHint="go"
                 placeholder="Digite sua senha"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
