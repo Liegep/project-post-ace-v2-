@@ -6157,6 +6157,107 @@ button {
     display: none;
   }
 
+  /* Busca do portal: o teclado só abre depois do toque do cliente. Durante a
+     digitação, a barra superior e o texto introdutório recolhem para que o
+     campo e os resultados ocupem a área útil da tela. */
+  .portal-search-view {
+    box-sizing: border-box;
+    width: min(100%, 680px);
+    min-width: 0;
+    margin: 0 auto;
+    padding-bottom: calc(18px + env(safe-area-inset-bottom));
+    scroll-padding-top: 12px;
+  }
+
+  .portal-search-hero {
+    position: sticky;
+    z-index: 80;
+    top: max(8px, env(safe-area-inset-top));
+    grid-template-columns: minmax(0, 1fr);
+    justify-items: center;
+    box-sizing: border-box;
+    width: 100%;
+    padding: 17px;
+    text-align: center;
+    transition: padding .18s ease, border-radius .18s ease, box-shadow .18s ease;
+  }
+
+  .portal-search-hero > div:first-child {
+    max-height: 100px;
+    overflow: hidden;
+    opacity: 1;
+    transition: max-height .18s ease, opacity .14s ease, margin .18s ease;
+  }
+
+  .portal-search-field {
+    order: -1;
+    width: 100%;
+    max-width: 560px;
+    text-align: left;
+  }
+
+  .portal-search-field > label {
+    min-height: 52px;
+    scroll-margin-top: max(12px, env(safe-area-inset-top));
+  }
+
+  .portal-search-field input {
+    font-size: 16px;
+  }
+
+  .portal-search-hero:focus-within {
+    padding: 12px;
+    border-radius: 18px;
+    box-shadow: 0 16px 36px rgba(47, 58, 102, .17);
+  }
+
+  .portal-search-hero:focus-within > div:first-child {
+    max-height: 0;
+    margin: -8px 0 0;
+    opacity: 0;
+  }
+
+  .portal-page:has(.portal-search-field input:focus) .portal-sidebar {
+    position: relative !important;
+    top: auto;
+    max-height: 0;
+    margin: 0;
+    padding-block: 0;
+    overflow: hidden;
+    border-width: 0;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .portal-search-state {
+    min-height: 190px;
+    padding: 22px 18px;
+  }
+
+  .portal-search-results {
+    width: 100%;
+    min-width: 0;
+    padding-bottom: 4px;
+  }
+
+  .portal-search-result {
+    grid-template-columns: 96px minmax(0, 1fr);
+    min-height: 132px;
+  }
+
+  .portal-search-result-copy {
+    gap: 5px;
+    padding: 11px 12px;
+  }
+
+  .portal-search-result-copy > p {
+    -webkit-line-clamp: 2;
+  }
+
+  .portal-search-result-copy > button {
+    min-height: 32px;
+  }
+
   .portal-approval-board {
     padding: 10px;
   }
