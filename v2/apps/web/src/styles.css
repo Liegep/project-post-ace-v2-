@@ -5525,6 +5525,9 @@ button {
   .portal-approved-head { flex-direction: column; }
   .portal-approved-card { grid-template-columns: 96px minmax(0, 1fr); gap: 12px; }
   .portal-approved-preview { width: 96px; height: 96px; min-height: 0; align-self: start; aspect-ratio: 1; }
+  .portal-approved-card:not(.portal-approved-text-card) { grid-template-columns: minmax(0, 1fr); }
+  .portal-approved-card:not(.portal-approved-text-card) .portal-approved-preview { width: 100%; height: auto; aspect-ratio: 1; border-radius: 14px; }
+  .portal-approved-card:not(.portal-approved-text-card) .portal-approved-copy { padding: 3px 2px 1px; }
   .portal-approved-preview .closed-card-media,
   .portal-approved-preview .media-frame,
   .portal-approved-preview .artwork-carousel,
