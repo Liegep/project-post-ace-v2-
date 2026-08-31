@@ -8003,6 +8003,32 @@ button {
   max-width: 100%;
 }
 
+/* The profile dropdown must stay above the decorative welcome layer, whose
+   backdrop-filter creates its own stacking context. */
+.dashboard-layout .dashboard-hero-panel .workspace-navbar {
+  position: relative;
+  z-index: 100;
+}
+
+.dashboard-layout .dashboard-hero-panel .dashboard-welcome {
+  position: relative;
+  z-index: 1;
+}
+
+.dashboard-layout .workspace-navbar .profile-menu {
+  z-index: 110;
+}
+
+.dashboard-layout .workspace-navbar .profile-popover {
+  z-index: 120;
+}
+
+.dashboard-layout .dashboard-orbs {
+  position: relative;
+  z-index: 0;
+  pointer-events: none;
+}
+
 .dashboard-clients-full {
   container-type: inline-size;
 }
