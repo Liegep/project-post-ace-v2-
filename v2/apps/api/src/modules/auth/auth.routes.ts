@@ -5,9 +5,10 @@ import {
   hasGlobalRole,
   getClientScope,
 } from "./auth.access.js";
-import { changeMyPasswordSchema, createUserSchema, loginSchema, resetManagedUserPasswordSchema, updateMyProfileSchema } from "./auth.schemas.js";
+import { changeMyPasswordSchema, completePasswordResetSchema, createUserSchema, loginSchema, requestPasswordResetSchema, resetManagedUserPasswordSchema, updateMyProfileSchema } from "./auth.schemas.js";
 import { changeMyPassword, createManagedUser, loginWithPassword, resetManagedUserPassword, updateMyProfile } from "./auth.service.js";
 import { listUsers } from "./auth.repository.js";
+import { completePasswordReset, requestPasswordReset } from "./password-reset.service.js";
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
   app.post("/auth/login", async (request) => {
@@ -18,6 +19,18 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
       authenticated: true,
       ...session,
     };
+  });
+
+  app.post("/auth/forgot-password", async (request) => {
+    const { email } = requestPasswordResetSchema.parse(request.body);
+    await requestPasswordReset(app, email);
+    return { ok: true, message: "Se o e-mail estiver cadastrado, você receberá um link para criar uma nova senha." };
+  });
+
+  app.post("/auth/reset-password", async (request) => {
+    const input = completePasswordResetSchema.parse(request.body);
+    await completePasswordReset(app, input.token, input.newPassword);
+    return { ok: true };
   });
 
   app.get("/auth/session", async (request) => {

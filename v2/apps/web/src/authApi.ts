@@ -25,6 +25,15 @@ function getApiBaseUrl() {
   return typeof value === "string" && value.length > 0 ? value : "";
 }
 
+async function readApiError(response: Response, fallback: string) {
+  try {
+    const body = await response.json() as { message?: string };
+    return body.message?.trim() || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 function mapRole(role: ApiAuthResponse["user"]["globalRole"]): SessionUser["role"] {
   switch (role) {
     case "colaborador":
@@ -108,4 +117,27 @@ export async function restoreApiSession(accessToken: string): Promise<SessionUse
     ...data,
     accessToken,
   });
+}
+
+export async function requestPasswordResetWithApi(email: string) {
+  const response = await fetch(`${getApiBaseUrl()}/api/auth/forgot-password`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Não foi possível enviar o e-mail de recuperação agora."));
+  }
+  return response.json() as Promise<{ ok: true; message: string }>;
+}
+
+export async function completePasswordResetWithApi(token: string, newPassword: string) {
+  const response = await fetch(`${getApiBaseUrl()}/api/auth/reset-password`, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify({ token, newPassword }),
+  });
+  if (!response.ok) {
+    throw new Error(await readApiError(response, "Não foi possível criar a nova senha."));
+  }
 }

@@ -43,8 +43,19 @@ export const resetManagedUserPasswordSchema = z.object({
   newPassword: z.string().min(8).max(120),
 });
 
+export const requestPasswordResetSchema = z.object({
+  email: z.email(),
+});
+
+export const completePasswordResetSchema = z.object({
+  token: z.string().min(32).max(256),
+  newPassword: z.string().min(8).max(120),
+});
+
 export type LoginInput = z.infer<typeof loginSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type UpdateMyProfileInput = z.infer<typeof updateMyProfileSchema>;
 export type ChangeMyPasswordInput = z.infer<typeof changeMyPasswordSchema>;
 export type ResetManagedUserPasswordInput = z.infer<typeof resetManagedUserPasswordSchema>;
+export type RequestPasswordResetInput = z.infer<typeof requestPasswordResetSchema>;
+export type CompletePasswordResetInput = z.infer<typeof completePasswordResetSchema>;

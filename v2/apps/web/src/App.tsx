@@ -107,7 +107,7 @@ import {
   type TextComment,
   type TextDocument,
 } from "./api";
-import { ACCESS_TOKEN_KEY, loginWithApi, restoreApiSession } from "./authApi";
+import { ACCESS_TOKEN_KEY, completePasswordResetWithApi, loginWithApi, requestPasswordResetWithApi, restoreApiSession } from "./authApi";
 import { demoUsers } from "./mockData";
 import type {
   AdminWorkspacePreview,
@@ -5677,6 +5677,8 @@ function LoginPage({
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [recovering, setRecovering] = useState(false);
+  const [recoveryMessage, setRecoveryMessage] = useState("");
 
   if (session) {
     return <Navigate to={getDefaultRoute(session)} replace />;
@@ -5694,6 +5696,21 @@ function LoginPage({
     setError("");
   }
 
+  async function requestRecovery(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitting(true);
+    setError("");
+    setRecoveryMessage("");
+    try {
+      const result = await requestPasswordResetWithApi(email.trim());
+      setRecoveryMessage(result.message);
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : "Não foi possível enviar o e-mail de recuperação agora.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <main className="center-shell">
       <section className="login-grid login-experience">
@@ -5702,17 +5719,17 @@ function LoginPage({
             <img src={designHubV2Logo} alt="Logo Design Hub V2" />
           </div>
           <div className="login-kicker"><span className="login-live-dot" />DESIGN HUB · SEU ESPAÇO CRIATIVO</div>
-          <h1>Bem-vindo ao seu espaço criativo.</h1>
+          <h1>{recovering ? "Recupere seu acesso." : "Bem-vindo ao seu espaço criativo."}</h1>
           <p className="hero-copy">
-            Acesse para acompanhar projetos, conteúdos e aprovações em um só lugar.
+            {recovering ? "Digite seu e-mail e enviaremos um link temporário para você criar uma nova senha." : "Acesse para acompanhar projetos, conteúdos e aprovações em um só lugar."}
           </p>
 
-          <form id="designhub-login" name="login" className="login-form" method="post" action="/api/auth/login" autoComplete="on" onSubmit={submit}>
+          <form id={recovering ? "designhub-recovery" : "designhub-login"} name={recovering ? "password-recovery" : "login"} className="login-form" method="post" action={recovering ? "/api/auth/forgot-password" : "/api/auth/login"} autoComplete="on" onSubmit={recovering ? requestRecovery : submit}>
             <label className="field-stack" htmlFor="login-username">
               <span>E-mail</span>
               <input id="login-username" name="username" type="email" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} inputMode="email" enterKeyHint="next" autoFocus placeholder="Digite seu e-mail" value={email} onChange={(event) => setEmail(event.target.value)} />
             </label>
-            <label className="field-stack" htmlFor="login-password">
+            {!recovering ? <label className="field-stack" htmlFor="login-password">
               <span>Senha</span>
               <input
                 id="login-password"
@@ -5724,10 +5741,14 @@ function LoginPage({
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
               />
-            </label>
+            </label> : null}
             <button className="gradient-button login-submit" type="submit" disabled={submitting}>
-              {submitting ? "Entrando..." : <>Entrar no Design Hub <span aria-hidden="true">→</span></>}
+              {submitting ? (recovering ? "Enviando..." : "Entrando...") : recovering ? <>Enviar link seguro <span aria-hidden="true">→</span></> : <>Entrar no Design Hub <span aria-hidden="true">→</span></>}
             </button>
+            <button className="login-text-action" type="button" onClick={() => { setRecovering((current) => !current); setError(""); setRecoveryMessage(""); }}>
+              {recovering ? "Voltar para o login" : "Esqueci minha senha"}
+            </button>
+            {recoveryMessage ? <p className="form-feedback success-text" role="status">{recoveryMessage}</p> : null}
             {error ? <p className="form-feedback error-text">{error}</p> : null}
           </form>
           <p className="login-security-note"><span aria-hidden="true">●</span> Acesso protegido ao seu workspace</p>
@@ -5760,6 +5781,64 @@ function LoginPage({
       </section>
     </main>
   );
+}
+
+function PasswordResetPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const token = useMemo(() => new URLSearchParams(location.search).get("token")?.trim() ?? "", [location.search]);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [completed, setCompleted] = useState(false);
+  const [error, setError] = useState("");
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!token) {
+      setError("Este link não contém um código de recuperação válido.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setError("A nova senha precisa ter pelo menos 8 caracteres.");
+      return;
+    }
+    if (newPassword !== confirmation) {
+      setError("As duas senhas precisam ser iguais.");
+      return;
+    }
+    setSubmitting(true);
+    setError("");
+    try {
+      await completePasswordResetWithApi(token, newPassword);
+      setCompleted(true);
+    } catch (resetError) {
+      setError(resetError instanceof Error ? resetError.message : "Não foi possível criar a nova senha.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return <main className="center-shell password-reset-shell">
+    <section className="glass password-reset-card">
+      <div className="login-brand-mark" aria-label="Design Hub V2"><img src={designHubV2Logo} alt="Logo Design Hub V2" /></div>
+      <div className="login-kicker"><span className="login-live-dot" />DESIGN HUB · ACESSO SEGURO</div>
+      {completed ? <>
+        <h1>Senha criada com sucesso.</h1>
+        <p className="hero-copy">Seu link já foi invalidado. Agora você pode entrar usando a nova senha.</p>
+        <button className="gradient-button login-submit" type="button" onClick={() => navigate("/login", { replace: true })}>Ir para o login <span aria-hidden="true">→</span></button>
+      </> : <>
+        <h1>Crie sua nova senha.</h1>
+        <p className="hero-copy">Use pelo menos 8 caracteres. Depois de salvar, este link não poderá ser usado novamente.</p>
+        <form className="login-form" autoComplete="on" onSubmit={submit}>
+          <label className="field-stack" htmlFor="reset-new-password"><span>Nova senha</span><input id="reset-new-password" name="new-password" type="password" autoComplete="new-password" minLength={8} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoFocus /></label>
+          <label className="field-stack" htmlFor="reset-confirm-password"><span>Confirme a nova senha</span><input id="reset-confirm-password" name="confirm-password" type="password" autoComplete="new-password" minLength={8} value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></label>
+          <button className="gradient-button login-submit" type="submit" disabled={submitting}>{submitting ? "Salvando..." : <>Salvar nova senha <span aria-hidden="true">→</span></>}</button>
+          {error ? <p className="form-feedback error-text" role="alert">{error}</p> : null}
+        </form>
+      </>}
+    </section>
+  </main>;
 }
 
 const INTERNAL_AREAS: Record<string, { title: string; description: string; restricted?: boolean }> = {
@@ -6926,6 +7005,7 @@ export function App() {
       <Routes>
         <Route path="/" element={<Navigate to={getDefaultRoute(session)} replace />} />
         <Route path="/login" element={<LoginPage session={session} onLogin={handleLogin} />} />
+        <Route path="/reset-password" element={<PasswordResetPage />} />
         <Route path="/approval/:token" element={<PublicApprovalPage />} />
         <Route path="/proposta/:token" element={<PublicProposalPage />} />
         <Route path="/dashboard" element={<DashboardRoutePage session={session} onLogout={handleLogout} />} />

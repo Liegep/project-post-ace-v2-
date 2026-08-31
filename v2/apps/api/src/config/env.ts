@@ -3,6 +3,16 @@ import { z } from "zod";
 
 config({ path: process.env.APP_ENV_FILE || "../../.env" });
 
+const optionalString = z.preprocess(
+  (value) => typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined,
+  z.string().optional(),
+);
+
+const optionalEmail = z.preprocess(
+  (value) => typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined,
+  z.email().optional(),
+);
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   APP_NAME: z.string().default("design-hub-v2"),
@@ -24,6 +34,17 @@ const envSchema = z.object({
   APP_TIMEZONE: z.string().default("America/Sao_Paulo"),
   UPLOAD_DIR: z.string().min(1).default("uploads"),
   OPENAI_API_KEY: z.preprocess((value) => value || undefined, z.string().min(20).optional()),
+  SMTP_HOST: z.string().min(1).default("smtp.hostinger.com"),
+  SMTP_PORT: z.coerce.number().int().positive().default(465),
+  SMTP_SECURE: z.preprocess(
+    (value) => value === undefined || value === "" ? undefined : value === true || value === "true" || value === "1",
+    z.boolean(),
+  ).default(true),
+  SMTP_USER: optionalString,
+  SMTP_PASSWORD: optionalString,
+  SMTP_FROM_EMAIL: optionalEmail,
+  SMTP_FROM_NAME: z.string().min(1).default("Design Hub"),
+  PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(10).max(120).default(30),
 });
 
 export type AppEnv = z.infer<typeof envSchema>;

@@ -12,6 +12,21 @@ CREATE TABLE IF NOT EXISTS users (
   UNIQUE KEY uq_users_email (email)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  user_id CHAR(36) NOT NULL,
+  token_hash CHAR(64) NOT NULL,
+  expires_at_ms BIGINT UNSIGNED NOT NULL,
+  used_at_ms BIGINT UNSIGNED NULL,
+  created_at_ms BIGINT UNSIGNED NOT NULL,
+  UNIQUE KEY uq_password_reset_token_hash (token_hash),
+  KEY idx_password_reset_user_created (user_id, created_at_ms),
+  KEY idx_password_reset_expiration (expires_at_ms),
+  CONSTRAINT fk_password_reset_user
+    FOREIGN KEY (user_id) REFERENCES users (id)
+    ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS client_accounts (
   id CHAR(36) NOT NULL PRIMARY KEY,
   name VARCHAR(190) NOT NULL,
