@@ -5524,7 +5524,16 @@ button {
 @media (max-width: 720px) {
   .portal-approved-head { flex-direction: column; }
   .portal-approved-card { grid-template-columns: 96px minmax(0, 1fr); gap: 12px; }
-  .portal-approved-preview { min-height: 96px; }
+  .portal-approved-preview { width: 96px; height: 96px; min-height: 0; align-self: start; aspect-ratio: 1; }
+  .portal-approved-preview .closed-card-media,
+  .portal-approved-preview .media-frame,
+  .portal-approved-preview .artwork-carousel,
+  .portal-approved-preview .artwork-carousel-viewport,
+  .portal-approved-preview .artwork-carousel-track,
+  .portal-approved-preview .artwork-carousel-slide { width: 100%; height: 100%; aspect-ratio: 1; }
+  .portal-approved-preview .media-frame img,
+  .portal-approved-preview .artwork-carousel-slide.active img,
+  .portal-approved-preview .artwork-carousel-slide.active video { width: 100%; height: 100%; object-fit: cover; }
 
   .portal-invoices-head { flex-direction: column; }
   .portal-invoice-row { grid-template-columns: 42px minmax(0, 1fr); gap: 9px; }
@@ -6920,7 +6929,9 @@ button {
   }
 
   .portal-approved-preview {
-    min-height: 76px;
+    width: 76px;
+    height: 76px;
+    min-height: 0;
   }
 
   .dashboard-shell,
