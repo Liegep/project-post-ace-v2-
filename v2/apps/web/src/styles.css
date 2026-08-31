@@ -5692,6 +5692,34 @@ button {
     overflow-x: hidden;
   }
 
+  body:has(.agenda-modal-backdrop) {
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
+
+  .agenda-modal-backdrop {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    box-sizing: border-box;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom));
+    overscroll-behavior-y: contain;
+    touch-action: pan-y;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .agenda-modal-backdrop > .agenda-create-modal,
+  .agenda-modal-backdrop > .client-calendar-event-modal {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: min(100%, 520px);
+    max-height: none;
+    margin-block: auto;
+    overflow: visible;
+  }
+
   input,
   select,
   textarea {
