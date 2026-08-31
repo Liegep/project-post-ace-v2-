@@ -6417,6 +6417,7 @@ button {
 
   /* A animação de entrada deixava um transform persistente no contêiner e
      fazia modais fixos se alinharem pela página longa, não pelo viewport. */
+  .page-grid > .main-column,
   .internal-area-layout > .main-column {
     animation: none;
     transform: none;
@@ -6929,10 +6930,21 @@ button {
 
   .modal-backdrop,
   .admin-card-backdrop,
+  .card-column-modal-backdrop,
+  .client-modal-backdrop,
+  .pauta-modal-backdrop,
+  .profile-modal-backdrop,
+  .media-preview-backdrop,
+  .automation-modal-backdrop,
   .workspace-drawer-modal-backdrop,
   .contract-acceptance-backdrop {
     box-sizing: border-box;
     padding: 10px;
+    z-index: 180;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
   }
 
   .modal-panel,
@@ -6955,6 +6967,70 @@ button {
     grid-template-columns: minmax(0, 1fr);
     width: 100%;
     max-height: calc(100dvh - 20px);
+  }
+
+  /* O rodape do formulario continua acessivel mesmo em iPhones baixos ou
+     quando o teclado virtual reduz a area visivel do navegador. */
+  .card-editor > .card-editor-form > .modal-actions {
+    position: sticky;
+    z-index: 4;
+    bottom: -18px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 4px -18px -18px;
+    padding: 13px 18px calc(13px + env(safe-area-inset-bottom));
+    border-top: 1px solid rgba(216, 223, 238, .9);
+    background: rgba(250, 251, 255, .96);
+    box-shadow: 0 -12px 28px rgba(38, 48, 82, .08);
+    backdrop-filter: blur(18px) saturate(145%);
+  }
+
+  .card-editor > .card-editor-form > .modal-actions button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* Elementos acionaveis que ficam presos ao viewport devem permanecer acima
+     da barra de navegacao mobile, nunca escondidos por ela. */
+  .card-menu-backdrop {
+    z-index: 150;
+  }
+
+  .card-context-menu {
+    z-index: 151;
+    max-height: calc(100dvh - 96px - env(safe-area-inset-bottom));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .kanban-column .column-popover {
+    z-index: 150;
+    max-height: calc(100dvh - 96px - env(safe-area-inset-bottom));
+    overflow-y: auto;
+  }
+
+  .bulk-action-bar {
+    z-index: 150;
+    bottom: calc(82px + env(safe-area-inset-bottom));
+    width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+
+  .bulk-action-bar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .global-success-notice,
+  .brand-v2-message {
+    right: 12px;
+    bottom: calc(82px + env(safe-area-inset-bottom));
+    left: 12px;
+    box-sizing: border-box;
+    width: auto;
+    max-width: none;
   }
 
   .admin-card-main,
