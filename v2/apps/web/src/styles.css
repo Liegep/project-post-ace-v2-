@@ -6226,6 +6226,137 @@ button {
     justify-items: start;
   }
 
+  .portal-invoice-preview-modal {
+    box-sizing: border-box;
+    width: calc(100vw - 16px);
+    max-width: 100%;
+    max-height: calc(100dvh - 16px);
+    padding: 14px;
+    border-radius: 20px;
+  }
+
+  .portal-invoice-preview-modal > header {
+    min-width: 0;
+    margin-bottom: 14px;
+  }
+
+  .portal-invoice-preview-modal > header > div,
+  .portal-invoice-preview-modal > div {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .portal-invoice-preview-modal h2,
+  .portal-invoice-preview-modal header span {
+    overflow-wrap: anywhere;
+  }
+
+  .portal-invoice-preview-modal .invoice-paper {
+    box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    min-height: 0;
+    margin: 0;
+    padding: 25px 17px;
+    overflow: hidden;
+    box-shadow: none;
+  }
+
+  .portal-invoice-preview-modal .invoice-paper-head {
+    align-items: center;
+    flex-direction: column;
+    gap: 13px;
+    text-align: center;
+  }
+
+  .portal-invoice-preview-modal .invoice-paper-head > div:last-child {
+    text-align: center;
+  }
+
+  .portal-invoice-preview-modal .issuer-logo {
+    width: 70px;
+    height: 70px;
+  }
+
+  .portal-invoice-preview-modal .invoice-paper hr {
+    margin: 24px 0;
+  }
+
+  .portal-invoice-preview-modal .invoice-addresses {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 22px;
+    text-align: center;
+  }
+
+  .portal-invoice-preview-modal .invoice-addresses > div,
+  .portal-invoice-preview-modal .invoice-addresses strong,
+  .portal-invoice-preview-modal .invoice-addresses p,
+  .portal-invoice-preview-modal .invoice-payment p {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .portal-invoice-preview-modal .invoice-dates {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 7px;
+    margin: 25px 0;
+    text-align: center;
+  }
+
+  .portal-invoice-preview-modal .invoice-dates span {
+    min-width: 0;
+    justify-items: center;
+  }
+
+  .portal-invoice-preview-modal .invoice-dates b {
+    overflow-wrap: anywhere;
+  }
+
+  .portal-invoice-preview-modal .invoice-lines,
+  .portal-invoice-preview-modal .invoice-lines > div {
+    min-width: 0;
+  }
+
+  .portal-invoice-preview-modal .invoice-lines-head,
+  .portal-invoice-preview-modal .invoice-lines > div:not(.invoice-lines-head) {
+    grid-template-columns: minmax(0, 1fr) 34px 70px;
+    gap: 6px;
+    padding-inline: 4px;
+  }
+
+  .portal-invoice-preview-modal .invoice-lines-head span:nth-child(3),
+  .portal-invoice-preview-modal .invoice-lines > div span:nth-child(3) {
+    display: none;
+  }
+
+  .portal-invoice-preview-modal .invoice-lines strong {
+    grid-column: 3;
+  }
+
+  .portal-invoice-preview-modal .invoice-total {
+    margin-inline: auto;
+  }
+
+  .portal-invoice-preview-modal .invoice-footer,
+  .portal-invoice-preview-modal .invoice-footer .invoice-payment {
+    text-align: center;
+  }
+
+  .portal-invoice-preview-modal > footer {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .portal-invoice-preview-modal > footer button {
+    width: 100%;
+    min-width: 0;
+  }
+
   /* Calendários continuam completos, mas passam a rolar sem esmagar os dias. */
   .client-kanban-calendar,
   .social-calendar-workspace {
