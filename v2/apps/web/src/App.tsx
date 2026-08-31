@@ -1900,6 +1900,9 @@ function AgendaPage({ session, onLogout }: { session: SessionUser | null; onLogo
     const key = localDateKey(new Date(event.startsAt));
     eventsByDay.set(key, [...(eventsByDay.get(key) ?? []), event]);
   });
+  const mobileAgendaDays = calendarView === "month"
+    ? range.days.filter((day) => day.getMonth() === month.getMonth() && day.getFullYear() === month.getFullYear())
+    : range.days;
 
   return <div className="page-grid admin-layout agenda-layout">
     <AdminRail session={session} />
@@ -1921,6 +1924,20 @@ function AgendaPage({ session, onLogout }: { session: SessionUser | null; onLogo
             return <article key={key} className={isCurrentMonth ? "agenda-day" : "agenda-day muted"} onClick={() => openAgendaDay(day)}><time>{day.getDate()}</time>{dayEvents.slice(0, 3).map((item) => <div className="agenda-event-pill" key={item.id} style={{ backgroundColor: item.color }} onClick={(event) => { event.stopPropagation(); setSelectedEvent(item); setRescheduleAt(toDateTimeLocal(item.startsAt)); setMeetLinkEdit(item.meetLink ?? ""); setClientAccountIdEdit(item.clientAccountId ?? ""); }}><span>{formatAgendaTime(item.startsAt)}</span> {item.title}</div>)}{dayEvents.length > 3 ? <span className="agenda-more">+{dayEvents.length - 3} mais</span> : null}</article>;
           })}</div>
         </section>
+        <div className="social-calendar-mobile agenda-mobile-list">
+          {mobileAgendaDays.map((day) => {
+            const key = localDateKey(day);
+            const dayEvents = eventsByDay.get(key) ?? [];
+            const isToday = key === localDateKey(new Date());
+            return <article className={`social-agenda-day${isToday ? " today" : ""}`} key={key}>
+              <header><div><time>{day.getDate()}</time><span><strong>{new Intl.DateTimeFormat("pt-BR", { weekday: "long" }).format(day)}</strong><small>{new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(day)}</small></span></div><button type="button" onClick={() => openAgendaDay(day)} aria-label={`Adicionar compromisso em ${new Intl.DateTimeFormat("pt-BR").format(day)}`}>＋</button></header>
+              <div className="social-agenda-items">
+                {dayEvents.map((item) => <button key={item.id} type="button" className="social-agenda-item appointment" style={{ "--calendar-event-color": item.color } as CSSProperties} onClick={() => { setSelectedEvent(item); setRescheduleAt(toDateTimeLocal(item.startsAt)); setMeetLinkEdit(item.meetLink ?? ""); setClientAccountIdEdit(item.clientAccountId ?? ""); }}><span className="social-agenda-time">{formatAgendaTime(item.startsAt)}</span><i><UiIcon name="clock" /></i><span><strong>{item.title}</strong><small>{item.clientName || item.labelName || "Compromisso"}</small></span><b>›</b></button>)}
+                {dayEvents.length === 0 ? <button type="button" className="social-agenda-empty" onClick={() => openAgendaDay(day)}>＋ Adicionar compromisso</button> : null}
+              </div>
+            </article>;
+          })}
+        </div>
       </section>
       {createOpen ? <div className="modal-backdrop agenda-modal-backdrop" onMouseDown={() => setCreateOpen(false)}>
         <form className="agenda-create-modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={submitAgendaEvent}>
