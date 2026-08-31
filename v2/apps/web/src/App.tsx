@@ -5960,6 +5960,12 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
     return map;
   }, [expandedAppointments]);
 
+  const mobileDays = days.filter((day) => {
+    if (day.getMonth() !== monthDate.getMonth() || day.getFullYear() !== monthDate.getFullYear()) return false;
+    const key = localDateKey(day);
+    return (postsByDay.get(key)?.length ?? 0) + (eventsByDay.get(key)?.length ?? 0) > 0;
+  });
+
   return (
     <div className="social-calendar-workspace glass-subtle">
       <div className="social-calendar-toolbar">
@@ -5973,34 +5979,51 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
           <span><i style={{ background: "#8b45dd" }} />{t("Compromissos")}</span>
         </div>
       </div>
-      <div className="social-calendar-weekdays">{weekdayLabels.map((label) => <span key={label}>{label}</span>)}</div>
-      <div className="social-calendar-grid">
-        {days.map((day) => {
+      <div className="social-calendar-desktop portal-calendar-desktop">
+        <div className="social-calendar-weekdays">{weekdayLabels.map((label) => <span key={label}>{label}</span>)}</div>
+        <div className="social-calendar-grid">
+          {days.map((day) => {
+            const key = localDateKey(day);
+            const posts = postsByDay.get(key) ?? [];
+            const events = eventsByDay.get(key) ?? [];
+            const muted = day.getMonth() !== monthDate.getMonth();
+            const visiblePosts = posts.slice(0, 2);
+            const visibleEvents = events.slice(0, 2 - visiblePosts.length < 0 ? 0 : 2 - visiblePosts.length);
+            const hiddenCount = posts.length + events.length - visiblePosts.length - visibleEvents.length;
+            return (
+              <div key={key} className={muted ? "social-calendar-day muted" : "social-calendar-day"}>
+                <time>{day.getDate()}</time>
+                {visiblePosts.map((card) => (
+                  <button key={card.id} type="button" className="social-calendar-event" style={{ "--calendar-event-color": "#3c8ee9" } as CSSProperties} onMouseEnter={(event) => artworkHover.show(event, portalCardAssets(card)[0] ?? "", card.title)} onMouseMove={(event) => artworkHover.move(event, portalCardAssets(card)[0] ?? "", card.title)} onMouseLeave={artworkHover.hide} onClick={() => onSelectCard(card.id)}>
+                    <span>{card.title}</span>
+                  </button>
+                ))}
+                {visibleEvents.map((event) => (
+                  <button key={event.id} type="button" className="social-calendar-event" style={{ "--calendar-event-color": event.color || "#8b45dd" } as CSSProperties} onClick={() => setSelectedEvent(event)}>
+                    <span>{event.meetLink ? "🎥 " : ""}{event.title}</span>
+                    <small>{new Intl.DateTimeFormat(localeTag, { timeStyle: "short" }).format(new Date(event.startsAt))}</small>
+                  </button>
+                ))}
+                {hiddenCount > 0 ? <span className="social-calendar-more">+{hiddenCount}</span> : null}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div className="social-calendar-mobile portal-calendar-mobile">
+        {mobileDays.length ? mobileDays.map((day) => {
           const key = localDateKey(day);
           const posts = postsByDay.get(key) ?? [];
           const events = eventsByDay.get(key) ?? [];
-          const muted = day.getMonth() !== monthDate.getMonth();
-          const visiblePosts = posts.slice(0, 2);
-          const visibleEvents = events.slice(0, 2 - visiblePosts.length < 0 ? 0 : 2 - visiblePosts.length);
-          const hiddenCount = posts.length + events.length - visiblePosts.length - visibleEvents.length;
-          return (
-            <div key={key} className={muted ? "social-calendar-day muted" : "social-calendar-day"}>
-              <time>{day.getDate()}</time>
-              {visiblePosts.map((card) => (
-                <button key={card.id} type="button" className="social-calendar-event" style={{ "--calendar-event-color": "#3c8ee9" } as CSSProperties} onMouseEnter={(event) => artworkHover.show(event, portalCardAssets(card)[0] ?? "", card.title)} onMouseMove={(event) => artworkHover.move(event, portalCardAssets(card)[0] ?? "", card.title)} onMouseLeave={artworkHover.hide} onClick={() => onSelectCard(card.id)}>
-                  <span>{card.title}</span>
-                </button>
-              ))}
-              {visibleEvents.map((event) => (
-                <button key={event.id} type="button" className="social-calendar-event" style={{ "--calendar-event-color": event.color || "#8b45dd" } as CSSProperties} onClick={() => setSelectedEvent(event)}>
-                  <span>{event.meetLink ? "🎥 " : ""}{event.title}</span>
-                  <small>{new Intl.DateTimeFormat(localeTag, { timeStyle: "short" }).format(new Date(event.startsAt))}</small>
-                </button>
-              ))}
-              {hiddenCount > 0 ? <span className="social-calendar-more">+{hiddenCount}</span> : null}
+          const isToday = key === localDateKey(new Date());
+          return <article className={`social-agenda-day${isToday ? " today" : ""}`} key={key}>
+            <header><div><time>{day.getDate()}</time><span><strong>{new Intl.DateTimeFormat(localeTag, { weekday: "long" }).format(day)}</strong><small>{new Intl.DateTimeFormat(localeTag, { month: "long", year: "numeric" }).format(day)}</small></span></div></header>
+            <div className="social-agenda-items">
+              {posts.map((card) => { const imageUrl = portalCardAssets(card)[0] ?? ""; return <button key={card.id} type="button" className="social-agenda-item post" onClick={() => onSelectCard(card.id)}><span className="social-agenda-time">{new Intl.DateTimeFormat(localeTag, { timeStyle: "short" }).format(new Date(card.scheduledAt!))}</span>{imageUrl ? <img src={imageUrl} alt="" /> : <i><UiIcon name="send" /></i>}<span><strong>{card.title}</strong><small>{t("Post agendado")}</small></span><b>›</b></button>; })}
+              {events.map((event) => <button key={event.id} type="button" className="social-agenda-item appointment" style={{ "--calendar-event-color": event.color || "#8b45dd" } as CSSProperties} onClick={() => setSelectedEvent(event)}><span className="social-agenda-time">{new Intl.DateTimeFormat(localeTag, { timeStyle: "short" }).format(new Date(event.startsAt))}</span><i><UiIcon name={event.meetLink ? "link" : "clock"} /></i><span><strong>{event.title}</strong><small>{t("Compromisso")}</small></span><b>›</b></button>)}
             </div>
-          );
-        })}
+          </article>;
+        }) : <div className="social-agenda-year-empty portal-calendar-empty"><UiIcon name="calendar" /><strong>{t("Nenhum item agendado neste mês.")}</strong><small>{t("Use as setas acima para consultar outro mês.")}</small></div>}
       </div>
       {selectedEvent ? (
         <div className="modal-backdrop" onClick={() => setSelectedEvent(null)}>
