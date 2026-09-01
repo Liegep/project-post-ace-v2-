@@ -430,20 +430,22 @@ function PageContextBanner({ eyebrow, title, description, metrics, action, title
 function WorkspaceSelector({ clientName, slug, options }: { clientName: string; slug: string; options: AdminClientOption[] }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const currentClient = options.find((client) => client.slug === slug);
+  const initials = (name: string) => name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
   const setSelectorOpen = (next: boolean) => {
     setOpen(next);
   };
 
   return <div className="workspace-selector workspace-selector-banner">
     <button className="workspace-chip glass-subtle" onClick={() => setSelectorOpen(!open)} aria-expanded={open} aria-haspopup="listbox">
-      <div className="workspace-avatar">{clientName.slice(0, 2).toUpperCase()}</div>
+      <div className="workspace-avatar">{initials(clientName)}{currentClient?.logo_url ? <img src={currentClient.logo_url} alt={`Logo ${clientName}`} onError={(event) => event.currentTarget.remove()} /> : null}</div>
       <div className="workspace-copy"><strong>{clientName}</strong><span>Workspace atual</span></div>
       <UiIcon name="chevron-down" className="workspace-caret" />
     </button>
     {open ? <div className="workspace-selector-menu" role="listbox">{options.length ? options.map((client) => {
       const isCurrentClient = client.slug === slug;
       return <button key={client.id} className={isCurrentClient ? "selected" : ""} onClick={() => { setSelectorOpen(false); navigate(isCurrentClient ? `/portal/${client.slug}` : `/admin/${client.slug}`); }} title={isCurrentClient ? "Abrir área do cliente" : "Abrir Kanban deste cliente"}>
-        <span>{client.name.slice(0, 2).toUpperCase()}</span><strong>{client.name}</strong>{isCurrentClient ? <em>Ver área do cliente</em> : null}
+        <span>{initials(client.name)}{client.logo_url ? <img src={client.logo_url} alt="" onError={(event) => event.currentTarget.remove()} /> : null}</span><strong>{client.name}</strong>{isCurrentClient ? <em>Ver área do cliente</em> : null}
       </button>;
     }) : <p>Nenhum outro cliente disponível.</p>}</div> : null}
   </div>;
