@@ -165,9 +165,12 @@ async function main() {
     }
     const jsonColumns = [["kanban_cards", "media_urls_json"], ["card_calendar_events", "media_urls_json"], ["client_reports", "evidence_urls_json"]] as const;
     for (const [table, column] of jsonColumns) {
-      const [rows] = await connection.query<Array<RowDataPacket & { id: string; value: string | null }>>(`SELECT id, ${column} AS value FROM ${table}`);
+      const [rows] = await connection.query<Array<RowDataPacket & { id: string; value: unknown }>>(`SELECT id, ${column} AS value FROM ${table}`);
       for (const row of rows) {
-        let parsed: unknown = []; try { parsed = JSON.parse(row.value ?? "[]"); } catch { parsed = []; }
+        let parsed: unknown = row.value ?? [];
+        if (typeof row.value === "string") {
+          try { parsed = JSON.parse(row.value); } catch { parsed = []; }
+        }
         const next = replaceJsonUrls(parsed, mapping);
         if (JSON.stringify(next) !== JSON.stringify(parsed)) { await connection.query(`UPDATE ${table} SET ${column} = ? WHERE id = ?`, [JSON.stringify(next), row.id]); updatedReferences += 1; }
       }
