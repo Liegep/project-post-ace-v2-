@@ -1,12 +1,14 @@
 import crypto from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import multipart from "@fastify/multipart";
 import sharp from "sharp";
 import { assertClientAccess, assertInternalAccess } from "../auth/auth.access.js";
 import { findClientPermissionsByAccountId } from "../clients/clients.repository.js";
+import { getUploadDirectory } from "./uploads.storage.js";
+
+export { getUploadDirectory } from "./uploads.storage.js";
 
 const allowedTypes = new Map<string, { kind: "image" | "video"; extension: string; contentType: string }>([
   ["image/jpeg", { kind: "image", extension: "webp", contentType: "image/webp" }],
@@ -19,12 +21,6 @@ const allowedTypes = new Map<string, { kind: "image" | "video"; extension: strin
 ]);
 const maxImageSize = 12 * 1024 * 1024;
 const maxVideoSize = 20 * 1024 * 1024;
-
-export function getUploadDirectory(uploadDir: string) {
-  if (path.isAbsolute(uploadDir)) return uploadDir;
-  const apiDirectory = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-  return path.resolve(apiDirectory, uploadDir);
-}
 
 export const uploadRoutes: FastifyPluginAsync = async (app) => {
   await app.register(multipart, {

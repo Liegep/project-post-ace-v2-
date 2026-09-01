@@ -18,6 +18,7 @@ import { reconcileApprovedCardColumns } from "./modules/approvals/approvals.serv
 import { calendarRoutes } from "./modules/calendar/calendar.routes.js";
 import { demoRoutes } from "./modules/demo/demo.routes.js";
 import { uploadRoutes } from "./modules/uploads/uploads.routes.js";
+import { prepareUploadStorage } from "./modules/uploads/uploads.storage.js";
 import { tagRoutes } from "./modules/tags/tags.routes.js";
 import { hashtagRoutes } from "./modules/hashtags/hashtags.routes.js";
 import { agendaRoutes } from "./modules/agenda/agenda.routes.js";
@@ -34,6 +35,14 @@ export async function buildApp() {
   app.decorate("appEnv", appEnv);
 
   await app.register(httpErrorsPluginRegistered);
+
+  const uploadStorage = await prepareUploadStorage(appEnv.UPLOAD_DIR);
+  if (appEnv.NODE_ENV === "production" && !uploadStorage.persistent) {
+    app.log.warn("UPLOAD_DIR is release-local; configure an absolute directory before storing production media");
+  }
+  if (uploadStorage.migrated > 0) {
+    app.log.info({ migrated: uploadStorage.migrated }, "Legacy uploads migrated to persistent storage");
+  }
 
   if (appEnv.DEMO_MODE) {
     await app.register(demoRoutes, { prefix: "/api" });
