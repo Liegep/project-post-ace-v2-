@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import multipart from "@fastify/multipart";
@@ -21,6 +21,12 @@ const allowedTypes = new Map<string, { kind: "image" | "video"; extension: strin
 ]);
 const maxImageSize = 12 * 1024 * 1024;
 const maxVideoSize = 20 * 1024 * 1024;
+const maxLegacyChunkSize = 10 * 1024 * 1024;
+const legacyFileTypes = new Map<string, string>([
+  ["webp", "image/webp"], ["png", "image/png"], ["jpg", "image/jpeg"], ["jpeg", "image/jpeg"],
+  ["mp4", "video/mp4"], ["webm", "video/webm"], ["mov", "video/quicktime"],
+  ["pdf", "application/pdf"], ["svg", "image/svg+xml"],
+]);
 
 export const uploadRoutes: FastifyPluginAsync = async (app) => {
   await app.register(multipart, {
@@ -82,6 +88,58 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
     return storeUpload(request);
   });
 
+  app.post("/uploads/legacy-import", async (request) => {
+    assertInternalAccess(request);
+    if (!request.headers.authorization?.startsWith("Bearer ") || request.auth?.user.globalRole !== "super_admin") {
+      throw app.httpErrors.forbidden("A importação legada exige uma sessão de super admin.");
+    }
+    const objectKey = String(request.headers["x-legacy-object-key"] ?? "").trim();
+    const extension = String(request.headers["x-legacy-extension"] ?? "").trim().toLowerCase();
+    const chunkIndex = Number(request.headers["x-legacy-chunk-index"]);
+    const chunkTotal = Number(request.headers["x-legacy-chunk-total"]);
+    const offset = Number(request.headers["x-legacy-offset"]);
+    const totalSize = Number(request.headers["x-legacy-total-size"]);
+    if (!objectKey || objectKey.length > 1200 || !legacyFileTypes.has(extension)) {
+      throw app.httpErrors.badRequest("Identificação de arquivo legado inválida.");
+    }
+    if (![chunkIndex, chunkTotal, offset, totalSize].every(Number.isSafeInteger) || chunkIndex < 0 || chunkTotal < 1 || chunkIndex >= chunkTotal || offset < 0 || totalSize < 1) {
+      throw app.httpErrors.badRequest("Informações de bloco inválidas.");
+    }
+
+    const file = await request.file({ limits: { fileSize: maxLegacyChunkSize, files: 1 } });
+    if (!file) throw app.httpErrors.badRequest("Bloco de arquivo ausente.");
+    const buffer = await file.toBuffer();
+    if (!buffer.length || buffer.length > maxLegacyChunkSize || offset + buffer.length > totalSize) {
+      throw app.httpErrors.badRequest("Bloco de arquivo inválido.");
+    }
+
+    const directory = getUploadDirectory(app.appEnv.UPLOAD_DIR);
+    await mkdir(directory, { recursive: true });
+    const digest = crypto.createHash("sha256").update(`${objectKey}|${extension}`).digest("hex");
+    const fileName = `${digest}.${extension}`;
+    const destination = path.join(directory, fileName);
+    const temporary = path.join(directory, `.${fileName}.part`);
+    try {
+      const existing = await stat(destination);
+      if (existing.isFile() && existing.size === totalSize) {
+        return { ok: true, complete: true, url: `/api/uploads/${fileName}`, fileName };
+      }
+    } catch {
+      // The destination does not exist yet.
+    }
+
+    const handle = await open(temporary, chunkIndex === 0 ? "w" : "r+");
+    try {
+      await handle.write(buffer, 0, buffer.length, offset);
+    } finally {
+      await handle.close();
+    }
+    const received = (await stat(temporary)).size;
+    const complete = chunkIndex === chunkTotal - 1 && received === totalSize;
+    if (complete) await rename(temporary, destination);
+    return { ok: true, complete, received, url: `/api/uploads/${fileName}`, fileName };
+  });
+
   app.post("/portal/accounts/:clientAccountId/uploads", async (request) => {
     const params = request.params as { clientAccountId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
@@ -94,13 +152,13 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
 
   app.get("/uploads/:fileName", async (request, reply) => {
     const params = request.params as { fileName: string };
-    const match = /^([a-f0-9-]+)\.(webp|mp4|webm|mov)$/.exec(params.fileName);
+    const match = /^([a-f0-9-]+)\.(webp|png|jpg|jpeg|mp4|webm|mov|pdf|svg)$/.exec(params.fileName);
     if (!match) {
       throw app.httpErrors.notFound("Arquivo não encontrado.");
     }
 
-    const fileType = [...allowedTypes.values()].find((item) => item.extension === match[2]);
-    if (!fileType) {
+    const contentType = legacyFileTypes.get(match[2]);
+    if (!contentType) {
       throw app.httpErrors.notFound("Arquivo não encontrado.");
     }
 
@@ -108,7 +166,7 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
       const file = await readFile(path.join(getUploadDirectory(app.appEnv.UPLOAD_DIR), params.fileName));
       const query = request.query as { download?: string };
       if (query.download === "png") {
-        if (fileType.kind !== "image") {
+        if (!contentType.startsWith("image/") || contentType === "image/svg+xml") {
           throw app.httpErrors.badRequest("Apenas imagens podem ser baixadas em PNG.");
         }
         const png = await sharp(file).png().toBuffer();
@@ -117,7 +175,7 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
           .type("image/png")
           .send(png);
       }
-      return reply.type(fileType.contentType).send(file);
+      return reply.type(contentType).send(file);
     } catch {
       throw app.httpErrors.notFound("Arquivo não encontrado.");
     }
