@@ -1921,7 +1921,7 @@ function AgendaPage({ session, onLogout }: { session: SessionUser | null; onLogo
           {calendarView !== "day" ? <div className="agenda-weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => <strong key={day}>{day}</strong>)}</div> : null}
           <div className="agenda-month-grid">{range.days.map((day) => {
             const key = localDateKey(day); const dayEvents = eventsByDay.get(key) ?? []; const isCurrentMonth = calendarView !== "month" || day.getMonth() === month.getMonth();
-            return <article key={key} className={isCurrentMonth ? "agenda-day" : "agenda-day muted"} onClick={() => openAgendaDay(day)}><time>{day.getDate()}</time>{dayEvents.slice(0, 3).map((item) => <div className="agenda-event-pill" key={item.id} style={{ backgroundColor: item.color }} onClick={(event) => { event.stopPropagation(); setSelectedEvent(item); setRescheduleAt(toDateTimeLocal(item.startsAt)); setMeetLinkEdit(item.meetLink ?? ""); setClientAccountIdEdit(item.clientAccountId ?? ""); }}><span>{formatAgendaTime(item.startsAt)}</span> {item.title}</div>)}{dayEvents.length > 3 ? <span className="agenda-more">+{dayEvents.length - 3} mais</span> : null}</article>;
+            return <article key={key} className={isCurrentMonth ? "agenda-day" : "agenda-day muted"} onClick={() => openAgendaDay(day)}><time>{day.getDate()}</time>{dayEvents.slice(0, 3).map((item) => <div className="agenda-event-pill" key={item.id} style={{ backgroundColor: item.color, color: calendarTextColor(item.color) }} onClick={(event) => { event.stopPropagation(); setSelectedEvent(item); setRescheduleAt(toDateTimeLocal(item.startsAt)); setMeetLinkEdit(item.meetLink ?? ""); setClientAccountIdEdit(item.clientAccountId ?? ""); }}><span>{formatAgendaTime(item.startsAt)}</span> {item.title}</div>)}{dayEvents.length > 3 ? <span className="agenda-more">+{dayEvents.length - 3} mais</span> : null}</article>;
           })}</div>
         </section>
         <div className="social-calendar-mobile agenda-mobile-list">
@@ -6193,7 +6193,20 @@ function ClientKanbanCalendar({ slug }: { slug: string }) {
   return <section className="client-kanban-calendar"><header><button onClick={() => setMonth((value) => new Date(value.getFullYear(), value.getMonth() - 1, 1))}>‹</button><h2>{new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(month)}</h2><button onClick={() => setMonth((value) => new Date(value.getFullYear(), value.getMonth() + 1, 1))}>›</button></header>{columnLegend.length ? <div className="client-calendar-column-legend">{columnLegend.map(([name, color]) => <span key={name}><i style={{ backgroundColor: color }} />{name}</span>)}</div> : null}<div className="client-calendar-weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}</div><div className="client-calendar-grid">{range.days.map((day) => { const key = localDateKey(day); const events = eventsByDay.get(key) ?? []; return <button key={key} className={day.getMonth() === month.getMonth() ? "client-calendar-day" : "client-calendar-day muted"} onClick={() => setEventDay(day)}><strong>{day.getDate()}</strong>{events.map((event) => <span key={event.id} className={event.type} style={{ backgroundColor: event.color, color: calendarTextColor(event.color) }} onMouseEnter={(mouseEvent) => event.imageUrl ? artworkHover.show(mouseEvent, event.imageUrl, event.title) : undefined} onMouseMove={(mouseEvent) => event.imageUrl ? artworkHover.move(mouseEvent, event.imageUrl, event.title) : undefined} onMouseLeave={artworkHover.hide}>{event.title}</span>)}</button>; })}</div><p><i /> Post agendado <i className="manual" /> Evento manual. Clique em um dia para adicionar um evento deste cliente.</p>{eventDay ? <div className="modal-backdrop agenda-modal-backdrop" onClick={() => setEventDay(null)}><section className="client-calendar-event-modal" onClick={(event) => event.stopPropagation()}><h3>Novo evento</h3><p>{eventDay.toLocaleDateString("pt-BR", { dateStyle: "full" })}</p><input autoFocus value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} placeholder="Nome do evento" /><label>Cor <input type="color" value={eventColor} onChange={(event) => setEventColor(event.target.value)} /></label><button className="gradient-button" disabled={savingEvent} onClick={() => void saveManualEvent()}>{savingEvent ? "Adicionando..." : "Adicionar evento"}</button></section></div> : null}{artworkHover.preview}</section>;
 }
 
-function calendarTextColor(color?: string) { const value = color?.replace("#", ""); if (!value || value.length !== 6) return "#17213d"; const [red, green, blue] = [value.slice(0, 2), value.slice(2, 4), value.slice(4, 6)].map((part) => Number.parseInt(part, 16)); return (red * 299 + green * 587 + blue * 114) / 1000 > 155 ? "#17213d" : "#ffffff"; }
+function calendarTextColor(color?: string) {
+  const value = color?.trim().replace("#", "");
+  if (!value || !/^[0-9a-f]{6}$/i.test(value)) return "#17213d";
+  const channels = [value.slice(0, 2), value.slice(2, 4), value.slice(4, 6)]
+    .map((part) => Number.parseInt(part, 16) / 255)
+    .map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
+  const backgroundLuminance = channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
+  const darkLuminance = 0.009;
+  const darkContrast = (backgroundLuminance + 0.05) / (darkLuminance + 0.05);
+  const lightContrast = 1.05 / (backgroundLuminance + 0.05);
+  if (darkContrast >= 4.5 && darkContrast >= lightContrast) return "#111827";
+  if (lightContrast >= 4.5) return "#ffffff";
+  return backgroundLuminance > 0.179 ? "#000000" : "#ffffff";
+}
 
 function KanbanActivities({ slug }: { slug: string }) {
   const [items, setItems] = useState<KanbanActivity[]>([]);
