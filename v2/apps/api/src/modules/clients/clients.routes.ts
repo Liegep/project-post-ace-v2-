@@ -149,7 +149,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     const auth = request.auth!;
     const scope = getClientScope(auth.user.globalRole, auth.user.id, auth.memberships);
     if (scope.mode === "scoped" && scope.clientIds.length === 0) {
-      return { dueTasks: [], upcomingPosts: [], agendaToday: [], clientSubmissions: [], clientActivities: [] };
+      return { dueTasks: [], upcomingPosts: [], postsToday: [], agendaToday: [], clientSubmissions: [], clientActivities: [] };
     }
 
     const scopeSql = scope.mode === "global"
@@ -168,6 +168,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
       [brandBrainActivities],
       [documentActivities],
       [upcomingPosts],
+      [postsToday],
       [agendaToday],
     ] = await Promise.all([
       app.db.query<RowDataPacket[]>([
@@ -220,6 +221,10 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         [todayStart, threeDaysEnd, ...params],
       ),
       app.db.query<RowDataPacket[]>(
+        ["SELECT c.id, c.title, c.deadline_at AS scheduledAt, c.primary_media_url AS mediaUrl, a.name AS clientName, a.logo_url AS clientLogoUrl FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id WHERE c.archived = 0 AND c.deadline_at >= ? AND c.deadline_at < ?", scopeSql, "ORDER BY c.deadline_at ASC, c.title ASC LIMIT 50"].join(" "),
+        [todayStart, tomorrowStart, ...params],
+      ),
+      app.db.query<RowDataPacket[]>(
         ["SELECT e.id, e.title, e.task_description AS taskDescription, e.starts_at AS startsAt, e.color, e.is_completed AS isCompleted, e.agenda_label_id AS labelId, l.name AS labelName, a.name AS clientName FROM agenda_events e LEFT JOIN client_accounts a ON a.id = e.client_account_id LEFT JOIN agenda_labels l ON l.id = e.agenda_label_id WHERE e.starts_at >= ? AND e.starts_at < ?", scope.mode === "global" ? "" : ` AND (e.client_account_id IS NULL OR e.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")}))`, "ORDER BY e.starts_at ASC LIMIT 6"].join(" "),
         [todayStart, tomorrowStart, ...(scope.mode === "global" ? [] : scope.clientIds)],
       ),
@@ -227,7 +232,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     const combinedClientActivities = [...clientActivities, ...brandBrainActivities, ...documentActivities]
       .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
       .slice(0, 8);
-    return { dueTasks, upcomingPosts, agendaToday, clientSubmissions, clientActivities: combinedClientActivities };
+    return { dueTasks, upcomingPosts, postsToday, agendaToday, clientSubmissions, clientActivities: combinedClientActivities };
   });
 
   app.get("/portal/accounts", async (request) => {
