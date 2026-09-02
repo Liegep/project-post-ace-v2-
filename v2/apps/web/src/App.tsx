@@ -194,6 +194,11 @@ function normalizeArtType(value: string) {
   return ART_TYPE_OPTIONS.includes(value) ? value : "Outros";
 }
 
+function compactArtTypeLabel(value: string) {
+  const normalized = normalizeArtType(value);
+  return normalized === "Post único" ? "Único" : normalized;
+}
+
 function formatScheduledCardDate(value: string) {
   // Preserve the stored wall-clock time while presenting a concise, localized label.
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
@@ -4273,7 +4278,7 @@ function ClosedCardMedia({ card, onPreview, showOverlay = false }: { card: Board
   if (urls.length === 0) return null;
   const multiple = urls.length > 1;
   return <div className={`closed-card-media${onPreview ? " card-media-zoom" : ""}${multiple ? " carousel" : ""}`} onClick={(event) => { if (!onPreview) return; event.stopPropagation(); onPreview(); }}>
-    {showOverlay ? <div className="card-media-overlay"><span className="card-type">{card.typeLabel}</span><span className="card-media-menu">{onPreview ? "⌕" : "..."}</span></div> : null}
+    {showOverlay ? <div className="card-media-overlay"><span className="card-type">{compactArtTypeLabel(card.typeLabel)}</span><span className="card-media-menu">{onPreview ? "⌕" : "..."}</span></div> : null}
     {multiple ? <ArtworkCarousel urls={urls} title={card.title} compact /> : <div className={`media-frame ${card.mediaAspect}`}><img src={urls[0]} alt={card.title} /></div>}
   </div>;
 }
