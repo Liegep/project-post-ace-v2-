@@ -2301,6 +2301,7 @@ function AdminWorkspacePage({
   const location = useLocation();
   const [refreshKey, setRefreshKey] = useState(0);
   const [boardView, setBoardView] = useState<"board" | "archived" | "texts" | "calendar" | "activities" | "brand" | "pautas">(() => window.location.hash.includes("view=brand") ? "brand" : "board");
+  const kanbanScrollRef = useRef<HTMLDivElement>(null);
   const workspaceMode = boardView === "archived" ? "archived" : "board";
   const workspaceResource = usePreviewResource(
     { mode: workspaceMode, data: emptyAdminWorkspace },
@@ -2492,28 +2493,43 @@ function AdminWorkspacePage({
     return nextIndex === -1 ? columnSlots.length : nextIndex;
   };
 
-  const handleKanbanHorizontalWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    const scroller = event.currentTarget;
-    if (scroller.scrollWidth <= scroller.clientWidth) return;
+  useEffect(() => {
+    const scroller = kanbanScrollRef.current;
+    if (!scroller || boardView !== "board") return;
 
-    const isHorizontalGesture = Math.abs(event.deltaX) >= Math.abs(event.deltaY);
-    if (isHorizontalGesture) {
-      event.preventDefault();
-      scroller.scrollLeft += event.deltaX;
-      return;
-    }
+    const handleWheel = (event: WheelEvent) => {
+      if (scroller.scrollWidth <= scroller.clientWidth) return;
 
-    const cardScroller = (event.target as Element).closest<HTMLElement>(".column-cards-scroll");
-    if (cardScroller && cardScroller.scrollHeight > cardScroller.clientHeight) {
-      const canScrollVertically = event.deltaY > 0
-        ? cardScroller.scrollTop + cardScroller.clientHeight < cardScroller.scrollHeight - 1
-        : cardScroller.scrollTop > 1;
-      if (canScrollVertically) return;
-    }
+      const modeMultiplier = event.deltaMode === WheelEvent.DOM_DELTA_LINE
+        ? 24
+        : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
+          ? scroller.clientWidth
+          : 1;
+      const horizontalGesture = Math.abs(event.deltaX) >= Math.abs(event.deltaY) * 0.55;
 
-    event.preventDefault();
-    scroller.scrollLeft += event.deltaY;
-  };
+      if (horizontalGesture && Math.abs(event.deltaX) > 0.1) {
+        event.preventDefault();
+        scroller.scrollLeft += event.deltaX * modeMultiplier * 2.15;
+        return;
+      }
+
+      const cardScroller = (event.target as Element).closest<HTMLElement>(".column-cards-scroll");
+      if (cardScroller && cardScroller.scrollHeight > cardScroller.clientHeight) {
+        const canScrollVertically = event.deltaY > 0
+          ? cardScroller.scrollTop + cardScroller.clientHeight < cardScroller.scrollHeight - 1
+          : cardScroller.scrollTop > 1;
+        if (canScrollVertically) return;
+      }
+
+      if (Math.abs(event.deltaY) > 0.1) {
+        event.preventDefault();
+        scroller.scrollLeft += event.deltaY * modeMultiplier * 1.45;
+      }
+    };
+
+    scroller.addEventListener("wheel", handleWheel, { passive: false });
+    return () => scroller.removeEventListener("wheel", handleWheel);
+  }, [boardView, data.columns.length]);
 
   const handleKanbanHorizontalKeys = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -2637,11 +2653,11 @@ function AdminWorkspacePage({
                   }}
                 ><i style={{ backgroundColor: column.color }} /><span>{column.name}</span><b>{column.cards.length}</b></button>)}
               </nav><div
+                ref={kanbanScrollRef}
                 className={draggedColumnId ? "columns-scroll columns-reordering" : "columns-scroll"}
                 tabIndex={0}
                 role="region"
                 aria-label="Colunas do Kanban. Use as setas para navegar."
-                onWheel={handleKanbanHorizontalWheel}
                 onKeyDown={handleKanbanHorizontalKeys}
                 onDragOver={(event) => {
                   if (!draggedColumnId) return;
