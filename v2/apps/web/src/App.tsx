@@ -20,6 +20,9 @@ import {
   submitPortalCardDecisionBySlug,
   updateAdminColumnBySlug,
   updateAdminCardBySlug,
+  listAdminCaptionVersionsBySlug,
+  restoreAdminCaptionVersionBySlug,
+  type CaptionVersion,
   createAdminApprovalLinkBySlug,
   moveAdminCardBySlug,
   reorderAdminColumnsBySlug,
@@ -5504,6 +5507,10 @@ function AdminCardEditor({
   const [internalSending, setInternalSending] = useState(false);
   const [autosaveState, setAutosaveState] = useState<AutosaveState>(recoveredDraft ? "recovered" : "idle");
   const [autosavedAt, setAutosavedAt] = useState<Date | null>(null);
+  const [captionHistoryOpen, setCaptionHistoryOpen] = useState(false);
+  const [captionVersions, setCaptionVersions] = useState<CaptionVersion[]>([]);
+  const [captionHistoryLoading, setCaptionHistoryLoading] = useState(false);
+  const [restoringCaptionVersionId, setRestoringCaptionVersionId] = useState<string | null>(null);
   const saveInFlightRef = useRef(false);
   const lastSavedDraftRef = useRef(JSON.stringify(serverDraft));
   const savedColumnIdRef = useRef(serverDraft.columnId);
@@ -5541,6 +5548,49 @@ ${internalMessage.trim()}`, isInternal: true });
       setFeedback("Card enviado para aprovação interna."); setInternalApprovalOpen(false); setInternalMessage(""); setInternalRecipientIds([]);
     } catch (error) { setFeedback(error instanceof Error ? error.message : "Não foi possível enviar para aprovação interna."); }
     finally { setInternalSending(false); }
+  }
+
+  async function toggleCaptionHistory() {
+    const nextOpen = !captionHistoryOpen;
+    setCaptionHistoryOpen(nextOpen);
+    if (!nextOpen) return;
+    setCaptionHistoryLoading(true);
+    try {
+      const result = await listAdminCaptionVersionsBySlug(slug, card.id);
+      setCaptionVersions(result.items);
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Não foi possível carregar o histórico da legenda.");
+    } finally {
+      setCaptionHistoryLoading(false);
+    }
+  }
+
+  async function restoreCaptionVersion(version: CaptionVersion) {
+    if (restoringCaptionVersionId || !window.confirm("Restaurar esta versão da legenda? A versão atual continuará disponível no histórico.")) return;
+    if (saveInFlightRef.current) {
+      setFeedback("Aguarde o salvamento atual terminar antes de restaurar uma versão.");
+      return;
+    }
+    const draftSaved = await persistCard(false);
+    if (!draftSaved) return;
+    setRestoringCaptionVersionId(version.id);
+    try {
+      const result = await restoreAdminCaptionVersionBySlug(slug, card.id, version.id);
+      const restoredCaption = result.card.caption ?? "";
+      const restoredDraft = { ...latestDraftRef.current, caption: restoredCaption };
+      lastSavedDraftRef.current = JSON.stringify(restoredDraft);
+      latestDraftRef.current = restoredDraft;
+      setCaption(restoredCaption);
+      setCaptionVersions(result.versions);
+      setAutosavedAt(new Date());
+      setAutosaveState("saved");
+      try { window.localStorage.removeItem(recoveryKey); } catch { /* Recovery remains optional. */ }
+      setFeedback("Versão anterior da legenda restaurada.");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Não foi possível restaurar esta versão.");
+    } finally {
+      setRestoringCaptionVersionId(null);
+    }
   }
 
   const splitValues = (value: string) =>
@@ -5740,8 +5790,9 @@ ${internalMessage.trim()}`, isInternal: true });
           </EditorField>
           <div className="editor-main-grid">
             <div>
-              <EditorField label="Legenda" action={<button className="caption-copy-button" type="button" title="Copiar legenda" aria-label="Copiar legenda" onClick={() => navigator.clipboard.writeText(caption)}><UiIcon name="copy" /></button>}>
+              <EditorField label="Legenda" action={<span className="caption-field-actions"><button className={captionHistoryOpen ? "caption-history-button active" : "caption-history-button"} type="button" onClick={() => void toggleCaptionHistory()}>↶ Histórico</button><button className="caption-copy-button" type="button" title="Copiar legenda" aria-label="Copiar legenda" onClick={() => navigator.clipboard.writeText(caption)}><UiIcon name="copy" /></button></span>}>
                 <textarea className="admin-caption-editor" value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="Escreva a legenda do post" />
+                {captionHistoryOpen ? <section className="caption-history-panel"><header><div><strong>Histórico da legenda</strong><small>As versões atuais e restauradas nunca são apagadas.</small></div><button type="button" onClick={() => setCaptionHistoryOpen(false)} aria-label="Fechar histórico">×</button></header>{captionHistoryLoading ? <p className="caption-history-empty">Carregando versões...</p> : captionVersions.length ? <div className="caption-history-list">{captionVersions.map((version) => <article key={version.id}><div><strong>{version.authorName}</strong><time>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(version.createdAt))}</time></div><p>{version.caption?.trim() || "Legenda vazia"}</p><button type="button" disabled={restoringCaptionVersionId !== null} onClick={() => void restoreCaptionVersion(version)}>{restoringCaptionVersionId === version.id ? "Restaurando..." : "Restaurar esta versão"}</button></article>)}</div> : <p className="caption-history-empty">Ainda não existem versões anteriores. A primeira será criada quando a legenda atual for alterada.</p>}</section> : null}
               </EditorField>
               <EditorField label="Mídia">
                 {mediaUrls.length > 1 ? <div className="admin-artwork-carousel"><ArtworkCarousel urls={mediaUrls} title={title || card.title} /></div> : null}

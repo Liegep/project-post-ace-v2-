@@ -21,6 +21,7 @@ import type {
   MoveCardInput,
   UpdateCardInput,
 } from "./cards.schemas.js";
+import { findCaptionVersion, listCaptionVersions, recordCaptionVersion } from "./caption-history.repository.js";
 
 function currentWallClock(timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -268,10 +269,21 @@ export async function updateKanbanCard(
   clientAccountId: string,
   cardId: string,
   input: UpdateCardInput,
+  actor: { id: string; fullName: string; globalRole: string },
 ) {
   const card = await findCardById(app.db, cardId);
   if (!card || card.clientAccountId !== clientAccountId) {
     throw app.httpErrors.notFound("Card não encontrado nesta conta.");
+  }
+
+  if (input.caption !== undefined && (input.caption ?? null) !== (card.caption ?? null)) {
+    await recordCaptionVersion(app.db, {
+      cardId,
+      caption: card.caption,
+      authorUserId: actor.id,
+      authorName: actor.fullName,
+      authorRole: actor.globalRole,
+    });
   }
 
   const updated = await updateCard(app.db, cardId, input);
@@ -289,6 +301,31 @@ export async function updateKanbanCard(
   const result = await runAutomationActions(app, clientAccountId, updated, automations);
   await upsertCalendarEventFromCard(app.db, result);
   return result;
+}
+
+export async function listKanbanCaptionVersions(app: FastifyInstance, clientAccountId: string, cardId: string) {
+  const card = await findCardById(app.db, cardId);
+  if (!card || card.clientAccountId !== clientAccountId) throw app.httpErrors.notFound("Card não encontrado nesta conta.");
+  return listCaptionVersions(app.db, cardId);
+}
+
+export async function restoreKanbanCaptionVersion(
+  app: FastifyInstance,
+  clientAccountId: string,
+  cardId: string,
+  versionId: string,
+  actor: { id: string; fullName: string; globalRole: string },
+) {
+  const card = await findCardById(app.db, cardId);
+  if (!card || card.clientAccountId !== clientAccountId) throw app.httpErrors.notFound("Card não encontrado nesta conta.");
+  const version = await findCaptionVersion(app.db, cardId, versionId);
+  if (!version) throw app.httpErrors.notFound("Versão da legenda não encontrada.");
+  if ((card.caption ?? null) !== (version.caption ?? null)) {
+    await recordCaptionVersion(app.db, { cardId, caption: card.caption, authorUserId: actor.id, authorName: actor.fullName, authorRole: actor.globalRole });
+  }
+  const updated = await updateCard(app.db, cardId, { caption: version.caption });
+  if (!updated) throw app.httpErrors.badRequest("Não foi possível restaurar a legenda.");
+  return { card: updated, versions: await listCaptionVersions(app.db, cardId) };
 }
 
 export async function moveKanbanCard(

@@ -53,6 +53,16 @@ export type ClientAccess = {
   createdAt: string;
 };
 
+export type CaptionVersion = {
+  id: string;
+  cardId: string;
+  caption: string | null;
+  authorUserId: string | null;
+  authorName: string;
+  authorRole: string;
+  createdAt: string;
+};
+
 export type ClientTrackerSettings = {
   locale: string;
   trackingEnabled: boolean;
@@ -844,6 +854,16 @@ export async function updateAdminCardBySlug(
     method: "PATCH",
     body: JSON.stringify(input),
   });
+}
+
+export async function listAdminCaptionVersionsBySlug(slug: string, cardId: string) {
+  const matchedClient = await findAdminClientBySlug(slug);
+  return fetchJson<{ items: CaptionVersion[] }>(`/api/clients/${matchedClient.id}/cards/${cardId}/caption-versions`);
+}
+
+export async function restoreAdminCaptionVersionBySlug(slug: string, cardId: string, versionId: string) {
+  const matchedClient = await findAdminClientBySlug(slug);
+  return sendJson<{ ok: true; card: ApiBoardCard; versions: CaptionVersion[] }>(`/api/clients/${matchedClient.id}/cards/${cardId}/caption-versions/${versionId}/restore`, { method: "POST" });
 }
 
 export async function moveAdminCardBySlug(slug: string, cardId: string, columnId: string | null, position?: number) {

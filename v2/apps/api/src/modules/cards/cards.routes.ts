@@ -13,8 +13,10 @@ import {
   createKanbanCard,
   deleteKanbanCard,
   getKanbanBoard,
+  listKanbanCaptionVersions,
   listKanbanCards,
   moveKanbanCard,
+  restoreKanbanCaptionVersion,
   updateKanbanCard,
 } from "./cards.service.js";
 import { getInternalCardDetail } from "./card-detail.service.js";
@@ -49,6 +51,20 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
     return getInternalCardDetail(app, params.clientAccountId, params.cardId);
   });
 
+  app.get("/clients/:clientAccountId/cards/:cardId/caption-versions", async (request) => {
+    assertInternalAccess(request);
+    const params = request.params as { clientAccountId: string; cardId: string };
+    assertClientAccess(request, params.clientAccountId, ["admin", "colaborador"]);
+    return { items: await listKanbanCaptionVersions(app, params.clientAccountId, params.cardId) };
+  });
+
+  app.post("/clients/:clientAccountId/cards/:cardId/caption-versions/:versionId/restore", async (request) => {
+    assertInternalAccess(request);
+    const params = request.params as { clientAccountId: string; cardId: string; versionId: string };
+    assertClientAccess(request, params.clientAccountId, ["admin", "colaborador"]);
+    return { ok: true, ...(await restoreKanbanCaptionVersion(app, params.clientAccountId, params.cardId, params.versionId, request.auth!.user)) };
+  });
+
   app.post("/clients/:clientAccountId/cards", async (request) => {
     assertInternalAccess(request);
 
@@ -76,7 +92,7 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
 
     return {
       ok: true,
-      card: await updateKanbanCard(app, params.clientAccountId, params.cardId, input),
+      card: await updateKanbanCard(app, params.clientAccountId, params.cardId, input, request.auth!.user),
     };
   });
 

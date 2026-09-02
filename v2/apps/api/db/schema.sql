@@ -169,6 +169,23 @@ CREATE TABLE IF NOT EXISTS client_tags (
     ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS card_caption_versions (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  card_id CHAR(36) NOT NULL,
+  caption TEXT NULL,
+  author_user_id CHAR(36) NULL,
+  author_name VARCHAR(255) NOT NULL DEFAULT 'Sistema',
+  author_role VARCHAR(50) NOT NULL DEFAULT 'system',
+  created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  KEY idx_caption_versions_card_created (card_id, created_at),
+  CONSTRAINT fk_caption_versions_card
+    FOREIGN KEY (card_id) REFERENCES kanban_cards (id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_caption_versions_author
+    FOREIGN KEY (author_user_id) REFERENCES users (id)
+    ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS hashtag_groups (
   id CHAR(36) NOT NULL PRIMARY KEY,
   client_account_id CHAR(36) NOT NULL,

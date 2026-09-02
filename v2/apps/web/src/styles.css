@@ -4536,6 +4536,23 @@ button {
 .art-type-options button { width: 100%; min-height: 44px; padding: 7px 12px; border: 0; border-radius: 8px; background: transparent; color: #17213f; display: flex; align-items: center; gap: 12px; font: inherit; font-size: 16px; text-align: left; text-transform: none; }
 .art-type-options button:hover, .art-type-options button.selected { background: #f1ebff; }.art-type-options button.selected { color: #7c47df; }.art-type-options button span { flex: 1; }.art-type-options button b { font-size: 18px; }
 .editor-field textarea.admin-caption-editor { min-height: 260px; resize: vertical; line-height: 1.55; }
+.caption-field-actions { display: inline-flex; align-items: center; gap: 6px; }
+.editor-field em .caption-history-button { width: auto; height: 25px; padding: 0 9px; color: #fff; background: rgba(255,255,255,.1); font-size: 11px; font-weight: 800; }
+.editor-field em .caption-history-button:hover,.editor-field em .caption-history-button.active { color: #d9d5ff; background: rgba(126,104,235,.28); }
+.caption-history-panel { display: grid; gap: 12px; max-height: 410px; overflow: hidden; padding: 15px; border: 1px solid rgba(255,255,255,.15); border-radius: 10px; color: #1f2942; background: #f4f6fa; font-size: 13px; font-weight: 500; letter-spacing: normal; text-transform: none; box-shadow: 0 12px 30px rgba(0,0,0,.16); }
+.caption-history-panel > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.caption-history-panel > header div { display: grid; gap: 3px; }
+.caption-history-panel > header strong { font-size: 14px; }
+.caption-history-panel > header small { color: #78839a; font-size: 11px; font-weight: 600; }
+.caption-history-panel > header > button { display: grid; width: 28px; height: 28px; padding: 0; place-items: center; border: 0; border-radius: 7px; color: #65718a; background: #e7eaf1; font: inherit; font-size: 19px; cursor: pointer; }
+.caption-history-list { display: grid; gap: 9px; overflow-y: auto; padding-right: 3px; }
+.caption-history-list article { display: grid; gap: 8px; padding: 12px; border: 1px solid #dfe4ee; border-radius: 8px; background: #fff; }
+.caption-history-list article > div { display: flex; justify-content: space-between; gap: 12px; color: #65718a; font-size: 11px; }
+.caption-history-list article > div strong { color: #3d4964; }
+.caption-history-list article p { display: -webkit-box; overflow: hidden; margin: 0; color: #26324c; line-height: 1.45; white-space: pre-wrap; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
+.caption-history-list article > button { justify-self: end; padding: 7px 9px; border: 1px solid #d8d5f4; border-radius: 7px; color: #5d53c7; background: #f2f0ff; font: inherit; font-size: 11px; font-weight: 800; cursor: pointer; }
+.caption-history-list article > button:disabled { cursor: wait; opacity: .6; }
+.caption-history-empty { margin: 4px 0; padding: 18px; border: 1px dashed #d8dde8; border-radius: 8px; color: #7a859b; text-align: center; }
 .editor-media-grid { display: flex; flex-wrap: wrap; gap: 13px; }
 .editor-media-thumb { position: relative; width: 190px; min-height: 160px; overflow: hidden; background: #16181b; border: 1px solid #c7cbd2; border-radius: 6px; }
 .editor-media-thumb img, .editor-media-thumb video { display: block; width: 100%; height: 100%; max-height: 225px; object-fit: contain; background: #101114; }

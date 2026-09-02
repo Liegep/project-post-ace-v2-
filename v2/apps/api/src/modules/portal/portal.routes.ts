@@ -4,6 +4,7 @@ import { addCardComment } from "../comments/comments.service.js";
 import { getPortalCardDetail } from "../cards/card-detail.service.js";
 import { createKanbanCard } from "../cards/cards.service.js";
 import { findCardById, listCardsByClientAccountId, moveCard, updateCard } from "../cards/cards.repository.js";
+import { recordCaptionVersion } from "../cards/caption-history.repository.js";
 import { createColumn, listColumnsByClientAccountId, updateColumn } from "../columns/columns.repository.js";
 import { findClientPermissionsByAccountId } from "../clients/clients.repository.js";
 import { createClientTag, listClientTags } from "../tags/tags.repository.js";
@@ -105,8 +106,11 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
       throw app.httpErrors.notFound("Card não encontrado nesta conta.");
     }
 
-    const updatedCard = await updateCard(app.db, params.cardId, { caption: input.caption });
     const actor = request.auth!.user;
+    if ((card.caption ?? null) !== (input.caption ?? null)) {
+      await recordCaptionVersion(app.db, { cardId: card.id, caption: card.caption, authorUserId: actor.id, authorName: actor.fullName, authorRole: actor.globalRole });
+    }
+    const updatedCard = await updateCard(app.db, params.cardId, { caption: input.caption });
     await addCardComment(app, params.clientAccountId, params.cardId, {
       commentText: "Legenda editada pelo cliente.",
       isInternal: false,
