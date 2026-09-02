@@ -4316,7 +4316,7 @@ function CardView({ card, onOpen, onContextMenu, selectionMode = false, selected
           {card.statusBadges.slice(1).map((badge) => (
             <span key={badge} className={card.isBriefApproval && /^aprovado$/i.test(badge.trim()) ? "mini-badge subtle approved-brief-badge" : "mini-badge subtle"}>{visibleBadge(badge)}</span>
           ))}
-          {card.tags.map((tag) => <span key={tag} className={onRemoveTag ? "mini-badge tag tag-filled removable" : "mini-badge tag tag-filled"} style={{ backgroundColor: card.tagColors?.[tag] ?? "#8263e8" }} onClick={(event) => { if (!onRemoveTag) return; event.stopPropagation(); onRemoveTag(card, tag); }}><span className="card-tag-dot" />{tag}{onRemoveTag ? <span className="card-tag-remove" aria-label={`Remover ${tag}`}>×</span> : null}</span>)}
+          {card.tags.map((tag) => { const tagColor = card.tagColors?.[tag] ?? "#8263e8"; return <span key={tag} className={onRemoveTag ? "mini-badge tag tag-filled removable" : "mini-badge tag tag-filled"} style={{ backgroundColor: tagColor, color: calendarTextColor(tagColor) }} onClick={(event) => { if (!onRemoveTag) return; event.stopPropagation(); onRemoveTag(card, tag); }}><span className="card-tag-dot" />{tag}{onRemoveTag ? <span className="card-tag-remove" aria-label={`Remover ${tag}`}>×</span> : null}</span>; })}
           {card.commentsCount > 0 ? <span className="card-comment-count" title={`${card.commentsCount} ${card.commentsCount === 1 ? "comentário" : "comentários"}`}><UiIcon name="comment" />{card.commentsCount}</span> : null}
         </div>
       </div>
