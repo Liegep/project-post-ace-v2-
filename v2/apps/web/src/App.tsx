@@ -1770,7 +1770,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
 
           <div className="dashboard-grid">
             <DashboardCommemorativeWidget clients={clients} />
-            {upcomingPosts.length > 0 ? <DashboardTasksWidget posts={upcomingPosts} /> : null}
+            <DashboardTasksWidget posts={upcomingPosts} />
             <DashboardAgendaWidget
               events={agendaToday}
               canPersist={session.source === "api"}
@@ -1823,6 +1823,7 @@ function DashboardTasksWidget({ posts }: { posts: DashboardUpcomingPost[] }) {
         <span className="dashboard-task-status">⌁ {post.clientLabel || "Agendado"}</span>
         <span className="dashboard-task-date">◷ {formatDashboardDate(post.scheduledAt)}</span>
       </article>)}
+      {displayedPosts.length === 0 ? <p className="dashboard-upcoming-empty">Nenhum post previsto para os próximos 3 dias.</p> : null}
     </div>
     {hiddenCount > 0 ? <button className="dashboard-task-link" type="button" onClick={() => setExpanded(true)}>Ver mais...</button> : null}
   </section>;

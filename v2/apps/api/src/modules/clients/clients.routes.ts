@@ -164,8 +164,8 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     const brandScopeSql = scope.mode === "global" ? "" : ` AND r.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")})`;
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const threeDaysEnd = new Date(todayStart); threeDaysEnd.setDate(threeDaysEnd.getDate() + 3);
     const tomorrowStart = new Date(todayStart); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
+    const upcomingEnd = new Date(todayStart); upcomingEnd.setDate(upcomingEnd.getDate() + 4);
     const [
       [dueTasks],
       [clientSubmissions],
@@ -222,8 +222,8 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         "ORDER BY e.occurred_at DESC LIMIT 8",
       ].join(" "), params),
       app.db.query<RowDataPacket[]>(
-        ["SELECT c.id, c.title, c.scheduled_at AS scheduledAt, c.client_label AS clientLabel, a.name AS clientName, a.logo_url AS clientLogoUrl FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id WHERE c.archived = 0 AND c.scheduled_at >= ? AND c.scheduled_at < ?", scopeSql, "ORDER BY c.scheduled_at ASC LIMIT 6"].join(" "),
-        [todayStart, threeDaysEnd, ...params],
+        ["SELECT c.id, c.title, COALESCE(c.scheduled_at, c.deadline_at) AS scheduledAt, c.client_label AS clientLabel, a.name AS clientName, a.logo_url AS clientLogoUrl FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id WHERE c.archived = 0 AND COALESCE(c.scheduled_at, c.deadline_at) >= ? AND COALESCE(c.scheduled_at, c.deadline_at) < ?", scopeSql, "ORDER BY COALESCE(c.scheduled_at, c.deadline_at) ASC LIMIT 20"].join(" "),
+        [tomorrowStart, upcomingEnd, ...params],
       ),
       app.db.query<RowDataPacket[]>(
         ["SELECT c.id, c.title, c.deadline_at AS scheduledAt, c.primary_media_url AS mediaUrl, a.name AS clientName, a.logo_url AS clientLogoUrl FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id WHERE c.archived = 0 AND c.deadline_at >= ? AND c.deadline_at < ?", scopeSql, "ORDER BY c.deadline_at ASC, c.title ASC LIMIT 50"].join(" "),

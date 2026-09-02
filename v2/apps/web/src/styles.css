@@ -2701,6 +2701,7 @@ button {
 .page-grid > .main-column { animation: app-page-enter .42s cubic-bezier(.22,.8,.3,1) both; }
 .dashboard-widget, .dashboard-list, .client-showcase-card { transition: transform .24s ease, box-shadow .24s ease, border-color .24s ease; }
 .dashboard-widget:hover, .dashboard-list:hover, .client-showcase-card:hover { transform: translateY(-2px); box-shadow: 0 18px 38px rgba(74, 91, 139, .12), 0 0 0 1px rgba(255,255,255,.62); }
+.dashboard-upcoming-empty { margin: 0; padding: 22px; border: 1px dashed #d5dced; border-radius: 14px; color: #8490a8; text-align: center; font-size: .84rem; }
 .gradient-button, .ghost-button, .client-icon-action { transition: transform .2s ease, box-shadow .2s ease, background-color .2s ease, border-color .2s ease; }
 .gradient-button:hover:not(:disabled), .ghost-button:hover:not(:disabled), .client-icon-action:hover:not(:disabled) { transform: translateY(-1px); }
 .admin-rail-button, .dashboard-nav-links a { transition: transform .2s ease, color .2s ease, background-color .2s ease, border-color .2s ease; }
