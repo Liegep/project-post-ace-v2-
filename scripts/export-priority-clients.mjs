@@ -263,6 +263,14 @@ async function main() {
     .order("position");
   const posts = foundClientIds.length ? await fetchAll(postsQuery) : [];
 
+  const defaultTagIds = ["seo", "alterado", "agendado", "publicado"];
+  const tagsQuery = supabase
+    .from("tags")
+    .select("id, client_id, name, color, created_at")
+    .or(`client_id.in.(${foundClientIds.join(",")}),id.in.(${defaultTagIds.join(",")})`)
+    .order("name");
+  const tags = foundClientIds.length ? await fetchAll(tagsQuery) : [];
+
   const postIds = posts.map((post) => post.id);
   const commentsQuery = supabase
     .from("comments")
@@ -325,6 +333,7 @@ async function main() {
       assignments: assignments.length,
       columns: columns.length,
       posts: posts.length,
+      tags: tags.length,
       archived_posts: posts.filter((post) => post.archived).length,
       active_posts: posts.filter((post) => !post.archived).length,
       comments: comments.length,
@@ -348,6 +357,7 @@ async function main() {
   await writeJson(path.join(options.outDir, "user_client_assignments.json"), assignments);
   await writeJson(path.join(options.outDir, "columns.json"), columns);
   await writeJson(path.join(options.outDir, "posts.json"), posts);
+  await writeJson(path.join(options.outDir, "tags.json"), tags);
   await writeJson(path.join(options.outDir, "comments.json"), comments);
   await writeJson(path.join(options.outDir, "calendar_posts.json"), calendarPosts);
   await writeJson(path.join(options.outDir, "media-manifest.json"), mediaManifest);

@@ -14,6 +14,7 @@ type ExportBundle = {
   assignments: JsonRow[];
   columns: JsonRow[];
   posts: JsonRow[];
+  tags: JsonRow[];
   comments: JsonRow[];
   calendarPosts: JsonRow[];
   mediaManifest: JsonRow[];
@@ -41,18 +42,19 @@ async function readRows(inputDir: string, fileName: string) {
 }
 
 async function loadBundle(inputDir: string): Promise<ExportBundle> {
-  const [clients, profiles, assignments, columns, posts, comments, calendarPosts, mediaManifest] =
+  const [clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest] =
     await Promise.all([
       readRows(inputDir, "clients.json"),
       readRows(inputDir, "profiles.json"),
       readRows(inputDir, "user_client_assignments.json"),
       readRows(inputDir, "columns.json"),
       readRows(inputDir, "posts.json"),
+      readRows(inputDir, "tags.json"),
       readRows(inputDir, "comments.json"),
       readRows(inputDir, "calendar_posts.json"),
       readRows(inputDir, "media-manifest.json"),
     ]);
-  return { clients, profiles, assignments, columns, posts, comments, calendarPosts, mediaManifest };
+  return { clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest };
 }
 
 function textValue(row: JsonRow, key: string, fallback = "") {
@@ -135,6 +137,7 @@ function validateBundle(bundle: ExportBundle) {
     assignments: bundle.assignments,
     columns: bundle.columns,
     posts: bundle.posts,
+    tags: bundle.tags,
     comments: bundle.comments,
     calendarPosts: bundle.calendarPosts,
   })) {
@@ -157,6 +160,10 @@ function validateBundle(bundle: ExportBundle) {
     const columnId = textValue(row, "column_id");
     if (columnId && !columnIds.has(columnId)) errors.push(`Card ${textValue(row, "id")} aponta para coluna ausente.`);
   });
+  bundle.tags.forEach((row) => {
+    const clientId = textValue(row, "client_id");
+    if (clientId && !clientIds.has(clientId)) errors.push(`Etiqueta ${textValue(row, "id")} aponta para cliente ausente.`);
+  });
   bundle.comments.forEach((row) => {
     if (!postIds.has(textValue(row, "post_id"))) errors.push(`Comentário ${textValue(row, "id")} aponta para card ausente.`);
   });
@@ -176,6 +183,7 @@ function printSummary(bundle: ExportBundle, inputDir: string, commit: boolean) {
       assignments: bundle.assignments.length,
       columns: bundle.columns.length,
       posts: bundle.posts.length,
+      tags: bundle.tags.length,
       comments: bundle.comments.length,
       calendar_posts: bundle.calendarPosts.length,
       media_files_pending_copy: bundle.mediaManifest.length,
@@ -216,6 +224,8 @@ async function resolveUsers(connection: PoolConnection, profiles: JsonRow[]) {
 async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
   const { userMap, roleByLegacyId } = await resolveUsers(connection, bundle.profiles);
   const clientMap = new Map<string, string>();
+  const legacyTagsById = new Map(bundle.tags.map((tag) => [textValue(tag, "id"), tag]));
+  const defaultTagIds = new Set(["seo", "alterado", "agendado", "publicado"]);
 
   for (const client of bundle.clients) {
     const legacyId = textValue(client, "id");
@@ -261,10 +271,41 @@ async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
     );
   }
 
+  const tagsByClient = new Map<string, Map<string, JsonRow>>();
+  for (const client of bundle.clients) {
+    const legacyClientId = textValue(client, "id");
+    const clientTags = new Map<string, JsonRow>();
+    for (const tag of bundle.tags) {
+      if (textValue(tag, "client_id") === legacyClientId || defaultTagIds.has(textValue(tag, "id"))) {
+        clientTags.set(textValue(tag, "name").trim().toLocaleLowerCase(), tag);
+      }
+    }
+    for (const post of bundle.posts.filter((item) => textValue(item, "client_id") === legacyClientId)) {
+      const values = Array.isArray(post.tags) ? post.tags : [];
+      for (const value of values) {
+        const tag = legacyTagsById.get(String(value));
+        if (tag) clientTags.set(textValue(tag, "name").trim().toLocaleLowerCase(), tag);
+      }
+    }
+    tagsByClient.set(legacyClientId, clientTags);
+  }
+
+  for (const [legacyClientId, tags] of tagsByClient) {
+    const clientAccountId = clientMap.get(legacyClientId);
+    if (!clientAccountId) continue;
+    for (const tag of tags.values()) {
+      await connection.query(
+        "INSERT INTO client_tags (id, client_account_id, name, color, legacy_id) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE color=VALUES(color), legacy_id=COALESCE(client_tags.legacy_id, VALUES(legacy_id))",
+        [crypto.randomUUID(), clientAccountId, textValue(tag, "name", "Etiqueta"), textValue(tag, "color", "#5e5cf1"), textValue(tag, "id")],
+      );
+    }
+  }
+
   for (const post of bundle.posts) {
+    const mappedTags = (Array.isArray(post.tags) ? post.tags : []).map((value) => textValue(legacyTagsById.get(String(value)) ?? {}, "name", String(value)));
     await connection.query(
       "INSERT INTO kanban_cards (id, client_account_id, column_id, title, caption, media_type, primary_media_url, media_urls_json, art_type, status_json, tags_json, keep_files, deadline_at, published_at, archived, archived_at, client_label, event_color, position, legacy_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE column_id=VALUES(column_id), title=VALUES(title), caption=VALUES(caption), media_type=VALUES(media_type), primary_media_url=VALUES(primary_media_url), media_urls_json=VALUES(media_urls_json), art_type=VALUES(art_type), status_json=VALUES(status_json), tags_json=VALUES(tags_json), keep_files=VALUES(keep_files), deadline_at=VALUES(deadline_at), published_at=VALUES(published_at), archived=VALUES(archived), archived_at=VALUES(archived_at), client_label=VALUES(client_label), event_color=VALUES(event_color), position=VALUES(position)",
-      [textValue(post, "id"), clientMap.get(textValue(post, "client_id")), nullableText(post, "column_id"), textValue(post, "title", "Sem título"), nullableText(post, "caption"), textValue(post, "media_type", "image"), nullableText(post, "image_url"), jsonValue(post.media_urls), textValue(post, "art_type", "single_post"), jsonValue(post.status), jsonValue(post.tags), boolValue(post, "retain_files"), mysqlDateTime(post.deadline), mysqlDateTime(post.published_at), boolValue(post, "archived"), mysqlDateTime(post.archived_at), textValue(post, "client_label", "pendente"), nullableText(post, "event_color"), numberValue(post, "position"), textValue(post, "id")],
+      [textValue(post, "id"), clientMap.get(textValue(post, "client_id")), nullableText(post, "column_id"), textValue(post, "title", "Sem título"), nullableText(post, "caption"), textValue(post, "media_type", "image"), nullableText(post, "image_url"), jsonValue(post.media_urls), textValue(post, "art_type", "single_post"), jsonValue(post.status), jsonValue(mappedTags), boolValue(post, "retain_files"), mysqlDateTime(post.deadline), mysqlDateTime(post.published_at), boolValue(post, "archived"), mysqlDateTime(post.archived_at), textValue(post, "client_label", "pendente"), nullableText(post, "event_color"), numberValue(post, "position"), textValue(post, "id")],
     );
   }
 
