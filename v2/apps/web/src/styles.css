@@ -1448,7 +1448,7 @@ button {
   .kanban-admin-layout .columns-scroll {
     grid-auto-columns: 360px;
     gap: 16px;
-    scroll-behavior: smooth;
+    scroll-behavior: auto;
     scroll-padding-inline: 2px 24px;
     overscroll-behavior-x: contain;
     -webkit-overflow-scrolling: touch;
