@@ -1454,6 +1454,11 @@ button {
     -webkit-overflow-scrolling: touch;
   }
 
+  .kanban-admin-layout .columns-scroll:focus-visible {
+    outline: 2px solid rgba(99, 91, 219, .42);
+    outline-offset: 2px;
+  }
+
   .kanban-admin-layout .column-drag-slot,
   .kanban-admin-layout .column-drag-slot > .kanban-column {
     box-sizing: border-box;

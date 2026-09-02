@@ -2494,7 +2494,14 @@ function AdminWorkspacePage({
 
   const handleKanbanHorizontalWheel = (event: React.WheelEvent<HTMLDivElement>) => {
     const scroller = event.currentTarget;
-    if (scroller.scrollWidth <= scroller.clientWidth || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+    if (scroller.scrollWidth <= scroller.clientWidth) return;
+
+    const isHorizontalGesture = Math.abs(event.deltaX) >= Math.abs(event.deltaY);
+    if (isHorizontalGesture) {
+      event.preventDefault();
+      scroller.scrollLeft += event.deltaX;
+      return;
+    }
 
     const cardScroller = (event.target as Element).closest<HTMLElement>(".column-cards-scroll");
     if (cardScroller && cardScroller.scrollHeight > cardScroller.clientHeight) {
@@ -2506,6 +2513,15 @@ function AdminWorkspacePage({
 
     event.preventDefault();
     scroller.scrollLeft += event.deltaY;
+  };
+
+  const handleKanbanHorizontalKeys = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    if ((event.target as Element).closest("input, textarea, select, [contenteditable='true']")) return;
+
+    event.preventDefault();
+    const direction = event.key === "ArrowRight" ? 1 : -1;
+    event.currentTarget.scrollBy({ left: direction * 376, behavior: "smooth" });
   };
 
   const moveDraggedColumn = async (index: number) => {
@@ -2622,7 +2638,11 @@ function AdminWorkspacePage({
                 ><i style={{ backgroundColor: column.color }} /><span>{column.name}</span><b>{column.cards.length}</b></button>)}
               </nav><div
                 className={draggedColumnId ? "columns-scroll columns-reordering" : "columns-scroll"}
+                tabIndex={0}
+                role="region"
+                aria-label="Colunas do Kanban. Use as setas para navegar."
                 onWheel={handleKanbanHorizontalWheel}
+                onKeyDown={handleKanbanHorizontalKeys}
                 onDragOver={(event) => {
                   if (!draggedColumnId) return;
                   event.preventDefault();
