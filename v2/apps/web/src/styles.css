@@ -2946,12 +2946,19 @@ button {
 }
 
 .content-card {
+  position: relative;
   padding: 16px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.97);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
   border: 1px solid rgba(0, 0, 0, 0.06);
 }
+.content-card.has-priority { margin-top: 8px; }
+.content-card.has-priority .card-title-block { padding-top: 25px; }
+.card-priority-tab { position: absolute; z-index: 4; top: -8px; right: 13px; display: inline-flex; align-items: center; min-height: 27px; padding: 0 12px; border-radius: 7px 7px 3px 3px; font-size: .68rem; font-weight: 800; letter-spacing: .015em; white-space: nowrap; pointer-events: none; box-shadow: 0 6px 13px rgba(40,50,82,.18), inset 0 1px 0 rgba(255,255,255,.28); }
+.card-priority-tab.high { color: #fff; background: linear-gradient(135deg,#ef476f,#d92f58); }
+.card-priority-tab.medium { color: #633d00; background: linear-gradient(135deg,#ffc957,#f3a51c); }
+.card-priority-tab.normal { color: #fff; background: linear-gradient(135deg,#54a4ff,#5d68e8); }
 .content-card.selected { border-color: #7c47df; box-shadow: 0 0 0 3px rgba(124, 71, 223, .16), 0 2px 8px rgba(0, 0, 0, .06); }
 .content-card.approved-brief-card {
   border-color: rgba(123, 176, 224, .5);

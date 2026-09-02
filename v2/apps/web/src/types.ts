@@ -1,3 +1,5 @@
+export type CardPriority = "high" | "medium" | "normal";
+
 export type BoardCard = {
   id: string;
   title: string;
@@ -14,6 +16,7 @@ export type BoardCard = {
   scheduledAt?: string;
   archivedAt?: string | null;
   clientLabel: string;
+  priorityLevel?: CardPriority | null;
   hashtags?: string[];
   isBriefApproval?: boolean;
   keepFiles?: boolean;

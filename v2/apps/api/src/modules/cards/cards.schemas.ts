@@ -41,6 +41,7 @@ export const createCardSchema = z.object({
   scheduledAt: nullableString,
   scheduledTimeZone: z.string().min(1).max(64).optional(),
   clientLabel: z.string().min(1).max(100).default("pendente"),
+  priorityLevel: z.enum(["high", "medium", "normal"]).nullable().optional(),
   eventColor: z.string().max(20).nullable().optional(),
 });
 
@@ -61,6 +62,7 @@ export const updateCardSchema = z.object({
   scheduledAt: nullableString,
   scheduledTimeZone: z.string().min(1).max(64).optional(),
   clientLabel: z.string().min(1).max(100).optional(),
+  priorityLevel: z.enum(["high", "medium", "normal"]).nullable().optional(),
   eventColor: z.string().max(20).nullable().optional(),
 });
 

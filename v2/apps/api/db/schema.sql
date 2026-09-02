@@ -134,6 +134,7 @@ CREATE TABLE IF NOT EXISTS kanban_cards (
   archived TINYINT(1) NOT NULL DEFAULT 0,
   archived_at DATETIME NULL,
   client_label VARCHAR(100) NOT NULL DEFAULT 'pendente',
+  priority_level VARCHAR(20) NULL,
   event_color VARCHAR(20) NULL,
   comments_count_cache INT NOT NULL DEFAULT 0,
   created_by_user_id CHAR(36) NULL,

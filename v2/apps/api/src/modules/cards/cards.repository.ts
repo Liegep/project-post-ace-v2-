@@ -29,6 +29,7 @@ type CardRow = RowDataPacket & {
   archived: number;
   archived_at: Date | string | null;
   client_label: string;
+  priority_level: "high" | "medium" | "normal" | null;
   event_color: string | null;
   comments_count_cache: number;
   created_by_user_id: string | null;
@@ -81,6 +82,7 @@ function mapCardRow(row: CardRow) {
     archived: Boolean(row.archived),
     archivedAt: row.archived_at,
     clientLabel: row.client_label,
+    priorityLevel: row.priority_level,
     eventColor: row.event_color,
     commentsCount: row.comments_count_cache,
     createdByUserId: row.created_by_user_id,
@@ -95,7 +97,7 @@ export async function findCardById(db: Pool, cardId: string) {
   const [rows] = await db.query<CardRow[]>(
     [
       "SELECT id, client_account_id, column_id, title, caption, media_type, primary_media_url, media_urls_json, external_link_url, art_type,",
-      "status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, DATE_FORMAT(scheduled_at, '%Y-%m-%d %H:%i:%s') AS scheduled_at, scheduled_timezone, published_at, archived, archived_at, client_label, event_color,",
+      "status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, DATE_FORMAT(scheduled_at, '%Y-%m-%d %H:%i:%s') AS scheduled_at, scheduled_timezone, published_at, archived, archived_at, client_label, priority_level, event_color,",
       "comments_count_cache, created_by_user_id, position, legacy_id, created_at, updated_at",
       "FROM kanban_cards",
       "WHERE id = ?",
@@ -119,7 +121,7 @@ export async function listCardsByClientAccountId(
 ) {
   let sql = [
     "SELECT id, client_account_id, column_id, title, caption, media_type, primary_media_url, media_urls_json, external_link_url, art_type,",
-    "status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, DATE_FORMAT(scheduled_at, '%Y-%m-%d %H:%i:%s') AS scheduled_at, scheduled_timezone, published_at, archived, archived_at, client_label, event_color,",
+    "status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, DATE_FORMAT(scheduled_at, '%Y-%m-%d %H:%i:%s') AS scheduled_at, scheduled_timezone, published_at, archived, archived_at, client_label, priority_level, event_color,",
     "comments_count_cache, created_by_user_id, position, legacy_id, created_at, updated_at",
     "FROM kanban_cards",
     "WHERE client_account_id = ?",
@@ -171,8 +173,8 @@ export async function createCard(
   await db.query(
     [
       "INSERT INTO kanban_cards",
-      "(id, client_account_id, column_id, title, caption, media_type, primary_media_url, media_urls_json, external_link_url, art_type, status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, scheduled_at, scheduled_timezone, client_label, event_color, created_by_user_id, position)",
-      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "(id, client_account_id, column_id, title, caption, media_type, primary_media_url, media_urls_json, external_link_url, art_type, status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, scheduled_at, scheduled_timezone, client_label, priority_level, event_color, created_by_user_id, position)",
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ].join(" "),
     [
       cardId,
@@ -194,6 +196,7 @@ export async function createCard(
       input.scheduledAt ?? null,
       input.scheduledTimeZone ?? null,
       input.clientLabel,
+      input.priorityLevel ?? null,
       input.eventColor ?? null,
       createdByUserId,
       nextPosition,
@@ -279,6 +282,10 @@ export async function updateCard(
   if (typeof input.clientLabel !== "undefined") {
     fields.push("client_label = ?");
     params.push(input.clientLabel);
+  }
+  if (typeof input.priorityLevel !== "undefined") {
+    fields.push("priority_level = ?");
+    params.push(input.priorityLevel ?? null);
   }
   if (typeof input.eventColor !== "undefined") {
     fields.push("event_color = ?");

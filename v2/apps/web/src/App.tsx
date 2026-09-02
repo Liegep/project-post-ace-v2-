@@ -122,6 +122,7 @@ import type {
   AdminWorkspacePreview,
   BoardCard,
   BoardColumn,
+  CardPriority,
   CardDetail,
   CalendarEvent,
   ClientPortalPreview,
@@ -4298,11 +4299,13 @@ function CardView({ card, onOpen, onContextMenu, selectionMode = false, selected
   const isInDevelopment = /^em desenvolvimento$/i.test(primaryBadge?.trim() ?? "");
   const isApprovedBrief = card.isBriefApproval && !isInDevelopment && /aprovad/i.test(`${card.clientLabel} ${card.statusBadges.join(" ")}`);
   const visibleBadge = (badge: string) => card.isBriefApproval && /^aprovado$/i.test(badge.trim()) ? "Pauta aprovada" : badge;
-  const cardClassName = ["content-card", "glass-subtle", "card-button", selected ? "selected" : "", isApprovedBrief ? "approved-brief-card" : ""].filter(Boolean).join(" ");
+  const priorityLabel: Record<CardPriority, string> = { high: "Alta prioridade", medium: "Média prioridade", normal: "Prioridade normal" };
+  const cardClassName = ["content-card", "glass-subtle", "card-button", selected ? "selected" : "", isApprovedBrief ? "approved-brief-card" : "", card.priorityLevel ? "has-priority" : ""].filter(Boolean).join(" ");
 
   return (
     <button className={cardClassName} onClick={onOpen} onContextMenu={onContextMenu} draggable={draggable} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", card.id); onDragStart?.(); }} onDragEnd={onDragEnd}>
       {selectionMode ? <span className={selected ? "card-select-checkbox checked" : "card-select-checkbox"} onClick={(event) => { event.stopPropagation(); onToggleSelection?.(); }}>{selected ? "✓" : ""}</span> : null}
+      {card.priorityLevel ? <span className={`card-priority-tab ${card.priorityLevel}`}>{priorityLabel[card.priorityLevel]}</span> : null}
       <div className="card-title-block">
         <h4>{card.title}</h4>
         {primaryBadge ? (
@@ -5438,7 +5441,7 @@ function CardDetailModal({
 
 type CardRecoveryDraft = {
   title: string; caption: string; artType: string; columnId: string; status: string; clientLabel: string;
-  tags: string; hashtags: string; scheduledAt: string; externalLinkUrl: string; mediaUrls: string[];
+  priorityLevel: CardPriority | ""; tags: string; hashtags: string; scheduledAt: string; externalLinkUrl: string; mediaUrls: string[];
 };
 
 function AdminCardEditor({
@@ -5465,6 +5468,7 @@ function AdminCardEditor({
     columnId: columns.find((column) => column.cards.some((item) => item.id === card.id))?.id ?? "",
     status: card.statusBadges[0] ?? "Entrada",
     clientLabel: card.clientLabel,
+    priorityLevel: card.priorityLevel ?? "",
     tags: card.tags.join(", "),
     hashtags: (card.hashtags ?? []).join(", "),
     scheduledAt: toDateTimeLocal(card.scheduledAt),
@@ -5479,6 +5483,7 @@ function AdminCardEditor({
   const [columnId, setColumnId] = useState(initialDraft.columnId);
   const [status, setStatus] = useState(initialDraft.status);
   const [clientLabel, setClientLabel] = useState(initialDraft.clientLabel);
+  const [priorityLevel, setPriorityLevel] = useState<CardPriority | "">(initialDraft.priorityLevel);
   const [tags, setTags] = useState(initialDraft.tags);
   const [tagLibrary, setTagLibrary] = useState<ClientTagDefinition[]>([]);
   const [newTagName, setNewTagName] = useState("");
@@ -5514,7 +5519,7 @@ function AdminCardEditor({
   const saveInFlightRef = useRef(false);
   const lastSavedDraftRef = useRef(JSON.stringify(serverDraft));
   const savedColumnIdRef = useRef(serverDraft.columnId);
-  const draft = useMemo<CardRecoveryDraft>(() => ({ title, caption, artType, columnId, status, clientLabel, tags, hashtags, scheduledAt, externalLinkUrl, mediaUrls }), [artType, caption, clientLabel, columnId, externalLinkUrl, hashtags, mediaUrls, scheduledAt, status, tags, title]);
+  const draft = useMemo<CardRecoveryDraft>(() => ({ title, caption, artType, columnId, status, clientLabel, priorityLevel, tags, hashtags, scheduledAt, externalLinkUrl, mediaUrls }), [artType, caption, clientLabel, columnId, externalLinkUrl, hashtags, mediaUrls, priorityLevel, scheduledAt, status, tags, title]);
   const latestDraftRef = useRef(draft);
   latestDraftRef.current = draft;
 
@@ -5654,6 +5659,7 @@ ${internalMessage.trim()}`, isInternal: true });
         scheduledAt: currentDraft.scheduledAt || null,
         scheduledTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         clientLabel: currentDraft.clientLabel.trim() || "Pendente",
+        priorityLevel: currentDraft.priorityLevel || null,
       });
       if (currentDraft.columnId !== savedColumnIdRef.current) {
         await moveAdminCardBySlug(slug, card.id, currentDraft.columnId || null);
@@ -5833,6 +5839,7 @@ ${internalMessage.trim()}`, isInternal: true });
         <aside className="admin-card-side">
           <ArtTypeSelect value={artType} onChange={setArtType} />
           <EditorSelect label="Status" value={status} onChange={setStatus} options={CARD_STATUS_OPTIONS} />
+          <label className="editor-field"><span>Prioridade</span><select value={priorityLevel} onChange={(event) => setPriorityLevel(event.target.value as CardPriority | "")}><option value="">Sem prioridade</option><option value="high">Alta prioridade</option><option value="medium">Média prioridade</option><option value="normal">Prioridade normal</option></select></label>
           <EditorSelect label="Feedback do cliente" value={clientLabel} onChange={setClientLabel} options={["Pendente", "Aprovado", "Alteração solicitada"]} />
           <EditorField label="Agendamento"><input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /><small className="editor-field-hint">Na data e hora informadas, o card será movido para Arquivados.</small></EditorField>
           <label className="editor-field"><span>Coluna</span><select value={columnId} onChange={(event) => setColumnId(event.target.value)}><option value="">Sem coluna</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select></label>

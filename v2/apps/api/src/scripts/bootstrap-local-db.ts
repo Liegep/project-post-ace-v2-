@@ -101,6 +101,7 @@ async function main() {
     ["is_brief_approval", "ALTER TABLE kanban_cards ADD COLUMN is_brief_approval TINYINT(1) NOT NULL DEFAULT 0 AFTER hashtags_json"],
     ["keep_files", "ALTER TABLE kanban_cards ADD COLUMN keep_files TINYINT(1) NOT NULL DEFAULT 0 AFTER is_brief_approval"],
     ["scheduled_timezone", "ALTER TABLE kanban_cards ADD COLUMN scheduled_timezone VARCHAR(64) NULL AFTER scheduled_at"],
+    ["priority_level", "ALTER TABLE kanban_cards ADD COLUMN priority_level VARCHAR(20) NULL AFTER client_label"],
   ] as const;
   for (const [column, statement] of migrations) {
     const [rows] = await db.query<RowDataPacket[]>(`SHOW COLUMNS FROM kanban_cards LIKE '${column}'`);

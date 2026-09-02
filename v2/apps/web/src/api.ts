@@ -161,6 +161,7 @@ type ApiBoardCard = {
   scheduledTimeZone?: string | null;
   archivedAt?: string | null;
   clientLabel: string;
+  priorityLevel?: "high" | "medium" | "normal" | null;
 };
 
 type ApiBoardColumn = {
@@ -452,6 +453,7 @@ function mapCard(card: ApiBoardCard, tagColors: Record<string, string> = {}): Bo
     scheduledAt: card.scheduledAt ?? undefined,
     archivedAt: card.archivedAt ?? null,
     clientLabel: card.clientLabel,
+    priorityLevel: card.priorityLevel ?? null,
     hashtags: card.hashtags ?? [],
     isBriefApproval: card.isBriefApproval ?? false,
     keepFiles: card.keepFiles ?? false,
@@ -811,6 +813,7 @@ export async function createAdminCardBySlug(
     scheduledTimeZone?: string | null;
     clientLabel?: string;
     isBriefApproval?: boolean;
+    priorityLevel?: "high" | "medium" | "normal" | null;
   },
 ) {
   const matchedClient = await findAdminClientBySlug(slug);
@@ -847,6 +850,7 @@ export async function updateAdminCardBySlug(
     scheduledAt: string | null;
     scheduledTimeZone: string | null;
     clientLabel: string;
+    priorityLevel: "high" | "medium" | "normal" | null;
   }>,
 ) {
   const matchedClient = await findAdminClientBySlug(slug);
