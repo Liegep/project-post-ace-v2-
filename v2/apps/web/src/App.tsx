@@ -1781,7 +1781,7 @@ function DashboardAgendaWidget({ events, canPersist, onCreated, onCompleted }: {
   return <>
     <section className="dashboard-tasks-widget dashboard-agenda-widget">
       <header><div><span className="dashboard-task-icon">▣</span><h3>Agenda de hoje</h3></div><div className="dashboard-agenda-header-actions"><button type="button" className="dashboard-agenda-add" onClick={openQuickCreate}><span>＋</span>Novo</button><span className="dashboard-task-count">{events.length} {events.length === 1 ? "compromisso" : "compromissos"}</span></div></header>
-      {events.length ? <div className="dashboard-task-rows">{events.map((agendaEvent) => <article key={agendaEvent.id} className={agendaEvent.isCompleted ? "completed" : ""}><span className="dashboard-task-dot" style={{ backgroundColor: agendaEvent.isCompleted ? "#35b987" : agendaEvent.color }} /><span className="agenda-time">{formatAgendaTime(agendaEvent.startsAt)}</span><div><strong>{agendaEvent.title}</strong><small>{agendaEvent.isCompleted ? "Concluído" : agendaEvent.labelName ?? agendaEvent.clientName ?? "Compromisso"}</small></div><button type="button" className={agendaEvent.isCompleted ? "dashboard-agenda-complete completed" : "dashboard-agenda-complete"} disabled={agendaEvent.isCompleted || completingId === agendaEvent.id} onClick={() => void completeEvent(agendaEvent)} aria-label={agendaEvent.isCompleted ? `${agendaEvent.title} concluído` : `Marcar ${agendaEvent.title} como feito`} title={agendaEvent.isCompleted ? "Compromisso concluído" : "Marcar como feito"}><UiIcon name="check" /></button></article>)}</div> : <p className="dashboard-agenda-empty">Nenhum compromisso para hoje.</p>}
+      {events.length ? <div className="dashboard-task-rows">{events.map((agendaEvent) => <article key={agendaEvent.id} className={agendaEvent.isCompleted ? "completed" : ""}><span className="dashboard-task-dot" style={{ backgroundColor: agendaEvent.isCompleted ? "#35b987" : agendaEvent.color }} /><span className="agenda-time">{formatAgendaTime(agendaEvent.startsAt)}</span><div><strong>{agendaEvent.title}</strong><small>{agendaEvent.taskDescription || agendaEvent.labelName || agendaEvent.clientName || "Compromisso"}{agendaEvent.isCompleted ? " · Concluído" : ""}</small></div><button type="button" className={agendaEvent.isCompleted ? "dashboard-agenda-complete completed" : "dashboard-agenda-complete"} disabled={agendaEvent.isCompleted || completingId === agendaEvent.id} onClick={() => void completeEvent(agendaEvent)} aria-label={agendaEvent.isCompleted ? `${agendaEvent.title} concluído` : `Marcar ${agendaEvent.title} como feito`} title={agendaEvent.isCompleted ? "Compromisso concluído" : "Marcar como feito"}><UiIcon name="check" /></button></article>)}</div> : <p className="dashboard-agenda-empty">Nenhum compromisso para hoje.</p>}
       {error && !quickOpen ? <p className="dashboard-agenda-error">{error}</p> : null}
       <NavLink to="/agenda" className="dashboard-task-link dashboard-agenda-link"><UiIcon name="calendar" /><strong>Ver agenda completa</strong><span>→</span></NavLink>
     </section>
@@ -1937,7 +1937,7 @@ function AgendaPage({ session, onLogout }: { session: SessionUser | null; onLogo
             return <article className={`social-agenda-day${isToday ? " today" : ""}`} key={key}>
               <header><div><time>{day.getDate()}</time><span><strong>{new Intl.DateTimeFormat("pt-BR", { weekday: "long" }).format(day)}</strong><small>{new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(day)}</small></span></div><button type="button" onClick={() => openAgendaDay(day)} aria-label={`Adicionar compromisso em ${new Intl.DateTimeFormat("pt-BR").format(day)}`}>＋</button></header>
               <div className="social-agenda-items">
-                {dayEvents.map((item) => <button key={item.id} type="button" className="social-agenda-item appointment" style={{ "--calendar-event-color": item.color } as CSSProperties} onClick={() => { setSelectedEvent(item); setRescheduleAt(toDateTimeLocal(item.startsAt)); setMeetLinkEdit(item.meetLink ?? ""); setClientAccountIdEdit(item.clientAccountId ?? ""); }}><span className="social-agenda-time">{formatAgendaTime(item.startsAt)}</span><i><UiIcon name="clock" /></i><span><strong>{item.title}</strong><small>{item.clientName || item.labelName || "Compromisso"}</small></span><b>›</b></button>)}
+                {dayEvents.map((item) => <button key={item.id} type="button" className="social-agenda-item appointment" style={{ "--calendar-event-color": item.color } as CSSProperties} onClick={() => { setSelectedEvent(item); setRescheduleAt(toDateTimeLocal(item.startsAt)); setMeetLinkEdit(item.meetLink ?? ""); setClientAccountIdEdit(item.clientAccountId ?? ""); }}><span className="social-agenda-time">{formatAgendaTime(item.startsAt)}</span><i><UiIcon name="clock" /></i><span><strong>{item.title}</strong><small>{item.taskDescription || item.labelName || item.clientName || "Compromisso"}</small></span><b>›</b></button>)}
                 {dayEvents.length === 0 ? <button type="button" className="social-agenda-empty" onClick={() => openAgendaDay(day)}>＋ Adicionar compromisso</button> : null}
               </div>
             </article>;
@@ -2492,6 +2492,22 @@ function AdminWorkspacePage({
     return nextIndex === -1 ? columnSlots.length : nextIndex;
   };
 
+  const handleKanbanHorizontalWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    const scroller = event.currentTarget;
+    if (scroller.scrollWidth <= scroller.clientWidth || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+
+    const cardScroller = (event.target as Element).closest<HTMLElement>(".column-cards-scroll");
+    if (cardScroller && cardScroller.scrollHeight > cardScroller.clientHeight) {
+      const canScrollVertically = event.deltaY > 0
+        ? cardScroller.scrollTop + cardScroller.clientHeight < cardScroller.scrollHeight - 1
+        : cardScroller.scrollTop > 1;
+      if (canScrollVertically) return;
+    }
+
+    event.preventDefault();
+    scroller.scrollLeft += event.deltaY;
+  };
+
   const moveDraggedColumn = async (index: number) => {
     if (!draggedColumnId) return;
     const sourceIndex = data.columns.findIndex((column) => column.id === draggedColumnId);
@@ -2606,6 +2622,7 @@ function AdminWorkspacePage({
                 ><i style={{ backgroundColor: column.color }} /><span>{column.name}</span><b>{column.cards.length}</b></button>)}
               </nav><div
                 className={draggedColumnId ? "columns-scroll columns-reordering" : "columns-scroll"}
+                onWheel={handleKanbanHorizontalWheel}
                 onDragOver={(event) => {
                   if (!draggedColumnId) return;
                   event.preventDefault();
@@ -6160,7 +6177,7 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
             <header><div><time>{day.getDate()}</time><span><strong>{new Intl.DateTimeFormat(localeTag, { weekday: "long" }).format(day)}</strong><small>{new Intl.DateTimeFormat(localeTag, { month: "long", year: "numeric" }).format(day)}</small></span></div></header>
             <div className="social-agenda-items">
               {posts.map((card) => { const imageUrl = portalCardAssets(card)[0] ?? ""; return <button key={card.id} type="button" className="social-agenda-item post" onClick={() => onSelectCard(card.id)}><span className="social-agenda-time">{new Intl.DateTimeFormat(localeTag, { timeStyle: "short" }).format(new Date(card.scheduledAt!))}</span>{imageUrl ? <img src={imageUrl} alt="" /> : <i><UiIcon name="send" /></i>}<span><strong>{card.title}</strong><small>{t("Post agendado")}</small></span><b>›</b></button>; })}
-              {events.map((event) => <button key={event.id} type="button" className="social-agenda-item appointment" style={{ "--calendar-event-color": event.color || "#8b45dd" } as CSSProperties} onClick={() => setSelectedEvent(event)}><span className="social-agenda-time">{new Intl.DateTimeFormat(localeTag, { timeStyle: "short" }).format(new Date(event.startsAt))}</span><i><UiIcon name={event.meetLink ? "link" : "clock"} /></i><span><strong>{event.title}</strong><small>{t("Compromisso")}</small></span><b>›</b></button>)}
+              {events.map((event) => <button key={event.id} type="button" className="social-agenda-item appointment" style={{ "--calendar-event-color": event.color || "#8b45dd" } as CSSProperties} onClick={() => setSelectedEvent(event)}><span className="social-agenda-time">{new Intl.DateTimeFormat(localeTag, { timeStyle: "short" }).format(new Date(event.startsAt))}</span><i><UiIcon name={event.meetLink ? "link" : "clock"} /></i><span><strong>{event.title}</strong><small>{event.taskDescription || event.labelName || t("Compromisso")}</small></span><b>›</b></button>)}
             </div>
           </article>;
         }) : <div className="social-agenda-year-empty portal-calendar-empty"><UiIcon name="calendar" /><strong>{t("Nenhum item agendado neste mês.")}</strong><small>{t("Use as setas acima para consultar outro mês.")}</small></div>}

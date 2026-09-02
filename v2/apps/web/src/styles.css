@@ -1442,6 +1442,57 @@ button {
   }
 }
 
+/* Mantém cada coluna dentro da própria faixa e deixa a navegação horizontal
+   previsível com mouse e trackpad no desktop. */
+@media (min-width: 761px) {
+  .kanban-admin-layout .columns-scroll {
+    grid-auto-columns: 360px;
+    gap: 16px;
+    scroll-behavior: smooth;
+    scroll-padding-inline: 2px 24px;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .kanban-admin-layout .column-drag-slot,
+  .kanban-admin-layout .column-drag-slot > .kanban-column {
+    box-sizing: border-box;
+    width: 360px;
+    min-width: 0;
+    max-width: 360px;
+  }
+
+  .kanban-admin-layout .kanban-column {
+    overflow: visible;
+  }
+
+  .kanban-admin-layout .column-head {
+    box-sizing: border-box;
+    width: calc(100% - 20px);
+    max-width: calc(100% - 20px);
+    min-width: 0;
+  }
+
+  .kanban-admin-layout .column-title-row,
+  .kanban-admin-layout .column-title-row h3 {
+    min-width: 0;
+  }
+
+  .kanban-admin-layout .column-title-row h3 {
+    flex: 1 1 auto;
+  }
+
+  .kanban-admin-layout .column-head-actions {
+    flex: 0 0 auto;
+    gap: 4px;
+    margin-left: 8px;
+  }
+
+  .kanban-admin-layout .column-popover {
+    right: 0;
+  }
+}
+
 .login-panel h2,
 .login-panel h3 {
   margin: 0;
