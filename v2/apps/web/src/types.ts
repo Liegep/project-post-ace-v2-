@@ -91,6 +91,7 @@ export type ClientWidgetFlags = {
   reports: boolean;
   brandBrain: boolean;
   search: boolean;
+  texts: boolean;
 };
 
 export type ClientPermissions = {
@@ -100,6 +101,7 @@ export type ClientPermissions = {
   allowClientDownload: boolean;
   allowClientEditBrandBrain: boolean;
   allowClientSearch: boolean;
+  allowClientViewTexts: boolean;
   allowClientViewInvoices: boolean;
   allowClientViewReports: boolean;
   allowClientViewBrandBrain: boolean;

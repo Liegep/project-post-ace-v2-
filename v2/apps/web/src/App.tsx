@@ -258,6 +258,7 @@ const emptyClientPortal: ClientPortalPreview = {
     reports: false,
     brandBrain: false,
     search: false,
+    texts: false,
   },
   permissions: {
     allowClientEditCaption: false,
@@ -266,6 +267,7 @@ const emptyClientPortal: ClientPortalPreview = {
     allowClientDownload: false,
     allowClientEditBrandBrain: false,
     allowClientSearch: false,
+    allowClientViewTexts: true,
     allowClientViewInvoices: false,
     allowClientViewReports: false,
     allowClientViewBrandBrain: false,
@@ -988,11 +990,11 @@ const PORTAL_ACCESS_COPY: Record<PortalAccessLevel, { label: string; description
 };
 
 function ClientSettingsPanel({ slug, canManageAccess, onTrackingChange }: { slug: string; canManageAccess: boolean; onTrackingChange: (active: boolean) => void }) {
-  const [section, setSection] = useState<"people" | "portal">("people");
+  const [section, setSection] = useState<"people" | "portal">("portal");
   return <div className="client-settings-panel">
     <nav className="client-settings-tabs" aria-label="Configurações do cliente">
+      <button className={section === "portal" ? "active" : ""} onClick={() => setSection("portal")}><UiIcon name="settings" />Kanban e portal</button>
       <button className={section === "people" ? "active" : ""} onClick={() => setSection("people")}><UiIcon name="users" />Pessoas e acessos</button>
-      <button className={section === "portal" ? "active" : ""} onClick={() => setSection("portal")}><UiIcon name="settings" />Portal e permissões</button>
     </nav>
     {section === "people" ? <ClientPeopleAccessPanel slug={slug} canManage={canManageAccess} /> : <ClientTrackerPanel slug={slug} onTrackingChange={onTrackingChange} />}
   </div>;
@@ -1093,10 +1095,10 @@ function ClientTrackerPanel({ slug, onTrackingChange }: { slug: string; onTracki
   };
   if (!settings) return <p className="drawer-helper">{error || "Carregando configurações do cliente..."}</p>;
   const actions: Array<[keyof ClientTrackerSettings["clientPermissions"], string]> = [
-    ["allowClientEditCaption", "Editar textos e legendas"], ["allowClientCreatePost", "Criar posts"], ["allowClientCreateTags", "Criar etiquetas"], ["allowClientDownload", "Baixar conteúdo"], ["allowClientEditBrandBrain", "Editar Brand Brain"],
+    ["allowClientEditCaption", "Editar textos e legendas"], ["allowClientCreatePost", "Criar posts/cards"], ["allowClientCreateTags", "Criar etiquetas"], ["allowClientDownload", "Baixar conteúdo"], ["allowClientEditBrandBrain", "Editar Brand Brain"],
   ];
   const views: Array<[keyof ClientTrackerSettings["clientPermissions"], string]> = [
-    ["allowClientSearch", "Pesquisa"], ["allowClientViewInvoices", "Faturas"], ["allowClientViewReports", "Relatórios"], ["allowClientViewBrandBrain", "Brand Brain"], ["allowClientViewTracking", "Acompanhamento"],
+    ["allowClientViewTexts", "Ver textos"], ["allowClientSearch", "Usar pesquisa"], ["allowClientViewInvoices", "Ver faturas"], ["allowClientViewReports", "Ver relatórios"], ["allowClientViewBrandBrain", "Ver Brand Brain"], ["allowClientViewTracking", "Ver acompanhamento"],
   ];
   return <div className="tracker-settings">
     <label className="tracker-locale">Idioma do portal<select value={settings.locale} onChange={(event) => save({ ...settings, locale: event.target.value })}><option value="pt">🇧🇷 Português</option><option value="en">🇺🇸 English</option><option value="es">🇪🇸 Español</option><option value="it">🇮🇹 Italiano</option></select></label>
@@ -4780,17 +4782,22 @@ function ClientPortalWorkspacePage({
       .catch(() => setPortalReportsCount(0));
   }, [data.permissions.allowClientViewReports, slug, refreshKey]);
   useEffect(() => {
-    if ((portalView === "invoices" && !data.permissions.allowClientViewInvoices) || (portalView === "reports" && !data.permissions.allowClientViewReports) || (portalView === "brand" && !data.permissions.allowClientViewBrandBrain)) {
+    if ((portalView === "texts" && !data.permissions.allowClientViewTexts) || (portalView === "invoices" && !data.permissions.allowClientViewInvoices) || (portalView === "reports" && !data.permissions.allowClientViewReports) || (portalView === "brand" && !data.permissions.allowClientViewBrandBrain)) {
       setPortalView("board");
     }
-  }, [data.permissions.allowClientViewBrandBrain, data.permissions.allowClientViewInvoices, data.permissions.allowClientViewReports, portalView]);
+  }, [data.permissions.allowClientViewBrandBrain, data.permissions.allowClientViewInvoices, data.permissions.allowClientViewReports, data.permissions.allowClientViewTexts, portalView]);
   useEffect(() => {
     if (resource.loading) return;
+    if (!data.permissions.allowClientViewTexts) {
+      setPortalTexts([]);
+      setSelectedPortalTextId(null);
+      return;
+    }
     void listPortalTextsBySlug(slug).then((response) => {
       setPortalTexts(response.items);
       setSelectedPortalTextId((current) => response.items.some((item) => item.id === current) ? current : response.items[0]?.id ?? null);
     }).catch(() => setPortalTexts([]));
-  }, [resource.loading, slug, refreshKey]);
+  }, [data.permissions.allowClientViewTexts, resource.loading, slug, refreshKey]);
   const selectedPortalText = portalTexts.find((item) => item.id === selectedPortalTextId) ?? null;
   const selectedPortalTextBanner = selectedPortalText ? window.localStorage.getItem(`designhub-text-cover:${slug}:${selectedPortalText.id}`) : null;
   const portalCards = [...data.boardColumns.flatMap((column) => column.cards), ...data.withoutColumn];
@@ -4934,7 +4941,7 @@ function ClientPortalWorkspacePage({
         <nav ref={portalNavRef} id="portal-navigation" className={`portal-nav${portalMobileMenuOpen ? " mobile-open" : ""}`}>
           {[
             { view: "board" as const, label: tr("Aprovações"), count: approvalPortalCards.length },
-            { view: "texts" as const, label: tr("Textos"), count: portalTexts.filter((item) => item.status !== "Aprovado").length },
+            ...(data.permissions.allowClientViewTexts ? [{ view: "texts" as const, label: tr("Textos"), count: portalTexts.filter((item) => item.status !== "Aprovado").length }] : []),
             { view: "approved" as const, label: tr("Aprovados"), count: approvedPortalCards.length + approvedPortalTexts.length },
             ...(data.permissions.allowClientViewBrandBrain ? [{ view: "brand" as const, label: "Brand Brain", count: 0 }] : []),
             ...(data.permissions.allowClientSearch ? [{ view: "search" as const, label: tr("Pesquisa"), count: 0 }] : []),

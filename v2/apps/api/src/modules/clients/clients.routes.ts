@@ -312,7 +312,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
       [
         "UPDATE client_permissions SET",
         "allow_client_edit_caption = ?, allow_client_create_post = ?, allow_client_create_tags = ?, allow_client_download = ?,",
-        "allow_client_edit_brand_brain = ?, allow_client_search = ?, allow_client_view_invoices = ?, allow_client_view_reports = ?,",
+        "allow_client_edit_brand_brain = ?, allow_client_search = ?, allow_client_view_texts = ?, allow_client_view_invoices = ?, allow_client_view_reports = ?,",
         "allow_client_view_brand_brain = ?, allow_client_view_tracking = ?",
         "WHERE client_account_id = ?",
       ].join(" "),
@@ -323,6 +323,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         permissions.allowClientDownload ? 1 : 0,
         permissions.allowClientEditBrandBrain ? 1 : 0,
         permissions.allowClientSearch ? 1 : 0,
+        permissions.allowClientViewTexts ? 1 : 0,
         permissions.allowClientViewInvoices ? 1 : 0,
         permissions.allowClientViewReports ? 1 : 0,
         permissions.allowClientViewBrandBrain ? 1 : 0,

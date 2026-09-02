@@ -59,6 +59,7 @@ CREATE TABLE IF NOT EXISTS client_permissions (
   allow_client_download TINYINT(1) NOT NULL DEFAULT 0,
   allow_client_edit_brand_brain TINYINT(1) NOT NULL DEFAULT 0,
   allow_client_search TINYINT(1) NOT NULL DEFAULT 0,
+  allow_client_view_texts TINYINT(1) NOT NULL DEFAULT 1,
   allow_client_view_invoices TINYINT(1) NOT NULL DEFAULT 0,
   allow_client_view_reports TINYINT(1) NOT NULL DEFAULT 0,
   allow_client_view_brand_brain TINYINT(1) NOT NULL DEFAULT 0,

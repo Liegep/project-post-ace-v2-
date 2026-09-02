@@ -34,6 +34,7 @@ type ClientPermissionsRow = RowDataPacket & {
   allow_client_download: number;
   allow_client_edit_brand_brain: number;
   allow_client_search: number;
+  allow_client_view_texts: number;
   allow_client_view_invoices: number;
   allow_client_view_reports: number;
   allow_client_view_brand_brain: number;
@@ -56,6 +57,10 @@ export async function ensureClientMembershipAccessLevels(db: Pool) {
   const [rows] = await db.query<RowDataPacket[]>("SHOW COLUMNS FROM client_memberships LIKE 'portal_access_level'");
   if (rows.length === 0) {
     await db.query("ALTER TABLE client_memberships ADD COLUMN portal_access_level ENUM('admin', 'approver', 'viewer') NOT NULL DEFAULT 'approver' AFTER membership_role");
+  }
+  const [permissionRows] = await db.query<RowDataPacket[]>("SHOW COLUMNS FROM client_permissions LIKE 'allow_client_view_texts'");
+  if (permissionRows.length === 0) {
+    await db.query("ALTER TABLE client_permissions ADD COLUMN allow_client_view_texts TINYINT(1) NOT NULL DEFAULT 1 AFTER allow_client_search");
   }
 }
 
@@ -81,7 +86,7 @@ export async function findClientPermissionsByAccountId(
     [
       "SELECT",
       "allow_client_edit_caption, allow_client_create_post, allow_client_create_tags, allow_client_download,",
-      "allow_client_edit_brand_brain, allow_client_search, allow_client_view_invoices, allow_client_view_reports,",
+      "allow_client_edit_brand_brain, allow_client_search, allow_client_view_texts, allow_client_view_invoices, allow_client_view_reports,",
       "allow_client_view_brand_brain, allow_client_view_tracking",
       "FROM client_permissions",
       "WHERE client_account_id = ?",
@@ -100,6 +105,7 @@ export async function findClientPermissionsByAccountId(
     allowClientDownload: Boolean(row.allow_client_download),
     allowClientEditBrandBrain: Boolean(row.allow_client_edit_brand_brain),
     allowClientSearch: Boolean(row.allow_client_search),
+    allowClientViewTexts: Boolean(row.allow_client_view_texts),
     allowClientViewInvoices: Boolean(row.allow_client_view_invoices),
     allowClientViewReports: Boolean(row.allow_client_view_reports),
     allowClientViewBrandBrain: Boolean(row.allow_client_view_brand_brain),
@@ -175,9 +181,9 @@ export async function createClientAccountWithDefaults(
         "(",
         "id, client_account_id,",
         "allow_client_edit_caption, allow_client_create_post, allow_client_create_tags, allow_client_download,",
-        "allow_client_edit_brand_brain, allow_client_search, allow_client_view_invoices, allow_client_view_reports,",
+        "allow_client_edit_brand_brain, allow_client_search, allow_client_view_texts, allow_client_view_invoices, allow_client_view_reports,",
         "allow_client_view_brand_brain, allow_client_view_tracking",
-        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
       ].join(" "),
       [
         permissionsId,
@@ -188,6 +194,7 @@ export async function createClientAccountWithDefaults(
         input.clientPermissions.allowClientDownload ? 1 : 0,
         input.clientPermissions.allowClientEditBrandBrain ? 1 : 0,
         input.clientPermissions.allowClientSearch ? 1 : 0,
+        input.clientPermissions.allowClientViewTexts ? 1 : 0,
         input.clientPermissions.allowClientViewInvoices ? 1 : 0,
         input.clientPermissions.allowClientViewReports ? 1 : 0,
         input.clientPermissions.allowClientViewBrandBrain ? 1 : 0,

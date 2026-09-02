@@ -66,6 +66,7 @@ export type ClientTrackerSettings = {
     allowClientDownload: boolean;
     allowClientEditBrandBrain: boolean;
     allowClientSearch: boolean;
+    allowClientViewTexts: boolean;
     allowClientViewInvoices: boolean;
     allowClientViewReports: boolean;
     allowClientViewBrandBrain: boolean;

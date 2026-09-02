@@ -164,6 +164,7 @@ export const clientPreview: ClientPortalPreview = {
     reports: true,
     brandBrain: true,
     search: true,
+    texts: true,
   },
   permissions: {
     allowClientEditCaption: true,
@@ -172,6 +173,7 @@ export const clientPreview: ClientPortalPreview = {
     allowClientDownload: true,
     allowClientEditBrandBrain: true,
     allowClientSearch: true,
+    allowClientViewTexts: true,
     allowClientViewInvoices: true,
     allowClientViewReports: true,
     allowClientViewBrandBrain: true,

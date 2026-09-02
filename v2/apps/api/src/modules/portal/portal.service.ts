@@ -109,6 +109,7 @@ export async function getPortalHome(
       reports: permissions.allowClientViewReports,
       brandBrain: permissions.allowClientViewBrandBrain,
       search: permissions.allowClientSearch,
+      texts: permissions.allowClientViewTexts,
     },
     upcomingItems,
   };

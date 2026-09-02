@@ -482,6 +482,7 @@ export const demoRoutes: FastifyPluginAsync = async (app) => {
       allowClientDownload: true,
       allowClientEditBrandBrain: true,
       allowClientSearch: true,
+      allowClientViewTexts: true,
       allowClientViewInvoices: true,
       allowClientViewReports: true,
       allowClientViewBrandBrain: true,
@@ -494,6 +495,7 @@ export const demoRoutes: FastifyPluginAsync = async (app) => {
       reports: true,
       brandBrain: true,
       search: true,
+      texts: true,
     },
     upcomingItems: [
       {
@@ -526,6 +528,7 @@ export const demoRoutes: FastifyPluginAsync = async (app) => {
       allowClientDownload: true,
       allowClientEditBrandBrain: true,
       allowClientSearch: true,
+      allowClientViewTexts: true,
       allowClientViewInvoices: true,
       allowClientViewReports: true,
       allowClientViewBrandBrain: true,
