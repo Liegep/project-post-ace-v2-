@@ -110,6 +110,33 @@ function normalizeCommentRole(value: unknown) {
   return "guest";
 }
 
+function legacyCommentToPlainText(value: unknown) {
+  const source = String(value ?? "");
+  if (!/<\/?[a-z][^>]*>/i.test(source)) return source.trim();
+  const decoded = source
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+    .replace(/<br\s*\/?\s*>/gi, "\n")
+    .replace(/<li\b[^>]*>/gi, "• ")
+    .replace(/<\/(li|p|div|h[1-6]|blockquote|ul|ol)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/&#(\d+);/g, (_, code: string) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code: string) => String.fromCodePoint(Number.parseInt(code, 16)));
+  return decoded
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line, index, lines) => line || (index > 0 && lines[index - 1]))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 function normalizeCalendarStatus(value: unknown) {
   const status = String(value ?? "").toLowerCase();
   if (["draft", "in_review", "approved", "scheduled", "published"].includes(status)) return status;
@@ -313,7 +340,7 @@ async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
     const legacyUserId = textValue(comment, "user_id");
     await connection.query(
       "INSERT INTO card_comments (id, card_id, user_id, author_name, author_role, comment_text, is_internal, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, COALESCE(?, CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE author_name=VALUES(author_name), comment_text=VALUES(comment_text)",
-      [textValue(comment, "id"), textValue(comment, "post_id"), userMap.get(legacyUserId) ?? null, textValue(comment, "author", "Usuário legado"), normalizeCommentRole(roleByLegacyId.get(legacyUserId)), textValue(comment, "text"), mysqlDateTime(comment.created_at)],
+      [textValue(comment, "id"), textValue(comment, "post_id"), userMap.get(legacyUserId) ?? null, textValue(comment, "author", "Usuário legado"), normalizeCommentRole(roleByLegacyId.get(legacyUserId)), legacyCommentToPlainText(comment.text), mysqlDateTime(comment.created_at)],
     );
   }
 
