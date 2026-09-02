@@ -6,6 +6,9 @@ export const membershipRoles = ["admin", "colaborador", "cliente"] as const;
 
 export type MembershipRole = (typeof membershipRoles)[number];
 
+export const portalAccessLevels = ["admin", "approver", "viewer"] as const;
+export type PortalAccessLevel = (typeof portalAccessLevels)[number];
+
 export type AuthUser = {
   id: string;
   fullName: string;
@@ -19,6 +22,7 @@ export type AuthUser = {
 export type ClientMembership = {
   clientAccountId: string;
   membershipRole: MembershipRole;
+  portalAccessLevel: PortalAccessLevel;
   isPrimary: boolean;
   clientName: string;
   clientSlug: string;

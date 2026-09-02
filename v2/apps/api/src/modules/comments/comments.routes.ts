@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { assertClientAccess, assertInternalAccess } from "../auth/auth.access.js";
+import { assertClientAccess, assertInternalAccess, assertPortalAccessLevel } from "../auth/auth.access.js";
 import { createCommentSchema } from "./comments.schemas.js";
 import { addCardComment, getCardComments } from "./comments.service.js";
 
@@ -46,6 +46,7 @@ export const commentRoutes: FastifyPluginAsync = async (app) => {
   app.post("/portal/accounts/:clientAccountId/cards/:cardId/comments", async (request) => {
     const params = request.params as { clientAccountId: string; cardId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
+    assertPortalAccessLevel(request, params.clientAccountId, ["admin", "approver"]);
     const input = createCommentSchema.parse(request.body);
     const actor = request.auth!.user;
 

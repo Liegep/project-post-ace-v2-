@@ -47,9 +47,17 @@ type ClientAccessRow = RowDataPacket & {
   email: string;
   global_role: "super_admin" | "admin" | "colaborador" | "cliente";
   membership_role: "admin" | "colaborador" | "cliente";
+  portal_access_level: "admin" | "approver" | "viewer";
   is_primary: number;
   created_at: Date | string;
 };
+
+export async function ensureClientMembershipAccessLevels(db: Pool) {
+  const [rows] = await db.query<RowDataPacket[]>("SHOW COLUMNS FROM client_memberships LIKE 'portal_access_level'");
+  if (rows.length === 0) {
+    await db.query("ALTER TABLE client_memberships ADD COLUMN portal_access_level ENUM('admin', 'approver', 'viewer') NOT NULL DEFAULT 'approver' AFTER membership_role");
+  }
+}
 
 export async function findClientAccountById(db: Pool, clientAccountId: string) {
   const [rows] = await db.query<ClientAccountLookupRow[]>(
@@ -238,6 +246,7 @@ export async function listClientAccesses(db: Pool, clientAccountId: string) {
       "u.email,",
       "u.global_role,",
       "cm.membership_role,",
+      "cm.portal_access_level,",
       "cm.is_primary,",
       "cm.created_at",
       "FROM client_memberships cm",
@@ -255,6 +264,7 @@ export async function listClientAccesses(db: Pool, clientAccountId: string) {
     email: row.email,
     globalRole: row.global_role,
     membershipRole: row.membership_role,
+    portalAccessLevel: row.portal_access_level,
     isPrimary: Boolean(row.is_primary),
     createdAt: row.created_at,
   }));
@@ -294,11 +304,12 @@ export async function upsertClientMembership(
       await connection.query(
         [
           "UPDATE client_memberships",
-          "SET membership_role = ?, assigned_by_user_id = ?, is_primary = ?",
+          "SET membership_role = ?, portal_access_level = ?, assigned_by_user_id = ?, is_primary = ?",
           "WHERE id = ?",
         ].join(" "),
         [
           input.membershipRole,
+          input.portalAccessLevel,
           assignedByUserId,
           input.isPrimary ? 1 : 0,
           existing.id,
@@ -308,14 +319,15 @@ export async function upsertClientMembership(
       await connection.query(
         [
           "INSERT INTO client_memberships",
-          "(id, user_id, client_account_id, membership_role, assigned_by_user_id, is_primary)",
-          "VALUES (?, ?, ?, ?, ?, ?)",
+          "(id, user_id, client_account_id, membership_role, portal_access_level, assigned_by_user_id, is_primary)",
+          "VALUES (?, ?, ?, ?, ?, ?, ?)",
         ].join(" "),
         [
           crypto.randomUUID(),
           input.userId,
           clientAccountId,
           input.membershipRole,
+          input.portalAccessLevel,
           assignedByUserId,
           input.isPrimary ? 1 : 0,
         ],
@@ -331,4 +343,12 @@ export async function upsertClientMembership(
   }
 
   return listClientAccesses(db, clientAccountId);
+}
+
+export async function removeClientMembership(db: Pool, clientAccountId: string, membershipId: string) {
+  const [result] = await db.query<import("mysql2/promise").ResultSetHeader>(
+    "DELETE FROM client_memberships WHERE id = ? AND client_account_id = ?",
+    [membershipId, clientAccountId],
+  );
+  return result.affectedRows > 0;
 }

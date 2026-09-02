@@ -154,6 +154,7 @@ export const adminPreview: AdminWorkspacePreview = {
 export const clientPreview: ClientPortalPreview = {
   accountName: "Serena Genovese",
   locale: "Italiano",
+  accessLevel: "approver",
   trackingEnabled: true,
   showArchivedToClient: true,
   widgets: {

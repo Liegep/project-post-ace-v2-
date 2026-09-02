@@ -36,7 +36,10 @@ export type CreateManagedClientUserInput = {
   password: string;
   locale: string;
   clientAccountId: string;
+  portalAccessLevel?: PortalAccessLevel;
 };
+
+export type PortalAccessLevel = "admin" | "approver" | "viewer";
 
 export type ClientAccess = {
   membershipId: string;
@@ -45,6 +48,7 @@ export type ClientAccess = {
   email: string;
   globalRole: "super_admin" | "admin" | "colaborador" | "cliente";
   membershipRole: "admin" | "colaborador" | "cliente";
+  portalAccessLevel: PortalAccessLevel;
   isPrimary: boolean;
   createdAt: string;
 };
@@ -181,6 +185,7 @@ type ApiPortalHomeResponse = {
     showArchivedToClient: boolean;
   };
   permissions: ClientPortalPreview["permissions"];
+  accessLevel: ClientPortalPreview["accessLevel"];
   widgets: ClientPortalPreview["widgets"];
   upcomingItems: ClientPortalPreview["upcomingItems"];
 };
@@ -604,6 +609,7 @@ export async function loadClientPortalBySlug(slug: string): Promise<ClientPortal
     clientGreetingName: homeResponse.account.portalTitle || homeResponse.account.name,
     clientLogoUrl: homeResponse.account.logoUrl ?? null,
     locale: homeResponse.account.locale,
+    accessLevel: homeResponse.accessLevel ?? "approver",
     trackingEnabled: homeResponse.account.trackingEnabled,
     showArchivedToClient: homeResponse.account.showArchivedToClient,
     widgets: homeResponse.widgets,
@@ -896,6 +902,7 @@ export async function createManagedClientUser(input: CreateManagedClientUserInpu
       memberships: [{
         clientAccountId: input.clientAccountId,
         membershipRole: "cliente",
+        portalAccessLevel: input.portalAccessLevel ?? "approver",
         isPrimary: true,
       }],
     }),
@@ -932,6 +939,30 @@ export async function deleteAdminClient(clientId: string) {
 
 export async function loadClientAccesses(clientId: string) {
   return fetchJson<{ client: AdminClientOption; accesses: ClientAccess[] }>(`/api/clients/${clientId}/accesses`);
+}
+
+export async function loadClientAccessesBySlug(slug: string) {
+  const client = await findAdminClientBySlug(slug);
+  return loadClientAccesses(client.id);
+}
+
+export async function createClientPortalAccessBySlug(slug: string, input: { fullName: string; email: string; password: string; locale: string; portalAccessLevel: PortalAccessLevel }) {
+  const client = await findAdminClientBySlug(slug);
+  await createManagedClientUser({ ...input, clientAccountId: client.id });
+  return loadClientAccesses(client.id);
+}
+
+export async function updateClientPortalAccessBySlug(slug: string, access: ClientAccess, portalAccessLevel: PortalAccessLevel) {
+  const client = await findAdminClientBySlug(slug);
+  return sendJson<{ ok: true; accesses: ClientAccess[] }>(`/api/clients/${client.id}/accesses`, {
+    method: "POST",
+    body: JSON.stringify({ userId: access.userId, membershipRole: "cliente", portalAccessLevel, isPrimary: access.isPrimary }),
+  });
+}
+
+export async function removeClientAccessBySlug(slug: string, membershipId: string) {
+  const client = await findAdminClientBySlug(slug);
+  return sendJson<{ ok: true; accesses: ClientAccess[] }>(`/api/clients/${client.id}/accesses/${membershipId}`, { method: "DELETE" });
 }
 
 export async function shareClientWithMember(clientId: string, input: { userId: string; membershipRole: "admin" | "colaborador"; isPrimary?: boolean }) {

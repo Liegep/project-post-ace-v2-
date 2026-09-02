@@ -3,6 +3,7 @@ import {
   assertCanCreateClients,
   assertClientAccess,
   assertInternalAccess,
+  assertPortalAccessLevel,
   getClientScope,
   hasGlobalRole,
 } from "../auth/auth.access.js";
@@ -18,7 +19,7 @@ import {
   createClientAccount,
   getClientAccessList,
 } from "./clients.service.js";
-import { findClientAccountById, findClientPermissionsByAccountId } from "./clients.repository.js";
+import { ensureClientMembershipAccessLevels, findClientAccountById, findClientPermissionsByAccountId, removeClientMembership } from "./clients.repository.js";
 import { listColumnsByClientAccountId } from "../columns/columns.repository.js";
 import {
   addBrandBrainComment,
@@ -31,12 +32,14 @@ import {
 import { ensureClientFeedbackEventsTable, recordClientFeedbackEvent } from "./client-feedback.service.js";
 
 export const clientRoutes: FastifyPluginAsync = async (app) => {
+  await ensureClientMembershipAccessLevels(app.db);
   await ensureBrandBrainTables(app.db);
   await ensureClientFeedbackEventsTable(app.db);
 
   app.post("/portal/accounts/:clientAccountId/feedback-events", async (request) => {
     const { clientAccountId } = request.params as { clientAccountId: string };
     assertClientAccess(request, clientAccountId, ["admin", "colaborador", "cliente"]);
+    assertPortalAccessLevel(request, clientAccountId, ["admin", "approver"]);
     const body = request.body as { sourceType?: string; sourceId?: string; activityType?: string; title?: string; detail?: string };
     if (body.sourceType !== "contract" || body.activityType !== "contract_accepted" || !body.sourceId?.trim() || !body.title?.trim()) throw app.httpErrors.badRequest("Evento de aceite inválido.");
     const account = await findClientAccountById(app.db, clientAccountId);
@@ -63,6 +66,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
   app.put("/clients/:clientAccountId/brand-brain", async (request) => {
     const { clientAccountId } = request.params as { clientAccountId: string };
     assertClientAccess(request, clientAccountId, ["admin", "colaborador", "cliente"]);
+    assertPortalAccessLevel(request, clientAccountId, ["admin"]);
     const permissions = await findClientPermissionsByAccountId(app.db, clientAccountId);
     if (request.auth?.user.globalRole === "cliente" && !permissions?.allowClientEditBrandBrain) throw app.httpErrors.forbidden("Este cliente não pode editar o Brand Brain.");
     const body = request.body as { data?: Record<string, unknown>; summary?: string };
@@ -87,6 +91,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
   app.post("/clients/:clientAccountId/brand-brain/comments", async (request) => {
     const { clientAccountId } = request.params as { clientAccountId: string };
     assertClientAccess(request, clientAccountId, ["admin", "colaborador", "cliente"]);
+    assertPortalAccessLevel(request, clientAccountId, ["admin", "approver"]);
     const permissions = await findClientPermissionsByAccountId(app.db, clientAccountId);
     const actor = request.auth!.user;
     if (actor.globalRole === "cliente" && !permissions?.allowClientViewBrandBrain) throw app.httpErrors.forbidden("Brand Brain não está disponível para este cliente.");
@@ -431,5 +436,16 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
       ok: true,
       accesses,
     };
+  });
+
+  app.delete("/clients/:clientAccountId/accesses/:membershipId", async (request) => {
+    if (!request.auth) throw app.httpErrors.unauthorized("Sessão obrigatória.");
+    if (!hasGlobalRole(request.auth.user.globalRole, "super_admin")) {
+      throw app.httpErrors.forbidden("Apenas o super admin pode remover acessos.");
+    }
+    const params = request.params as { clientAccountId: string; membershipId: string };
+    const removed = await removeClientMembership(app.db, params.clientAccountId, params.membershipId);
+    if (!removed) throw app.httpErrors.notFound("Acesso não encontrado.");
+    return { ok: true, ...(await getClientAccessList(app, params.clientAccountId)) };
   });
 };

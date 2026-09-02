@@ -27,6 +27,7 @@ type UserListRow = RowDataPacket & {
 type MembershipRow = RowDataPacket & {
   client_account_id: string;
   membership_role: ClientMembership["membershipRole"];
+  portal_access_level: ClientMembership["portalAccessLevel"];
   is_primary: number;
   client_name: string;
   client_slug: string;
@@ -55,6 +56,7 @@ export async function findAuthContextByUserId(
       "SELECT",
       "cm.client_account_id,",
       "cm.membership_role,",
+      "cm.portal_access_level,",
       "cm.is_primary,",
       "ca.name AS client_name,",
       "ca.slug AS client_slug,",
@@ -80,6 +82,7 @@ export async function findAuthContextByUserId(
     memberships: membershipRows.map((row) => ({
       clientAccountId: row.client_account_id,
       membershipRole: row.membership_role,
+      portalAccessLevel: row.portal_access_level,
       isPrimary: Boolean(row.is_primary),
       clientName: row.client_name,
       clientSlug: row.client_slug,
@@ -160,14 +163,15 @@ export async function createUserWithMemberships(
       await connection.query(
         [
           "INSERT INTO client_memberships",
-          "(id, user_id, client_account_id, membership_role, assigned_by_user_id, is_primary)",
-          "VALUES (?, ?, ?, ?, ?, ?)",
+          "(id, user_id, client_account_id, membership_role, portal_access_level, assigned_by_user_id, is_primary)",
+          "VALUES (?, ?, ?, ?, ?, ?, ?)",
         ].join(" "),
         [
           crypto.randomUUID(),
           input.id,
           membership.clientAccountId,
           membership.membershipRole,
+          membership.portalAccessLevel,
           input.createdByUserId,
           membership.isPrimary ? 1 : 0,
         ],

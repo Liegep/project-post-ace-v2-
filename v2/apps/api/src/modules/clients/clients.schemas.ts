@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { membershipRoles } from "../auth/auth.types.js";
+import { portalAccessLevels } from "../auth/auth.types.js";
 
 const defaultClientPermissions = {
   allowClientEditCaption: false,
@@ -57,6 +58,7 @@ export const createClientAccountSchema = z.object({
 export const upsertClientMembershipSchema = z.object({
   userId: z.string().min(1),
   membershipRole: z.enum(membershipRoles),
+  portalAccessLevel: z.enum(portalAccessLevels).default("approver"),
   isPrimary: z.boolean().default(false),
 });
 

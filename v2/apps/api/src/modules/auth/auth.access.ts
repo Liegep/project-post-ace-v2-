@@ -1,4 +1,5 @@
 import type { FastifyRequest } from "fastify";
+import type { PortalAccessLevel } from "./auth.types.js";
 import type { AppRole, ClientMembership, MembershipRole } from "./auth.types.js";
 
 const roleRank: Record<AppRole, number> = {
@@ -119,5 +120,19 @@ export function assertClientAccess(
         "Seu papel nessa conta não permite esta ação.",
       );
     }
+  }
+}
+
+export function assertPortalAccessLevel(
+  request: FastifyRequest,
+  clientAccountId: string,
+  allowedLevels: PortalAccessLevel[],
+) {
+  const auth = request.auth;
+  if (!auth) throw request.server.httpErrors.unauthorized("Sessão obrigatória.");
+  if (auth.user.globalRole !== "cliente") return;
+  const membership = auth.memberships.find((item) => item.clientAccountId === clientAccountId);
+  if (!membership || !allowedLevels.includes(membership.portalAccessLevel)) {
+    throw request.server.httpErrors.forbidden("Seu nível de acesso permite apenas visualizar este conteúdo.");
   }
 }

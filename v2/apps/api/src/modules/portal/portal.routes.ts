@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import { assertClientAccess } from "../auth/auth.access.js";
+import { assertClientAccess, assertPortalAccessLevel } from "../auth/auth.access.js";
 import { addCardComment } from "../comments/comments.service.js";
 import { getPortalCardDetail } from "../cards/card-detail.service.js";
 import { createKanbanCard } from "../cards/cards.service.js";
@@ -16,7 +16,10 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
     const params = request.params as { clientAccountId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
 
-    return getPortalHome(app, params.clientAccountId);
+    const accessLevel = request.auth?.user.globalRole === "cliente"
+      ? request.auth.memberships.find((item) => item.clientAccountId === params.clientAccountId)?.portalAccessLevel ?? "approver"
+      : "admin";
+    return getPortalHome(app, params.clientAccountId, accessLevel);
   });
 
   app.get("/portal/accounts/:clientAccountId/board", async (request) => {
@@ -56,6 +59,7 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
   app.post("/portal/accounts/:clientAccountId/cards", async (request) => {
     const params = request.params as { clientAccountId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
+    assertPortalAccessLevel(request, params.clientAccountId, ["admin"]);
     const permissions = await findClientPermissionsByAccountId(app.db, params.clientAccountId);
     if (!permissions?.allowClientCreatePost) {
       throw app.httpErrors.forbidden("A criação de posts não está habilitada para este cliente.");
@@ -89,6 +93,7 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
   app.patch("/portal/accounts/:clientAccountId/cards/:cardId/caption", async (request) => {
     const params = request.params as { clientAccountId: string; cardId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
+    assertPortalAccessLevel(request, params.clientAccountId, ["admin"]);
     const permissions = await findClientPermissionsByAccountId(app.db, params.clientAccountId);
     if (!permissions?.allowClientEditCaption) {
       throw app.httpErrors.forbidden("A edição de legendas não está habilitada para este cliente.");
@@ -128,6 +133,7 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
   app.post("/portal/accounts/:clientAccountId/tags", async (request) => {
     const params = request.params as { clientAccountId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
+    assertPortalAccessLevel(request, params.clientAccountId, ["admin"]);
     const permissions = await findClientPermissionsByAccountId(app.db, params.clientAccountId);
     if (!permissions?.allowClientCreateTags) {
       throw app.httpErrors.forbidden("A criação de etiquetas não está habilitada para este cliente.");
@@ -143,6 +149,7 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
   app.patch("/portal/accounts/:clientAccountId/cards/:cardId/tags", async (request) => {
     const params = request.params as { clientAccountId: string; cardId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
+    assertPortalAccessLevel(request, params.clientAccountId, ["admin"]);
     const permissions = await findClientPermissionsByAccountId(app.db, params.clientAccountId);
     if (!permissions?.allowClientCreateTags) {
       throw app.httpErrors.forbidden("O uso de etiquetas não está habilitado para este cliente.");
@@ -174,6 +181,7 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
   app.post("/portal/accounts/:clientAccountId/cards/:cardId/decision", async (request) => {
     const params = request.params as { clientAccountId: string; cardId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
+    assertPortalAccessLevel(request, params.clientAccountId, ["admin", "approver"]);
     const input = portalCardDecisionSchema.parse(request.body);
     const card = await findCardById(app.db, params.cardId);
     if (!card || card.clientAccountId !== params.clientAccountId) {

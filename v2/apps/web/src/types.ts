@@ -111,6 +111,7 @@ export type ClientPortalPreview = {
   clientGreetingName?: string;
   clientLogoUrl?: string | null;
   locale: string;
+  accessLevel: "admin" | "approver" | "viewer";
   trackingEnabled: boolean;
   showArchivedToClient: boolean;
   widgets: ClientWidgetFlags;

@@ -76,6 +76,7 @@ CREATE TABLE IF NOT EXISTS client_memberships (
   user_id CHAR(36) NOT NULL,
   client_account_id CHAR(36) NOT NULL,
   membership_role ENUM('admin', 'colaborador', 'cliente') NOT NULL,
+  portal_access_level ENUM('admin', 'approver', 'viewer') NOT NULL DEFAULT 'approver',
   assigned_by_user_id CHAR(36) NULL,
   is_primary TINYINT(1) NOT NULL DEFAULT 0,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

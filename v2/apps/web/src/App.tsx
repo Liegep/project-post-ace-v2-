@@ -31,6 +31,10 @@ import {
   deleteAdminClient,
   createManagedClientUser,
   loadClientAccesses,
+  loadClientAccessesBySlug,
+  createClientPortalAccessBySlug,
+  updateClientPortalAccessBySlug,
+  removeClientAccessBySlug,
   listManagedUsers,
   resetManagedUserPassword,
   shareClientWithMember,
@@ -75,6 +79,7 @@ import {
   loadAgendaLabels,
   type AdminClientOption,
   type ClientAccess,
+  type PortalAccessLevel,
   type ManagedUser,
   type ClientTrackerSettings,
   uploadAdminMedia,
@@ -243,6 +248,7 @@ const emptyAdminWorkspace: AdminWorkspacePreview = {
 const emptyClientPortal: ClientPortalPreview = {
   accountName: "",
   locale: "",
+  accessLevel: "approver",
   trackingEnabled: false,
   showArchivedToClient: false,
   widgets: {
@@ -883,7 +889,7 @@ type KanbanAutomation = { id: string; name: string; enabled: boolean; triggerTyp
 
 const EMPTY_DRAWER: WorkspaceDrawerData = { notes: [], links: [], quick: [], draftsByUser: {}, pautaIdeas: [] };
 
-function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, onPautaCountChange }: { slug: string; userId: string; initialQuickLinks: Array<{ label: string; href: string }>; columns: BoardColumn[]; tags: ClientTagDefinition[]; onPautaCountChange?: (count: number) => void }) {
+function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canManageAccess, onPautaCountChange }: { slug: string; userId: string; initialQuickLinks: Array<{ label: string; href: string }>; columns: BoardColumn[]; tags: ClientTagDefinition[]; canManageAccess: boolean; onPautaCountChange?: (count: number) => void }) {
   const [tab, setTab] = useState<"notes" | "drafts" | "links" | "quick" | "ideas" | "tracker" | "progress">("quick");
   const [isOpen, setIsOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -962,7 +968,7 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, onPau
     </aside></>, document.body)}
     {isOpen ? createPortal(<div className="workspace-drawer-modal-backdrop" role="presentation" onMouseDown={() => setIsOpen(false)}><section className="workspace-drawer-panel workspace-drawer-modal" role="dialog" aria-modal="true" aria-labelledby="workspace-drawer-modal-title" onMouseDown={(event) => event.stopPropagation()}>
       <header><h3 id="workspace-drawer-modal-title">{tabs.find((item) => item.id === tab)?.label}{tab === "progress" ? <span className="drawer-title-count">{columns.reduce((count, column) => count + column.cards.length, 0)}</span> : null}</h3><div>{tab === "progress" ? <button className="tracker-header-filter" onClick={() => setTrackerFilterOpen((value) => !value)} title="Filtrar o que o cliente vê" aria-label="Filtrar o que o cliente vê">⌕</button> : <small>{loaded ? "Equipe interna" : "Carregando..."}</small>}<button className="workspace-drawer-close" onClick={() => setIsOpen(false)} aria-label="Fechar janela">×</button></div></header>
-      {tab === "tracker" ? <ClientTrackerPanel slug={slug} onTrackingChange={setTrackingActive} /> : tab === "progress" ? <ProjectTrackerPanel slug={slug} columns={columns} filterOpen={trackerFilterOpen} /> : tab === "ideas" ? <section className="drawer-ideas"><div className="drawer-ideas-count"><span>💡</span><div><strong>{drawer.pautaIdeas.length} {drawer.pautaIdeas.length === 1 ? "pauta" : "pautas"}</strong><small>salvas para este cliente</small></div></div><p className="drawer-helper">Registre uma ideia rápida aqui. A organização e o envio ficam na aba Pautas.</p><button className="gradient-button drawer-ideas-create" type="button" onClick={() => { setIdeaSaved(false); setIdeaFormOpen(true); }}>+ Nova ideia de pauta</button>{ideaSaved ? <p className="drawer-idea-success">Pauta enviada para a aba Pautas.</p> : null}{ideaFormOpen ? <div className="drawer-ideas-form"><label>Título<input autoFocus value={ideaTitle} onChange={(event) => setIdeaTitle(event.target.value)} placeholder="Ex.: Carrossel com mitos e verdades" /></label><label>Descrição<textarea value={ideaDescription} onChange={(event) => setIdeaDescription(event.target.value)} placeholder="Contexto e objetivo da pauta" /></label><label>Legenda sugerida<textarea value={ideaCaption} onChange={(event) => setIdeaCaption(event.target.value)} placeholder="Primeira direção para a legenda" /></label><div><button type="button" onClick={saveIdea}>Enviar para Pautas</button><button type="button" className="drawer-secondary-action" onClick={() => setIdeaFormOpen(false)}>Cancelar</button></div></div> : null}</section> : (tab === "notes" || tab === "drafts") ? <>
+      {tab === "tracker" ? <ClientSettingsPanel slug={slug} canManageAccess={canManageAccess} onTrackingChange={setTrackingActive} /> : tab === "progress" ? <ProjectTrackerPanel slug={slug} columns={columns} filterOpen={trackerFilterOpen} /> : tab === "ideas" ? <section className="drawer-ideas"><div className="drawer-ideas-count"><span>💡</span><div><strong>{drawer.pautaIdeas.length} {drawer.pautaIdeas.length === 1 ? "pauta" : "pautas"}</strong><small>salvas para este cliente</small></div></div><p className="drawer-helper">Registre uma ideia rápida aqui. A organização e o envio ficam na aba Pautas.</p><button className="gradient-button drawer-ideas-create" type="button" onClick={() => { setIdeaSaved(false); setIdeaFormOpen(true); }}>+ Nova ideia de pauta</button>{ideaSaved ? <p className="drawer-idea-success">Pauta enviada para a aba Pautas.</p> : null}{ideaFormOpen ? <div className="drawer-ideas-form"><label>Título<input autoFocus value={ideaTitle} onChange={(event) => setIdeaTitle(event.target.value)} placeholder="Ex.: Carrossel com mitos e verdades" /></label><label>Descrição<textarea value={ideaDescription} onChange={(event) => setIdeaDescription(event.target.value)} placeholder="Contexto e objetivo da pauta" /></label><label>Legenda sugerida<textarea value={ideaCaption} onChange={(event) => setIdeaCaption(event.target.value)} placeholder="Primeira direção para a legenda" /></label><div><button type="button" onClick={saveIdea}>Enviar para Pautas</button><button type="button" className="drawer-secondary-action" onClick={() => setIdeaFormOpen(false)}>Cancelar</button></div></div> : null}</section> : (tab === "notes" || tab === "drafts") ? <>
         <p className="drawer-helper">{tab === "notes" ? "Recados são visíveis para toda a equipe." : "Rascunhos e anexos são visíveis somente para você."}</p>
         <div className="drawer-compose"><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder={tab === "notes" ? "Escreva um recado para a equipe" : "Escreva uma anotação privada"} /><div><button onClick={saveText}>{editingNoteIndex !== null || editingDraftId !== null ? "Salvar alterações" : tab === "notes" ? "Publicar recado" : "Salvar rascunho"}</button>{(editingNoteIndex !== null || editingDraftId !== null) ? <button className="drawer-secondary-action" onClick={resetTextEditor}>Cancelar</button> : null}{tab === "drafts" ? <label className="drawer-attachment">Anexar foto<input type="file" accept="image/*" onChange={(event) => void addDraftAttachment(event.target.files?.[0] ?? null)} /></label> : null}</div></div>
         {tab === "notes" ? <div className="drawer-card-list">{drawer.notes.map((note, index) => <article key={`${note}-${index}`}><p>{note}</p><div className="drawer-item-actions"><button onClick={() => editNote(note, index)}>Editar</button><button className="danger" onClick={() => deleteNote(index)}>Excluir</button></div></article>)}</div> : <div className="drawer-card-list">{drafts.map((draft) => <article key={draft.id}><p>{draft.text}</p>{draft.attachmentUrl ? <a href={draft.attachmentUrl} target="_blank" rel="noreferrer">Ver anexo</a> : null}<div className="drawer-item-actions"><button onClick={() => editDraft(draft)}>Editar</button><button className="danger" onClick={() => deleteDraft(draft.id)}>Excluir</button></div></article>)}</div>}
@@ -973,6 +979,96 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, onPau
     </section></div>, document.body) : null}
     <AutomationModal open={automationOpen} automations={automations} columns={columns} tags={tags} onClose={() => setAutomationOpen(false)} onChange={(items) => { setAutomations(items); void saveAdminKanbanAutomationsBySlug(slug, items); }} />
   </>;
+}
+
+const PORTAL_ACCESS_COPY: Record<PortalAccessLevel, { label: string; description: string }> = {
+  admin: { label: "Administrador", description: "Aprova, comenta e usa as ferramentas liberadas no portal." },
+  approver: { label: "Aprovador", description: "Visualiza, comenta e aprova conteúdos." },
+  viewer: { label: "Somente visualização", description: "Pode consultar o portal, sem comentar ou aprovar." },
+};
+
+function ClientSettingsPanel({ slug, canManageAccess, onTrackingChange }: { slug: string; canManageAccess: boolean; onTrackingChange: (active: boolean) => void }) {
+  const [section, setSection] = useState<"people" | "portal">("people");
+  return <div className="client-settings-panel">
+    <nav className="client-settings-tabs" aria-label="Configurações do cliente">
+      <button className={section === "people" ? "active" : ""} onClick={() => setSection("people")}><UiIcon name="users" />Pessoas e acessos</button>
+      <button className={section === "portal" ? "active" : ""} onClick={() => setSection("portal")}><UiIcon name="settings" />Portal e permissões</button>
+    </nav>
+    {section === "people" ? <ClientPeopleAccessPanel slug={slug} canManage={canManageAccess} /> : <ClientTrackerPanel slug={slug} onTrackingChange={onTrackingChange} />}
+  </div>;
+}
+
+function ClientPeopleAccessPanel({ slug, canManage }: { slug: string; canManage: boolean }) {
+  const [accesses, setAccesses] = useState<ClientAccess[]>([]);
+  const [clientLocale, setClientLocale] = useState("pt");
+  const [loading, setLoading] = useState(true);
+  const [formOpen, setFormOpen] = useState(false);
+  const [form, setForm] = useState({ fullName: "", email: "", password: "", portalAccessLevel: "approver" as PortalAccessLevel });
+  const [passwordFor, setPasswordFor] = useState<string | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [saving, setSaving] = useState("");
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true); setError("");
+    try {
+      const result = await loadClientAccessesBySlug(slug);
+      setAccesses(result.accesses);
+      setClientLocale(result.client.locale || "pt");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível carregar os acessos.");
+    } finally { setLoading(false); }
+  }, [slug]);
+
+  useEffect(() => { void load(); }, [load]);
+  const portalUsers = accesses.filter((access) => access.globalRole === "cliente");
+  const internalUsers = accesses.filter((access) => access.globalRole !== "cliente");
+
+  const createAccess = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!form.fullName.trim() || !form.email.trim() || form.password.length < 8) return;
+    setSaving("create"); setError(""); setMessage("");
+    try {
+      const result = await createClientPortalAccessBySlug(slug, { ...form, fullName: form.fullName.trim(), email: form.email.trim(), locale: clientLocale });
+      setAccesses(result.accesses); setForm({ fullName: "", email: "", password: "", portalAccessLevel: "approver" }); setFormOpen(false); setMessage("Acesso criado com sucesso.");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível criar o acesso."); }
+    finally { setSaving(""); }
+  };
+
+  const changeLevel = async (access: ClientAccess, portalAccessLevel: PortalAccessLevel) => {
+    setSaving(access.membershipId); setError(""); setMessage("");
+    try {
+      const result = await updateClientPortalAccessBySlug(slug, access, portalAccessLevel);
+      setAccesses(result.accesses); setMessage(`Nível de ${access.fullName} atualizado.`);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível alterar o nível."); }
+    finally { setSaving(""); }
+  };
+
+  const savePassword = async (access: ClientAccess) => {
+    if (newPassword.length < 8) return;
+    setSaving(access.membershipId); setError(""); setMessage("");
+    try { await resetManagedUserPassword(access.userId, newPassword); setPasswordFor(null); setNewPassword(""); setMessage(`Senha de ${access.fullName} atualizada.`); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível redefinir a senha."); }
+    finally { setSaving(""); }
+  };
+
+  const removeAccess = async (access: ClientAccess) => {
+    if (!window.confirm(`Remover o acesso de ${access.fullName} a este cliente?`)) return;
+    setSaving(access.membershipId); setError(""); setMessage("");
+    try { const result = await removeClientAccessBySlug(slug, access.membershipId); setAccesses(result.accesses); setMessage("Acesso removido."); }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível remover o acesso."); }
+    finally { setSaving(""); }
+  };
+
+  return <section className="client-people-settings">
+    <div className="client-people-intro"><div><h4>Pessoas do cliente</h4><p>Cada pessoa usa seu próprio e-mail e senha.</p></div>{canManage ? <button className="gradient-button" onClick={() => setFormOpen((open) => !open)}>{formOpen ? "Cancelar" : "+ Adicionar pessoa"}</button> : null}</div>
+    {!canManage ? <p className="client-access-notice">Somente o super admin pode alterar acessos.</p> : null}
+    {formOpen ? <form className="client-access-form" onSubmit={createAccess}><label>Nome completo<input autoFocus value={form.fullName} onChange={(event) => setForm({ ...form, fullName: event.target.value })} /></label><label>E-mail<input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label><label>Senha inicial<input type="password" minLength={8} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} placeholder="Mínimo de 8 caracteres" /></label><label>Nível de acesso<select value={form.portalAccessLevel} onChange={(event) => setForm({ ...form, portalAccessLevel: event.target.value as PortalAccessLevel })}>{Object.entries(PORTAL_ACCESS_COPY).map(([value, copy]) => <option key={value} value={value}>{copy.label}</option>)}</select><small>{PORTAL_ACCESS_COPY[form.portalAccessLevel].description}</small></label><button className="gradient-button" disabled={saving === "create"}>{saving === "create" ? "Criando..." : "Criar acesso"}</button></form> : null}
+    {loading ? <p className="drawer-helper">Carregando pessoas...</p> : <div className="client-access-people-list">{portalUsers.length === 0 ? <p className="client-access-empty">Nenhuma pessoa do cliente adicionada.</p> : portalUsers.map((access) => { const level = access.portalAccessLevel || "approver"; return <article key={access.membershipId}><span className="client-access-avatar">{access.fullName.split(" ").slice(0, 2).map((part) => part[0]).join("")}</span><div className="client-access-person"><strong>{access.fullName}</strong><small>{access.email}</small><p>{PORTAL_ACCESS_COPY[level].description}</p>{passwordFor === access.membershipId ? <div className="client-access-password"><input autoFocus type="password" minLength={8} value={newPassword} onChange={(event) => setNewPassword(event.target.value)} placeholder="Nova senha" /><button disabled={newPassword.length < 8 || saving === access.membershipId} onClick={() => void savePassword(access)}>Salvar</button><button onClick={() => { setPasswordFor(null); setNewPassword(""); }}>Cancelar</button></div> : null}</div><div className="client-access-actions"><select aria-label={`Nível de acesso de ${access.fullName}`} value={level} disabled={!canManage || saving === access.membershipId} onChange={(event) => void changeLevel(access, event.target.value as PortalAccessLevel)}>{Object.entries(PORTAL_ACCESS_COPY).map(([value, copy]) => <option key={value} value={value}>{copy.label}</option>)}</select>{canManage ? <div><button onClick={() => { setPasswordFor(access.membershipId); setNewPassword(""); }}>Nova senha</button><button className="danger" disabled={saving === access.membershipId} onClick={() => void removeAccess(access)}>Remover</button></div> : null}</div></article>; })}</div>}
+    {internalUsers.length ? <details className="client-internal-accesses"><summary>Equipe interna com acesso ({internalUsers.length})</summary>{internalUsers.map((access) => <p key={access.membershipId}><span>{access.fullName}</span><b>{access.membershipRole === "admin" ? "Admin" : "Colaborador"}</b></p>)}</details> : null}
+    {message ? <p className="client-access-message">{message}</p> : null}{error ? <p className="tracker-error">{error}</p> : null}
+  </section>;
 }
 
 function ClientTrackerPanel({ slug, onTrackingChange }: { slug: string; onTrackingChange: (active: boolean) => void }) {
@@ -2838,7 +2934,7 @@ function AdminWorkspacePage({
                 </section>
               </div></>}
 
-              <WorkspaceDrawer slug={slug} userId={session.id} initialQuickLinks={data.quickLinks} columns={data.columns} tags={data.tagDefinitions} onPautaCountChange={updatePautasCount} />
+              <WorkspaceDrawer slug={slug} userId={session.id} initialQuickLinks={data.quickLinks} columns={data.columns} tags={data.tagDefinitions} canManageAccess={session.role === "super_admin"} onPautaCountChange={updatePautasCount} />
               {/*
               <aside className="drawer glass-subtle">
                 <div className="drawer-tabs">
@@ -4590,6 +4686,8 @@ function ClientPortalWorkspacePage({
     refreshKey,
   ]);
   const data = resource.data;
+  const canRespondToClientContent = data.accessLevel !== "viewer";
+  const canAdministerClientPortal = data.accessLevel === "admin";
   const portalLocale = normalizePortalLocale(data.locale);
   const tr = (source: string) => portalText(portalLocale, source);
   const clientLocaleTag = portalLocaleTag(portalLocale);
@@ -4818,7 +4916,7 @@ function ClientPortalWorkspacePage({
   return (
     <PortalLocaleContext.Provider value={portalLocale}>
     <div className="portal-page" lang={portalLocale}>
-      <ClientContractAcceptance slug={slug} accountName={data.accountName} />
+      <ClientContractAcceptance slug={slug} accountName={data.accountName} canAccept={canRespondToClientContent} />
       <aside className="portal-sidebar glass">
         <div className="portal-brand-zone">
           <div className="brand-lockup compact">
@@ -4831,7 +4929,7 @@ function ClientPortalWorkspacePage({
 
         <button ref={portalMobileMenuButtonRef} type="button" className="portal-mobile-nav-trigger" onClick={() => setPortalMobileMenuOpen((value) => !value)} aria-expanded={portalMobileMenuOpen} aria-controls="portal-navigation" aria-label={tr("Portal do cliente")}><span aria-hidden="true"><i /><i /><i /></span></button>
 
-        {data.permissions.allowClientCreatePost ? <button className="portal-sidebar-create-post" onClick={() => { setPostError(""); setCreatePostOpen(true); }}><span>＋</span><div><strong>{tr("Sugerir post")}</strong><small>{tr("Enviar uma ideia")}</small></div></button> : null}
+        {canAdministerClientPortal && data.permissions.allowClientCreatePost ? <button className="portal-sidebar-create-post" onClick={() => { setPostError(""); setCreatePostOpen(true); }}><span>＋</span><div><strong>{tr("Sugerir post")}</strong><small>{tr("Enviar uma ideia")}</small></div></button> : null}
 
         <nav ref={portalNavRef} id="portal-navigation" className={`portal-nav${portalMobileMenuOpen ? " mobile-open" : ""}`}>
           {[
@@ -4858,7 +4956,7 @@ function ClientPortalWorkspacePage({
         {postSuccess ? <div className="portal-post-success"><span>✓</span><p>{postSuccess}</p><button onClick={() => setPostSuccess("")} aria-label={tr("Fechar aviso")}>×</button></div> : null}
         {approvedTransfer ? <><span className="portal-approved-fly-to-nav" style={{ "--approved-target-x": `${approvedTransfer.targetX}px`, "--approved-target-y": `${approvedTransfer.targetY}px` } as CSSProperties} aria-hidden="true"><UiIcon name="send" /></span><div className="portal-approved-transfer" role="status" aria-live="polite"><div><strong>{tr("Enviado para Aprovados!")}</strong><small>{approvedTransfer.title}</small></div><span className="portal-approved-check">✓</span></div></> : null}
 
-        {portalView === "brand" && data.permissions.allowClientViewBrandBrain ? <ClientBrandBrainView slug={slug} clientName={data.accountName} allowEdit={data.permissions.allowClientEditBrandBrain} /> : portalView === "search" && data.permissions.allowClientSearch ? <ClientPortalSearchView slug={slug} onOpenCard={setSelectedCardId} /> : portalView === "archived" && data.showArchivedToClient ? <ClientPortalArchivedView cards={portalArchivedCards} loading={portalArchivedLoading} error={portalArchivedError} onOpenCard={setSelectedCardId} /> : portalView === "tracker" && portalTrackerEnabled ? <ClientPortalTrackerView columns={data.boardColumns} withoutColumn={data.withoutColumn} onOpenCard={setSelectedCardId} /> : portalView === "approved" ? <ClientApprovedPostsView cards={portalCardsWithLocalApprovals} texts={portalTexts} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} onOpenText={(textId) => { setSelectedPortalTextId(textId); setPortalView("texts"); }} /> : portalView === "invoices" && data.permissions.allowClientViewInvoices ? <ClientPortalInvoicesView invoices={portalInvoices} onViewInvoice={markInvoiceViewed} /> : portalView === "reports" && data.permissions.allowClientViewReports ? <PortalReports slug={slug} clientName={data.accountName} locale={portalLocale} /> : portalView === "texts" ? <section className="portal-texts-view glass"><aside>{portalTexts.map((item) => <button key={item.id} className={item.id === selectedPortalTextId ? "selected" : ""} onClick={() => { setSelectedPortalTextId(item.id); setPortalTextCommentDraft(""); setPortalTextFeedback(null); }}><small>{item.contentType}</small><strong>{item.title}</strong></button>)}</aside><article>{selectedPortalText ? <><p className="eyebrow">{selectedPortalText.contentType}</p>{selectedPortalTextBanner ? <div className="portal-text-banner" style={{ backgroundImage: `url(${selectedPortalTextBanner})` }} aria-label={tr("Banner do texto")} /> : null}<div className="portal-text-heading"><div><h1>{selectedPortalText.title}</h1><span className={`portal-text-status ${selectedPortalText.status === "Aprovado" ? "approved" : ""}`}>{tr(selectedPortalText.status)}</span></div></div><div className="portal-text-content" dangerouslySetInnerHTML={{ __html: selectedPortalText.contentHtml }} /><section className="portal-text-feedback"><h3>{tr("Seu feedback")}</h3><p>{tr("Comente sobre este texto ou escolha uma ação para enviar seu retorno à equipe.")}</p><textarea value={portalTextCommentDraft} onChange={(event) => setPortalTextCommentDraft(event.target.value)} placeholder={tr("Escreva aqui seu comentário sobre este texto")} /><div className="portal-text-actions"><button className="ghost-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("comment")}>{tr(portalTextSubmitting === "comment" ? "Enviando..." : "Adicionar comentário")}</button><button className="gradient-button" disabled={portalTextSubmitting !== null} onClick={() => void handlePortalTextAction("approve")}>{tr(portalTextSubmitting === "approve" ? "Enviando..." : "Aprovar")}</button><button className="danger-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("changes")}>{tr(portalTextSubmitting === "changes" ? "Enviando..." : "Pedir alteração")}</button></div>{portalTextFeedback ? <p className="portal-text-feedback-message">{portalTextFeedback}</p> : null}<div className="portal-text-comments"><h4>{tr("Comentários")} ({portalTextComments.length})</h4>{portalTextComments.map((comment) => <article key={comment.id}><div><strong>{comment.authorName}</strong><span>{comment.authorRole}</span></div><p>{comment.commentText}</p></article>)}</div></section></> : <p>{tr("Nenhum texto foi enviado para sua área ainda.")}</p>}</article></section> : <section className="portal-grid">
+        {portalView === "brand" && data.permissions.allowClientViewBrandBrain ? <ClientBrandBrainView slug={slug} clientName={data.accountName} allowEdit={canAdministerClientPortal && data.permissions.allowClientEditBrandBrain} /> : portalView === "search" && data.permissions.allowClientSearch ? <ClientPortalSearchView slug={slug} onOpenCard={setSelectedCardId} /> : portalView === "archived" && data.showArchivedToClient ? <ClientPortalArchivedView cards={portalArchivedCards} loading={portalArchivedLoading} error={portalArchivedError} onOpenCard={setSelectedCardId} /> : portalView === "tracker" && portalTrackerEnabled ? <ClientPortalTrackerView columns={data.boardColumns} withoutColumn={data.withoutColumn} onOpenCard={setSelectedCardId} /> : portalView === "approved" ? <ClientApprovedPostsView cards={portalCardsWithLocalApprovals} texts={portalTexts} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} onOpenText={(textId) => { setSelectedPortalTextId(textId); setPortalView("texts"); }} /> : portalView === "invoices" && data.permissions.allowClientViewInvoices ? <ClientPortalInvoicesView invoices={portalInvoices} onViewInvoice={markInvoiceViewed} /> : portalView === "reports" && data.permissions.allowClientViewReports ? <PortalReports slug={slug} clientName={data.accountName} locale={portalLocale} /> : portalView === "texts" ? <section className="portal-texts-view glass"><aside>{portalTexts.map((item) => <button key={item.id} className={item.id === selectedPortalTextId ? "selected" : ""} onClick={() => { setSelectedPortalTextId(item.id); setPortalTextCommentDraft(""); setPortalTextFeedback(null); }}><small>{item.contentType}</small><strong>{item.title}</strong></button>)}</aside><article>{selectedPortalText ? <><p className="eyebrow">{selectedPortalText.contentType}</p>{selectedPortalTextBanner ? <div className="portal-text-banner" style={{ backgroundImage: `url(${selectedPortalTextBanner})` }} aria-label={tr("Banner do texto")} /> : null}<div className="portal-text-heading"><div><h1>{selectedPortalText.title}</h1><span className={`portal-text-status ${selectedPortalText.status === "Aprovado" ? "approved" : ""}`}>{tr(selectedPortalText.status)}</span></div></div><div className="portal-text-content" dangerouslySetInnerHTML={{ __html: selectedPortalText.contentHtml }} />{canRespondToClientContent ? <section className="portal-text-feedback"><h3>{tr("Seu feedback")}</h3><p>{tr("Comente sobre este texto ou escolha uma ação para enviar seu retorno à equipe.")}</p><textarea value={portalTextCommentDraft} onChange={(event) => setPortalTextCommentDraft(event.target.value)} placeholder={tr("Escreva aqui seu comentário sobre este texto")} /><div className="portal-text-actions"><button className="ghost-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("comment")}>{tr(portalTextSubmitting === "comment" ? "Enviando..." : "Adicionar comentário")}</button><button className="gradient-button" disabled={portalTextSubmitting !== null} onClick={() => void handlePortalTextAction("approve")}>{tr(portalTextSubmitting === "approve" ? "Enviando..." : "Aprovar")}</button><button className="danger-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("changes")}>{tr(portalTextSubmitting === "changes" ? "Enviando..." : "Pedir alteração")}</button></div>{portalTextFeedback ? <p className="portal-text-feedback-message">{portalTextFeedback}</p> : null}<div className="portal-text-comments"><h4>{tr("Comentários")} ({portalTextComments.length})</h4>{portalTextComments.map((comment) => <article key={comment.id}><div><strong>{comment.authorName}</strong><span>{comment.authorRole}</span></div><p>{comment.commentText}</p></article>)}</div></section> : <p className="client-access-notice">{tr("Acesso somente para visualização.")}</p>}</> : <p>{tr("Nenhum texto foi enviado para sua área ainda.")}</p>}</article></section> : <section className="portal-grid">
           <div className="portal-primary">
             <div className="glass board-shell">
               <div className="board-topbar">
@@ -4979,9 +5077,10 @@ function ClientPortalWorkspacePage({
         onRequestChanges={(cardId, commentText) =>
           submitPortalCardDecisionBySlug(slug, cardId, { approved: false, commentText })
         }
-        allowEditCaption={data.permissions.allowClientEditCaption}
+        canRespond={canRespondToClientContent}
+        allowEditCaption={canAdministerClientPortal && data.permissions.allowClientEditCaption}
         onUpdateCaption={(cardId, caption) => updatePortalCardCaptionBySlug(slug, cardId, caption)}
-        allowManageTags={data.permissions.allowClientCreateTags}
+        allowManageTags={canAdministerClientPortal && data.permissions.allowClientCreateTags}
         onLoadTags={() => listPortalTagsBySlug(slug)}
         onCreateTag={(input) => createPortalTagBySlug(slug, input)}
         onUpdateTags={(cardId, tags) => updatePortalCardTagsBySlug(slug, cardId, tags)}
@@ -5016,6 +5115,7 @@ function CardDetailModal({
   onAddComment,
   onApprove,
   onRequestChanges,
+  canRespond = true,
   allowEditCaption,
   onUpdateCaption,
   allowManageTags,
@@ -5034,6 +5134,7 @@ function CardDetailModal({
   onAddComment: (cardId: string, commentText: string) => Promise<unknown>;
   onApprove: (cardId: string, commentText: string) => Promise<unknown>;
   onRequestChanges: (cardId: string, commentText: string) => Promise<unknown>;
+  canRespond?: boolean;
   allowEditCaption?: boolean;
   onUpdateCaption?: (cardId: string, caption: string | null) => Promise<unknown>;
   allowManageTags?: boolean;
@@ -5242,7 +5343,7 @@ function CardDetailModal({
             <section className="glass-subtle modal-card portal-feedback-card">
               <h4>{mode === "portal" ? t("Seu feedback") : "Comentários"}</h4>
               {mode === "portal" ? <p className="portal-feedback-helper">{t("Comente sobre este post ou escolha uma ação para enviar seu retorno à equipe.")}</p> : null}
-              <div className="comment-form">
+              {canRespond ? <div className="comment-form">
                 <textarea
                   className="comment-input"
                   placeholder={
@@ -5287,7 +5388,7 @@ function CardDetailModal({
                   </button>
                 </div>
                 {feedback ? <p className="form-feedback">{feedback}</p> : null}
-              </div>
+              </div> : <p className="client-access-notice">{t("Acesso somente para visualização.")}</p>}
               <div className="comment-stack">
                 {detail.comments.map((comment) => (
                   <article key={comment.id} className="comment-item">
@@ -6671,7 +6772,7 @@ function ContractsWorkspace({ newContractSignal = 0 }: { newContractSignal?: num
   </section>;
 }
 
-function ClientContractAcceptance({ slug, accountName }: { slug: string; accountName: string }) {
+function ClientContractAcceptance({ slug, accountName, canAccept = true }: { slug: string; accountName: string; canAccept?: boolean }) {
   const { t } = usePortalTranslation();
   const [contract, setContract] = useState<ContractRecord | null>(null);
   const [accepted, setAccepted] = useState(false);
@@ -6680,7 +6781,7 @@ function ClientContractAcceptance({ slug, accountName }: { slug: string; account
     setContract(pending);
     setAccepted(window.localStorage.getItem(`designhub-v2-contract-accepted:${slug}:${pending?.id ?? ""}`) === "1");
   }, [slug]);
-  if (!contract || accepted) return null;
+  if (!canAccept || !contract || accepted) return null;
   const accept = () => {
     const next = readContractRecords().map((item) => item.id === contract.id ? { ...item, status: "accepted" as const, acceptedAt: new Date().toISOString() } : item);
     writeContractRecords(next); window.localStorage.setItem(`designhub-v2-contract-accepted:${slug}:${contract.id}`, "1"); setAccepted(true);

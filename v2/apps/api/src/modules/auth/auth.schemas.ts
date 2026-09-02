@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { appRoles, membershipRoles } from "./auth.types.js";
+import { appRoles, membershipRoles, portalAccessLevels } from "./auth.types.js";
 
 export const loginSchema = z.object({
   email: z.email(),
@@ -18,6 +18,7 @@ export const createUserSchema = z.object({
       z.object({
         clientAccountId: z.string().min(1),
         membershipRole: z.enum(membershipRoles),
+        portalAccessLevel: z.enum(portalAccessLevels).default("approver"),
         isPrimary: z.boolean().default(false),
       }),
     )

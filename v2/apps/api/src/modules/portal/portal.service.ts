@@ -6,6 +6,7 @@ import {
 import { listColumnsByClientAccountId } from "../columns/columns.repository.js";
 import { listCardsByClientAccountId } from "../cards/cards.repository.js";
 import type { PortalBoardQueryInput } from "./portal.schemas.js";
+import type { PortalAccessLevel } from "../auth/auth.types.js";
 
 function parseArchivedValue(value: PortalBoardQueryInput["archived"]) {
   if (!value) return undefined;
@@ -54,6 +55,7 @@ function groupPortalCards(
 export async function getPortalHome(
   app: FastifyInstance,
   clientAccountId: string,
+  accessLevel: PortalAccessLevel = "approver",
 ) {
   const [client, permissions] = await Promise.all([
     findClientAccountById(app.db, clientAccountId),
@@ -99,6 +101,7 @@ export async function getPortalHome(
       showUpcomingPosts: Boolean(client.show_upcoming_posts),
     },
     permissions,
+    accessLevel,
     widgets: {
       upcomingPosts: Boolean(client.show_upcoming_posts),
       tracking: Boolean(client.tracking_enabled && client.tracking_visible_to_client),
