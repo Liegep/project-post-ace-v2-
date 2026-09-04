@@ -20,6 +20,13 @@ const currencies: Array<{ value: Currency; label: string }> = [
   { value: "USD", label: "Dólar americano (US$)" },
   { value: "SEK", label: "Coroa sueca (kr)" },
 ];
+const summaryCurrencies = ["BRL", "USD", "EUR"] as const;
+type SummaryCurrency = typeof summaryCurrencies[number];
+type CurrencyTotals = Record<SummaryCurrency, number>;
+
+function emptyCurrencyTotals(): CurrencyTotals {
+  return { BRL: 0, USD: 0, EUR: 0 };
+}
 
 const labels: Record<BillingInvoice["locale"], { invoice: string; from: string; to: string; issued: string; due: string; period: string; description: string; quantity: string; price: string; total: string; payment: string; account: string }> = {
   pt: { invoice: "FATURA", from: "DE", to: "PARA", issued: "EMISSÃO", due: "VENCIMENTO", period: "PERÍODO", description: "DESCRIÇÃO", quantity: "QTD.", price: "VALOR", total: "TOTAL", payment: "PAGAMENTO", account: "Número da conta" },
@@ -101,12 +108,14 @@ export function BillingWorkspace({ session, newInvoiceSignal = 0 }: { session: S
   const selected = invoices.find((invoice) => invoice.id === selectedId) ?? null;
   const totals = invoices.reduce((result, invoice) => {
     const total = invoiceTotal(invoice);
-    if (invoice.status === "paid") result.paid += total;
-    else if (invoice.status === "overdue") result.overdue += total;
-    else if (invoice.status === "open") result.open += total;
-    result.all += total;
+    if (!summaryCurrencies.includes(invoice.currency as SummaryCurrency)) return result;
+    const currency = invoice.currency as SummaryCurrency;
+    if (invoice.status === "paid") result.paid[currency] += total;
+    else if (invoice.status === "overdue") result.overdue[currency] += total;
+    else if (invoice.status === "open") result.open[currency] += total;
+    result.all[currency] += total;
     return result;
-  }, { all: 0, paid: 0, open: 0, overdue: 0 });
+  }, { all: emptyCurrencyTotals(), paid: emptyCurrencyTotals(), open: emptyCurrencyTotals(), overdue: emptyCurrencyTotals() });
 
   const create = useCallback(async () => { const draft = emptyInvoice(0); const { id: _id, number: _number, ...input } = draft; try { const response = await createAdminInvoice(input); setInvoices((current) => [response.invoice, ...current]); setSelectedId(response.invoice.id); } catch (error) { setLoadError(error instanceof Error ? error.message : "Não foi possível criar a fatura."); } }, []);
   useEffect(() => { if (newInvoiceSignal > 0 && loaded) void create(); }, [newInvoiceSignal, loaded, create]);
@@ -119,17 +128,19 @@ export function BillingWorkspace({ session, newInvoiceSignal = 0 }: { session: S
   return <section className="billing-workspace">
     {loadError ? <div className="billing-empty">{loadError}</div> : null}
     <section className="billing-metrics">
-      <Metric label="Total faturado" value={money(totals.all, "BRL")} tone="violet" />
-      <Metric label="Total recebido" value={money(totals.paid, "BRL")} tone="green" />
-      <Metric label="Pendente" value={money(totals.open, "BRL")} tone="orange" />
-      <Metric label="Atrasado" value={money(totals.overdue, "BRL")} tone="red" />
+      <Metric label="Total faturado" values={totals.all} tone="violet" />
+      <Metric label="Total recebido" values={totals.paid} tone="green" />
+      <Metric label="Pendente" values={totals.open} tone="orange" />
+      <Metric label="Atrasado" values={totals.overdue} tone="red" />
     </section>
     <div className="billing-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar fatura ou cliente" /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | InvoiceStatus)}><option value="all">Todos os status</option><option value="open">Abertas</option><option value="paid">Pagas</option><option value="overdue">Atrasadas</option><option value="cancelled">Canceladas</option></select><span>{invoices.filter((invoice) => invoice.recurring).length} recorrencias ativas: geracao prevista para todo dia 1.</span></div>
     <div className="billing-list">{filtered.map((invoice) => <button key={invoice.id} className="billing-row" onClick={() => setSelectedId(invoice.id)}><span className="billing-row-mark">#{invoice.number}</span><ClientThumb name={invoice.clientName} logoUrl={logosByClient[invoice.clientName.trim().toLocaleLowerCase()]} /><span className="billing-row-main"><strong>{invoice.title}</strong><small>{invoice.clientName || "Cliente sem nome"} · Venc. {date(invoice.dueDate)}</small></span><span className="billing-row-repeat">{invoice.recurring ? "Recorrente" : "Avulsa"}</span><span className="billing-row-value"><strong>{money(invoiceTotal(invoice), invoice.currency)}</strong><em className={`invoice-status ${invoice.status}`}>{statusLabel[invoice.status]}</em></span></button>)}{filtered.length === 0 && <div className="billing-empty">Nenhuma fatura encontrada.</div>}</div>
   </section>;
 }
 
-function Metric({ label, value, tone }: { label: string; value: string; tone: string }) { return <article className={`billing-metric ${tone}`}><span>{label}</span><strong>{value}</strong></article>; }
+function Metric({ label, values, tone }: { label: string; values: CurrencyTotals; tone: string }) {
+  return <article className={`billing-metric ${tone}`}><span>{label}</span><div className="billing-metric-values">{summaryCurrencies.map((currency) => <strong key={currency}>{money(values[currency], currency)}</strong>)}</div></article>;
+}
 
 function ClientThumb({ name, logoUrl }: { name: string; logoUrl?: string }) {
   const initials = name.trim().split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase() || "?";
