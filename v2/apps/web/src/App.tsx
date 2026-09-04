@@ -199,6 +199,28 @@ function compactArtTypeLabel(value: string) {
   return normalized === "Post único" ? "Único" : normalized;
 }
 
+function cardStatusLabel(value: string) {
+  if (!value.includes("_")) return value;
+  const normalized = value.trim().toLocaleLowerCase("pt-BR");
+  const legacyLabels: Record<string, string> = {
+    aprovado_boss: "Aprovado pela boss",
+    alteracao_solicitada: "Alteração solicitada",
+    changes_requested: "Alteração solicitada",
+    design_finalizado: "Design finalizado",
+    em_aprovacao: "Em aprovação",
+    em_desenvolvimento: "Em desenvolvimento",
+    enviar_para_cliente: "Enviar para cliente",
+    in_review: "Em revisão",
+    legenda_aprovada: "Legenda aprovada",
+    legenda_pronta: "Legenda pronta",
+    not_approved: "Não aprovado",
+    single_post: "Post único",
+  };
+  if (legacyLabels[normalized]) return legacyLabels[normalized];
+  const readable = value.trim().replace(/_+/g, " ").replace(/\s+/g, " ");
+  return readable.charAt(0).toLocaleUpperCase("pt-BR") + readable.slice(1);
+}
+
 function formatScheduledCardDate(value: string) {
   // Preserve the stored wall-clock time while presenting a concise, localized label.
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
@@ -1194,7 +1216,7 @@ function ProjectTrackerPanel({ slug, columns, filterOpen }: { slug: string; colu
     <div className="project-tracker-legend"><b>Legenda</b><span className="done">Finalizado</span><span className="design">Design pronto</span><span className="working">Em desenvolvimento</span><span className="copy">Escrevendo legenda</span><span className="revision">Alteração solicitada</span><span className="waiting">Aguardando</span></div>
     {filterOpen ? <section className="project-tracker-filter"><strong>Visível para o cliente</strong>{filteredColumns.map((column) => <div key={column.id}><label><input type="checkbox" checked={column.visibleToClient} onChange={() => toggleColumn(column)} /> {column.name}</label>{column.cards.map((card) => <label key={card.id} className="project-filter-card"><input type="checkbox" checked={card.statusBadges.includes("Enviar para Cliente")} onChange={() => toggleCard(column.id, card)} /> {card.title}</label>)}</div>)}</section> : null}
     <p className="project-tracker-progress">{completed}/{total} tarefas finalizadas. O filtro altera apenas o que o cliente vê.</p>
-    {filteredColumns.map((column) => <section key={column.id} className="project-tracker-stage"><h4>{column.name}<span>{column.cards.length}</span></h4>{column.cards.map((card) => <div key={card.id} className={`project-tracker-task ${tone(card)}`}><i>{/(finaliz|conclu)/i.test(card.statusBadges.join(" ")) ? "✓" : ""}</i><div><strong>{card.title}</strong>{card.statusBadges.filter((item) => item !== "Enviar para Cliente").map((item) => <small key={item}>{item}</small>)}</div><em /></div>)}</section>)}
+    {filteredColumns.map((column) => <section key={column.id} className="project-tracker-stage"><h4>{column.name}<span>{column.cards.length}</span></h4>{column.cards.map((card) => <div key={card.id} className={`project-tracker-task ${tone(card)}`}><i>{/(finaliz|conclu)/i.test(card.statusBadges.join(" ")) ? "✓" : ""}</i><div><strong>{card.title}</strong>{card.statusBadges.filter((item) => item !== "Enviar para Cliente").map((item) => <small key={item}>{cardStatusLabel(item)}</small>)}</div><em /></div>)}</section>)}
   </div>;
 }
 
@@ -4446,7 +4468,7 @@ function CardView({ card, onOpen, onContextMenu, selectionMode = false, selected
   const primaryBadge = card.statusBadges[0] ?? null;
   const isInDevelopment = /^em desenvolvimento$/i.test(primaryBadge?.trim() ?? "");
   const isApprovedBrief = card.isBriefApproval && !isInDevelopment && /aprovad/i.test(`${card.clientLabel} ${card.statusBadges.join(" ")}`);
-  const visibleBadge = (badge: string) => card.isBriefApproval && /^aprovado$/i.test(badge.trim()) ? "Pauta aprovada" : badge;
+  const visibleBadge = (badge: string) => card.isBriefApproval && /^aprovado$/i.test(badge.trim()) ? "Pauta aprovada" : cardStatusLabel(badge);
   const priorityLabel: Record<CardPriority, string> = { high: "Alta prioridade", medium: "Média prioridade", normal: "Prioridade normal" };
   const cardClassName = ["content-card", "glass-subtle", "card-button", selected ? "selected" : "", isApprovedBrief ? "approved-brief-card" : "", card.priorityLevel ? "has-priority" : ""].filter(Boolean).join(" ");
 
@@ -4777,7 +4799,12 @@ function ClientPortalTrackerView({ columns, withoutColumn, onOpenCard }: { colum
   const completed = cards.filter(isDone).length;
   const progress = cards.length ? Math.round((completed / cards.length) * 100) : 0;
   const tone = (card: BoardCard) => isDone(card) ? "done" : /(alteração|alteracao|revis)/i.test(`${card.clientLabel} ${card.statusBadges.join(" ")}`) ? "revision" : /(design pronto)/i.test(card.statusBadges.join(" ")) ? "design" : /(legenda)/i.test(card.statusBadges.join(" ")) ? "copy" : /(desenvolvimento|criação|criacao)/i.test(card.statusBadges.join(" ")) ? "working" : "waiting";
-  const visibleStatus = (card: BoardCard) => card.clientLabel && !/^pendente$/i.test(card.clientLabel) ? portalText(localeTag, card.clientLabel) : portalText(localeTag, card.statusBadges.find((status) => status !== "Enviar para Cliente") ?? "Em andamento");
+  const visibleStatus = (card: BoardCard) => {
+    const status = card.clientLabel && !/^pendente$/i.test(card.clientLabel)
+      ? card.clientLabel
+      : card.statusBadges.find((item) => item !== "Enviar para Cliente") ?? "Em andamento";
+    return portalText(localeTag, cardStatusLabel(status));
+  };
 
   return <section className="portal-tracker-view">
     <header className="portal-tracker-hero glass">
@@ -5519,7 +5546,7 @@ function CardDetailModal({
             <div className="badge-row">
               {detail.card.statusBadges.map((badge) => (
                 <span key={badge} className="mini-badge status">
-                  {badge}
+                  {cardStatusLabel(badge)}
                 </span>
               ))}
               {detail.card.tags.map((tag) => (
