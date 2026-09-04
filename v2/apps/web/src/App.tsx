@@ -3459,7 +3459,7 @@ function BoardColumnView({
               ) : null}
               <button role="menuitem" onClick={onArchiveCurrentMonth}>
                 <UiIcon name="layers" />
-                <span>Arquivar mês atual</span>
+                <span>Arquivar coluna</span>
               </button>
               <div className="column-popover-separator" role="separator" />
               <button className="column-popover-danger" role="menuitem" onClick={onDelete}>
