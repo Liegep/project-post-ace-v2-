@@ -4245,7 +4245,6 @@ button {
 
 /* Widget "Próximos posts" do portal do cliente: vidro fosco, cada evento com uma cor suave própria. */
 .portal-upcoming-widget {
-  grid-column: 1 / -1;
   display: grid;
   gap: 14px;
   min-width: 0;
@@ -4321,6 +4320,12 @@ button {
 }
 .portal-secondary .widget-empty-copy { margin: 10px 2px; color: #8d96a9; font-size: .72rem; font-weight: 600; text-align: center; }
 .portal-upcoming-widget .widget-empty-copy { margin: 8px 0 2px; padding: 18px; border: 1px dashed #d8deea; border-radius: 13px; color: #8590a4; text-align: center; }
+
+.portal-secondary .portal-upcoming-head { align-items: stretch; flex-direction: column; }
+.portal-secondary .portal-upcoming-range { align-self: stretch; }
+.portal-secondary .portal-upcoming-range button { flex: 1; }
+.portal-secondary .portal-upcoming-post { grid-template-columns: 42px minmax(0, 1fr) 8px; }
+.portal-secondary .portal-upcoming-post > em { display: none; }
 
 /* Dashboard visual snapshot approved on 2026-08-22. Keep it isolated from app-wide glass rules. */
 .dashboard-layout .dashboard-shell {
