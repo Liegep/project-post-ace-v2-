@@ -4125,7 +4125,7 @@ function AdminTextsView({ clientName, slug, onCountChange }: { clientName: strin
     if (!selected || pdfSaving) return;
     setPdfSaving(true);
     const printable = document.createElement("div");
-    printable.style.cssText = "position:fixed;left:-10000px;top:0;width:760px;padding:32px;background:#fff;color:#192342;font-family:Arial,sans-serif;line-height:1.55;";
+    printable.style.cssText = "position:fixed;left:-10000px;top:0;width:760px;padding:32px;background:#fff;color:#192342;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.55;";
     printable.innerHTML = `${coverImage ? `<img src="${coverImage}" alt="Banner" style="display:block;width:100%;height:180px;object-fit:cover;border-radius:14px;margin-bottom:24px;" />` : ""}<h1 style="font-size:32px;margin:0 0 24px;">${selected.title}</h1><div>${editorRef.current?.innerHTML ?? selected.contentHtml}</div>`;
     document.body.appendChild(printable);
     try {
