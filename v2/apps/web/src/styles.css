@@ -2272,6 +2272,14 @@ button {
   transform: translateY(3px);
 }
 
+/* Elevação sutil ao passar o mouse, como no Kanban original. */
+@media (hover: hover) and (pointer: fine) {
+  .card-drag-wrap:not(.dragging):hover .content-card {
+    transform: translateY(-3px);
+    box-shadow: 0 11px 22px rgba(61, 73, 112, .13), 0 2px 7px rgba(61, 73, 112, .06);
+  }
+}
+
 .card-media-zoom {
   cursor: zoom-in;
 }
