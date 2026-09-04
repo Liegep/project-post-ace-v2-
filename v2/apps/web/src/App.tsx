@@ -285,6 +285,7 @@ const emptyClientPortal: ClientPortalPreview = {
   boardColumns: [],
   withoutColumn: [],
   calendarEvents: [],
+  calendarPosts: [],
   upcomingItems: [],
 };
 
@@ -4806,6 +4807,62 @@ function ClientPortalArchivedView({ cards, loading, error, onOpenCard }: { cards
   </section>;
 }
 
+function ClientUpcomingPostsWidget({ items, onSelectPost }: { items: ClientPortalPreview["upcomingItems"]; onSelectPost: (id: string) => void }) {
+  const { t, localeTag } = usePortalTranslation();
+  const [range, setRange] = useState<"week" | "month">("week");
+  const visibleItems = useMemo(() => {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(start);
+    end.setDate(end.getDate() + (range === "week" ? 7 : 31));
+    return items
+      .filter((item) => {
+        const scheduledAt = new Date(item.scheduledAt);
+        return !Number.isNaN(scheduledAt.getTime()) && scheduledAt >= start && scheduledAt < end;
+      })
+      .sort((left, right) => new Date(left.scheduledAt).getTime() - new Date(right.scheduledAt).getTime());
+  }, [items, range]);
+  const groups = useMemo(() => {
+    const grouped = new Map<string, { start: Date; end: Date; items: typeof visibleItems }>();
+    for (const item of visibleItems) {
+      const scheduledAt = new Date(item.scheduledAt);
+      const weekStart = new Date(scheduledAt);
+      weekStart.setHours(0, 0, 0, 0);
+      weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+      const key = localDateKey(weekStart);
+      const group = grouped.get(key) ?? { start: weekStart, end: weekEnd, items: [] };
+      group.items.push(item);
+      grouped.set(key, group);
+    }
+    return Array.from(grouped.values());
+  }, [visibleItems]);
+  const shortDate = (date: Date) => new Intl.DateTimeFormat(localeTag, { day: "2-digit", month: "2-digit" }).format(date);
+
+  return <section className="glass widget-card portal-upcoming-widget">
+    <header className="portal-upcoming-head">
+      <div><span><UiIcon name="calendar" /></span><h3>{t("Próximos posts")}</h3><b>{visibleItems.length}</b></div>
+      <div className="portal-upcoming-range" role="group" aria-label={t("Período dos próximos posts")}>
+        <button type="button" className={range === "week" ? "active" : ""} onClick={() => setRange("week")}>{t("Semana")}</button>
+        <button type="button" className={range === "month" ? "active" : ""} onClick={() => setRange("month")}>{t("Mês")}</button>
+      </div>
+    </header>
+    {groups.length ? <div className="portal-upcoming-groups">{groups.map((group) => <section key={localDateKey(group.start)}>
+      <h4>{shortDate(group.start)} – {shortDate(group.end)}</h4>
+      <div>{group.items.map((item) => {
+        const scheduledAt = new Date(item.scheduledAt);
+        return <button type="button" key={item.id} className="portal-upcoming-post" onClick={() => onSelectPost(item.id)}>
+          {item.mediaUrl ? <img src={item.mediaUrl} alt="" /> : <span className="portal-upcoming-placeholder"><UiIcon name="image" /></span>}
+          <span className="portal-upcoming-copy"><strong>{item.title}</strong><small>{new Intl.DateTimeFormat(localeTag, { weekday: "long", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(scheduledAt)}</small></span>
+          <i aria-hidden="true" />
+          <em><UiIcon name="clock" />{shortDate(scheduledAt)}</em>
+        </button>;
+      })}</div>
+    </section>)}</div> : <p className="widget-empty-copy">{t("Nenhum post agendado no momento.")}</p>}
+  </section>;
+}
+
 type PortalPostDraft = { title: string; caption: string; commentText: string; artType: string; externalLinkUrl: string };
 
 function ClientPostSuggestionModal({ draft, files, submitting, error, onChange, onFilesChange, onClose, onSubmit }: { draft: PortalPostDraft; files: File[]; submitting: boolean; error: string; onChange: (field: keyof PortalPostDraft, value: string) => void; onFilesChange: (files: File[]) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
@@ -5136,6 +5193,7 @@ function ClientPortalWorkspacePage({
         {approvedTransfer ? <><span className="portal-approved-fly-to-nav" style={{ "--approved-target-x": `${approvedTransfer.targetX}px`, "--approved-target-y": `${approvedTransfer.targetY}px` } as CSSProperties} aria-hidden="true"><UiIcon name="send" /></span><div className="portal-approved-transfer" role="status" aria-live="polite"><div><strong>{tr("Enviado para Aprovados!")}</strong><small>{approvedTransfer.title}</small></div><span className="portal-approved-check">✓</span></div></> : null}
 
         {portalView === "brand" && data.permissions.allowClientViewBrandBrain ? <ClientBrandBrainView slug={slug} clientName={data.accountName} allowEdit={canUseEnabledClientTools && data.permissions.allowClientEditBrandBrain} /> : portalView === "search" && data.permissions.allowClientSearch ? <ClientPortalSearchView slug={slug} onOpenCard={setSelectedCardId} /> : portalView === "archived" && data.showArchivedToClient ? <ClientPortalArchivedView cards={portalArchivedCards} loading={portalArchivedLoading} error={portalArchivedError} onOpenCard={setSelectedCardId} /> : portalView === "tracker" && portalTrackerEnabled ? <ClientPortalTrackerView columns={data.boardColumns} withoutColumn={data.withoutColumn} onOpenCard={setSelectedCardId} /> : portalView === "approved" ? <ClientApprovedPostsView cards={portalCardsWithLocalApprovals} texts={portalTexts} allowDownload={canUseEnabledClientTools && data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} onOpenText={(textId) => { setSelectedPortalTextId(textId); setPortalView("texts"); }} /> : portalView === "invoices" && data.permissions.allowClientViewInvoices ? <ClientPortalInvoicesView invoices={portalInvoices} onViewInvoice={markInvoiceViewed} /> : portalView === "reports" && data.permissions.allowClientViewReports ? <PortalReports slug={slug} clientName={data.accountName} locale={portalLocale} /> : portalView === "texts" ? <section className="portal-texts-view glass"><aside>{portalTexts.map((item) => <button key={item.id} className={item.id === selectedPortalTextId ? "selected" : ""} onClick={() => { setSelectedPortalTextId(item.id); setPortalTextCommentDraft(""); setPortalTextFeedback(null); }}><small>{item.contentType}</small><strong>{item.title}</strong></button>)}</aside><article>{selectedPortalText ? <><p className="eyebrow">{selectedPortalText.contentType}</p>{selectedPortalTextBanner ? <div className="portal-text-banner" style={{ backgroundImage: `url(${selectedPortalTextBanner})` }} aria-label={tr("Banner do texto")} /> : null}<div className="portal-text-heading"><div><h1>{selectedPortalText.title}</h1><span className={`portal-text-status ${selectedPortalText.status === "Aprovado" ? "approved" : ""}`}>{tr(selectedPortalText.status)}</span></div></div><div className="portal-text-content" dangerouslySetInnerHTML={{ __html: selectedPortalText.contentHtml }} />{canRespondToClientContent ? <section className="portal-text-feedback"><h3>{tr("Seu feedback")}</h3><p>{tr("Comente sobre este texto ou escolha uma ação para enviar seu retorno à equipe.")}</p><textarea value={portalTextCommentDraft} onChange={(event) => setPortalTextCommentDraft(event.target.value)} placeholder={tr("Escreva aqui seu comentário sobre este texto")} /><div className="portal-text-actions"><button className="ghost-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("comment")}>{tr(portalTextSubmitting === "comment" ? "Enviando..." : "Adicionar comentário")}</button><button className="gradient-button" disabled={portalTextSubmitting !== null} onClick={() => void handlePortalTextAction("approve")}>{tr(portalTextSubmitting === "approve" ? "Enviando..." : "Aprovar")}</button><button className="danger-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("changes")}>{tr(portalTextSubmitting === "changes" ? "Enviando..." : "Pedir alteração")}</button></div>{portalTextFeedback ? <p className="portal-text-feedback-message">{portalTextFeedback}</p> : null}<div className="portal-text-comments"><h4>{tr("Comentários")} ({portalTextComments.length})</h4>{portalTextComments.map((comment) => <article key={comment.id}><div><strong>{comment.authorName}</strong><span>{comment.authorRole}</span></div><p>{comment.commentText}</p></article>)}</div></section> : <p className="client-access-notice">{tr("Acesso somente para visualização.")}</p>}</> : <p>{tr("Nenhum texto foi enviado para sua área ainda.")}</p>}</article></section> : <section className="portal-grid">
+          {data.widgets.upcomingPosts ? <ClientUpcomingPostsWidget items={data.upcomingItems} onSelectPost={setSelectedCardId} /> : null}
           <div className="portal-primary">
             <div className="glass board-shell">
               <div className="board-topbar">
@@ -5148,7 +5206,7 @@ function ClientPortalWorkspacePage({
               </div>
 
               {boardSubView === "calendar" ? (
-                <ClientPortalCalendarView cards={approvalPortalCards} appointments={portalAppointments} onSelectCard={setSelectedCardId} />
+                <ClientPortalCalendarView cards={data.calendarPosts} appointments={portalAppointments} onSelectCard={setSelectedCardId} />
               ) : (
               <div className="portal-approval-board">
                 {pautaApprovalCards.length ? <section className="portal-pautas-approval">
@@ -5187,27 +5245,6 @@ function ClientPortalWorkspacePage({
           </div>
 
           <div className="portal-secondary">
-            {data.widgets.upcomingPosts ? (
-              <section className="glass widget-card">
-                <div className="widget-head">
-                  <h3>{tr("Próximos posts")}</h3>
-                  <span>{data.upcomingItems.length}</span>
-                </div>
-                <div className="widget-list">
-                  {data.upcomingItems.map((item) => (
-                    <article key={item.id} className="list-item">
-                      <div>
-                        <strong>{item.title}</strong>
-                        <p>{new Intl.DateTimeFormat(clientLocaleTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(item.scheduledAt))}</p>
-                      </div>
-                      <span>{new Intl.DateTimeFormat(clientLocaleTag, { hour: "2-digit", minute: "2-digit" }).format(new Date(item.scheduledAt))}</span>
-                    </article>
-                  ))}
-                  {data.upcomingItems.length === 0 ? <p className="widget-empty-copy">{tr("Nenhum post agendado no momento.")}</p> : null}
-                </div>
-              </section>
-            ) : null}
-
             {upcomingPortalAppointments.length > 0 ? (
               <section className="glass widget-card">
                 <div className="widget-head">
@@ -6463,12 +6500,15 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
   const rangeTo = localDateKey(days[days.length - 1]);
   const expandedAppointments = useMemo(() => expandAgendaEvents(appointments, rangeFrom, rangeTo), [appointments, rangeFrom, rangeTo]);
   const weekdayLabels = Array.from({ length: 7 }, (_, index) => new Intl.DateTimeFormat(localeTag, { weekday: "short" }).format(new Date(2026, 7, 24 + index)));
+  const postCalendarDate = (card: BoardCard) => new Date(card.scheduledAt || card.publishedAt || 0);
+  const isPublishedPost = (card: BoardCard) => Boolean(card.publishedAt);
 
   const postsByDay = useMemo(() => {
     const map = new Map<string, BoardCard[]>();
     for (const card of cards) {
-      if (!card.scheduledAt) continue;
-      const key = localDateKey(new Date(card.scheduledAt));
+      const calendarDate = postCalendarDate(card);
+      if (Number.isNaN(calendarDate.getTime()) || calendarDate.getTime() === 0) continue;
+      const key = localDateKey(calendarDate);
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(card);
     }
@@ -6501,6 +6541,7 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
         </div>
         <div className="social-calendar-summary">
           <span><i className="scheduled" />{t("Posts agendados")}</span>
+          <span><i className="published" />{t("Posts publicados")}</span>
           <span><i style={{ background: "#8b45dd" }} />{t("Compromissos")}</span>
         </div>
       </div>
@@ -6519,8 +6560,9 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
               <div key={key} className={muted ? "social-calendar-day muted" : "social-calendar-day"}>
                 <time>{day.getDate()}</time>
                 {visiblePosts.map((card) => (
-                  <button key={card.id} type="button" className="social-calendar-event" style={{ "--calendar-event-color": "#3c8ee9" } as CSSProperties} onMouseEnter={(event) => artworkHover.show(event, portalCardAssets(card)[0] ?? "", card.title)} onMouseMove={(event) => artworkHover.move(event, portalCardAssets(card)[0] ?? "", card.title)} onMouseLeave={artworkHover.hide} onClick={() => onSelectCard(card.id)}>
+                  <button key={card.id} type="button" className={`social-calendar-event${isPublishedPost(card) ? " published" : ""}`} style={{ "--calendar-event-color": isPublishedPost(card) ? "#26ad78" : "#3c8ee9" } as CSSProperties} onMouseEnter={(event) => artworkHover.show(event, portalCardAssets(card)[0] ?? "", card.title)} onMouseMove={(event) => artworkHover.move(event, portalCardAssets(card)[0] ?? "", card.title)} onMouseLeave={artworkHover.hide} onClick={() => onSelectCard(card.id)}>
                     <span>{card.title}</span>
+                    {isPublishedPost(card) ? <small>✓ {t("Publicado")}</small> : null}
                   </button>
                 ))}
                 {visibleEvents.map((event) => (
@@ -6544,7 +6586,7 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
           return <article className={`social-agenda-day${isToday ? " today" : ""}`} key={key}>
             <header><div><time>{day.getDate()}</time><span><strong>{new Intl.DateTimeFormat(localeTag, { weekday: "long" }).format(day)}</strong><small>{new Intl.DateTimeFormat(localeTag, { month: "long", year: "numeric" }).format(day)}</small></span></div></header>
             <div className="social-agenda-items">
-              {posts.map((card) => { const imageUrl = portalCardAssets(card)[0] ?? ""; return <button key={card.id} type="button" className="social-agenda-item post" onClick={() => onSelectCard(card.id)}><span className="social-agenda-time">{new Intl.DateTimeFormat(localeTag, { timeStyle: "short" }).format(new Date(card.scheduledAt!))}</span>{imageUrl ? <img src={imageUrl} alt="" /> : <i><UiIcon name="send" /></i>}<span><strong>{card.title}</strong><small>{t("Post agendado")}</small></span><b>›</b></button>; })}
+              {posts.map((card) => { const imageUrl = portalCardAssets(card)[0] ?? ""; const calendarDate = postCalendarDate(card); const published = isPublishedPost(card); return <button key={card.id} type="button" className={`social-agenda-item post${published ? " published" : ""}`} onClick={() => onSelectCard(card.id)}><span className="social-agenda-time">{new Intl.DateTimeFormat(localeTag, { timeStyle: "short" }).format(calendarDate)}</span>{imageUrl ? <img src={imageUrl} alt="" /> : <i><UiIcon name={published ? "check" : "send"} /></i>}<span><strong>{card.title}</strong><small>{t(published ? "Publicado" : "Post agendado")}</small></span><b>›</b></button>; })}
               {events.map((event) => <button key={event.id} type="button" className="social-agenda-item appointment" style={{ "--calendar-event-color": event.color || "#8b45dd" } as CSSProperties} onClick={() => setSelectedEvent(event)}><span className="social-agenda-time">{new Intl.DateTimeFormat(localeTag, { timeStyle: "short" }).format(new Date(event.startsAt))}</span><i><UiIcon name={event.meetLink ? "link" : "clock"} /></i><span><strong>{event.title}</strong><small>{event.taskDescription || event.labelName || t("Compromisso")}</small></span><b>›</b></button>)}
             </div>
           </article>;

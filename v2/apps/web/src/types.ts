@@ -14,6 +14,7 @@ export type BoardCard = {
   tagColors?: Record<string, string>;
   commentsCount: number;
   scheduledAt?: string;
+  publishedAt?: string | null;
   archivedAt?: string | null;
   clientLabel: string;
   priorityLevel?: CardPriority | null;
@@ -124,11 +125,13 @@ export type ClientPortalPreview = {
   boardColumns: BoardColumn[];
   withoutColumn: BoardCard[];
   calendarEvents: CalendarEvent[];
+  calendarPosts: BoardCard[];
   upcomingItems: Array<{
     id: string;
     title: string;
     scheduledAt: string;
     channel: string;
+    mediaUrl?: string | null;
   }>;
 };
 

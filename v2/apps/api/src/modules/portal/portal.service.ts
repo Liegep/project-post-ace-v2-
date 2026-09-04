@@ -13,6 +13,17 @@ function parseArchivedValue(value: PortalBoardQueryInput["archived"]) {
   return value === "1" || value === "true";
 }
 
+function currentDateKey(timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
 function groupPortalCards(
   columns: Awaited<ReturnType<typeof listColumnsByClientAccountId>>,
   cards: Awaited<ReturnType<typeof listCardsByClientAccountId>>,
@@ -69,23 +80,31 @@ export async function getPortalHome(
     throw app.httpErrors.notFound("Permissões da conta não encontradas.");
   }
 
-  const upcomingCards = client.show_upcoming_posts
-    ? await listCardsByClientAccountId(app.db, clientAccountId, { archived: false })
-    : [];
-
-  const today = new Date("2026-08-20T00:00:00");
+  const portalCards = await listCardsByClientAccountId(app.db, clientAccountId, {});
+  const upcomingCards = client.show_upcoming_posts ? portalCards : [];
+  const today = currentDateKey(app.appEnv.APP_TIMEZONE);
   const upcomingItems = upcomingCards
+    .filter((card) => !card.archived && !card.publishedAt)
     .filter((card) => Boolean(card.scheduledAt))
     .filter((card) => {
-      const when = new Date(card.scheduledAt as string | Date);
-      return !Number.isNaN(when.getTime()) && when >= today;
+      const scheduledDate = String(card.scheduledAt).slice(0, 10);
+      return /^\d{4}-\d{2}-\d{2}$/.test(scheduledDate) && scheduledDate >= today;
     })
     .sort((a, b) => {
       const left = new Date(a.scheduledAt as string | Date).getTime();
       const right = new Date(b.scheduledAt as string | Date).getTime();
       return left - right;
     })
-    .slice(0, 8);
+    .slice(0, 60)
+    .map((card) => ({
+      id: card.id,
+      title: card.title,
+      scheduledAt: card.scheduledAt,
+      channel: "",
+      mediaUrl: card.primaryMediaUrl ?? card.mediaUrls[0] ?? null,
+    }));
+
+  const calendarPosts = portalCards.filter((card) => Boolean(card.scheduledAt || card.publishedAt));
 
   return {
     account: {
@@ -112,6 +131,7 @@ export async function getPortalHome(
       texts: permissions.allowClientViewTexts,
     },
     upcomingItems,
+    calendarPosts,
   };
 }
 

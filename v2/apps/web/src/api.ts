@@ -158,6 +158,7 @@ type ApiBoardCard = {
   deadlineAt?: string | null;
   commentsCount: number;
   scheduledAt: string | null;
+  publishedAt?: string | null;
   scheduledTimeZone?: string | null;
   archivedAt?: string | null;
   clientLabel: string;
@@ -200,6 +201,7 @@ type ApiPortalHomeResponse = {
   accessLevel: ClientPortalPreview["accessLevel"];
   widgets: ClientPortalPreview["widgets"];
   upcomingItems: ClientPortalPreview["upcomingItems"];
+  calendarPosts: ApiBoardCard[];
 };
 
 type ApiPortalBoardResponse = {
@@ -455,6 +457,7 @@ function mapCard(card: ApiBoardCard, tagColors: Record<string, string> = {}): Bo
     tagColors,
     commentsCount: card.commentsCount,
     scheduledAt: card.scheduledAt ?? undefined,
+    publishedAt: card.publishedAt ?? null,
     archivedAt: card.archivedAt ?? null,
     clientLabel: card.clientLabel,
     priorityLevel: card.priorityLevel ?? null,
@@ -640,6 +643,7 @@ export async function loadClientPortalBySlug(slug: string): Promise<ClientPortal
     withoutColumn: boardResponse.board.withoutColumn.cards.map((card) => mapCard(card)),
     calendarEvents: [],
     upcomingItems: homeResponse.upcomingItems,
+    calendarPosts: homeResponse.calendarPosts.map((card) => mapCard(card)),
   };
 }
 

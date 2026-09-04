@@ -202,6 +202,7 @@ export const clientPreview: ClientPortalPreview = {
       status: "scheduled",
     },
   ],
+  calendarPosts: [],
   upcomingItems: [
     {
       id: "up-1",
