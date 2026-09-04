@@ -1790,7 +1790,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
               onCompleted={(eventId) => setAgendaToday((current) => current.map((event) => event.id === eventId ? { ...event, isCompleted: true } : event))}
             />
             <DashboardTodayPostsWidget items={postsToday} />
-            {clientActivities.length > 0 ? <DashboardClientActivitiesWidget items={clientActivities} onSchedule={setScheduleActivity} /> : null}
+            {clientActivities.length > 0 ? <DashboardClientActivitiesWidget items={clientActivities} userId={session.id} onSchedule={setScheduleActivity} /> : null}
             {internalMessages.length > 0 ? <DashboardInternalMessagesWidget items={internalMessages} onOpen={(item) => { if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; }} /> : null}
             {clientSubmissions.length > 0 ? <DashboardClientSubmissionsWidget items={clientSubmissions} userId={session.id} /> : null}
           </div>
@@ -2140,7 +2140,15 @@ function DashboardClientSubmissionsWidget({ items, userId }: { items: DashboardS
   </section>;
 }
 
-function DashboardClientActivitiesWidget({ items, onSchedule }: { items: DashboardClientActivity[]; onSchedule: (item: DashboardClientActivity) => void }) {
+function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items: DashboardClientActivity[]; userId: string; onSchedule: (item: DashboardClientActivity) => void }) {
+  const storageKey = `designhub-v2-dismissed-client-feedback:${userId}`;
+  const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem(storageKey) ?? "[]") as string[];
+    } catch {
+      return [];
+    }
+  });
   const [expanded, setExpanded] = useState(false);
   const isNotApproved = (item: DashboardClientActivity) => item.activityType === "comment" && /^(n[aã]o|nao aprovado|não aprovado|reprovad|not approved)\b/i.test(item.detail.trim());
   const activityTone = (item: DashboardClientActivity) => item.activityType === "approved" || item.activityType === "contract_accepted" || item.activityType === "proposal_accepted" ? "approved" : item.activityType === "changes_requested" ? "changes_requested" : isNotApproved(item) ? "not_approved" : item.activityType;
@@ -2161,15 +2169,29 @@ function DashboardClientActivitiesWidget({ items, onSchedule }: { items: Dashboa
       if (!item.cardId || (item.activityType !== "approved" && item.activityType !== "changes_requested")) return item;
       return { ...item, detail: latestCommentByCard.get(item.cardId)?.detail ?? "" };
     });
-  const displayedItems = expanded ? mergedItems : mergedItems.slice(0, 3);
-  const hiddenCount = Math.max(0, mergedItems.length - displayedItems.length);
+  const visibleItems = mergedItems.filter((item) => !dismissedIds.includes(item.id));
+  const displayedItems = expanded ? visibleItems : visibleItems.slice(0, 3);
+  const hiddenCount = Math.max(0, visibleItems.length - displayedItems.length);
+  const dismissFeedback = (id: string) => {
+    setDismissedIds((current) => {
+      const next = current.includes(id) ? current : [...current, id];
+      try {
+        window.localStorage.setItem(storageKey, JSON.stringify(next));
+      } catch {
+        // A remoção continua valendo enquanto a página estiver aberta.
+      }
+      return next;
+    });
+  };
   const openCard = (item: DashboardClientActivity) => {
     if (!item.cardId) return;
     window.location.hash = `/admin/${encodeURIComponent(item.clientSlug)}?card=${encodeURIComponent(item.cardId)}`;
   };
 
+  if (visibleItems.length === 0) return null;
+
   return <section className="dashboard-list dashboard-client-activities compact">
-    <header className="dashboard-submissions-head"><div><h3>Feedback dos clientes</h3><small>Comentários, aprovações, aceites e alterações</small></div><span>{mergedItems.length}</span></header>
+    <header className="dashboard-submissions-head"><div><h3>Feedback dos clientes</h3><small>Comentários, aprovações, aceites e alterações</small></div><span>{visibleItems.length}</span></header>
     <div className="dashboard-activity-list">{displayedItems.map((item) => {
       const tone = activityTone(item);
       return <article key={item.id} className={`dashboard-activity-row ${tone}`}>
@@ -2177,6 +2199,7 @@ function DashboardClientActivitiesWidget({ items, onSchedule }: { items: Dashboa
         <span className="dashboard-submission-avatar">{item.clientLogoUrl ? <img src={item.clientLogoUrl} alt={`Logo de ${item.clientName}`} /> : item.clientName.slice(0, 2).toUpperCase()}</span>
         <div className="dashboard-activity-copy"><span className="dashboard-activity-kind">{tone === "approved" ? "✓" : tone === "changes_requested" ? "↻" : tone === "not_approved" ? "×" : item.activityType === "brand_brain" ? "✦" : "💬"} {activityLabel(item)}</span><strong>{item.title}</strong><small>{item.clientName}{item.detail ? ` · “${item.detail}”` : ""}</small></div>
         <div className="dashboard-activity-actions"><time title="Data do retorno do cliente">{activityTime(item.occurredAt)}</time>{item.activityType === "brand_brain" ? <button type="button" onClick={() => { window.location.hash = `/admin/${item.clientSlug}?view=brand`; }}><UiIcon name="spark" />Revisar</button> : item.activityType === "contract_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/contratos"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "proposal_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/propostas"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "changes_requested" || tone === "not_approved" ? <button type="button" onClick={() => openCard(item)}><UiIcon name="eye" />Ver</button> : <button type="button" onClick={() => onSchedule(item)}><UiIcon name="calendar" />Agendar</button>}</div>
+        <button className="dashboard-activity-dismiss" type="button" onClick={() => dismissFeedback(item.id)} aria-label={`Remover feedback de ${item.clientName}`} title="Marcar como visualizado">×</button>
       </article>;
     })}</div>
     {hiddenCount > 0 ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded(true)}>Ver mais...</button> : null}
