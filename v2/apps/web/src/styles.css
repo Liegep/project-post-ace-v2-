@@ -8622,3 +8622,44 @@ button {
     justify-self: end;
   }
 }
+
+/* Teste do Dashboard em telas desktop amplas: quatro widgets por linha.
+   Em notebooks menores a grade anterior é preservada para não sacrificar a
+   leitura; tablet e mobile continuam usando seus breakpoints existentes. */
+@media (min-width: 1500px) {
+  .dashboard-layout .dashboard-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .dashboard-layout .dashboard-grid > :is(
+    .commemorative-dashboard-widget,
+    .dashboard-internal-messages
+  ) {
+    grid-column: auto;
+  }
+
+  .dashboard-layout .dashboard-client-activities .dashboard-activity-row {
+    grid-template-columns: 8px 32px minmax(0, 1fr) 25px;
+    grid-template-rows: auto auto;
+    gap: 8px;
+  }
+
+  .dashboard-layout .dashboard-client-activities .dashboard-activity-actions {
+    grid-column: 3 / 5;
+    grid-row: 2;
+    grid-template-columns: minmax(0, 1fr) auto;
+    width: 100%;
+    min-width: 0;
+    align-items: center;
+    justify-items: start;
+  }
+
+  .dashboard-layout .dashboard-client-activities .dashboard-activity-actions button {
+    justify-self: end;
+  }
+
+  .dashboard-layout .dashboard-client-activities .dashboard-activity-dismiss {
+    grid-column: 4;
+    grid-row: 1;
+  }
+}
