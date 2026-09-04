@@ -10,7 +10,7 @@ import { getUploadDirectory } from "./uploads.storage.js";
 
 export { getUploadDirectory } from "./uploads.storage.js";
 
-const allowedTypes = new Map<string, { kind: "image" | "video"; extension: string; contentType: string }>([
+const allowedTypes = new Map<string, { kind: "image" | "video" | "document"; extension: string; contentType: string }>([
   ["image/jpeg", { kind: "image", extension: "webp", contentType: "image/webp" }],
   ["image/png", { kind: "image", extension: "webp", contentType: "image/webp" }],
   ["image/webp", { kind: "image", extension: "webp", contentType: "image/webp" }],
@@ -18,6 +18,7 @@ const allowedTypes = new Map<string, { kind: "image" | "video"; extension: strin
   ["video/mp4", { kind: "video", extension: "mp4", contentType: "video/mp4" }],
   ["video/webm", { kind: "video", extension: "webm", contentType: "video/webm" }],
   ["video/quicktime", { kind: "video", extension: "mov", contentType: "video/quicktime" }],
+  ["application/pdf", { kind: "document", extension: "pdf", contentType: "application/pdf" }],
 ]);
 const maxImageSize = 12 * 1024 * 1024;
 const maxVideoSize = 20 * 1024 * 1024;
@@ -39,12 +40,12 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
   const storeUpload = async (request: FastifyRequest) => {
     const file = await request.file();
     if (!file) {
-      throw app.httpErrors.badRequest("Escolha uma imagem para enviar.");
+      throw app.httpErrors.badRequest("Escolha um arquivo para enviar.");
     }
 
     const format = allowedTypes.get(file.mimetype);
     if (!format) {
-      throw app.httpErrors.badRequest("Envie uma imagem JPG, PNG, WEBP ou GIF.");
+      throw app.httpErrors.badRequest("Envie uma imagem, vídeo ou documento PDF válido.");
     }
 
     const buffer = await file.toBuffer();
@@ -56,6 +57,9 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
     }
     if (format.kind === "video" && buffer.length > maxVideoSize) {
       throw app.httpErrors.badRequest("Vídeos podem ter no máximo 20 MB.");
+    }
+    if (format.kind === "document" && buffer.length > maxImageSize) {
+      throw app.httpErrors.badRequest("Documentos PDF podem ter no máximo 12 MB.");
     }
 
     const directory = getUploadDirectory(app.appEnv.UPLOAD_DIR);

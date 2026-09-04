@@ -24,6 +24,7 @@ import { hashtagRoutes } from "./modules/hashtags/hashtags.routes.js";
 import { agendaRoutes } from "./modules/agenda/agenda.routes.js";
 import { textRoutes } from "./modules/texts/texts.routes.js";
 import { reportRoutes } from "./modules/reports/reports.routes.js";
+import { invoiceRoutes } from "./modules/invoices/invoices.routes.js";
 import { archiveCardsDueForPublication } from "./modules/cards/cards.service.js";
 
 export async function buildApp() {
@@ -65,6 +66,7 @@ export async function buildApp() {
     await app.register(agendaRoutes, { prefix: "/api" });
     await app.register(textRoutes, { prefix: "/api" });
     await app.register(reportRoutes, { prefix: "/api" });
+    await app.register(invoiceRoutes, { prefix: "/api" });
 
     const archiveDueCards = async () => {
       try {

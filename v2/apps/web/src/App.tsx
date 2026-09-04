@@ -113,6 +113,7 @@ import {
   submitPortalTextDecisionBySlug,
   listPortalAppointmentsBySlug,
   listPortalReportsBySlug,
+  listPortalInvoicesBySlug,
   type TextComment,
   type TextDocument,
 } from "./api";
@@ -130,7 +131,7 @@ import type {
 } from "./types";
 import { usePreviewResource } from "./usePreviewResource";
 import { PortalReports, ReportsWorkspace } from "./ReportsWorkspace";
-import { BILLING_PENDING_LINE_KEY, BillingInvoiceDocument, BillingWorkspace, formatBillingDate, formatBillingMoney, getBillingInvoiceTotal, loadClientVisibleInvoices, type BillingInvoice, type BillingLineRequest } from "./BillingWorkspace";
+import { BILLING_PENDING_LINE_KEY, BillingInvoiceDocument, BillingWorkspace, formatBillingDate, formatBillingMoney, getBillingInvoiceTotal, type BillingInvoice, type BillingLineRequest } from "./BillingWorkspace";
 import liegePaschoaliniLogo from "./assets/liege-paschoalini-logo.png";
 import designHubV2Logo from "./assets/design-hub-v2-logo.png";
 import { normalizePortalLocale, portalLocaleTag, portalText, type PortalLocale } from "./portalI18n";
@@ -5001,8 +5002,10 @@ function ClientPortalWorkspacePage({
       setPortalInvoices([]);
       return;
     }
-    setPortalInvoices(loadClientVisibleInvoices(data.accountName));
-  }, [data.accountName, data.permissions.allowClientViewInvoices, refreshKey]);
+    let active = true;
+    listPortalInvoicesBySlug(slug).then(({ items }) => { if (active) setPortalInvoices(items); }).catch(() => { if (active) setPortalInvoices([]); });
+    return () => { active = false; };
+  }, [data.accountName, data.permissions.allowClientViewInvoices, refreshKey, slug]);
   useEffect(() => {
     try {
       setViewedInvoiceIds(JSON.parse(window.localStorage.getItem(`designhub-v2-viewed-invoices:${slug}`) ?? "[]") as string[]);

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import mysql, { type PoolConnection, type RowDataPacket } from "mysql2/promise";
 import { loadEnv } from "../config/env.js";
 import { hashPassword } from "../modules/auth/auth.crypto.js";
+import { ensureInvoiceTables } from "../modules/invoices/invoices.repository.js";
 
 type JsonRow = Record<string, unknown>;
 
@@ -18,6 +19,9 @@ type ExportBundle = {
   comments: JsonRow[];
   calendarPosts: JsonRow[];
   mediaManifest: JsonRow[];
+  invoices: JsonRow[];
+  invoiceItems: JsonRow[];
+  invoiceAttachments: JsonRow[];
 };
 
 function parseArguments() {
@@ -41,8 +45,13 @@ async function readRows(inputDir: string, fileName: string) {
   return parsed as JsonRow[];
 }
 
+async function readOptionalRows(inputDir: string, fileName: string) {
+  try { return await readRows(inputDir, fileName); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
+}
+
 async function loadBundle(inputDir: string): Promise<ExportBundle> {
-  const [clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest] =
+  const [clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments] =
     await Promise.all([
       readRows(inputDir, "clients.json"),
       readRows(inputDir, "profiles.json"),
@@ -53,8 +62,11 @@ async function loadBundle(inputDir: string): Promise<ExportBundle> {
       readRows(inputDir, "comments.json"),
       readRows(inputDir, "calendar_posts.json"),
       readRows(inputDir, "media-manifest.json"),
+      readOptionalRows(inputDir, "invoices.json"),
+      readOptionalRows(inputDir, "invoice_items.json"),
+      readOptionalRows(inputDir, "invoice_attachments.json"),
     ]);
-  return { clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest };
+  return { clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments };
 }
 
 function textValue(row: JsonRow, key: string, fallback = "") {
@@ -157,6 +169,7 @@ function validateBundle(bundle: ExportBundle) {
   const profileIds = new Set(bundle.profiles.map((row) => textValue(row, "id")));
   const columnIds = new Set(bundle.columns.map((row) => textValue(row, "id")));
   const postIds = new Set(bundle.posts.map((row) => textValue(row, "id")));
+  const invoiceIds = new Set(bundle.invoices.map((row) => textValue(row, "id")));
 
   for (const [file, rows] of Object.entries({
     clients: bundle.clients,
@@ -167,6 +180,9 @@ function validateBundle(bundle: ExportBundle) {
     tags: bundle.tags,
     comments: bundle.comments,
     calendarPosts: bundle.calendarPosts,
+    invoices: bundle.invoices,
+    invoiceItems: bundle.invoiceItems,
+    invoiceAttachments: bundle.invoiceAttachments,
   })) {
     rows.forEach((row, index) => {
       if (!textValue(row, "id")) errors.push(`${file}[${index}] não possui id.`);
@@ -197,6 +213,9 @@ function validateBundle(bundle: ExportBundle) {
   bundle.calendarPosts.forEach((row) => {
     if (!clientIds.has(textValue(row, "client_id"))) errors.push(`Calendário ${textValue(row, "id")} aponta para cliente ausente.`);
   });
+  bundle.invoices.forEach((row) => { if (!clientIds.has(textValue(row, "client_id"))) errors.push(`Fatura ${textValue(row, "id")} aponta para cliente ausente.`); });
+  bundle.invoiceItems.forEach((row) => { if (!invoiceIds.has(textValue(row, "invoice_id"))) errors.push(`Item ${textValue(row, "id")} aponta para fatura ausente.`); });
+  bundle.invoiceAttachments.forEach((row) => { if (!invoiceIds.has(textValue(row, "invoice_id"))) errors.push(`Anexo ${textValue(row, "id")} aponta para fatura ausente.`); });
   return errors;
 }
 
@@ -213,6 +232,9 @@ function printSummary(bundle: ExportBundle, inputDir: string, commit: boolean) {
       tags: bundle.tags.length,
       comments: bundle.comments.length,
       calendar_posts: bundle.calendarPosts.length,
+      invoices: bundle.invoices.length,
+      invoice_items: bundle.invoiceItems.length,
+      invoice_attachments: bundle.invoiceAttachments.length,
       media_files_pending_copy: bundle.mediaManifest.length,
     },
   }, null, 2));
@@ -281,8 +303,8 @@ async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
     } else {
       await connection.query("INSERT INTO client_accounts (name, slug, owner_user_id, logo_url, locale, portal_title, show_upcoming_posts, show_archived_to_client, tracking_enabled, tracking_visible_to_client, calendar_color, id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", values);
       await connection.query(
-        "INSERT INTO client_permissions (id, client_account_id, allow_client_edit_caption, allow_client_create_post, allow_client_create_tags, allow_client_download, allow_client_edit_brand_brain, allow_client_view_brand_brain, allow_client_view_tracking) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [crypto.randomUUID(), destinationId, boolValue(client, "allow_client_edit_caption"), boolValue(client, "allow_client_create_post"), boolValue(client, "allow_client_create_tags"), boolValue(client, "allow_client_download"), boolValue(client, "allow_client_edit_brand_brain"), boolValue(client, "allow_client_edit_brand_brain"), boolValue(client, "tracking_visible_to_client")],
+        "INSERT INTO client_permissions (id, client_account_id, allow_client_edit_caption, allow_client_create_post, allow_client_create_tags, allow_client_download, allow_client_edit_brand_brain, allow_client_view_invoices, allow_client_view_brand_brain, allow_client_view_tracking) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [crypto.randomUUID(), destinationId, boolValue(client, "allow_client_edit_caption"), boolValue(client, "allow_client_create_post"), boolValue(client, "allow_client_create_tags"), boolValue(client, "allow_client_download"), boolValue(client, "allow_client_edit_brand_brain"), boolValue(client, "show_invoices_to_client"), boolValue(client, "allow_client_edit_brand_brain"), boolValue(client, "tracking_visible_to_client")],
       );
     }
   }
@@ -358,6 +380,24 @@ async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
       [textValue(event, "id"), clientMap.get(textValue(event, "client_id")), textValue(event, "title", "Sem título"), nullableText(event, "caption"), textValue(event, "media_type", "image"), jsonValue(event.media_urls), textValue(event, "publish_date"), nullableText(event, "publish_time"), normalizeCalendarStatus(event.status), nullableText(event, "event_color"), userMap.get(textValue(event, "created_by")) ?? null],
     );
   }
+
+  const clientsByLegacyId = new Map(bundle.clients.map((client) => [textValue(client, "id"), client]));
+  for (const invoice of bundle.invoices) {
+    const legacyId = textValue(invoice, "id"); const legacyClientId = textValue(invoice, "client_id"); const client = clientsByLegacyId.get(legacyClientId) ?? {};
+    const currency = ["BRL", "EUR", "USD", "SEK"].includes(textValue(client, "billing_currency").toUpperCase()) ? textValue(client, "billing_currency").toUpperCase() : "BRL";
+    const locale = ["pt", "en", "it", "es", "sv"].includes(textValue(client, "locale")) ? textValue(client, "locale") : "pt";
+    const status = ["open", "paid", "overdue", "cancelled"].includes(textValue(invoice, "status")) ? textValue(invoice, "status") : "open";
+    const period = [textValue(invoice, "period_start"), textValue(invoice, "period_end")].filter(Boolean).join(" - ");
+    await connection.query(`INSERT INTO invoices (id, client_account_id, invoice_number, title, recipient_name, recipient_email, recipient_address, recipient_country, recipient_tax_id, issue_date, due_date, period_label, currency, locale, status, recurring, fixed_amount, visible_to_client, sent_at, notes, created_by_user_id, legacy_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE client_account_id=VALUES(client_account_id), invoice_number=VALUES(invoice_number), title=VALUES(title), due_date=VALUES(due_date), status=VALUES(status), visible_to_client=VALUES(visible_to_client), notes=VALUES(notes)`,
+      [legacyId, clientMap.get(legacyClientId), numberValue(invoice, "invoice_number"), textValue(invoice, "title", "Fatura"), textValue(client, "name"), textValue(client, "address"), textValue(client, "country"), textValue(client, "tax_id"), textValue(invoice, "issue_date", new Date().toISOString().slice(0, 10)), textValue(invoice, "due_date", new Date().toISOString().slice(0, 10)), period, currency, locale, status, boolValue(client, "billing_recurrence_active"), boolValue(invoice, "client_visible"), boolValue(invoice, "client_visible") ? mysqlDateTime(invoice.updated_at) ?? new Date() : null, textValue(invoice, "notes"), userMap.get(textValue(invoice, "created_by")) ?? null, legacyId, mysqlDateTime(invoice.created_at), mysqlDateTime(invoice.updated_at)]);
+  }
+  for (const item of bundle.invoiceItems) {
+    const description = textValue(item, "description") || textValue(item, "name", "Serviço");
+    await connection.query("INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, position, legacy_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE description=VALUES(description), quantity=VALUES(quantity), unit_price=VALUES(unit_price)", [textValue(item, "id"), textValue(item, "invoice_id"), description, numberValue(item, "quantity") || 1, numberValue(item, "unit_price"), 0, textValue(item, "id"), mysqlDateTime(item.created_at)]);
+  }
+  for (const attachment of bundle.invoiceAttachments) {
+    await connection.query("INSERT INTO invoice_attachments (id, invoice_id, file_name, file_url, uploaded_by_user_id, legacy_id, created_at) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE file_name=VALUES(file_name), file_url=VALUES(file_url)", [textValue(attachment, "id"), textValue(attachment, "invoice_id"), textValue(attachment, "file_name", "Documento"), textValue(attachment, "file_url"), userMap.get(textValue(attachment, "uploaded_by")) ?? null, textValue(attachment, "id"), mysqlDateTime(attachment.created_at)]);
+  }
 }
 
 async function main() {
@@ -376,6 +416,7 @@ async function main() {
 
   const env = loadEnv();
   const pool = mysql.createPool({ host: env.DB_HOST, port: env.DB_PORT, user: env.DB_USER, password: env.DB_PASSWORD, database: env.DB_NAME, connectionLimit: 2 });
+  await ensureInvoiceTables(pool);
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();

@@ -99,6 +99,17 @@ export type BrandBrainComment = { id: string; revisionId: string | null; section
 export type BrandBrainSnapshot = { data: BrandBrain | null; meta: { version: number; updatedAt: string | null; updatedBy: string | null }; revisions: BrandBrainRevision[]; history: Array<{ id: string; version: number; authorName: string; createdAt: string }>; comments: BrandBrainComment[] };
 export type ReportMetrics = Record<"instagram" | "facebook", Record<"reach" | "impressions" | "engagement" | "followers" | "visits" | "clicks", number>>;
 export type ClientReport = { id: string; clientAccountId: string; title: string; periodStart: string; periodEnd: string; status: "draft" | "published"; metrics: ReportMetrics; highlights: Array<{ channel: "instagram" | "facebook"; title: string; value: number }>; evidenceUrls: string[]; notes: string | null; publishedAt: string | null; createdAt: string; updatedAt: string };
+export type BillingCurrency = "BRL" | "EUR" | "USD" | "SEK";
+export type BillingInvoiceStatus = "open" | "paid" | "overdue" | "cancelled";
+export type BillingInvoice = {
+  id: string; clientAccountId: string | null; number: number; title: string; clientName: string; clientEmail: string;
+  clientAddress: string; clientCountry: string; clientTaxId: string; issueDate: string; dueDate: string; period: string;
+  currency: BillingCurrency; locale: "pt" | "en" | "it" | "es" | "sv"; status: BillingInvoiceStatus;
+  recurring: boolean; fixedAmount: boolean; visibleToClient: boolean; sentToClient: boolean; notes: string;
+  lines: Array<{ id: string; description: string; quantity: number; unitPrice: number }>;
+  attachments: Array<{ id: string; fileName: string; fileUrl: string }>;
+  createdAt?: string; updatedAt?: string;
+};
 
 export type ManagedUser = {
   id: string;
@@ -613,6 +624,11 @@ export async function publishAdminReport(clientAccountId: string, reportId: stri
 export async function deleteAdminReport(clientAccountId: string, reportId: string) { return sendJson<{ ok: boolean }>(`/api/clients/${clientAccountId}/reports/${reportId}`, { method: "DELETE" }); }
 export async function extractAdminReportMetrics(clientAccountId: string, evidenceUrls: string[]) { return sendJson<{ metrics: ReportMetrics; highlights: ClientReport["highlights"] }>(`/api/clients/${clientAccountId}/reports/extract`, { method: "POST", body: JSON.stringify({ evidenceUrls }) }); }
 export async function listPortalReportsBySlug(slug: string) { const account = await findPortalAccountBySlug(slug); return fetchJson<{ items: ClientReport[] }>(`/api/portal/accounts/${account.clientAccountId}/reports`); }
+export async function listAdminInvoices() { return fetchJson<{ items: BillingInvoice[] }>("/api/invoices"); }
+export async function createAdminInvoice(input: Omit<BillingInvoice, "id" | "number" | "createdAt" | "updatedAt">) { return sendJson<{ invoice: BillingInvoice }>("/api/invoices", { method: "POST", body: JSON.stringify(input) }); }
+export async function updateAdminInvoice(invoiceId: string, input: Partial<Omit<BillingInvoice, "id" | "number" | "createdAt" | "updatedAt">>) { return sendJson<{ invoice: BillingInvoice }>(`/api/invoices/${invoiceId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+export async function deleteAdminInvoice(invoiceId: string) { return sendJson<{ ok: true }>(`/api/invoices/${invoiceId}`, { method: "DELETE" }); }
+export async function listPortalInvoicesBySlug(slug: string) { const account = await findPortalAccountBySlug(slug); return fetchJson<{ items: BillingInvoice[] }>(`/api/portal/accounts/${account.clientAccountId}/invoices`); }
 
 export async function loadClientPortalBySlug(slug: string): Promise<ClientPortalPreview> {
   const matchedAccount = await findPortalAccountBySlug(slug);
@@ -1150,7 +1166,7 @@ export async function uploadAdminMedia(file: File) {
       throw new Error("O arquivo excede o limite permitido para este formato.");
     }
     const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(payload?.message ?? "Não foi possível enviar a imagem.");
+    throw new Error(payload?.message ?? "Não foi possível enviar o arquivo.");
   }
 
   const result = (await response.json()) as { url: string };

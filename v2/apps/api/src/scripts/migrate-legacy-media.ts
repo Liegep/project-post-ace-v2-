@@ -155,7 +155,7 @@ async function main() {
   let updatedReferences = 0;
   try {
     await connection.beginTransaction();
-    const simpleColumns = [["client_accounts", "logo_url"], ["users", "avatar_url"]] as const;
+    const simpleColumns = [["client_accounts", "logo_url"], ["users", "avatar_url"], ["invoice_attachments", "file_url"]] as const;
     for (const [table, column] of simpleColumns) {
       const [rows] = await connection.query<Array<RowDataPacket & { id: string; value: string | null }>>(`SELECT id, ${column} AS value FROM ${table}`);
       for (const row of rows) {

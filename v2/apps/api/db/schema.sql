@@ -326,6 +326,66 @@ CREATE TABLE IF NOT EXISTS client_reports (
   CONSTRAINT fk_client_reports_creator FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS invoices (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  client_account_id CHAR(36) NULL,
+  invoice_number INT NOT NULL,
+  title VARCHAR(255) NOT NULL,
+  recipient_name VARCHAR(255) NOT NULL DEFAULT '',
+  recipient_email VARCHAR(255) NOT NULL DEFAULT '',
+  recipient_address TEXT NOT NULL,
+  recipient_country VARCHAR(120) NOT NULL DEFAULT '',
+  recipient_tax_id VARCHAR(120) NOT NULL DEFAULT '',
+  issue_date DATE NOT NULL,
+  due_date DATE NOT NULL,
+  period_label VARCHAR(255) NOT NULL DEFAULT '',
+  currency CHAR(3) NOT NULL DEFAULT 'BRL',
+  locale VARCHAR(10) NOT NULL DEFAULT 'pt',
+  status ENUM('open', 'paid', 'overdue', 'cancelled') NOT NULL DEFAULT 'open',
+  recurring TINYINT(1) NOT NULL DEFAULT 0,
+  fixed_amount TINYINT(1) NOT NULL DEFAULT 1,
+  visible_to_client TINYINT(1) NOT NULL DEFAULT 0,
+  sent_at DATETIME NULL,
+  notes TEXT NOT NULL,
+  created_by_user_id CHAR(36) NULL,
+  legacy_id VARCHAR(120) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_invoices_legacy_id (legacy_id),
+  KEY idx_invoices_number (invoice_number),
+  KEY idx_invoices_account_due (client_account_id, due_date),
+  CONSTRAINT fk_invoices_account FOREIGN KEY (client_account_id) REFERENCES client_accounts (id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_invoices_creator FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS invoice_items (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  invoice_id CHAR(36) NOT NULL,
+  description TEXT NOT NULL,
+  quantity DECIMAL(12,3) NOT NULL DEFAULT 1,
+  unit_price DECIMAL(14,2) NOT NULL DEFAULT 0,
+  position INT NOT NULL DEFAULT 0,
+  legacy_id VARCHAR(120) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_invoice_items_legacy_id (legacy_id),
+  KEY idx_invoice_items_invoice (invoice_id, position),
+  CONSTRAINT fk_invoice_items_invoice FOREIGN KEY (invoice_id) REFERENCES invoices (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS invoice_attachments (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  invoice_id CHAR(36) NOT NULL,
+  file_name VARCHAR(255) NOT NULL,
+  file_url VARCHAR(2000) NOT NULL,
+  uploaded_by_user_id CHAR(36) NULL,
+  legacy_id VARCHAR(120) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_invoice_attachments_legacy_id (legacy_id),
+  KEY idx_invoice_attachments_invoice (invoice_id),
+  CONSTRAINT fk_invoice_attachments_invoice FOREIGN KEY (invoice_id) REFERENCES invoices (id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_invoice_attachments_user FOREIGN KEY (uploaded_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS approval_links (
   id CHAR(36) NOT NULL PRIMARY KEY,
   client_account_id CHAR(36) NOT NULL,

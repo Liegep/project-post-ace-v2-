@@ -193,6 +193,11 @@ async function main() {
         "calendar_legend",
         "owner_id",
         "shared",
+        "address",
+        "country",
+        "tax_id",
+        "billing_currency",
+        "billing_recurrence_active",
       ].join(","),
     )
     .in("name", options.clients)
@@ -288,8 +293,20 @@ async function main() {
     .order("publish_date");
   const calendarPosts = foundClientIds.length ? await fetchAll(calendarPostsQuery) : [];
 
+  const invoicesQuery = supabase
+    .from("invoices")
+    .select("id, client_id, client_visible, created_at, created_by, discount, due_date, invoice_number, issue_date, notes, paid_at, payment_details, payment_method, period_end, period_start, status, surcharge, title, updated_at")
+    .in("client_id", foundClientIds)
+    .order("invoice_number");
+  const invoices = foundClientIds.length ? await fetchAll(invoicesQuery) : [];
+  const invoiceIds = invoices.map((invoice) => invoice.id);
+  const invoiceItemsQuery = supabase.from("invoice_items").select("id, invoice_id, category, created_at, description, name, notes, post_id, quantity, service_date, total_price, unit_price").in("invoice_id", invoiceIds).order("created_at");
+  const invoiceItems = invoiceIds.length ? await fetchAll(invoiceItemsQuery) : [];
+  const invoiceAttachmentsQuery = supabase.from("invoice_attachments").select("id, invoice_id, created_at, file_name, file_url, uploaded_by").in("invoice_id", invoiceIds).order("created_at");
+  const invoiceAttachments = invoiceIds.length ? await fetchAll(invoiceAttachmentsQuery) : [];
+
   const mediaManifest = uniqueMediaUrls(
-    [...posts, ...calendarPosts],
+    [...posts, ...calendarPosts, ...invoiceAttachments],
     [
       (row) =>
         row.image_url
@@ -312,6 +329,7 @@ async function main() {
               calendar_post_id: row.publish_date ? row.id : null,
             }))
           : [],
+      (row) => row.file_url ? [{ url: row.file_url, source: "invoice_attachments.file_url", invoice_attachment_id: row.id, invoice_id: row.invoice_id }] : [],
     ],
   );
 
@@ -338,6 +356,9 @@ async function main() {
       active_posts: posts.filter((post) => !post.archived).length,
       comments: comments.length,
       calendar_posts: calendarPosts.length,
+      invoices: invoices.length,
+      invoice_items: invoiceItems.length,
+      invoice_attachments: invoiceAttachments.length,
       media_manifest: mediaManifest.length,
     },
   };
@@ -360,6 +381,9 @@ async function main() {
   await writeJson(path.join(options.outDir, "tags.json"), tags);
   await writeJson(path.join(options.outDir, "comments.json"), comments);
   await writeJson(path.join(options.outDir, "calendar_posts.json"), calendarPosts);
+  await writeJson(path.join(options.outDir, "invoices.json"), invoices);
+  await writeJson(path.join(options.outDir, "invoice_items.json"), invoiceItems);
+  await writeJson(path.join(options.outDir, "invoice_attachments.json"), invoiceAttachments);
   await writeJson(path.join(options.outDir, "media-manifest.json"), mediaManifest);
 
   console.log(`Export concluido em: ${options.outDir}`);
