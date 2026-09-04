@@ -2525,6 +2525,25 @@ function AdminWorkspacePage({
   const selectedCards = [...data.columns.flatMap((column) => column.cards), ...data.withoutColumn]
     .filter((card) => selectedCardIds.includes(card.id));
   const archivedCards = [...data.columns.flatMap((column) => column.cards), ...data.withoutColumn];
+  const archiveColumnCurrentMonth = async (column: BoardColumn) => {
+    const now = new Date();
+    const cardsThisMonth = column.cards.filter((card) => {
+      if (!card.scheduledAt) return false;
+      const scheduled = new Date(card.scheduledAt);
+      return !Number.isNaN(scheduled.getTime())
+        && scheduled.getFullYear() === now.getFullYear()
+        && scheduled.getMonth() === now.getMonth();
+    });
+    if (!cardsThisMonth.length) {
+      window.alert("Não há cards agendados para o mês atual nesta coluna.");
+      return;
+    }
+    const monthName = new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(now);
+    if (!window.confirm(`Arquivar ${cardsThisMonth.length} ${cardsThisMonth.length === 1 ? "card" : "cards"} de ${monthName} nesta coluna? Eles poderão ser restaurados em Arquivados.`)) return;
+    setOpenColumnMenuId(null);
+    await Promise.all(cardsThisMonth.map((card) => archiveAdminCardBySlug(slug, card.id)));
+    setRefreshKey((value) => value + 1);
+  };
   const filteredTagDefinitions = data.tagDefinitions.filter((tag) => tag.name.toLocaleLowerCase("pt-BR").includes(tagQuery.toLocaleLowerCase("pt-BR")));
   const filterCardsByTags = (cards: BoardCard[]) => selectedTagFilters.length === 0 ? cards : cards.filter((card) => selectedTagFilters.some((tag) => card.tags.includes(tag)));
   const removeTagFromCard = async (card: BoardCard, tag: string) => {
@@ -2830,6 +2849,7 @@ function AdminWorkspacePage({
                         );
                       }
                     }}
+                    onArchiveCurrentMonth={() => void archiveColumnCurrentMonth(column)}
                     onAddCard={() => setNewCardTarget({ columnId: column.id })}
                     onQuickAddCard={(title) => createQuickCard(column.id, title)}
                     selectionMode={selectionMode}
@@ -3239,6 +3259,7 @@ function BoardColumnView({
   onChangeColor,
   onToggleVisibility,
   onDelete,
+  onArchiveCurrentMonth,
   onAddCard,
   onQuickAddCard,
   onCardContextMenu,
@@ -3267,6 +3288,7 @@ function BoardColumnView({
   onChangeColor: (color: string) => void;
   onToggleVisibility: () => void;
   onDelete: () => void;
+  onArchiveCurrentMonth: () => void;
   onAddCard: () => void;
   onQuickAddCard: (title: string) => Promise<void>;
   onCardContextMenu: (event: React.MouseEvent<HTMLButtonElement>, card: BoardCard) => void;
@@ -3393,6 +3415,10 @@ function BoardColumnView({
                   ))}
                 </div>
               ) : null}
+              <button role="menuitem" onClick={onArchiveCurrentMonth}>
+                <UiIcon name="layers" />
+                <span>Arquivar mês atual</span>
+              </button>
               <div className="column-popover-separator" role="separator" />
               <button className="column-popover-danger" role="menuitem" onClick={onDelete}>
                 <UiIcon name="trash" />
