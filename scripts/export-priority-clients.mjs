@@ -52,6 +52,7 @@ function parseArgs(argv) {
     outDir: path.join(projectRoot, "migration-export", "priority-clients"),
     clients: [...DEFAULT_CLIENT_NAMES],
     dryRun: false,
+    allClients: false,
   };
 
   for (let i = 0; i < argv.length; i += 1) {
@@ -71,6 +72,10 @@ function parseArgs(argv) {
     }
     if (arg === "--dry-run") {
       options.dryRun = true;
+      continue;
+    }
+    if (arg === "--all-clients") {
+      options.allClients = true;
     }
   }
 
@@ -108,6 +113,14 @@ async function fetchAll(query, pageSize = 1000) {
   return rows;
 }
 
+async function fetchInBatches(values, buildQuery, chunkSize = 100) {
+  const rows = [];
+  for (let index = 0; index < values.length; index += chunkSize) {
+    rows.push(...await fetchAll(buildQuery(values.slice(index, index + chunkSize))));
+  }
+  return rows;
+}
+
 function pickAllowedProfiles(profiles, assignments) {
   const allowedUserIds = new Set(assignments.map((item) => item.user_id));
   return profiles.filter((profile) => allowedUserIds.has(profile.id));
@@ -123,6 +136,7 @@ async function writeJson(filePath, data) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  const trace = (stage) => { if (process.env.EXPORT_DEBUG === "1") console.log(`stage:${stage}`); };
   const env = await loadEnv();
 
   const supabaseUrl = env.VITE_SUPABASE_URL || env.SUPABASE_URL;
@@ -133,8 +147,10 @@ async function main() {
     throw new Error("Supabase URL/chave publishable nao encontrados no ambiente.");
   }
 
+  const accessToken = env.EXPORT_ACCESS_TOKEN?.trim();
   const supabase = createClient(supabaseUrl, supabaseKey, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: accessToken ? { headers: { Authorization: `Bearer ${accessToken}` } } : undefined,
   });
 
   const adminEmail = env.EXPORT_ADMIN_EMAIL || env.MIGRATION_ADMIN_EMAIL;
@@ -144,7 +160,14 @@ async function main() {
   let role = "anon";
   let currentUserId = null;
 
-  if (adminEmail && adminPassword) {
+  if (accessToken) {
+    const { data, error } = await supabase.auth.getUser(accessToken);
+    if (error || !data.user) throw new Error(`Sessão autenticada inválida: ${error?.message ?? "usuário ausente"}`);
+    currentUserId = data.user.id;
+    const { data: profile, error: profileError } = await supabase.from("profiles").select("id, role, full_name, email").eq("id", currentUserId).maybeSingle();
+    if (profileError) throw profileError;
+    role = profile?.role ?? "authenticated";
+  } else if (adminEmail && adminPassword) {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: adminEmail,
       password: adminPassword,
@@ -166,8 +189,9 @@ async function main() {
       role = "authenticated";
     }
   }
+  trace("authenticated");
 
-  const { data: clients, error: clientError } = await supabase
+  let clientsQuery = supabase
     .from("clients")
     .select(
       [
@@ -199,16 +223,17 @@ async function main() {
         "billing_currency",
         "billing_recurrence_active",
       ].join(","),
-    )
-    .in("name", options.clients)
-    .order("name");
+    );
+  if (!options.allClients) clientsQuery = clientsQuery.in("name", options.clients);
+  const { data: clients, error: clientError } = await clientsQuery.order("name");
 
   if (clientError) throw clientError;
+  trace("clients");
 
   const foundClients = clients ?? [];
   const foundClientIds = foundClients.map((client) => client.id);
 
-  const missingClients = options.clients.filter(
+  const missingClients = options.allClients ? [] : options.clients.filter(
     (name) => !foundClients.some((client) => client.name === name),
   );
 
@@ -217,6 +242,7 @@ async function main() {
     .select("id, user_id, client_id, assigned_by, created_at")
     .in("client_id", foundClientIds);
   const assignments = foundClientIds.length ? await fetchAll(assignmentsQuery) : [];
+  trace("assignments");
 
   const profileIds = [...new Set(assignments.map((item) => item.user_id))];
   const profilesQuery = supabase
@@ -224,6 +250,7 @@ async function main() {
     .select("id, full_name, email, avatar_url, role")
     .in("id", profileIds);
   const profiles = profileIds.length ? await fetchAll(profilesQuery) : [];
+  trace("profiles");
 
   const columnsQuery = supabase
     .from("columns")
@@ -231,6 +258,7 @@ async function main() {
     .in("client_id", foundClientIds)
     .order("position");
   const columns = foundClientIds.length ? await fetchAll(columnsQuery) : [];
+  trace("columns");
 
   const postsQuery = supabase
     .from("posts")
@@ -267,6 +295,7 @@ async function main() {
     .in("client_id", foundClientIds)
     .order("position");
   const posts = foundClientIds.length ? await fetchAll(postsQuery) : [];
+  trace("posts");
 
   const defaultTagIds = ["seo", "alterado", "agendado", "publicado"];
   const tagsQuery = supabase
@@ -275,14 +304,15 @@ async function main() {
     .or(`client_id.in.(${foundClientIds.join(",")}),id.in.(${defaultTagIds.join(",")})`)
     .order("name");
   const tags = foundClientIds.length ? await fetchAll(tagsQuery) : [];
+  trace("tags");
 
   const postIds = posts.map((post) => post.id);
-  const commentsQuery = supabase
+  const comments = await fetchInBatches(postIds, (ids) => supabase
     .from("comments")
     .select("id, post_id, author, text, user_id, created_at")
-    .in("post_id", postIds)
-    .order("created_at");
-  const comments = postIds.length ? await fetchAll(commentsQuery) : [];
+    .in("post_id", ids)
+    .order("created_at"));
+  trace("comments");
 
   const calendarPostsQuery = supabase
     .from("calendar_posts")
@@ -292,6 +322,7 @@ async function main() {
     .in("client_id", foundClientIds)
     .order("publish_date");
   const calendarPosts = foundClientIds.length ? await fetchAll(calendarPostsQuery) : [];
+  trace("calendar");
 
   const invoicesQuery = supabase
     .from("invoices")
@@ -299,11 +330,12 @@ async function main() {
     .in("client_id", foundClientIds)
     .order("invoice_number");
   const invoices = foundClientIds.length ? await fetchAll(invoicesQuery) : [];
+  trace("invoices");
   const invoiceIds = invoices.map((invoice) => invoice.id);
-  const invoiceItemsQuery = supabase.from("invoice_items").select("id, invoice_id, category, created_at, description, name, notes, post_id, quantity, service_date, total_price, unit_price").in("invoice_id", invoiceIds).order("created_at");
-  const invoiceItems = invoiceIds.length ? await fetchAll(invoiceItemsQuery) : [];
-  const invoiceAttachmentsQuery = supabase.from("invoice_attachments").select("id, invoice_id, created_at, file_name, file_url, uploaded_by").in("invoice_id", invoiceIds).order("created_at");
-  const invoiceAttachments = invoiceIds.length ? await fetchAll(invoiceAttachmentsQuery) : [];
+  const invoiceItems = await fetchInBatches(invoiceIds, (ids) => supabase.from("invoice_items").select("id, invoice_id, category, created_at, description, name, notes, post_id, quantity, service_date, total_price, unit_price").in("invoice_id", ids).order("created_at"));
+  trace("invoice-items");
+  const invoiceAttachments = await fetchInBatches(invoiceIds, (ids) => supabase.from("invoice_attachments").select("id, invoice_id, created_at, file_name, file_url, uploaded_by").in("invoice_id", ids).order("created_at"));
+  trace("invoice-attachments");
 
   const mediaManifest = uniqueMediaUrls(
     [...posts, ...calendarPosts, ...invoiceAttachments],
@@ -338,7 +370,7 @@ async function main() {
     mode: options.dryRun ? "dry-run" : "export",
     authenticated_as: currentUserId,
     detected_role: role,
-    requested_clients: options.clients,
+    requested_clients: options.allClients ? ["ALL"] : options.clients,
     found_clients: foundClients.map((client) => ({
       id: client.id,
       name: client.name,
@@ -391,6 +423,6 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error("[export-priority-clients] Falha:", error?.message || error);
+  console.error("[export-priority-clients] Falha:", JSON.stringify({ message: error?.message || String(error), code: error?.code, details: error?.details, hint: error?.hint }));
   process.exitCode = 1;
 });

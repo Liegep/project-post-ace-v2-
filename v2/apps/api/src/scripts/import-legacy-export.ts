@@ -31,11 +31,23 @@ function parseArguments() {
   const repositoryRoot = path.resolve(scriptDirectory, "../../../../..");
   return {
     commit: args.includes("--commit"),
+    onlyInvoices: args.includes("--only-invoices"),
     inputDir:
       inputIndex >= 0 && args[inputIndex + 1]
         ? path.resolve(args[inputIndex + 1])
         : path.join(repositoryRoot, "migration-export/priority-clients"),
   };
+}
+
+async function resolveExistingClients(connection: PoolConnection, clients: JsonRow[]) {
+  const clientMap = new Map<string, string>();
+  for (const client of clients) {
+    const legacyId = textValue(client, "id"); const slug = textValue(client, "slug", legacyId);
+    const [rows] = await connection.query<Array<RowDataPacket & { id: string }>>("SELECT id FROM client_accounts WHERE id = ? OR slug = ? LIMIT 1", [legacyId, slug]);
+    if (!rows[0]) throw new Error(`O cliente “${textValue(client, "name", slug)}” ainda não existe na V2.`);
+    clientMap.set(legacyId, rows[0].id);
+  }
+  return clientMap;
 }
 
 async function readRows(inputDir: string, fileName: string) {
@@ -270,6 +282,26 @@ async function resolveUsers(connection: PoolConnection, profiles: JsonRow[]) {
   return { userMap, roleByLegacyId };
 }
 
+async function importInvoiceRecords(connection: PoolConnection, bundle: ExportBundle, clientMap: Map<string, string>, userMap = new Map<string, string>()) {
+  const clientsByLegacyId = new Map(bundle.clients.map((client) => [textValue(client, "id"), client]));
+  for (const invoice of bundle.invoices) {
+    const legacyId = textValue(invoice, "id"); const legacyClientId = textValue(invoice, "client_id"); const client = clientsByLegacyId.get(legacyClientId) ?? {};
+    const currency = ["BRL", "EUR", "USD", "SEK"].includes(textValue(client, "billing_currency").toUpperCase()) ? textValue(client, "billing_currency").toUpperCase() : "BRL";
+    const locale = ["pt", "en", "it", "es", "sv"].includes(textValue(client, "locale")) ? textValue(client, "locale") : "pt";
+    const status = ["open", "paid", "overdue", "cancelled"].includes(textValue(invoice, "status")) ? textValue(invoice, "status") : "open";
+    const period = [textValue(invoice, "period_start"), textValue(invoice, "period_end")].filter(Boolean).join(" - ");
+    await connection.query(`INSERT INTO invoices (id, client_account_id, invoice_number, title, recipient_name, recipient_email, recipient_address, recipient_country, recipient_tax_id, issue_date, due_date, period_label, currency, locale, status, recurring, fixed_amount, visible_to_client, sent_at, notes, created_by_user_id, legacy_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE client_account_id=VALUES(client_account_id), invoice_number=VALUES(invoice_number), title=VALUES(title), due_date=VALUES(due_date), status=VALUES(status), visible_to_client=VALUES(visible_to_client), notes=VALUES(notes)`,
+      [legacyId, clientMap.get(legacyClientId), numberValue(invoice, "invoice_number"), textValue(invoice, "title", "Fatura"), textValue(client, "name"), textValue(client, "address"), textValue(client, "country"), textValue(client, "tax_id"), textValue(invoice, "issue_date", new Date().toISOString().slice(0, 10)), textValue(invoice, "due_date", new Date().toISOString().slice(0, 10)), period, currency, locale, status, boolValue(client, "billing_recurrence_active"), boolValue(invoice, "client_visible"), boolValue(invoice, "client_visible") ? mysqlDateTime(invoice.updated_at) ?? new Date() : null, textValue(invoice, "notes"), userMap.get(textValue(invoice, "created_by")) ?? null, legacyId, mysqlDateTime(invoice.created_at), mysqlDateTime(invoice.updated_at)]);
+  }
+  for (const item of bundle.invoiceItems) {
+    const description = textValue(item, "description") || textValue(item, "name", "Serviço");
+    await connection.query("INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, position, legacy_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE description=VALUES(description), quantity=VALUES(quantity), unit_price=VALUES(unit_price)", [textValue(item, "id"), textValue(item, "invoice_id"), description, numberValue(item, "quantity") || 1, numberValue(item, "unit_price"), 0, textValue(item, "id"), mysqlDateTime(item.created_at)]);
+  }
+  for (const attachment of bundle.invoiceAttachments) {
+    await connection.query("INSERT INTO invoice_attachments (id, invoice_id, file_name, file_url, uploaded_by_user_id, legacy_id, created_at) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE file_name=VALUES(file_name), file_url=VALUES(file_url)", [textValue(attachment, "id"), textValue(attachment, "invoice_id"), textValue(attachment, "file_name", "Documento"), textValue(attachment, "file_url"), userMap.get(textValue(attachment, "uploaded_by")) ?? null, textValue(attachment, "id"), mysqlDateTime(attachment.created_at)]);
+  }
+}
+
 async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
   const { userMap, roleByLegacyId } = await resolveUsers(connection, bundle.profiles);
   const clientMap = new Map<string, string>();
@@ -381,23 +413,7 @@ async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
     );
   }
 
-  const clientsByLegacyId = new Map(bundle.clients.map((client) => [textValue(client, "id"), client]));
-  for (const invoice of bundle.invoices) {
-    const legacyId = textValue(invoice, "id"); const legacyClientId = textValue(invoice, "client_id"); const client = clientsByLegacyId.get(legacyClientId) ?? {};
-    const currency = ["BRL", "EUR", "USD", "SEK"].includes(textValue(client, "billing_currency").toUpperCase()) ? textValue(client, "billing_currency").toUpperCase() : "BRL";
-    const locale = ["pt", "en", "it", "es", "sv"].includes(textValue(client, "locale")) ? textValue(client, "locale") : "pt";
-    const status = ["open", "paid", "overdue", "cancelled"].includes(textValue(invoice, "status")) ? textValue(invoice, "status") : "open";
-    const period = [textValue(invoice, "period_start"), textValue(invoice, "period_end")].filter(Boolean).join(" - ");
-    await connection.query(`INSERT INTO invoices (id, client_account_id, invoice_number, title, recipient_name, recipient_email, recipient_address, recipient_country, recipient_tax_id, issue_date, due_date, period_label, currency, locale, status, recurring, fixed_amount, visible_to_client, sent_at, notes, created_by_user_id, legacy_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE client_account_id=VALUES(client_account_id), invoice_number=VALUES(invoice_number), title=VALUES(title), due_date=VALUES(due_date), status=VALUES(status), visible_to_client=VALUES(visible_to_client), notes=VALUES(notes)`,
-      [legacyId, clientMap.get(legacyClientId), numberValue(invoice, "invoice_number"), textValue(invoice, "title", "Fatura"), textValue(client, "name"), textValue(client, "address"), textValue(client, "country"), textValue(client, "tax_id"), textValue(invoice, "issue_date", new Date().toISOString().slice(0, 10)), textValue(invoice, "due_date", new Date().toISOString().slice(0, 10)), period, currency, locale, status, boolValue(client, "billing_recurrence_active"), boolValue(invoice, "client_visible"), boolValue(invoice, "client_visible") ? mysqlDateTime(invoice.updated_at) ?? new Date() : null, textValue(invoice, "notes"), userMap.get(textValue(invoice, "created_by")) ?? null, legacyId, mysqlDateTime(invoice.created_at), mysqlDateTime(invoice.updated_at)]);
-  }
-  for (const item of bundle.invoiceItems) {
-    const description = textValue(item, "description") || textValue(item, "name", "Serviço");
-    await connection.query("INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, position, legacy_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE description=VALUES(description), quantity=VALUES(quantity), unit_price=VALUES(unit_price)", [textValue(item, "id"), textValue(item, "invoice_id"), description, numberValue(item, "quantity") || 1, numberValue(item, "unit_price"), 0, textValue(item, "id"), mysqlDateTime(item.created_at)]);
-  }
-  for (const attachment of bundle.invoiceAttachments) {
-    await connection.query("INSERT INTO invoice_attachments (id, invoice_id, file_name, file_url, uploaded_by_user_id, legacy_id, created_at) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE file_name=VALUES(file_name), file_url=VALUES(file_url)", [textValue(attachment, "id"), textValue(attachment, "invoice_id"), textValue(attachment, "file_name", "Documento"), textValue(attachment, "file_url"), userMap.get(textValue(attachment, "uploaded_by")) ?? null, textValue(attachment, "id"), mysqlDateTime(attachment.created_at)]);
-  }
+  await importInvoiceRecords(connection, bundle, clientMap, userMap);
 }
 
 async function main() {
@@ -420,7 +436,12 @@ async function main() {
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
-    await importBundle(connection, bundle);
+    if (options.onlyInvoices) {
+      const clientMap = await resolveExistingClients(connection, bundle.clients);
+      await importInvoiceRecords(connection, bundle, clientMap);
+    } else {
+      await importBundle(connection, bundle);
+    }
     await connection.commit();
     console.log("Importação concluída. Novos usuários foram mantidos inativos até a definição de senha.");
   } catch (error) {
