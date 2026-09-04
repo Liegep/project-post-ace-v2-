@@ -12,6 +12,7 @@
     "db:prepare:staging": "tsx src/scripts/bootstrap-local-db.ts --schema-only --existing-database",
     "import:legacy": "tsx src/scripts/import-legacy-export.ts",
     "import:legacy-agenda": "tsx src/scripts/import-legacy-agenda.ts",
+    "backup:legacy-invoice-attachments": "tsx src/scripts/backup-legacy-invoice-attachments.ts",
     "migrate:legacy-media": "tsx src/scripts/migrate-legacy-media.ts",
     "sync:agenda:legacy": "tsx src/scripts/sync-legacy-agenda-to-supabase.ts"
   },
