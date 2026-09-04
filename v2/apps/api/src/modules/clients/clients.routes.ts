@@ -246,7 +246,35 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const auth = request.auth;
-    // Internal roles can preview every client account they manage; clients remain scoped to their own portal.
+    // Super admins can preview every portal without needing an artificial
+    // membership for each client. Other roles remain scoped to their assigned
+    // accounts, and clients only receive their own portal memberships.
+    if (auth.user.globalRole === "super_admin") {
+      const [accounts] = await app.db.query<Array<RowDataPacket & {
+        id: string;
+        name: string;
+        slug: string;
+        is_primary: number;
+      }>>(
+        [
+          "SELECT a.id, a.name, a.slug, COALESCE(cm.is_primary, 0) AS is_primary",
+          "FROM client_accounts a",
+          "LEFT JOIN client_memberships cm ON cm.client_account_id = a.id AND cm.user_id = ?",
+          "ORDER BY cm.is_primary DESC, a.name ASC",
+        ].join(" "),
+        [auth.user.id],
+      );
+
+      return {
+        items: accounts.map((account) => ({
+          clientAccountId: account.id,
+          clientName: account.name,
+          clientSlug: account.slug,
+          isPrimary: Boolean(account.is_primary),
+        })),
+      };
+    }
+
     const items = auth.memberships
       .filter((membership) => auth.user.globalRole !== "cliente" || membership.membershipRole === "cliente")
       .map((membership) => ({
