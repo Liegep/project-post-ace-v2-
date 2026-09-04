@@ -4699,6 +4699,22 @@ function ClientPortalWorkspacePage({
     slug,
     refreshKey,
   ]);
+  useEffect(() => {
+    // Portal settings may be changed from the admin view in another tab. Refresh
+    // as soon as this portal becomes active again so its navigation never keeps
+    // a stale permission snapshot.
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        setRefreshKey((value) => value + 1);
+      }
+    };
+    window.addEventListener("focus", refreshWhenVisible);
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      window.removeEventListener("focus", refreshWhenVisible);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, []);
   const data = resource.data;
   const canRespondToClientContent = data.accessLevel !== "viewer";
   const canAdministerClientPortal = data.accessLevel === "admin";
