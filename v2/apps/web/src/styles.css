@@ -1539,7 +1539,7 @@ button {
 @media (min-width: 761px) {
   .kanban-admin-layout .columns-scroll {
     grid-auto-columns: 360px;
-    gap: 16px;
+    gap: 10px;
     scroll-behavior: auto;
     scroll-padding-inline: 2px 24px;
     overscroll-behavior-x: contain;
@@ -1899,7 +1899,7 @@ button {
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: minmax(340px, 370px);
-  gap: 14px;
+  gap: 10px;
   overflow-x: auto;
   overflow-y: hidden;
   padding: 4px 2px 12px;
