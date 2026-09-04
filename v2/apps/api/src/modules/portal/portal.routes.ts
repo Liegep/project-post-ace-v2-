@@ -67,9 +67,8 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
     }
     const input = createPortalPostSchema.parse(request.body);
     const mediaType = input.mediaUrls.some((url) => /\.(mp4|webm|mov)(\?.*)?$/i.test(url)) ? "video" : "image";
-    return {
-      ok: true,
-      card: await createKanbanCard(app, params.clientAccountId, request.auth!.user.id, {
+    const actor = request.auth!.user;
+    const card = await createKanbanCard(app, params.clientAccountId, actor.id, {
         columnId: null,
         title: input.title,
         caption: input.caption ?? null,
@@ -87,8 +86,20 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
         scheduledAt: null,
         clientLabel: "Pendente",
         eventColor: null,
-      }),
-    };
+      });
+    if (!card) throw app.httpErrors.badRequest("Não foi possível criar o post.");
+    if (input.commentText) {
+      await addCardComment(app, params.clientAccountId, card.id, {
+        commentText: input.commentText,
+        isInternal: false,
+      }, {
+        userId: actor.id,
+        authorName: actor.fullName,
+        authorRole: actor.globalRole,
+        canCreateInternal: false,
+      });
+    }
+    return { ok: true, card };
   });
 
   app.patch("/portal/accounts/:clientAccountId/cards/:cardId/caption", async (request) => {

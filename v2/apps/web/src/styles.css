@@ -1204,6 +1204,24 @@ button {
   gap: 12px;
 }
 
+.portal-nav-create {
+  margin-bottom: 4px;
+  color: #fff;
+  background: linear-gradient(135deg, #6854e4, #8d5ee9 55%, #d66fad);
+  box-shadow: 0 10px 22px rgba(101, 76, 214, .2);
+  font-weight: 650;
+}
+
+.portal-nav-create:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 14px 26px rgba(101, 76, 214, .28);
+}
+
+.portal-nav-create > b {
+  font-size: 1.2rem;
+  font-weight: 500;
+}
+
 .portal-mobile-nav-trigger { display: none; }
 
 .portal-nav-count {

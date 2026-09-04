@@ -1171,7 +1171,7 @@ export async function uploadPortalMediaBySlug(slug: string, file: File) {
   return ((await response.json()) as { url: string }).url;
 }
 
-export async function createPortalPostBySlug(slug: string, input: { title: string; caption?: string | null; artType: string; externalLinkUrl?: string | null; mediaUrls: string[] }) {
+export async function createPortalPostBySlug(slug: string, input: { title: string; caption?: string | null; commentText?: string | null; artType: string; externalLinkUrl?: string | null; mediaUrls: string[] }) {
   const account = await findPortalAccountBySlug(slug);
   return sendJson<{ ok: true; card: ApiBoardCard }>(`/api/portal/accounts/${account.clientAccountId}/cards`, {
     method: "POST",

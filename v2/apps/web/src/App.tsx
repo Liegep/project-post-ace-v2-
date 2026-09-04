@@ -1152,7 +1152,7 @@ function ClientTrackerPanel({ slug, onTrackingChange }: { slug: string; onTracki
   };
   if (!settings) return <p className="drawer-helper">{error || "Carregando configurações do cliente..."}</p>;
   const actions: Array<[keyof ClientTrackerSettings["clientPermissions"], string]> = [
-    ["allowClientEditCaption", "Editar textos e legendas"], ["allowClientCreatePost", "Criar posts/cards"], ["allowClientCreateTags", "Criar etiquetas"], ["allowClientDownload", "Baixar conteúdo"], ["allowClientEditBrandBrain", "Editar Brand Brain"],
+    ["allowClientEditCaption", "Editar textos e legendas"], ["allowClientCreatePost", "Criar posts"], ["allowClientCreateTags", "Criar etiquetas"], ["allowClientDownload", "Baixar conteúdo"], ["allowClientEditBrandBrain", "Editar Brand Brain"],
   ];
   const views: Array<[keyof ClientTrackerSettings["clientPermissions"], string]> = [
     ["allowClientViewTexts", "Ver textos"], ["allowClientSearch", "Usar pesquisa"], ["allowClientViewInvoices", "Ver faturas"], ["allowClientViewReports", "Ver relatórios"], ["allowClientViewBrandBrain", "Ver Brand Brain"], ["allowClientViewTracking", "Ver acompanhamento"],
@@ -4806,23 +4806,24 @@ function ClientPortalArchivedView({ cards, loading, error, onOpenCard }: { cards
   </section>;
 }
 
-type PortalPostDraft = { title: string; caption: string; artType: string; externalLinkUrl: string };
+type PortalPostDraft = { title: string; caption: string; commentText: string; artType: string; externalLinkUrl: string };
 
 function ClientPostSuggestionModal({ draft, files, submitting, error, onChange, onFilesChange, onClose, onSubmit }: { draft: PortalPostDraft; files: File[]; submitting: boolean; error: string; onChange: (field: keyof PortalPostDraft, value: string) => void; onFilesChange: (files: File[]) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const { t } = usePortalTranslation();
   return <div className="modal-backdrop portal-post-modal-backdrop" onMouseDown={onClose}>
     <form className="portal-post-modal" onSubmit={onSubmit} onMouseDown={(event) => event.stopPropagation()}>
-      <header><div><p className="eyebrow">{t("Nova sugestão")}</p><h2>{t("Sugerir um post")}</h2><p>{t("Envie sua ideia para a equipe. Ela ficará pendente até entrar no planejamento.")}</p></div><button type="button" onClick={onClose} aria-label={t("Fechar")}>×</button></header>
+      <header><div><p className="eyebrow">{t("Novo post")}</p><h2>{t("Criar post")}</h2><p>{t("Envie o conteúdo para a equipe. Ele ficará pendente até entrar no planejamento.")}</p></div><button type="button" onClick={onClose} aria-label={t("Fechar")}>×</button></header>
       <div className="portal-post-fields">
-        <label>{t("Título da ideia *")}<input autoFocus value={draft.title} onChange={(event) => onChange("title", event.target.value)} placeholder={t("Ex.: Carrossel com dúvidas frequentes")} maxLength={255} /></label>
+        <label>{t("Título do post *")}<input autoFocus value={draft.title} onChange={(event) => onChange("title", event.target.value)} placeholder={t("Ex.: Carrossel com dúvidas frequentes")} maxLength={255} /></label>
         <label>{t("Formato")}<select value={draft.artType} onChange={(event) => onChange("artType", event.target.value)}>{ART_TYPE_OPTIONS.map((option) => <option key={option}>{t(option)}</option>)}</select></label>
         <label className="wide">{t("Descrição ou legenda")}<textarea value={draft.caption} onChange={(event) => onChange("caption", event.target.value)} placeholder={t("Conte a ideia, o objetivo e qualquer orientação para a equipe...")} maxLength={5000} /></label>
+        <label className="wide">{t("Comentário para a equipe")}<textarea value={draft.commentText} onChange={(event) => onChange("commentText", event.target.value)} placeholder={t("Adicione um comentário ou observação sobre este post...")} maxLength={5000} /></label>
         <label className="wide">{t("Link de referência")}<input type="url" value={draft.externalLinkUrl} onChange={(event) => onChange("externalLinkUrl", event.target.value)} placeholder="https://..." /></label>
         <label className="portal-post-files wide"><span>{t("Artes ou referências")}</span><input multiple type="file" accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime" onChange={(event) => onFilesChange(Array.from(event.target.files ?? []).slice(0, 20))} /><strong>{files.length ? `${files.length} ${t(files.length === 1 ? "arquivo selecionado" : "arquivos selecionados")}` : t("Escolher arquivos")}</strong><small>{t("Você pode enviar até 20 imagens ou vídeos.")}</small></label>
       </div>
       {files.length ? <div className="portal-post-file-list">{files.map((file, index) => <span key={`${file.name}-${index}`}>{file.name}<button type="button" onClick={() => onFilesChange(files.filter((_, itemIndex) => itemIndex !== index))}>×</button></span>)}</div> : null}
       {error ? <p className="form-feedback error-text">{error}</p> : null}
-      <footer><button className="ghost-button" type="button" disabled={submitting} onClick={onClose}>{t("Cancelar")}</button><button className="gradient-button" type="submit" disabled={submitting || !draft.title.trim()}>{t(submitting ? "Enviando sugestão..." : "Enviar para a equipe")}</button></footer>
+      <footer><button className="ghost-button" type="button" disabled={submitting} onClick={onClose}>{t("Cancelar")}</button><button className="gradient-button" type="submit" disabled={submitting || !draft.title.trim()}>{t(submitting ? "Criando post..." : "Criar post")}</button></footer>
     </form>
   </div>;
 }
@@ -4880,7 +4881,7 @@ function ClientPortalWorkspacePage({
   const [portalTextSubmitting, setPortalTextSubmitting] = useState<"comment" | "approve" | "changes" | null>(null);
   const [portalTextFeedback, setPortalTextFeedback] = useState<string | null>(null);
   const [createPostOpen, setCreatePostOpen] = useState(false);
-  const [postDraft, setPostDraft] = useState<PortalPostDraft>({ title: "", caption: "", artType: "Post único", externalLinkUrl: "" });
+  const [postDraft, setPostDraft] = useState<PortalPostDraft>({ title: "", caption: "", commentText: "", artType: "Post único", externalLinkUrl: "" });
   const [postFiles, setPostFiles] = useState<File[]>([]);
   const [postSubmitting, setPostSubmitting] = useState(false);
   const [postError, setPostError] = useState("");
@@ -5061,14 +5062,15 @@ function ClientPortalWorkspacePage({
       await createPortalPostBySlug(slug, {
         title: postDraft.title.trim(),
         caption: postDraft.caption.trim() || null,
+        commentText: postDraft.commentText.trim() || null,
         artType: postDraft.artType,
         externalLinkUrl: postDraft.externalLinkUrl.trim() || null,
         mediaUrls,
       });
-      setPostDraft({ title: "", caption: "", artType: "Post único", externalLinkUrl: "" });
+      setPostDraft({ title: "", caption: "", commentText: "", artType: "Post único", externalLinkUrl: "" });
       setPostFiles([]);
       setCreatePostOpen(false);
-      setPostSuccess(tr("Sugestão enviada. Ela já está no quadro da equipe com status pendente."));
+      setPostSuccess(tr("Post enviado. Ele já está no quadro da equipe com status pendente."));
       setRefreshKey((value) => value + 1);
     } catch (error) {
       setPostError(error instanceof Error ? error.message : tr("Não foi possível enviar a sugestão."));
@@ -5107,9 +5109,8 @@ function ClientPortalWorkspacePage({
 
         <button ref={portalMobileMenuButtonRef} type="button" className="portal-mobile-nav-trigger" onClick={() => setPortalMobileMenuOpen((value) => !value)} aria-expanded={portalMobileMenuOpen} aria-controls="portal-navigation" aria-label={tr("Portal do cliente")}><span aria-hidden="true"><i /><i /><i /></span></button>
 
-        {canUseEnabledClientTools && data.permissions.allowClientCreatePost ? <button className="portal-sidebar-create-post" onClick={() => { setPostError(""); setCreatePostOpen(true); }}><span>＋</span><div><strong>{tr("Sugerir post")}</strong><small>{tr("Enviar uma ideia")}</small></div></button> : null}
-
         <nav ref={portalNavRef} id="portal-navigation" className={`portal-nav${portalMobileMenuOpen ? " mobile-open" : ""}`}>
+          {canUseEnabledClientTools && data.permissions.allowClientCreatePost ? <button type="button" className="portal-nav-item portal-nav-create" onClick={() => { setPostError(""); setCreatePostOpen(true); setPortalMobileMenuOpen(false); }}><span>{tr("Criar post")}</span><b aria-hidden="true">＋</b></button> : null}
           {[
             { view: "board" as const, label: tr("Aprovações"), count: approvalPortalCards.length },
             ...(data.permissions.allowClientViewTexts ? [{ view: "texts" as const, label: tr("Textos"), count: portalTexts.filter((item) => item.status !== "Aprovado").length }] : []),

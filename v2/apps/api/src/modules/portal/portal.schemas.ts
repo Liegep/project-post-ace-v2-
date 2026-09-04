@@ -16,6 +16,7 @@ const portalMediaUrlSchema = z.string().startsWith("/api/uploads/", "Arquivo de 
 export const createPortalPostSchema = z.object({
   title: z.string().trim().min(1).max(255),
   caption: z.string().trim().max(5000).nullable().optional(),
+  commentText: z.string().trim().max(5000).nullable().optional(),
   artType: z.string().trim().min(1).max(50).default("Post único"),
   externalLinkUrl: z.string().url().max(1024).nullable().optional(),
   mediaUrls: z.array(portalMediaUrlSchema).max(20).default([]),
