@@ -5105,17 +5105,27 @@ button {
   scrollbar-gutter: stable;
 }
 
-/* Barras sempre visíveis para mouse e trackpad, inclusive no Windows. */
-.kanban-admin-layout .columns-scroll { overflow-x: scroll; scrollbar-gutter: stable both-edges; }
-.kanban-admin-layout .column-cards-scroll { overflow-y: scroll; scrollbar-gutter: stable; }
+/* Barras discretas, mas sempre disponíveis para quem usa mouse no Windows. */
+.kanban-admin-layout .columns-scroll {
+  overflow-x: scroll;
+  scrollbar-gutter: stable both-edges;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(114, 128, 164, .46) transparent;
+}
+.kanban-admin-layout .column-cards-scroll {
+  overflow-y: scroll;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(114, 128, 164, .42) transparent;
+}
 .kanban-admin-layout .columns-scroll::-webkit-scrollbar,
-.kanban-admin-layout .column-cards-scroll::-webkit-scrollbar { width: 10px; height: 10px; }
+.kanban-admin-layout .column-cards-scroll::-webkit-scrollbar { width: 6px; height: 7px; }
 .kanban-admin-layout .columns-scroll::-webkit-scrollbar-track,
-.kanban-admin-layout .column-cards-scroll::-webkit-scrollbar-track { border-radius: 999px; background: rgba(222, 229, 242, .72); }
+.kanban-admin-layout .column-cards-scroll::-webkit-scrollbar-track { border-radius: 999px; background: transparent; }
 .kanban-admin-layout .columns-scroll::-webkit-scrollbar-thumb,
-.kanban-admin-layout .column-cards-scroll::-webkit-scrollbar-thumb { border: 2px solid rgba(222, 229, 242, .72); border-radius: 999px; background: #9aa8c4; }
+.kanban-admin-layout .column-cards-scroll::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 999px; background: rgba(114, 128, 164, .42); }
 .kanban-admin-layout .columns-scroll::-webkit-scrollbar-thumb:hover,
-.kanban-admin-layout .column-cards-scroll::-webkit-scrollbar-thumb:hover { background: #687ba4; }
+.kanban-admin-layout .column-cards-scroll::-webkit-scrollbar-thumb:hover { background: rgba(82, 96, 137, .76); }
 
 /* O Kanban usa a viewport como moldura: só os cards de cada coluna rolam. */
 .kanban-admin-layout {
