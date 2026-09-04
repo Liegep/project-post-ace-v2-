@@ -4033,9 +4033,14 @@ button {
 .client-showcase-head { display: flex; align-items: center; gap: 17px; }
 .client-showcase-logo { display: grid; width: var(--client-card-avatar-size); height: var(--client-card-avatar-size); place-items: center; overflow: hidden; border: 2px solid #dbe0e9; border-radius: 19px; background: linear-gradient(135deg, #d42d50, #af2040); color: white; font-size: 1.15rem; font-weight: 650; }
 .client-showcase-logo img { width: 100%; height: 100%; object-fit: contain; background: white; }
+.client-showcase-title { display: flex; min-width: 0; align-items: center; gap: 5px; }
 .client-showcase-head h3 { margin: 0 7px 7px 0; color: #1e2a4c; font-size: 1.55rem; }
 .client-showcase-head p { margin: 0; color: #6d7891; font-size: 1rem; }
 .client-showcase-head p span { display: inline-flex; align-items: center; gap: var(--client-card-space-1); margin-left: var(--client-card-space-3); font-size: var(--client-card-icon-small); }
+.client-copy-button { display: grid; width: 25px; height: 25px; flex: 0 0 25px; place-items: center; margin: -5px 0 2px; padding: 0; border: 0; border-radius: 7px; color: #77839a; background: transparent; cursor: pointer; transition: color .16s ease, background-color .16s ease, transform .16s ease; }
+.client-copy-button svg { width: 15px; height: 15px; }
+.client-copy-button:hover { color: #574ddd; background: #eef0ff; transform: translateY(-1px); }
+.client-copy-button:focus-visible { outline: 2px solid #7569e7; outline-offset: 2px; }
 
 .client-showcase-social {
   display: flex;
@@ -5544,7 +5549,7 @@ button {
 
 .dashboard-clients-full .client-showcase-social {
   min-height: 26px;
-  margin: 20px 4px 18px;
+  margin: 14px 4px 14px;
 }
 
 .dashboard-clients-full .client-showcase-actions {
