@@ -894,11 +894,37 @@ function AdminUtilityBar() {
 
 type DrawerLink = { id: string; type: "heading" | "link"; title: string; url?: string };
 type DrawerDraft = { id: string; text: string; attachmentUrl?: string };
+type DrawerNote = { id: string; text: string; createdAt: string; color: string };
 type PautaIdea = { id: string; title: string; description: string; caption: string; createdAt: string; status?: "draft" | "sent" | "approved"; cardId?: string };
-type WorkspaceDrawerData = { notes: string[]; links: DrawerLink[]; quick: DrawerLink[]; draftsByUser: Record<string, DrawerDraft[]>; pautaIdeas: PautaIdea[] };
+type WorkspaceDrawerData = { notes: DrawerNote[]; links: DrawerLink[]; quick: DrawerLink[]; draftsByUser: Record<string, DrawerDraft[]>; pautaIdeas: PautaIdea[] };
 type KanbanAutomation = { id: string; name: string; enabled: boolean; triggerType: "tag_added" | "column_moved"; triggerValue: string; actionType: "add_tag" | "move_column" | "change_color"; actionValue: string };
 
 const EMPTY_DRAWER: WorkspaceDrawerData = { notes: [], links: [], quick: [], draftsByUser: {}, pautaIdeas: [] };
+const DEFAULT_DRAWER_NOTE_COLOR = "#fff6cf";
+const DRAWER_NOTE_COLORS = [
+  { value: "#fff6cf", label: "Amarelo" },
+  { value: "#dff5ff", label: "Azul" },
+  { value: "#e2f7e9", label: "Verde" },
+  { value: "#f0e7ff", label: "Lilás" },
+  { value: "#ffe5ec", label: "Rosa" },
+  { value: "#f0f2f6", label: "Cinza" },
+];
+
+function normalizeDrawerNotes(value: unknown): DrawerNote[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item, index) => {
+    if (typeof item === "string") return [{ id: `legacy-note-${index}`, text: item, createdAt: "", color: DEFAULT_DRAWER_NOTE_COLOR }];
+    if (!item || typeof item !== "object") return [];
+    const note = item as Partial<DrawerNote>;
+    if (typeof note.text !== "string" || !note.text.trim()) return [];
+    return [{
+      id: typeof note.id === "string" && note.id ? note.id : `legacy-note-${index}`,
+      text: note.text,
+      createdAt: typeof note.createdAt === "string" ? note.createdAt : "",
+      color: typeof note.color === "string" && note.color ? note.color : DEFAULT_DRAWER_NOTE_COLOR,
+    }];
+  });
+}
 
 function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canManageAccess, onPautaCountChange }: { slug: string; userId: string; initialQuickLinks: Array<{ label: string; href: string }>; columns: BoardColumn[]; tags: ClientTagDefinition[]; canManageAccess: boolean; onPautaCountChange?: (count: number) => void }) {
   const [tab, setTab] = useState<"notes" | "drafts" | "links" | "quick" | "ideas" | "tracker" | "progress">("quick");
@@ -907,6 +933,7 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
   const [drawer, setDrawer] = useState<WorkspaceDrawerData>(EMPTY_DRAWER);
   const [loaded, setLoaded] = useState(false);
   const [text, setText] = useState("");
+  const [noteColor, setNoteColor] = useState(DEFAULT_DRAWER_NOTE_COLOR);
   const [editingNoteIndex, setEditingNoteIndex] = useState<number | null>(null);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
   const [editingLinks, setEditingLinks] = useState(false);
@@ -930,7 +957,7 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
   useEffect(() => { let active = true; loadAdminWorkspaceDrawerBySlug(slug).then((result) => {
     if (!active) return;
     const saved = result.data as Partial<WorkspaceDrawerData> | null;
-    setDrawer({ ...EMPTY_DRAWER, ...saved, quick: saved?.quick ?? initialQuickLinks.map((link) => ({ id: crypto.randomUUID(), type: "link" as const, title: link.label, url: link.href })), draftsByUser: saved?.draftsByUser ?? {}, pautaIdeas: saved?.pautaIdeas ?? [] }); setLoaded(true);
+    setDrawer({ ...EMPTY_DRAWER, ...saved, notes: normalizeDrawerNotes(saved?.notes), quick: saved?.quick ?? initialQuickLinks.map((link) => ({ id: crypto.randomUUID(), type: "link" as const, title: link.label, url: link.href })), draftsByUser: saved?.draftsByUser ?? {}, pautaIdeas: saved?.pautaIdeas ?? [] }); setLoaded(true);
   }).catch(() => setLoaded(true)); return () => { active = false; }; }, [slug]);
   useEffect(() => { if (loaded) onPautaCountChange?.(drawer.pautaIdeas.length); }, [drawer.pautaIdeas.length, loaded, onPautaCountChange]);
   useEffect(() => { loadAdminKanbanAutomationsBySlug(slug).then((result) => setAutomations((result.items as KanbanAutomation[]) ?? [])).catch(() => setAutomations([])); }, [slug]);
@@ -943,12 +970,14 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
   };
   const items = tab === "quick" ? drawer.quick : tab === "links" ? drawer.links : [];
   const drafts = drawer.draftsByUser[userId] ?? [];
-  const resetTextEditor = () => { setText(""); setEditingNoteIndex(null); setEditingDraftId(null); };
+  const resetTextEditor = () => { setText(""); setNoteColor(DEFAULT_DRAWER_NOTE_COLOR); setEditingNoteIndex(null); setEditingDraftId(null); };
   const saveText = () => {
     const value = text.trim();
     if (!value) return;
     if (tab === "notes") {
-      const notes = editingNoteIndex === null ? [value, ...drawer.notes] : drawer.notes.map((note, index) => index === editingNoteIndex ? value : note);
+      const notes = editingNoteIndex === null
+        ? [{ id: crypto.randomUUID(), text: value, createdAt: new Date().toISOString(), color: noteColor }, ...drawer.notes]
+        : drawer.notes.map((note, index) => index === editingNoteIndex ? { ...note, text: value, color: noteColor } : note);
       persist({ ...drawer, notes });
     }
     if (tab === "drafts") {
@@ -959,7 +988,7 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
     }
     resetTextEditor();
   };
-  const editNote = (note: string, index: number) => { setText(note); setEditingNoteIndex(index); };
+  const editNote = (note: DrawerNote, index: number) => { setText(note.text); setNoteColor(note.color); setEditingNoteIndex(index); };
   const editDraft = (draft: DrawerDraft) => { setText(draft.text); setEditingDraftId(draft.id); };
   const deleteNote = (index: number) => persist({ ...drawer, notes: drawer.notes.filter((_, noteIndex) => noteIndex !== index) });
   const deleteDraft = (id: string) => persist({ ...drawer, draftsByUser: { ...drawer.draftsByUser, [userId]: drafts.filter((draft) => draft.id !== id) } });
@@ -969,6 +998,12 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
   const deleteLink = (id: string) => { const next = items.filter((item) => item.id !== id); persist({ ...drawer, [tab === "quick" ? "quick" : "links"]: next }); };
   const moveLink = (id: string, direction: -1 | 1) => { const index = items.findIndex((item) => item.id === id); const target = index + direction; if (target < 0 || target >= items.length) return; const next = [...items]; [next[index], next[target]] = [next[target], next[index]]; persist({ ...drawer, [tab === "quick" ? "quick" : "links"]: next }); };
   const saveIdea = () => { if (!ideaTitle.trim()) return; persist({ ...drawer, pautaIdeas: [{ id: crypto.randomUUID(), title: ideaTitle.trim(), description: ideaDescription.trim(), caption: ideaCaption.trim(), createdAt: new Date().toISOString() }, ...drawer.pautaIdeas] }); setIdeaTitle(""); setIdeaDescription(""); setIdeaCaption(""); setIdeaFormOpen(false); setIdeaSaved(true); window.setTimeout(() => setIdeaSaved(false), 3200); };
+  const formatNoteDate = (value: string) => {
+    const date = new Date(value);
+    return value && !Number.isNaN(date.getTime())
+      ? new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).format(date)
+      : "Data não registrada";
+  };
   const tabs = [{ id: "notes" as const, icon: "comment" as const, label: "Recados" }, { id: "drafts" as const, icon: "pencil" as const, label: "Rascunhos" }, { id: "links" as const, icon: "link" as const, label: "Links" }, { id: "ideas" as const, icon: "lightbulb" as const, label: "Ideias de Pauta" }, { id: "quick" as const, icon: "spark" as const, label: "Rápidos" }, ...(trackingActive ? [{ id: "progress" as const, icon: "clock" as const, label: "Acompanhamento" }] : []), { id: "tracker" as const, icon: "settings" as const, label: "Configurações" }];
   const selectTab = (nextTab: typeof tab) => { setTab(nextTab); setMobileMenuOpen(false); setIsOpen(true); };
   return <>
@@ -981,8 +1016,8 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
       <header><h3 id="workspace-drawer-modal-title">{tabs.find((item) => item.id === tab)?.label}{tab === "progress" ? <span className="drawer-title-count">{columns.reduce((count, column) => count + column.cards.length, 0)}</span> : null}</h3><div>{tab === "progress" ? <button className="tracker-header-filter" onClick={() => setTrackerFilterOpen((value) => !value)} title="Filtrar o que o cliente vê" aria-label="Filtrar o que o cliente vê">⌕</button> : <small>{loaded ? "Equipe interna" : "Carregando..."}</small>}<button className="workspace-drawer-close" onClick={() => setIsOpen(false)} aria-label="Fechar janela">×</button></div></header>
       {tab === "tracker" ? <ClientSettingsPanel slug={slug} canManageAccess={canManageAccess} onTrackingChange={setTrackingActive} /> : tab === "progress" ? <ProjectTrackerPanel slug={slug} columns={columns} filterOpen={trackerFilterOpen} /> : tab === "ideas" ? <section className="drawer-ideas"><div className="drawer-ideas-count"><span>💡</span><div><strong>{drawer.pautaIdeas.length} {drawer.pautaIdeas.length === 1 ? "pauta" : "pautas"}</strong><small>salvas para este cliente</small></div></div><p className="drawer-helper">Registre uma ideia rápida aqui. A organização e o envio ficam na aba Pautas.</p><button className="gradient-button drawer-ideas-create" type="button" onClick={() => { setIdeaSaved(false); setIdeaFormOpen(true); }}>+ Nova ideia de pauta</button>{ideaSaved ? <p className="drawer-idea-success">Pauta enviada para a aba Pautas.</p> : null}{ideaFormOpen ? <div className="drawer-ideas-form"><label>Título<input autoFocus value={ideaTitle} onChange={(event) => setIdeaTitle(event.target.value)} placeholder="Ex.: Carrossel com mitos e verdades" /></label><label>Descrição<textarea value={ideaDescription} onChange={(event) => setIdeaDescription(event.target.value)} placeholder="Contexto e objetivo da pauta" /></label><label>Legenda sugerida<textarea value={ideaCaption} onChange={(event) => setIdeaCaption(event.target.value)} placeholder="Primeira direção para a legenda" /></label><div><button type="button" onClick={saveIdea}>Enviar para Pautas</button><button type="button" className="drawer-secondary-action" onClick={() => setIdeaFormOpen(false)}>Cancelar</button></div></div> : null}</section> : (tab === "notes" || tab === "drafts") ? <>
         <p className="drawer-helper">{tab === "notes" ? "Recados são visíveis para toda a equipe." : "Rascunhos e anexos são visíveis somente para você."}</p>
-        <div className="drawer-compose"><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder={tab === "notes" ? "Escreva um recado para a equipe" : "Escreva uma anotação privada"} /><div><button onClick={saveText}>{editingNoteIndex !== null || editingDraftId !== null ? "Salvar alterações" : tab === "notes" ? "Publicar recado" : "Salvar rascunho"}</button>{(editingNoteIndex !== null || editingDraftId !== null) ? <button className="drawer-secondary-action" onClick={resetTextEditor}>Cancelar</button> : null}{tab === "drafts" ? <label className="drawer-attachment">Anexar foto<input type="file" accept="image/*" onChange={(event) => void addDraftAttachment(event.target.files?.[0] ?? null)} /></label> : null}</div></div>
-        {tab === "notes" ? <div className="drawer-card-list">{drawer.notes.map((note, index) => <article key={`${note}-${index}`}><p>{note}</p><div className="drawer-item-actions"><button onClick={() => editNote(note, index)}>Editar</button><button className="danger" onClick={() => deleteNote(index)}>Excluir</button></div></article>)}</div> : <div className="drawer-card-list">{drafts.map((draft) => <article key={draft.id}><p>{draft.text}</p>{draft.attachmentUrl ? <a href={draft.attachmentUrl} target="_blank" rel="noreferrer">Ver anexo</a> : null}<div className="drawer-item-actions"><button onClick={() => editDraft(draft)}>Editar</button><button className="danger" onClick={() => deleteDraft(draft.id)}>Excluir</button></div></article>)}</div>}
+        <div className="drawer-compose"><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder={tab === "notes" ? "Escreva um recado para a equipe" : "Escreva uma anotação privada"} />{tab === "notes" ? <div className="drawer-note-color-picker"><span>Cor da notinha</span>{DRAWER_NOTE_COLORS.map((color) => <button type="button" key={color.value} className={noteColor === color.value ? "selected" : ""} style={{ "--drawer-note-color": color.value } as CSSProperties} onClick={() => setNoteColor(color.value)} aria-label={`Usar fundo ${color.label}`} title={color.label} />)}</div> : null}<div><button onClick={saveText}>{editingNoteIndex !== null || editingDraftId !== null ? "Salvar alterações" : tab === "notes" ? "Publicar recado" : "Salvar rascunho"}</button>{(editingNoteIndex !== null || editingDraftId !== null) ? <button className="drawer-secondary-action" onClick={resetTextEditor}>Cancelar</button> : null}{tab === "drafts" ? <label className="drawer-attachment">Anexar foto<input type="file" accept="image/*" onChange={(event) => void addDraftAttachment(event.target.files?.[0] ?? null)} /></label> : null}</div></div>
+        {tab === "notes" ? <div className="drawer-card-list drawer-note-list">{drawer.notes.map((note, index) => <article className="drawer-note" key={note.id} style={{ "--drawer-note-color": note.color } as CSSProperties}><p>{note.text}</p><footer className="drawer-note-footer"><div className="drawer-item-actions"><button onClick={() => editNote(note, index)}>Editar</button><button className="danger" onClick={() => deleteNote(index)}>Excluir</button></div><time dateTime={note.createdAt || undefined}>{formatNoteDate(note.createdAt)}</time></footer></article>)}</div> : <div className="drawer-card-list">{drafts.map((draft) => <article key={draft.id}><p>{draft.text}</p>{draft.attachmentUrl ? <a href={draft.attachmentUrl} target="_blank" rel="noreferrer">Ver anexo</a> : null}<div className="drawer-item-actions"><button onClick={() => editDraft(draft)}>Editar</button><button className="danger" onClick={() => deleteDraft(draft.id)}>Excluir</button></div></article>)}</div>}
       </> : <>
         <p className="drawer-helper">{tab === "links" ? "Crie títulos para organizar os links compartilhados da equipe." : "Acesse os atalhos mais usados do workspace."}</p>
         <div className="drawer-link-actions"><button onClick={() => setEditingLinks((value) => !value)}>{editingLinks ? "Concluir edição" : "Organizar links"}</button>{editingLinks ? <><button onClick={() => addLink("heading")}>+ Adicionar título</button><button onClick={() => addLink("link")}>+ Adicionar link</button></> : null}</div><div className="drawer-link-list">{items.map((item) => item.type === "heading" ? <h4 key={item.id}>{editingLinks ? <><input value={item.title} onChange={(event) => updateLink(item.id, { title: event.target.value })} /><button className="drawer-inline-delete" onClick={() => deleteLink(item.id)}>Excluir</button></> : item.title}</h4> : <article key={item.id}>{editingLinks ? <><input value={item.title} onChange={(event) => updateLink(item.id, { title: event.target.value })} /><input value={item.url ?? ""} onChange={(event) => updateLink(item.id, { url: event.target.value })} /><button onClick={() => moveLink(item.id, -1)}>↑</button><button onClick={() => moveLink(item.id, 1)}>↓</button><button className="danger" onClick={() => deleteLink(item.id)}>Excluir</button></> : <a href={item.url} target="_blank" rel="noreferrer">{item.title} ↗</a>}</article>)}</div>

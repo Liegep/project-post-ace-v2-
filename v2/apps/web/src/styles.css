@@ -3076,6 +3076,14 @@ button {
 
 .drawer-helper { margin: 16px 0 0; color: #72809a; font-size: .86rem; line-height: 1.45; }
 .drawer-card-list article p { margin: 0; white-space: pre-wrap; }
+.drawer-note-color-picker { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.drawer-note-color-picker > span { margin-right: 3px; color: #68758d; font-size: .72rem; font-weight: 600; }
+.drawer-compose .drawer-note-color-picker > button { width: 24px; min-width: 24px; height: 24px; padding: 0; border: 2px solid #fff; border-radius: 8px; background: var(--drawer-note-color); box-shadow: 0 0 0 1px rgba(118, 130, 160, .24); cursor: pointer; transition: transform .16s ease, box-shadow .16s ease; }
+.drawer-compose .drawer-note-color-picker > button:hover { transform: translateY(-1px); box-shadow: 0 0 0 2px rgba(103, 88, 218, .28); }
+.drawer-compose .drawer-note-color-picker > button.selected { box-shadow: 0 0 0 2px #6758da, 0 5px 12px rgba(83, 71, 187, .18); }
+.drawer-card-list article.drawer-note { gap: 12px; border-color: rgba(122, 136, 169, .16); background: var(--drawer-note-color, #fff6cf); }
+.drawer-note-footer { display: flex; align-items: end; justify-content: space-between; gap: 12px; }
+.drawer-note-footer time { margin-left: auto; color: #778198; font-size: .66rem; font-weight: 600; line-height: 1.2; text-align: right; }
 .drawer-item-actions { display: flex; gap: 8px; }
 .drawer-item-actions button,
 .drawer-secondary-action,
