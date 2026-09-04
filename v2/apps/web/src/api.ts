@@ -614,12 +614,17 @@ export async function listPortalReportsBySlug(slug: string) { const account = aw
 export async function loadClientPortalBySlug(slug: string): Promise<ClientPortalPreview> {
   const matchedAccount = await findPortalAccountBySlug(slug);
 
-  const [homeResponse, boardResponse] = await Promise.all([
-    fetchJson<ApiPortalHomeResponse>(`/api/portal/accounts/${matchedAccount.clientAccountId}/home`),
-    fetchJson<ApiPortalBoardResponse>(
-      `/api/portal/accounts/${matchedAccount.clientAccountId}/board`,
-    ),
-  ]);
+  // The portal navigation is controlled by the home response. A temporary
+  // board failure must not replace valid permissions with the restrictive
+  // fallback (which only exposes the three default portal entries).
+  const homeResponse = await fetchJson<ApiPortalHomeResponse>(
+    `/api/portal/accounts/${matchedAccount.clientAccountId}/home`,
+  );
+  const boardResponse = await fetchJson<ApiPortalBoardResponse>(
+    `/api/portal/accounts/${matchedAccount.clientAccountId}/board`,
+  ).catch((): ApiPortalBoardResponse => ({
+    board: { columns: [], withoutColumn: { cards: [] } },
+  }));
 
   return {
     accountName: homeResponse.account.name,
