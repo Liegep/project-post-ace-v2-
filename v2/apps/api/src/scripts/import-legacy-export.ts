@@ -271,14 +271,20 @@ async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
       boolValue(client, "tracking_visible_to_client"), nullableText(client, "calendar_color"), destinationId,
     ];
     if (existing.length > 0) {
-      await connection.query("UPDATE client_accounts SET name=?, slug=?, owner_user_id=?, logo_url=?, locale=?, portal_title=?, show_upcoming_posts=?, show_archived_to_client=?, tracking_enabled=?, tracking_visible_to_client=?, calendar_color=? WHERE id=?", values);
+      // The V2 account owns its portal configuration after the first import.
+      // A legacy sync is only meant to bring over content, never to undo the
+      // locale, portal visibility, tracking, or permissions configured here.
+      await connection.query(
+        "UPDATE client_accounts SET name = ?, logo_url = COALESCE(?, logo_url) WHERE id = ?",
+        [textValue(client, "name", slug), nullableText(client, "logo_url"), destinationId],
+      );
     } else {
       await connection.query("INSERT INTO client_accounts (name, slug, owner_user_id, logo_url, locale, portal_title, show_upcoming_posts, show_archived_to_client, tracking_enabled, tracking_visible_to_client, calendar_color, id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", values);
+      await connection.query(
+        "INSERT INTO client_permissions (id, client_account_id, allow_client_edit_caption, allow_client_create_post, allow_client_create_tags, allow_client_download, allow_client_edit_brand_brain, allow_client_view_brand_brain, allow_client_view_tracking) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [crypto.randomUUID(), destinationId, boolValue(client, "allow_client_edit_caption"), boolValue(client, "allow_client_create_post"), boolValue(client, "allow_client_create_tags"), boolValue(client, "allow_client_download"), boolValue(client, "allow_client_edit_brand_brain"), boolValue(client, "allow_client_edit_brand_brain"), boolValue(client, "tracking_visible_to_client")],
+      );
     }
-    await connection.query(
-      "INSERT INTO client_permissions (id, client_account_id, allow_client_edit_caption, allow_client_create_post, allow_client_create_tags, allow_client_download, allow_client_edit_brand_brain, allow_client_view_brand_brain, allow_client_view_tracking) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE allow_client_edit_caption=VALUES(allow_client_edit_caption), allow_client_create_post=VALUES(allow_client_create_post), allow_client_create_tags=VALUES(allow_client_create_tags), allow_client_download=VALUES(allow_client_download), allow_client_edit_brand_brain=VALUES(allow_client_edit_brand_brain), allow_client_view_brand_brain=VALUES(allow_client_view_brand_brain), allow_client_view_tracking=VALUES(allow_client_view_tracking)",
-      [crypto.randomUUID(), destinationId, boolValue(client, "allow_client_edit_caption"), boolValue(client, "allow_client_create_post"), boolValue(client, "allow_client_create_tags"), boolValue(client, "allow_client_download"), boolValue(client, "allow_client_edit_brand_brain"), boolValue(client, "allow_client_edit_brand_brain"), boolValue(client, "tracking_visible_to_client")],
-    );
   }
 
   for (const assignment of bundle.assignments) {
@@ -293,7 +299,7 @@ async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
 
   for (const column of bundle.columns) {
     await connection.query(
-      "INSERT INTO kanban_columns (id, client_account_id, name, color, position, visible_to_client) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), color=VALUES(color), position=VALUES(position), visible_to_client=VALUES(visible_to_client)",
+      "INSERT INTO kanban_columns (id, client_account_id, name, color, position, visible_to_client) VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE name=VALUES(name), color=VALUES(color), position=VALUES(position)",
       [textValue(column, "id"), clientMap.get(textValue(column, "client_id")), textValue(column, "name", "Sem nome"), nullableText(column, "color"), numberValue(column, "position"), boolValue(column, "visible_to_client")],
     );
   }
