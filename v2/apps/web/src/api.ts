@@ -368,6 +368,10 @@ async function sendJson<T>(path: string, init: RequestInit): Promise<T> {
   const response = await fetchWithTimeout(`${getApiBaseUrl()}${path}`, {
     ...init,
     headers,
+    // Portal permissions and Kanban state are live settings. A cached GET here
+    // can leave the client area showing an old permission snapshot even after
+    // the admin has saved a change.
+    cache: (init.method ?? "GET").toUpperCase() === "GET" ? "no-store" : init.cache,
   });
 
   if (!response.ok) {
