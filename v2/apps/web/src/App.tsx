@@ -3919,13 +3919,13 @@ function CardContextMenu({
 }) {
   const [panel, setPanel] = useState<"status" | "tags" | "clients" | null>(null);
   const run = async (action: () => Promise<void>) => { await action(); onClose(); };
-  return (
+  return createPortal(
     <>
       <button className="card-menu-backdrop" aria-label="Fechar menu" onClick={onClose} />
       <section className={`card-context-menu${position.openLeft ? " opens-left" : ""}`} style={{ left: position.x, top: position.y }} aria-label={`Ações para ${card.title}`} onMouseLeave={() => setPanel(null)}>
-        <button className={panel === "status" ? "active" : ""} onMouseEnter={() => setPanel("status")}>☷ <span>Status</span><b>›</b></button>
+        <button type="button" className={panel === "status" ? "active" : ""} aria-haspopup="menu" aria-expanded={panel === "status"} onPointerEnter={() => setPanel("status")} onClick={() => setPanel((current) => current === "status" ? null : "status")}>☷ <span>Status</span><b>›</b></button>
         {panel === "status" ? <div className="card-menu-submenu status-submenu">{CARD_STATUS_OPTIONS.map((status) => <button key={status} onClick={() => run(() => onUpdateStatus(status))}>{card.statusBadges[0] === status ? "✓ " : ""}{status}</button>)}</div> : null}
-        <button className={panel === "tags" ? "active" : ""} onMouseEnter={() => setPanel("tags")}>◇ <span>Etiquetas</span><b>›</b></button>
+        <button type="button" className={panel === "tags" ? "active" : ""} aria-haspopup="menu" aria-expanded={panel === "tags"} onPointerEnter={() => setPanel("tags")} onClick={() => setPanel((current) => current === "tags" ? null : "tags")}>◇ <span>Etiquetas</span><b>›</b></button>
         {panel === "tags" ? <div className="card-menu-submenu tags-submenu">{tags.map((tag) => <button key={tag.id} onClick={() => run(() => onToggleTag(tag.name))}>{card.tags.includes(tag.name) ? <b className="tag-menu-check">✓</b> : <i className="tag-menu-dot" style={{ backgroundColor: tag.color }} />}{tag.name}</button>)}</div> : null}
         <hr />
         <button onClick={onCopyToColumn}>▣ <span>Copiar card</span></button>
@@ -3935,7 +3935,8 @@ function CardContextMenu({
         <hr />
         <button className="danger" onClick={() => { if (window.confirm(`Excluir o card “${card.title}”? Esta ação não pode ser desfeita.`)) run(onDelete); }}>♜ <span>Excluir</span></button>
       </section>
-    </>
+    </>,
+    document.body,
   );
 }
 
