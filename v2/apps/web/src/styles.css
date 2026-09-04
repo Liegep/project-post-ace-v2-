@@ -5620,6 +5620,7 @@ button {
 .portal-content-approval { padding: 22px; border: 1px solid rgba(222, 227, 240, .9); border-radius: 21px; background: rgba(255, 255, 255, .5); }
 .portal-content-approval > header { margin-bottom: 14px; }
 .portal-content-approval .portal-columns-scroll { padding: 0; }
+.portal-column-empty { margin: 0; padding: 18px 12px; border: 1px dashed rgba(188, 198, 220, .78); border-radius: 12px; color: #8791a6; font-size: .72rem; line-height: 1.45; text-align: center; }
 .portal-approval-empty { display: grid; min-height: 260px; place-content: center; justify-items: center; padding: 28px; text-align: center; }
 .portal-approval-empty > span { display: grid; width: 54px; height: 54px; place-items: center; border-radius: 50%; color: #fff; background: linear-gradient(135deg, #26bb87, #52c79e); font-size: 1.35rem; box-shadow: 0 12px 25px rgba(38, 177, 126, .2); }
 .portal-approval-empty h2 { margin: 13px 0 5px; color: #293653; }

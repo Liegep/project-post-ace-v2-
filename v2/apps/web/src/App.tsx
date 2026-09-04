@@ -4884,6 +4884,7 @@ function ClientPortalWorkspacePage({
   const approvalPortalCards = portalCardsWithLocalApprovals.filter((card) => !isPortalApproved(card));
   const pautaApprovalCards = approvalPortalCards.filter((card) => card.isBriefApproval);
   const contentApprovalCardIds = new Set(approvalPortalCards.filter((card) => !card.isBriefApproval).map((card) => card.id));
+  const visiblePortalColumns = data.boardColumns.filter((column) => !isPortalApprovedColumn(column.name));
   const portalTrackerEnabled = data.trackingEnabled;
   const upcomingPortalAppointments = useMemo(() => {
     const now = new Date();
@@ -5068,15 +5069,15 @@ function ClientPortalWorkspacePage({
                   </button>)}</div>
                 </section> : null}
 
-                {contentApprovalCardIds.size ? <section className="portal-content-approval">
-                  {pautaApprovalCards.length ? <header><div><span>{tr("CONTEÚDOS VISUAIS")}</span><h2>{tr("Posts para aprovação")}</h2></div><b>{contentApprovalCardIds.size}</b></header> : null}
+                {contentApprovalCardIds.size || visiblePortalColumns.length ? <section className="portal-content-approval">
+                  <header><div><span>{tr("CONTEÚDOS VISUAIS")}</span><h2>{tr("Posts para aprovação")}</h2></div><b>{contentApprovalCardIds.size}</b></header>
                   <div className="portal-columns-scroll">
-                    {data.boardColumns.filter((column) => !isPortalApprovedColumn(column.name)).map((column) => { const approvalCards = column.cards.filter((card) => contentApprovalCardIds.has(card.id)); return approvalCards.length ? (
+                    {visiblePortalColumns.map((column) => { const approvalCards = column.cards.filter((card) => contentApprovalCardIds.has(card.id)); return (
                       <section key={column.id} className="portal-column glass-subtle">
                         <header className="portal-column-head" style={{ borderColor: column.color }}><h3>{column.name}</h3><span>{approvalCards.length}</span></header>
-                        <div className="portal-card-list">{approvalCards.map((card) => <button key={card.id} className="portal-card card-button" onClick={() => setSelectedCardId(card.id)}><ClosedCardMedia card={card} /><div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{new Intl.DateTimeFormat(clientLocaleTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(card.scheduledAt))}</p> : null}</div></button>)}</div>
+                        {approvalCards.length ? <div className="portal-card-list">{approvalCards.map((card) => <button key={card.id} className="portal-card card-button" onClick={() => setSelectedCardId(card.id)}><ClosedCardMedia card={card} /><div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{new Intl.DateTimeFormat(clientLocaleTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(card.scheduledAt))}</p> : null}</div></button>)}</div> : <p className="portal-column-empty">{tr("Nenhum conteúdo nesta etapa.")}</p>}
                       </section>
-                    ) : null; })}
+                    ); })}
 
                     {data.withoutColumn.some((card) => contentApprovalCardIds.has(card.id)) ? <section className="portal-column glass-subtle">
                       <header className="portal-column-head" style={{ borderColor: "#7a86a9" }}><h3>{tr("Em criação")}</h3><span>{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).length}</span></header>
@@ -5085,7 +5086,7 @@ function ClientPortalWorkspacePage({
                   </div>
                 </section> : null}
 
-                {!pautaApprovalCards.length && !contentApprovalCardIds.size ? <section className="portal-approval-empty"><span>✓</span><h2>{tr("Tudo revisado")}</h2><p>{tr("Não há pautas ou posts aguardando sua aprovação agora.")}</p></section> : null}
+                {!pautaApprovalCards.length && !contentApprovalCardIds.size && !visiblePortalColumns.length ? <section className="portal-approval-empty"><span>✓</span><h2>{tr("Tudo revisado")}</h2><p>{tr("Não há pautas ou posts aguardando sua aprovação agora.")}</p></section> : null}
               </div>
               )}
             </div>
