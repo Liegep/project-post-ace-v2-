@@ -3449,7 +3449,9 @@ button {
   z-index: 41;
   width: min(320px, calc(100vw - 24px));
   padding: 8px 0;
-  overflow: visible;
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border: 1px solid rgba(208, 214, 228, 0.95);
   border-radius: 18px;
   background: #fff;
@@ -3479,7 +3481,8 @@ button {
 .card-context-menu > button b { font-size: 1.5rem; font-weight: 400; }
 .card-context-menu hr { margin: 7px 0; border: 0; border-top: 1px solid #dce1eb; }
 .card-context-menu .danger { color: #e3383b; }
-.card-menu-submenu { position: absolute; left: calc(100% + 2px); width: 300px; max-height: 460px; overflow-y: auto; padding: 8px; border: 1px solid rgba(208, 214, 228, 0.95); border-radius: 18px; background: #fff; box-shadow: 0 12px 28px rgba(31, 41, 68, 0.18); }
+.card-menu-submenu { position: absolute; left: calc(100% + 2px); width: 300px; max-height: min(460px, calc(100dvh - 24px)); overflow-y: auto; padding: 8px; border: 1px solid rgba(208, 214, 228, 0.95); border-radius: 18px; background: #fff; box-shadow: 0 12px 28px rgba(31, 41, 68, 0.18); }
+.card-context-menu.opens-left .card-menu-submenu { right: calc(100% + 2px); left: auto; transform-origin: right center; }
 .status-submenu { top: 0; }
 .tags-submenu { top: 56px; }
 .clients-submenu { top: 162px; }

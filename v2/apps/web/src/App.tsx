@@ -2477,7 +2477,7 @@ function AdminWorkspacePage({
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
   const [bulkColumnDialog, setBulkColumnDialog] = useState<"copy" | "move" | null>(null);
-  const [cardMenu, setCardMenu] = useState<{ card: BoardCard; columnId: string | null; x: number; y: number } | null>(null);
+  const [cardMenu, setCardMenu] = useState<{ card: BoardCard; columnId: string | null; x: number; y: number; openLeft: boolean } | null>(null);
   const [cardColumnDialog, setCardColumnDialog] = useState<{ card: BoardCard; mode: "copy" | "move" } | null>(null);
   const [cardClientDialog, setCardClientDialog] = useState<BoardCard | null>(null);
   const [restoreDialog, setRestoreDialog] = useState<BoardCard | null>(null);
@@ -2493,6 +2493,25 @@ function AdminWorkspacePage({
   const tagFilterButtonRef = useRef<HTMLButtonElement>(null);
   const [clientOptions, setClientOptions] = useState<AdminClientOption[]>([]);
   const [sectionCounts, setSectionCounts] = useState({ archived: 0, texts: 0, pautas: 0 });
+  const openCardContextMenu = useCallback((event: React.MouseEvent, card: BoardCard, columnId: string | null) => {
+    const viewportGap = 12;
+    const menuWidth = Math.min(320, window.innerWidth - viewportGap * 2);
+    // Reserva espaço também para os submenus, para que nenhuma opção fique
+    // atrás da borda inferior da janela.
+    const safeMenuHeight = Math.min(540, window.innerHeight - viewportGap * 2);
+    const submenuWidth = 302;
+    const openLeft = event.clientX + menuWidth + submenuWidth > window.innerWidth - viewportGap;
+    const minX = openLeft ? viewportGap + submenuWidth : viewportGap;
+    const maxX = Math.max(minX, window.innerWidth - menuWidth - viewportGap);
+
+    setCardMenu({
+      card,
+      columnId,
+      x: Math.min(Math.max(event.clientX, minX), maxX),
+      y: Math.min(Math.max(event.clientY, viewportGap), Math.max(viewportGap, window.innerHeight - safeMenuHeight - viewportGap)),
+      openLeft,
+    });
+  }, []);
   const updateTextsCount = useCallback((texts: number) => setSectionCounts((current) => current.texts === texts ? current : { ...current, texts }), []);
   const updatePautasCount = useCallback((pautas: number) => setSectionCounts((current) => current.pautas === pautas ? current : { ...current, pautas }), []);
   useEffect(() => {
@@ -2906,7 +2925,7 @@ function AdminWorkspacePage({
                     }}
                     onCardContextMenu={(event, card) => {
                       event.preventDefault();
-                      setCardMenu({ card, columnId: column.id, x: event.clientX, y: event.clientY });
+                      openCardContextMenu(event, card, column.id);
                     }}
                     />
                     {columnIndex === data.columns.length - 1 && columnDropIndex === data.columns.length ? <div className="column-drop-indicator column-drop-indicator-after"><span>Soltar coluna aqui</span></div> : null}
@@ -2963,7 +2982,7 @@ function AdminWorkspacePage({
                             onOpen={() => selectionMode ? toggleCardSelection(card.id) : setSelectedCardId(card.id)}
                             onContextMenu={(event) => {
                               event.preventDefault();
-                              setCardMenu({ card, columnId: null, x: event.clientX, y: event.clientY });
+                              openCardContextMenu(event, card, null);
                             }}
                             selectionMode={selectionMode}
                             selected={selectedCardIds.includes(card.id)}
@@ -3886,7 +3905,7 @@ function CardContextMenu({
   card, position, tags, clients, onClose, onUpdateStatus, onToggleTag, onCopyToColumn, onMoveToColumn, onCopyToClient, onArchive, onDelete,
 }: {
   card: BoardCard;
-  position: { columnId: string | null; x: number; y: number };
+  position: { columnId: string | null; x: number; y: number; openLeft: boolean };
   tags: ClientTagDefinition[];
   clients: AdminClientOption[];
   onClose: () => void;
@@ -3903,7 +3922,7 @@ function CardContextMenu({
   return (
     <>
       <button className="card-menu-backdrop" aria-label="Fechar menu" onClick={onClose} />
-      <section className="card-context-menu" style={{ left: position.x, top: position.y }} aria-label={`Ações para ${card.title}`} onMouseLeave={() => setPanel(null)}>
+      <section className={`card-context-menu${position.openLeft ? " opens-left" : ""}`} style={{ left: position.x, top: position.y }} aria-label={`Ações para ${card.title}`} onMouseLeave={() => setPanel(null)}>
         <button className={panel === "status" ? "active" : ""} onMouseEnter={() => setPanel("status")}>☷ <span>Status</span><b>›</b></button>
         {panel === "status" ? <div className="card-menu-submenu status-submenu">{CARD_STATUS_OPTIONS.map((status) => <button key={status} onClick={() => run(() => onUpdateStatus(status))}>{card.statusBadges[0] === status ? "✓ " : ""}{status}</button>)}</div> : null}
         <button className={panel === "tags" ? "active" : ""} onMouseEnter={() => setPanel("tags")}>◇ <span>Etiquetas</span><b>›</b></button>
