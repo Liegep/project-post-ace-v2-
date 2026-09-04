@@ -1029,7 +1029,7 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
 
 const PORTAL_ACCESS_COPY: Record<PortalAccessLevel, { label: string; description: string }> = {
   admin: { label: "Administrador", description: "Aprova, comenta e usa as ferramentas liberadas no portal." },
-  approver: { label: "Aprovador", description: "Visualiza, comenta e aprova conteúdos." },
+  approver: { label: "Aprovador", description: "Aprova, comenta e usa as ferramentas que você liberar." },
   viewer: { label: "Somente visualização", description: "Pode consultar o portal, sem comentar ou aprovar." },
 };
 
@@ -1120,6 +1120,8 @@ function ClientPeopleAccessPanel({ slug, canManage }: { slug: string; canManage:
 function ClientTrackerPanel({ slug, onTrackingChange }: { slug: string; onTrackingChange: (active: boolean) => void }) {
   const [settings, setSettings] = useState<ClientTrackerSettings | null>(null);
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const saveInFlight = useRef(false);
   useEffect(() => {
     let active = true;
     loadAdminTrackerSettingsBySlug(slug)
@@ -1127,15 +1129,26 @@ function ClientTrackerPanel({ slug, onTrackingChange }: { slug: string; onTracki
       .catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : "Não foi possível carregar as configurações."); });
     return () => { active = false; };
   }, [slug]);
-  const save = (next: ClientTrackerSettings) => {
-    setSettings(next);
-    onTrackingChange(next.trackingEnabled);
+  const save = async (next: ClientTrackerSettings) => {
+    if (saveInFlight.current) return;
+    saveInFlight.current = true;
+    setSaving(true);
     setError("");
-    void saveAdminTrackerSettingsBySlug(slug, next).catch((caught) => setError(caught instanceof Error ? caught.message : "Não foi possível salvar as configurações."));
+    try {
+      await saveAdminTrackerSettingsBySlug(slug, next);
+      const result = await loadAdminTrackerSettingsBySlug(slug);
+      setSettings(result.settings);
+      onTrackingChange(result.settings.trackingEnabled);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível salvar as configurações.");
+    } finally {
+      saveInFlight.current = false;
+      setSaving(false);
+    }
   };
   const togglePermission = (key: keyof ClientTrackerSettings["clientPermissions"]) => {
     if (!settings) return;
-    save({ ...settings, clientPermissions: { ...settings.clientPermissions, [key]: !settings.clientPermissions[key] } });
+    void save({ ...settings, clientPermissions: { ...settings.clientPermissions, [key]: !settings.clientPermissions[key] } });
   };
   if (!settings) return <p className="drawer-helper">{error || "Carregando configurações do cliente..."}</p>;
   const actions: Array<[keyof ClientTrackerSettings["clientPermissions"], string]> = [
@@ -1145,17 +1158,18 @@ function ClientTrackerPanel({ slug, onTrackingChange }: { slug: string; onTracki
     ["allowClientViewTexts", "Ver textos"], ["allowClientSearch", "Usar pesquisa"], ["allowClientViewInvoices", "Ver faturas"], ["allowClientViewReports", "Ver relatórios"], ["allowClientViewBrandBrain", "Ver Brand Brain"], ["allowClientViewTracking", "Ver acompanhamento"],
   ];
   return <div className="tracker-settings">
-    <label className="tracker-locale">Idioma do portal<select value={settings.locale} onChange={(event) => save({ ...settings, locale: event.target.value })}><option value="pt">🇧🇷 Português</option><option value="en">🇺🇸 English</option><option value="es">🇪🇸 Español</option><option value="it">🇮🇹 Italiano</option></select></label>
-    <TrackerToggle label="Acompanhamento ativo" checked={settings.trackingEnabled} onChange={() => save({ ...settings, trackingEnabled: !settings.trackingEnabled })} />
-    <section><h4>O que ele pode fazer</h4>{actions.map(([key, label]) => <TrackerToggle key={key} label={label} checked={settings.clientPermissions[key]} onChange={() => togglePermission(key)} />)}</section>
-    <section><h4>O que ele vê</h4><TrackerToggle label="Acompanhamento visível" checked={settings.trackingVisibleToClient} onChange={() => save({ ...settings, trackingVisibleToClient: !settings.trackingVisibleToClient })} /><TrackerToggle label="Próximos posts" checked={settings.showUpcomingPosts} onChange={() => save({ ...settings, showUpcomingPosts: !settings.showUpcomingPosts })} /><TrackerToggle label="Arquivados" checked={settings.showArchivedToClient} onChange={() => save({ ...settings, showArchivedToClient: !settings.showArchivedToClient })} />{views.map(([key, label]) => <TrackerToggle key={key} label={label} checked={settings.clientPermissions[key]} onChange={() => togglePermission(key)} />)}</section>
-    <section><h4>Colunas visíveis</h4>{settings.columns.map((column) => <TrackerToggle key={column.id} label={column.name} checked={column.visibleToClient} onChange={() => save({ ...settings, columns: settings.columns.map((item) => item.id === column.id ? { ...item, visibleToClient: !item.visibleToClient } : item) })} />)}</section>
+    <label className="tracker-locale">Idioma do portal<select disabled={saving} value={settings.locale} onChange={(event) => void save({ ...settings, locale: event.target.value })}><option value="pt">🇧🇷 Português</option><option value="en">🇺🇸 English</option><option value="es">🇪🇸 Español</option><option value="it">🇮🇹 Italiano</option></select></label>
+    <TrackerToggle disabled={saving} label="Acompanhamento ativo" checked={settings.trackingEnabled} onChange={() => void save({ ...settings, trackingEnabled: !settings.trackingEnabled })} />
+    <section><h4>O que ele pode fazer</h4>{actions.map(([key, label]) => <TrackerToggle disabled={saving} key={key} label={label} checked={settings.clientPermissions[key]} onChange={() => togglePermission(key)} />)}</section>
+    <section><h4>O que ele vê</h4><TrackerToggle disabled={saving} label="Acompanhamento visível" checked={settings.trackingVisibleToClient} onChange={() => void save({ ...settings, trackingVisibleToClient: !settings.trackingVisibleToClient })} /><TrackerToggle disabled={saving} label="Próximos posts" checked={settings.showUpcomingPosts} onChange={() => void save({ ...settings, showUpcomingPosts: !settings.showUpcomingPosts })} /><TrackerToggle disabled={saving} label="Arquivados" checked={settings.showArchivedToClient} onChange={() => void save({ ...settings, showArchivedToClient: !settings.showArchivedToClient })} />{views.map(([key, label]) => <TrackerToggle disabled={saving} key={key} label={label} checked={settings.clientPermissions[key]} onChange={() => togglePermission(key)} />)}</section>
+    <section><h4>Colunas visíveis</h4>{settings.columns.map((column) => <TrackerToggle disabled={saving} key={column.id} label={column.name} checked={column.visibleToClient} onChange={() => void save({ ...settings, columns: settings.columns.map((item) => item.id === column.id ? { ...item, visibleToClient: !item.visibleToClient } : item) })} />)}</section>
+    {saving ? <p className="drawer-helper" role="status">Salvando configuração...</p> : null}
     {error ? <p className="tracker-error">{error}</p> : null}
   </div>;
 }
 
-function TrackerToggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void }) {
-  return <label className="tracker-toggle"><span>{label}</span><input type="checkbox" checked={checked} onChange={onChange} /><i /></label>;
+function TrackerToggle({ label, checked, disabled = false, onChange }: { label: string; checked: boolean; disabled?: boolean; onChange: () => void }) {
+  return <label className="tracker-toggle"><span>{label}</span><input type="checkbox" checked={checked} disabled={disabled} onChange={onChange} /><i /></label>;
 }
 
 function ProjectTrackerPanel({ slug, columns, filterOpen }: { slug: string; columns: BoardColumn[]; filterOpen: boolean }) {
@@ -4845,7 +4859,7 @@ function ClientPortalWorkspacePage({
   }, []);
   const data = resource.data;
   const canRespondToClientContent = data.accessLevel !== "viewer";
-  const canAdministerClientPortal = data.accessLevel === "admin";
+  const canUseEnabledClientTools = data.accessLevel !== "viewer";
   const portalLocale = normalizePortalLocale(data.locale);
   const tr = (source: string) => portalText(portalLocale, source);
   const clientLocaleTag = portalLocaleTag(portalLocale);
@@ -4964,7 +4978,7 @@ function ClientPortalWorkspacePage({
   const pautaApprovalCards = approvalPortalCards.filter((card) => card.isBriefApproval);
   const contentApprovalCardIds = new Set(approvalPortalCards.filter((card) => !card.isBriefApproval).map((card) => card.id));
   const visiblePortalColumns = data.boardColumns.filter((column) => !isPortalApprovedColumn(column.name));
-  const portalTrackerEnabled = data.trackingEnabled;
+  const portalTrackerEnabled = data.widgets.tracking && data.permissions.allowClientViewTracking;
   const upcomingPortalAppointments = useMemo(() => {
     const now = new Date();
     const from = localDateKey(now);
@@ -5093,7 +5107,7 @@ function ClientPortalWorkspacePage({
 
         <button ref={portalMobileMenuButtonRef} type="button" className="portal-mobile-nav-trigger" onClick={() => setPortalMobileMenuOpen((value) => !value)} aria-expanded={portalMobileMenuOpen} aria-controls="portal-navigation" aria-label={tr("Portal do cliente")}><span aria-hidden="true"><i /><i /><i /></span></button>
 
-        {canAdministerClientPortal && data.permissions.allowClientCreatePost ? <button className="portal-sidebar-create-post" onClick={() => { setPostError(""); setCreatePostOpen(true); }}><span>＋</span><div><strong>{tr("Sugerir post")}</strong><small>{tr("Enviar uma ideia")}</small></div></button> : null}
+        {canUseEnabledClientTools && data.permissions.allowClientCreatePost ? <button className="portal-sidebar-create-post" onClick={() => { setPostError(""); setCreatePostOpen(true); }}><span>＋</span><div><strong>{tr("Sugerir post")}</strong><small>{tr("Enviar uma ideia")}</small></div></button> : null}
 
         <nav ref={portalNavRef} id="portal-navigation" className={`portal-nav${portalMobileMenuOpen ? " mobile-open" : ""}`}>
           {[
@@ -5120,7 +5134,7 @@ function ClientPortalWorkspacePage({
         {postSuccess ? <div className="portal-post-success"><span>✓</span><p>{postSuccess}</p><button onClick={() => setPostSuccess("")} aria-label={tr("Fechar aviso")}>×</button></div> : null}
         {approvedTransfer ? <><span className="portal-approved-fly-to-nav" style={{ "--approved-target-x": `${approvedTransfer.targetX}px`, "--approved-target-y": `${approvedTransfer.targetY}px` } as CSSProperties} aria-hidden="true"><UiIcon name="send" /></span><div className="portal-approved-transfer" role="status" aria-live="polite"><div><strong>{tr("Enviado para Aprovados!")}</strong><small>{approvedTransfer.title}</small></div><span className="portal-approved-check">✓</span></div></> : null}
 
-        {portalView === "brand" && data.permissions.allowClientViewBrandBrain ? <ClientBrandBrainView slug={slug} clientName={data.accountName} allowEdit={canAdministerClientPortal && data.permissions.allowClientEditBrandBrain} /> : portalView === "search" && data.permissions.allowClientSearch ? <ClientPortalSearchView slug={slug} onOpenCard={setSelectedCardId} /> : portalView === "archived" && data.showArchivedToClient ? <ClientPortalArchivedView cards={portalArchivedCards} loading={portalArchivedLoading} error={portalArchivedError} onOpenCard={setSelectedCardId} /> : portalView === "tracker" && portalTrackerEnabled ? <ClientPortalTrackerView columns={data.boardColumns} withoutColumn={data.withoutColumn} onOpenCard={setSelectedCardId} /> : portalView === "approved" ? <ClientApprovedPostsView cards={portalCardsWithLocalApprovals} texts={portalTexts} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} onOpenText={(textId) => { setSelectedPortalTextId(textId); setPortalView("texts"); }} /> : portalView === "invoices" && data.permissions.allowClientViewInvoices ? <ClientPortalInvoicesView invoices={portalInvoices} onViewInvoice={markInvoiceViewed} /> : portalView === "reports" && data.permissions.allowClientViewReports ? <PortalReports slug={slug} clientName={data.accountName} locale={portalLocale} /> : portalView === "texts" ? <section className="portal-texts-view glass"><aside>{portalTexts.map((item) => <button key={item.id} className={item.id === selectedPortalTextId ? "selected" : ""} onClick={() => { setSelectedPortalTextId(item.id); setPortalTextCommentDraft(""); setPortalTextFeedback(null); }}><small>{item.contentType}</small><strong>{item.title}</strong></button>)}</aside><article>{selectedPortalText ? <><p className="eyebrow">{selectedPortalText.contentType}</p>{selectedPortalTextBanner ? <div className="portal-text-banner" style={{ backgroundImage: `url(${selectedPortalTextBanner})` }} aria-label={tr("Banner do texto")} /> : null}<div className="portal-text-heading"><div><h1>{selectedPortalText.title}</h1><span className={`portal-text-status ${selectedPortalText.status === "Aprovado" ? "approved" : ""}`}>{tr(selectedPortalText.status)}</span></div></div><div className="portal-text-content" dangerouslySetInnerHTML={{ __html: selectedPortalText.contentHtml }} />{canRespondToClientContent ? <section className="portal-text-feedback"><h3>{tr("Seu feedback")}</h3><p>{tr("Comente sobre este texto ou escolha uma ação para enviar seu retorno à equipe.")}</p><textarea value={portalTextCommentDraft} onChange={(event) => setPortalTextCommentDraft(event.target.value)} placeholder={tr("Escreva aqui seu comentário sobre este texto")} /><div className="portal-text-actions"><button className="ghost-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("comment")}>{tr(portalTextSubmitting === "comment" ? "Enviando..." : "Adicionar comentário")}</button><button className="gradient-button" disabled={portalTextSubmitting !== null} onClick={() => void handlePortalTextAction("approve")}>{tr(portalTextSubmitting === "approve" ? "Enviando..." : "Aprovar")}</button><button className="danger-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("changes")}>{tr(portalTextSubmitting === "changes" ? "Enviando..." : "Pedir alteração")}</button></div>{portalTextFeedback ? <p className="portal-text-feedback-message">{portalTextFeedback}</p> : null}<div className="portal-text-comments"><h4>{tr("Comentários")} ({portalTextComments.length})</h4>{portalTextComments.map((comment) => <article key={comment.id}><div><strong>{comment.authorName}</strong><span>{comment.authorRole}</span></div><p>{comment.commentText}</p></article>)}</div></section> : <p className="client-access-notice">{tr("Acesso somente para visualização.")}</p>}</> : <p>{tr("Nenhum texto foi enviado para sua área ainda.")}</p>}</article></section> : <section className="portal-grid">
+        {portalView === "brand" && data.permissions.allowClientViewBrandBrain ? <ClientBrandBrainView slug={slug} clientName={data.accountName} allowEdit={canUseEnabledClientTools && data.permissions.allowClientEditBrandBrain} /> : portalView === "search" && data.permissions.allowClientSearch ? <ClientPortalSearchView slug={slug} onOpenCard={setSelectedCardId} /> : portalView === "archived" && data.showArchivedToClient ? <ClientPortalArchivedView cards={portalArchivedCards} loading={portalArchivedLoading} error={portalArchivedError} onOpenCard={setSelectedCardId} /> : portalView === "tracker" && portalTrackerEnabled ? <ClientPortalTrackerView columns={data.boardColumns} withoutColumn={data.withoutColumn} onOpenCard={setSelectedCardId} /> : portalView === "approved" ? <ClientApprovedPostsView cards={portalCardsWithLocalApprovals} texts={portalTexts} allowDownload={canUseEnabledClientTools && data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} onOpenText={(textId) => { setSelectedPortalTextId(textId); setPortalView("texts"); }} /> : portalView === "invoices" && data.permissions.allowClientViewInvoices ? <ClientPortalInvoicesView invoices={portalInvoices} onViewInvoice={markInvoiceViewed} /> : portalView === "reports" && data.permissions.allowClientViewReports ? <PortalReports slug={slug} clientName={data.accountName} locale={portalLocale} /> : portalView === "texts" ? <section className="portal-texts-view glass"><aside>{portalTexts.map((item) => <button key={item.id} className={item.id === selectedPortalTextId ? "selected" : ""} onClick={() => { setSelectedPortalTextId(item.id); setPortalTextCommentDraft(""); setPortalTextFeedback(null); }}><small>{item.contentType}</small><strong>{item.title}</strong></button>)}</aside><article>{selectedPortalText ? <><p className="eyebrow">{selectedPortalText.contentType}</p>{selectedPortalTextBanner ? <div className="portal-text-banner" style={{ backgroundImage: `url(${selectedPortalTextBanner})` }} aria-label={tr("Banner do texto")} /> : null}<div className="portal-text-heading"><div><h1>{selectedPortalText.title}</h1><span className={`portal-text-status ${selectedPortalText.status === "Aprovado" ? "approved" : ""}`}>{tr(selectedPortalText.status)}</span></div></div><div className="portal-text-content" dangerouslySetInnerHTML={{ __html: selectedPortalText.contentHtml }} />{canRespondToClientContent ? <section className="portal-text-feedback"><h3>{tr("Seu feedback")}</h3><p>{tr("Comente sobre este texto ou escolha uma ação para enviar seu retorno à equipe.")}</p><textarea value={portalTextCommentDraft} onChange={(event) => setPortalTextCommentDraft(event.target.value)} placeholder={tr("Escreva aqui seu comentário sobre este texto")} /><div className="portal-text-actions"><button className="ghost-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("comment")}>{tr(portalTextSubmitting === "comment" ? "Enviando..." : "Adicionar comentário")}</button><button className="gradient-button" disabled={portalTextSubmitting !== null} onClick={() => void handlePortalTextAction("approve")}>{tr(portalTextSubmitting === "approve" ? "Enviando..." : "Aprovar")}</button><button className="danger-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("changes")}>{tr(portalTextSubmitting === "changes" ? "Enviando..." : "Pedir alteração")}</button></div>{portalTextFeedback ? <p className="portal-text-feedback-message">{portalTextFeedback}</p> : null}<div className="portal-text-comments"><h4>{tr("Comentários")} ({portalTextComments.length})</h4>{portalTextComments.map((comment) => <article key={comment.id}><div><strong>{comment.authorName}</strong><span>{comment.authorRole}</span></div><p>{comment.commentText}</p></article>)}</div></section> : <p className="client-access-notice">{tr("Acesso somente para visualização.")}</p>}</> : <p>{tr("Nenhum texto foi enviado para sua área ainda.")}</p>}</article></section> : <section className="portal-grid">
           <div className="portal-primary">
             <div className="glass board-shell">
               <div className="board-topbar">
@@ -5242,9 +5256,9 @@ function ClientPortalWorkspacePage({
           submitPortalCardDecisionBySlug(slug, cardId, { approved: false, commentText })
         }
         canRespond={canRespondToClientContent}
-        allowEditCaption={canAdministerClientPortal && data.permissions.allowClientEditCaption}
+        allowEditCaption={canUseEnabledClientTools && data.permissions.allowClientEditCaption}
         onUpdateCaption={(cardId, caption) => updatePortalCardCaptionBySlug(slug, cardId, caption)}
-        allowManageTags={canAdministerClientPortal && data.permissions.allowClientCreateTags}
+        allowManageTags={canUseEnabledClientTools && data.permissions.allowClientCreateTags}
         onLoadTags={() => listPortalTagsBySlug(slug)}
         onCreateTag={(input) => createPortalTagBySlug(slug, input)}
         onUpdateTags={(cardId, tags) => updatePortalCardTagsBySlug(slug, cardId, tags)}

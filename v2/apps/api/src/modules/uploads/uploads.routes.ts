@@ -143,7 +143,7 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
   app.post("/portal/accounts/:clientAccountId/uploads", async (request) => {
     const params = request.params as { clientAccountId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
-    assertPortalAccessLevel(request, params.clientAccountId, ["admin"]);
+    assertPortalAccessLevel(request, params.clientAccountId, ["admin", "approver"]);
     const permissions = await findClientPermissionsByAccountId(app.db, params.clientAccountId);
     if (!permissions?.allowClientCreatePost) {
       throw app.httpErrors.forbidden("O envio de artes não está habilitado para este cliente.");

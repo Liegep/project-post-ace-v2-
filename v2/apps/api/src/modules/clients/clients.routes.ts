@@ -66,7 +66,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
   app.put("/clients/:clientAccountId/brand-brain", async (request) => {
     const { clientAccountId } = request.params as { clientAccountId: string };
     assertClientAccess(request, clientAccountId, ["admin", "colaborador", "cliente"]);
-    assertPortalAccessLevel(request, clientAccountId, ["admin"]);
+    assertPortalAccessLevel(request, clientAccountId, ["admin", "approver"]);
     const permissions = await findClientPermissionsByAccountId(app.db, clientAccountId);
     if (request.auth?.user.globalRole === "cliente" && !permissions?.allowClientEditBrandBrain) throw app.httpErrors.forbidden("Este cliente não pode editar o Brand Brain.");
     const body = request.body as { data?: Record<string, unknown>; summary?: string };
@@ -304,37 +304,47 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     if (!client[0]) throw app.httpErrors.notFound("Cliente não encontrado.");
 
     const permissions = input.clientPermissions;
-    await app.db.query(
-      "UPDATE client_accounts SET locale = ?, tracking_enabled = ?, tracking_visible_to_client = ?, show_upcoming_posts = ?, show_archived_to_client = ? WHERE id = ?",
-      [input.locale, input.trackingEnabled ? 1 : 0, input.trackingVisibleToClient ? 1 : 0, input.showUpcomingPosts ? 1 : 0, input.showArchivedToClient ? 1 : 0, clientAccountId],
-    );
-    await app.db.query(
-      [
-        "UPDATE client_permissions SET",
-        "allow_client_edit_caption = ?, allow_client_create_post = ?, allow_client_create_tags = ?, allow_client_download = ?,",
-        "allow_client_edit_brand_brain = ?, allow_client_search = ?, allow_client_view_texts = ?, allow_client_view_invoices = ?, allow_client_view_reports = ?,",
-        "allow_client_view_brand_brain = ?, allow_client_view_tracking = ?",
-        "WHERE client_account_id = ?",
-      ].join(" "),
-      [
-        permissions.allowClientEditCaption ? 1 : 0,
-        permissions.allowClientCreatePost ? 1 : 0,
-        permissions.allowClientCreateTags ? 1 : 0,
-        permissions.allowClientDownload ? 1 : 0,
-        permissions.allowClientEditBrandBrain ? 1 : 0,
-        permissions.allowClientSearch ? 1 : 0,
-        permissions.allowClientViewTexts ? 1 : 0,
-        permissions.allowClientViewInvoices ? 1 : 0,
-        permissions.allowClientViewReports ? 1 : 0,
-        permissions.allowClientViewBrandBrain ? 1 : 0,
-        permissions.allowClientViewTracking ? 1 : 0,
-        clientAccountId,
-      ],
-    );
-    await app.db.query(
-      `UPDATE kanban_columns SET visible_to_client = CASE WHEN id IN (${input.visibleColumnIds.length ? input.visibleColumnIds.map(() => "?").join(", ") : "''"}) THEN 1 ELSE 0 END WHERE client_account_id = ?`,
-      [...input.visibleColumnIds, clientAccountId],
-    );
+    const connection = await app.db.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.query(
+        "UPDATE client_accounts SET locale = ?, tracking_enabled = ?, tracking_visible_to_client = ?, show_upcoming_posts = ?, show_archived_to_client = ? WHERE id = ?",
+        [input.locale, input.trackingEnabled ? 1 : 0, input.trackingVisibleToClient ? 1 : 0, input.showUpcomingPosts ? 1 : 0, input.showArchivedToClient ? 1 : 0, clientAccountId],
+      );
+      await connection.query(
+        [
+          "UPDATE client_permissions SET",
+          "allow_client_edit_caption = ?, allow_client_create_post = ?, allow_client_create_tags = ?, allow_client_download = ?,",
+          "allow_client_edit_brand_brain = ?, allow_client_search = ?, allow_client_view_texts = ?, allow_client_view_invoices = ?, allow_client_view_reports = ?,",
+          "allow_client_view_brand_brain = ?, allow_client_view_tracking = ?",
+          "WHERE client_account_id = ?",
+        ].join(" "),
+        [
+          permissions.allowClientEditCaption ? 1 : 0,
+          permissions.allowClientCreatePost ? 1 : 0,
+          permissions.allowClientCreateTags ? 1 : 0,
+          permissions.allowClientDownload ? 1 : 0,
+          permissions.allowClientEditBrandBrain ? 1 : 0,
+          permissions.allowClientSearch ? 1 : 0,
+          permissions.allowClientViewTexts ? 1 : 0,
+          permissions.allowClientViewInvoices ? 1 : 0,
+          permissions.allowClientViewReports ? 1 : 0,
+          permissions.allowClientViewBrandBrain ? 1 : 0,
+          permissions.allowClientViewTracking ? 1 : 0,
+          clientAccountId,
+        ],
+      );
+      await connection.query(
+        `UPDATE kanban_columns SET visible_to_client = CASE WHEN id IN (${input.visibleColumnIds.length ? input.visibleColumnIds.map(() => "?").join(", ") : "''"}) THEN 1 ELSE 0 END WHERE client_account_id = ?`,
+        [...input.visibleColumnIds, clientAccountId],
+      );
+      await connection.commit();
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
 
     return { ok: true };
   });

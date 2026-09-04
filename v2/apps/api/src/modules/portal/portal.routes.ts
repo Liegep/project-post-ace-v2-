@@ -60,7 +60,7 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
   app.post("/portal/accounts/:clientAccountId/cards", async (request) => {
     const params = request.params as { clientAccountId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
-    assertPortalAccessLevel(request, params.clientAccountId, ["admin"]);
+    assertPortalAccessLevel(request, params.clientAccountId, ["admin", "approver"]);
     const permissions = await findClientPermissionsByAccountId(app.db, params.clientAccountId);
     if (!permissions?.allowClientCreatePost) {
       throw app.httpErrors.forbidden("A criação de posts não está habilitada para este cliente.");
@@ -94,7 +94,7 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
   app.patch("/portal/accounts/:clientAccountId/cards/:cardId/caption", async (request) => {
     const params = request.params as { clientAccountId: string; cardId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
-    assertPortalAccessLevel(request, params.clientAccountId, ["admin"]);
+    assertPortalAccessLevel(request, params.clientAccountId, ["admin", "approver"]);
     const permissions = await findClientPermissionsByAccountId(app.db, params.clientAccountId);
     if (!permissions?.allowClientEditCaption) {
       throw app.httpErrors.forbidden("A edição de legendas não está habilitada para este cliente.");
@@ -137,7 +137,7 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
   app.post("/portal/accounts/:clientAccountId/tags", async (request) => {
     const params = request.params as { clientAccountId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
-    assertPortalAccessLevel(request, params.clientAccountId, ["admin"]);
+    assertPortalAccessLevel(request, params.clientAccountId, ["admin", "approver"]);
     const permissions = await findClientPermissionsByAccountId(app.db, params.clientAccountId);
     if (!permissions?.allowClientCreateTags) {
       throw app.httpErrors.forbidden("A criação de etiquetas não está habilitada para este cliente.");
@@ -153,7 +153,7 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
   app.patch("/portal/accounts/:clientAccountId/cards/:cardId/tags", async (request) => {
     const params = request.params as { clientAccountId: string; cardId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
-    assertPortalAccessLevel(request, params.clientAccountId, ["admin"]);
+    assertPortalAccessLevel(request, params.clientAccountId, ["admin", "approver"]);
     const permissions = await findClientPermissionsByAccountId(app.db, params.clientAccountId);
     if (!permissions?.allowClientCreateTags) {
       throw app.httpErrors.forbidden("O uso de etiquetas não está habilitado para este cliente.");

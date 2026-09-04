@@ -104,7 +104,7 @@ export async function getPortalHome(
     accessLevel,
     widgets: {
       upcomingPosts: Boolean(client.show_upcoming_posts),
-      tracking: Boolean(client.tracking_enabled && client.tracking_visible_to_client),
+      tracking: Boolean(client.tracking_enabled && client.tracking_visible_to_client && permissions.allowClientViewTracking),
       invoices: permissions.allowClientViewInvoices,
       reports: permissions.allowClientViewReports,
       brandBrain: permissions.allowClientViewBrandBrain,
