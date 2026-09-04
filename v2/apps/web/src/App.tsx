@@ -2212,6 +2212,7 @@ function DashboardScheduleModal({ activity, onClose, onScheduled }: { activity: 
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("");
   const [saving, setSaving] = useState(false);
+  const [captionCopied, setCaptionCopied] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -2258,12 +2259,35 @@ function DashboardScheduleModal({ activity, onClose, onScheduled }: { activity: 
     }
   };
 
+  const copyCaption = async () => {
+    const caption = detail?.card.subtitle?.trim() ?? "";
+    if (!caption) return;
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(caption);
+      } else {
+        const helper = document.createElement("textarea");
+        helper.value = caption;
+        helper.style.position = "fixed";
+        helper.style.opacity = "0";
+        document.body.appendChild(helper);
+        helper.select();
+        document.execCommand("copy");
+        helper.remove();
+      }
+      setCaptionCopied(true);
+      window.setTimeout(() => setCaptionCopied(false), 1800);
+    } catch {
+      window.prompt("Copie a legenda:", caption);
+    }
+  };
+
   return <div className="modal-backdrop dashboard-schedule-backdrop" onMouseDown={onClose}>
     <form className="dashboard-schedule-modal" onSubmit={saveSchedule} onMouseDown={(event) => event.stopPropagation()}>
       <header><div><p className="eyebrow">Agendamento pelo dashboard</p><h2>{activity.title}</h2><p>{activity.clientName} · feedback em {new Intl.DateTimeFormat("pt-BR", { dateStyle: "long", timeStyle: "short" }).format(new Date(activity.occurredAt))}</p></div><button type="button" className="icon-close" onClick={onClose}>×</button></header>
       {loading ? <p className="dashboard-schedule-loading">Carregando conteúdo...</p> : detail ? <div className="dashboard-schedule-layout">
         <section className="dashboard-schedule-preview"><h3>Prévia do post</h3>{portalCardAssets(detail.card).length ? <ClosedCardMedia card={detail.card} /> : <div className="dashboard-schedule-no-media"><UiIcon name="image" />Sem arte cadastrada</div>}</section>
-        <section className="dashboard-schedule-content"><div className="dashboard-schedule-caption portal-summary-card"><div className="portal-summary-heading"><span><UiIcon name="file" /></span><div><small>CONTEÚDO DO POST</small><h4>Legenda</h4></div></div><PortalFormattedCaption text={detail.card.subtitle ?? ""} /></div><div className="dashboard-schedule-feedback"><span>{activity.activityType === "approved" ? "✓" : activity.activityType === "changes_requested" ? "↻" : "💬"}</span><div><small>Retorno do cliente</small><strong>{activity.detail}</strong><time>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(activity.occurredAt))}</time></div></div><div className="dashboard-schedule-fields"><label>Data da publicação<input type="date" value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} required /></label><label>Horário<input type="time" value={scheduleTime} onChange={(event) => setScheduleTime(event.target.value)} required /></label></div></section>
+        <section className="dashboard-schedule-content"><div className="dashboard-schedule-caption portal-summary-card"><div className="portal-summary-heading"><span><UiIcon name="file" /></span><div><small>CONTEÚDO DO POST</small><h4>Legenda</h4></div><button type="button" className="portal-caption-edit-button dashboard-caption-copy-button" disabled={!detail.card.subtitle?.trim()} onClick={() => void copyCaption()} aria-live="polite"><UiIcon name={captionCopied ? "check" : "copy"} />{captionCopied ? "Legenda copiada" : "Copiar legenda"}</button></div><PortalFormattedCaption text={detail.card.subtitle ?? ""} /></div><div className="dashboard-schedule-feedback"><span>{activity.activityType === "approved" ? "✓" : activity.activityType === "changes_requested" ? "↻" : "💬"}</span><div><small>Retorno do cliente</small><strong>{activity.detail}</strong><time>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(activity.occurredAt))}</time></div></div><div className="dashboard-schedule-fields"><label>Data da publicação<input type="date" value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} required /></label><label>Horário<input type="time" value={scheduleTime} onChange={(event) => setScheduleTime(event.target.value)} required /></label></div></section>
       </div> : null}
       {error ? <p className="form-feedback error-text">{error}</p> : null}
       <footer><NavLink to={`/admin/${activity.clientSlug}`} className="ghost-button">Abrir no Kanban</NavLink><button type="button" className="ghost-button" onClick={onClose}>Cancelar</button><button type="submit" className="gradient-button" disabled={saving || loading || !detail}><UiIcon name="calendar" />{saving ? "Agendando..." : "Confirmar agendamento"}</button></footer>

@@ -3977,6 +3977,7 @@ button {
 .dashboard-schedule-content { display: grid; align-content: start; gap: 13px; }
 .dashboard-schedule-caption { padding: 17px; border-radius: 18px; }
 .dashboard-schedule-caption .portal-caption-copy { max-height: 230px; }
+.dashboard-caption-copy-button:disabled { cursor: default; opacity: .48; transform: none; box-shadow: none; }
 .dashboard-schedule-feedback { display: grid; grid-template-columns: 36px minmax(0,1fr); align-items: start; gap: 11px; padding: 13px; border: 1px solid #e1dcfa; border-radius: 14px; background: #f5f2ff; }
 .dashboard-schedule-feedback > span { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 10px; color: #fff; background: #705de1; font-weight: 650; }
 .dashboard-schedule-feedback small, .dashboard-schedule-feedback strong, .dashboard-schedule-feedback time { display: block; }
