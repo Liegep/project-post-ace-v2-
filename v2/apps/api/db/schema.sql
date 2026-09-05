@@ -155,6 +155,28 @@ CREATE TABLE IF NOT EXISTS kanban_cards (
     ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS time_entries (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  user_id CHAR(36) NOT NULL,
+  client_account_id CHAR(36) NOT NULL,
+  card_id CHAR(36) NULL,
+  description VARCHAR(255) NOT NULL,
+  started_at DATETIME(3) NOT NULL,
+  ended_at DATETIME(3) NULL,
+  duration_seconds INT UNSIGNED NULL,
+  created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  KEY idx_time_entries_user_active (user_id, ended_at),
+  KEY idx_time_entries_client_started (client_account_id, started_at),
+  KEY idx_time_entries_card_started (card_id, started_at),
+  CONSTRAINT fk_time_entries_user FOREIGN KEY (user_id) REFERENCES users (id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_time_entries_account FOREIGN KEY (client_account_id) REFERENCES client_accounts (id)
+    ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_time_entries_card FOREIGN KEY (card_id) REFERENCES kanban_cards (id)
+    ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS client_tags (
   id CHAR(36) NOT NULL PRIMARY KEY,
   client_account_id CHAR(36) NOT NULL,

@@ -21,6 +21,21 @@ export type AdminClientOption = {
   access_count?: number;
 };
 
+export type TimeEntry = {
+  id: string;
+  userId: string;
+  userName: string;
+  clientAccountId: string;
+  clientName: string;
+  cardId: string | null;
+  cardTitle: string | null;
+  description: string;
+  startedAt: string;
+  endedAt: string | null;
+  durationSeconds: number | null;
+  createdAt: string;
+};
+
 export type CreateAdminClientInput = {
   name: string;
   slug: string;
@@ -933,6 +948,29 @@ export async function deleteAdminCardBySlug(slug: string, cardId: string) {
 
 export async function listAdminClients() {
   return getAdminClients();
+}
+
+export async function loadActiveTimeEntry() {
+  return fetchJson<{ entry: TimeEntry | null }>("/api/time-tracking/active");
+}
+
+export async function listTimeEntries(input: { from: string; to: string; clientAccountId?: string }) {
+  const query = new URLSearchParams({ from: input.from, to: input.to });
+  if (input.clientAccountId) query.set("clientAccountId", input.clientAccountId);
+  return fetchJson<{ items: TimeEntry[] }>(`/api/time-tracking/entries?${query}`);
+}
+
+export async function startTimeEntry(input: { clientAccountId: string; cardId?: string | null; description?: string }) {
+  return sendJson<{ entry: TimeEntry }>("/api/time-tracking/start", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function startCardTimeEntryBySlug(slug: string, cardId: string, description?: string) {
+  const client = await findAdminClientBySlug(slug);
+  return startTimeEntry({ clientAccountId: client.id, cardId, description });
+}
+
+export async function stopTimeEntry(entryId: string) {
+  return sendJson<{ entry: TimeEntry }>(`/api/time-tracking/${entryId}/stop`, { method: "POST" });
 }
 
 export async function createAdminClient(input: CreateAdminClientInput) {
