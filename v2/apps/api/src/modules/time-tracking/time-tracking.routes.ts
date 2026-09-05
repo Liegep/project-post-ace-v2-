@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import { assertClientAccess, assertInternalAccess, getClientScope } from "../auth/auth.access.js";
 import { findCardById } from "../cards/cards.repository.js";
-import { createTimeEntry, ensureTimeTrackingTable, findActiveTimeEntry, listTimeEntries, stopTimeEntry } from "./time-tracking.repository.js";
+import { clearCompletedTimeEntries, createTimeEntry, ensureTimeTrackingTable, findActiveTimeEntry, listTimeEntries, resumeTimeEntry, stopTimeEntry } from "./time-tracking.repository.js";
 import { listTimeEntriesSchema, startTimeEntrySchema } from "./time-tracking.schemas.js";
 
 export const timeTrackingRoutes: FastifyPluginAsync = async (app) => {
@@ -52,5 +52,33 @@ export const timeTrackingRoutes: FastifyPluginAsync = async (app) => {
     const entry = await stopTimeEntry(app.db, entryId, request.auth!.user.id);
     if (!entry) throw app.httpErrors.notFound("Cronômetro não encontrado ou já encerrado.");
     return { entry };
+  });
+
+  app.post("/time-tracking/:entryId/resume", async (request) => {
+    assertInternalAccess(request);
+    const { entryId } = request.params as { entryId: string };
+    try {
+      const entry = await resumeTimeEntry(app.db, entryId, request.auth!.user.id);
+      if (!entry) throw app.httpErrors.notFound("Registro de tempo não encontrado.");
+      return { entry };
+    } catch (error) {
+      if (error instanceof Error && (error as Error & { code?: string }).code === "ACTIVE_TIMER_EXISTS") throw app.httpErrors.conflict(error.message);
+      throw error;
+    }
+  });
+
+  app.delete("/time-tracking/entries", async (request) => {
+    assertInternalAccess(request);
+    const query = listTimeEntriesSchema.parse(request.query);
+    const auth = request.auth!;
+    const scope = getClientScope(auth.user.globalRole, auth.user.id, auth.memberships);
+    if (query.clientAccountId) assertClientAccess(request, query.clientAccountId, ["admin", "colaborador"]);
+    const removed = await clearCompletedTimeEntries(app.db, {
+      from: new Date(query.from), to: new Date(query.to),
+      clientIds: scope.mode === "global" ? null : scope.clientIds,
+      clientAccountId: query.clientAccountId,
+      userId: auth.user.globalRole === "colaborador" ? auth.user.id : undefined,
+    });
+    return { ok: true, removed };
   });
 };

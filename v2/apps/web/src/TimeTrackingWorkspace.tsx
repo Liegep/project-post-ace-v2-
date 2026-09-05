@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   listAdminClients,
+  clearTimeEntries,
   listTimeEntries,
   loadActiveTimeEntry,
+  resumeTimeEntry,
   startCardTimeEntryBySlug,
   startTimeEntry,
   stopTimeEntry,
@@ -13,8 +15,9 @@ import {
 const TIMER_EVENT = "design-hub:time-entry-changed";
 
 function elapsedSeconds(entry: TimeEntry, now: number) {
-  if (entry.durationSeconds !== null) return entry.durationSeconds;
-  return Math.max(0, Math.floor((now - new Date(entry.startedAt).getTime()) / 1000));
+  const accumulated = entry.durationSeconds ?? 0;
+  if (entry.endedAt) return accumulated;
+  return accumulated + Math.max(0, Math.floor((now - new Date(entry.lastStartedAt).getTime()) / 1000));
 }
 
 export function formatDuration(seconds: number) {
@@ -177,11 +180,26 @@ export function TimeTrackingWorkspace() {
         if (!replace) return;
         await stopTimeEntry(active.id);
       }
-      await startTimeEntry({ clientAccountId: entry.clientAccountId, cardId: entry.cardId, description: entry.description });
+      await resumeTimeEntry(entry.id);
       notifyTimerChange();
       await refresh();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Não foi possível continuar esta atividade.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  async function clearVisibleEntries() {
+    const label = filterClientId ? clients.find((client) => client.id === filterClientId)?.name : "todos os clientes";
+    if (!window.confirm(`Limpar da lista os registros encerrados deste período para ${label}? O cronômetro ativo será preservado.`)) return;
+    setWorking(true); setError("");
+    try {
+      const result = await clearTimeEntries({ ...range, clientAccountId: filterClientId || undefined });
+      await refresh();
+      if (result.removed === 0) setError("Não havia registros encerrados para limpar neste período.");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível limpar os registros.");
     } finally {
       setWorking(false);
     }
@@ -211,7 +229,7 @@ export function TimeTrackingWorkspace() {
     <div className="time-report-toolbar">
       <div><span>RELATÓRIO DE TEMPO</span><h2>Horas por cliente</h2></div>
       <div className="time-period-tabs">{(["today", "week", "month"] as Period[]).map((value) => <button type="button" key={value} className={period === value ? "active" : ""} onClick={() => setPeriod(value)}>{value === "today" ? "Hoje" : value === "week" ? "Esta semana" : "Este mês"}</button>)}</div>
-      <select aria-label="Filtrar por cliente" value={filterClientId} onChange={(event) => setFilterClientId(event.target.value)}><option value="">Todos os clientes</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>
+      <div className="time-report-actions"><select aria-label="Filtrar por cliente" value={filterClientId} onChange={(event) => setFilterClientId(event.target.value)}><option value="">Todos os clientes</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select><button type="button" disabled={working || entries.every((entry) => !entry.endedAt)} onClick={() => void clearVisibleEntries()}>Limpar encerrados</button></div>
     </div>
 
     <div className="time-summary-grid"><article><span>Tempo total</span><strong>{formatDuration(totalSeconds)}</strong><small>{entries.length} {entries.length === 1 ? "registro" : "registros"}</small></article>{Array.from(grouped.entries()).slice(0, 3).map(([id, item]) => <article key={id}><span>{item.name}</span><strong>{formatDuration(item.seconds)}</strong><small>{item.count} {item.count === 1 ? "atividade" : "atividades"}</small></article>)}</div>

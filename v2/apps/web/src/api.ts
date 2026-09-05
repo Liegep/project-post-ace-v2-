@@ -31,6 +31,7 @@ export type TimeEntry = {
   cardTitle: string | null;
   description: string;
   startedAt: string;
+  lastStartedAt: string;
   endedAt: string | null;
   durationSeconds: number | null;
   createdAt: string;
@@ -971,6 +972,16 @@ export async function startCardTimeEntryBySlug(slug: string, cardId: string, des
 
 export async function stopTimeEntry(entryId: string) {
   return sendJson<{ entry: TimeEntry }>(`/api/time-tracking/${entryId}/stop`, { method: "POST" });
+}
+
+export async function resumeTimeEntry(entryId: string) {
+  return sendJson<{ entry: TimeEntry }>(`/api/time-tracking/${entryId}/resume`, { method: "POST" });
+}
+
+export async function clearTimeEntries(input: { from: string; to: string; clientAccountId?: string }) {
+  const query = new URLSearchParams({ from: input.from, to: input.to });
+  if (input.clientAccountId) query.set("clientAccountId", input.clientAccountId);
+  return sendJson<{ ok: true; removed: number }>(`/api/time-tracking/entries?${query}`, { method: "DELETE" });
 }
 
 export async function createAdminClient(input: CreateAdminClientInput) {

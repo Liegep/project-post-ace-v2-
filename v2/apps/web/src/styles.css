@@ -8792,9 +8792,15 @@ button {
 .time-entry-actions button:disabled { opacity: .5; cursor: wait; }
 .time-entry-actions em { color: #218963; font-size: .72rem; font-style: normal; font-weight: 650; }
 
+.time-report-actions { display: grid; gap: 7px; }
+.time-report-actions > button { justify-self: end; padding: 6px 9px; border: 0; color: #9a4b56; background: transparent; font: inherit; font-size: .7rem; font-weight: 650; cursor: pointer; }
+.time-report-actions > button:hover { color: #c23545; text-decoration: underline; }
+.time-report-actions > button:disabled { opacity: .4; cursor: default; text-decoration: none; }
+
 @media (max-width: 680px) {
   .time-entry-actions {
     grid-column: 2;
     justify-content: space-between;
   }
+  .time-report-actions > button { justify-self: start; }
 }
