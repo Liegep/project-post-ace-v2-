@@ -8807,7 +8807,11 @@ button {
 
 /* Layout compacto do controle de tempo, inspirado na organização do Clockify. */
 .time-workspace {
+  align-content: start;
+  grid-auto-rows: max-content;
   gap: 22px;
+  width: 100%;
+  min-height: 0;
   padding: 24px;
 }
 
@@ -8815,6 +8819,9 @@ button {
   display: grid;
   grid-template-columns: minmax(280px, 1fr) minmax(180px, 250px) 52px 52px 150px 118px 34px;
   align-items: stretch;
+  align-self: start;
+  box-sizing: border-box;
+  height: 68px;
   min-height: 66px;
   border: 1px solid #dfe6ed;
   background: #fff;
@@ -8838,23 +8845,23 @@ button {
 .clockify-start-bar.running { box-shadow: 0 8px 26px rgba(38, 169, 213, .18); }
 .clockify-start-bar.running .clockify-counter { color: #168bb5; }
 
-.clockify-report-toolbar { display: grid; grid-template-columns: minmax(150px, 1fr) auto minmax(190px, 250px) auto; align-items: center; gap: 18px; margin-top: 18px; color: #526071; }
+.clockify-report-toolbar { display: grid; grid-template-columns: minmax(150px, 1fr) auto minmax(270px, auto) minmax(170px, auto); align-items: center; gap: 18px; min-height: 44px; margin-top: 6px; color: #526071; }
 .clockify-report-toolbar > div:first-child { display: flex; align-items: baseline; gap: 12px; }
 .clockify-report-toolbar > div:first-child > span { color: #8a95a3; font-size: .75rem; }
-.clockify-report-toolbar > p { margin: 0; color: #89939f; font-size: .75rem; white-space: nowrap; }
+.clockify-report-toolbar > p { display: flex; align-items: baseline; justify-content: flex-end; gap: 8px; min-width: 0; margin: 0; color: #89939f; font-size: .75rem; white-space: nowrap; }
 .clockify-report-toolbar > p b { margin-left: 8px; color: #26313e; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
-.clockify-report-toolbar .time-report-actions { display: flex; align-items: center; gap: 8px; }
+.clockify-report-toolbar .time-report-actions { display: grid; grid-template-columns: minmax(150px, 1fr) auto; align-items: center; gap: 8px; min-width: 0; }
 .clockify-report-toolbar .time-report-actions select { min-height: 38px; }
 .clockify-report-toolbar .time-report-actions > button { white-space: nowrap; }
 
-.clockify-day-list { display: grid; gap: 18px; }
-.clockify-day-group { overflow: hidden; border: 1px solid #dfe6ec; background: #fff; box-shadow: 0 3px 12px rgba(39, 55, 78, .05); }
+.clockify-day-list { display: grid; align-content: start; grid-auto-rows: max-content; gap: 18px; min-height: 0; }
+.clockify-day-group { align-self: start; overflow: hidden; border: 1px solid #dfe6ec; background: #fff; box-shadow: 0 3px 12px rgba(39, 55, 78, .05); }
 .clockify-day-group > header { display: flex; align-items: center; justify-content: space-between; min-height: 43px; padding: 0 18px; color: #7b8793; background: #e8eef2; font-size: .76rem; }
 .clockify-day-group > header > strong { color: #6d7985; font-weight: 500; text-transform: capitalize; }
 .clockify-day-group > header span { display: flex; align-items: baseline; gap: 9px; }
 .clockify-day-group > header b { color: #2d3845; font-size: 1rem; font-variant-numeric: tabular-nums; }
-.clockify-day-group > div { display: grid; }
-.clockify-day-group article { display: grid; grid-template-columns: minmax(260px, 1fr) 54px 54px 170px 112px 105px 34px; align-items: center; min-height: 70px; border-bottom: 1px solid #e2e8ed; color: #35404b; }
+.clockify-day-group > div { display: grid; align-content: start; grid-auto-rows: max-content; }
+.clockify-day-group article { display: grid; grid-template-columns: minmax(260px, 1fr) 54px 54px 170px 112px 105px 34px; align-items: center; box-sizing: border-box; min-height: 70px; border-bottom: 1px solid #e2e8ed; color: #35404b; }
 .clockify-day-group article:last-child { border-bottom: 0; }
 .clockify-day-group article.active { background: #f5fcff; box-shadow: inset 3px 0 #20aee6; }
 .clockify-entry-copy { display: grid; grid-template-columns: minmax(120px, auto) minmax(140px, 1fr); align-items: center; gap: 3px 22px; padding: 10px 18px; }
@@ -8875,23 +8882,23 @@ button {
   .clockify-tag,.clockify-billing { display: none; }
   .clockify-day-group article { grid-template-columns: minmax(230px, 1fr) 145px 105px 94px 28px; }
   .clockify-row-tag,.clockify-row-billing { display: none; }
-  .clockify-report-toolbar { grid-template-columns: 1fr auto; }
-  .clockify-report-toolbar .time-report-actions { grid-column: 1; grid-row: 2; }
-  .clockify-report-toolbar > p { grid-column: 2; grid-row: 2; }
+  .clockify-report-toolbar { grid-template-columns: minmax(140px, 1fr) auto auto; }
+  .clockify-report-toolbar .time-report-actions { grid-column: 1 / 3; grid-row: 2; justify-self: start; }
+  .clockify-report-toolbar > p { grid-column: 3; grid-row: 2; }
 }
 
 @media (max-width: 680px) {
   .time-workspace { padding: 12px; gap: 15px; }
-  .clockify-start-bar { grid-template-columns: 1fr auto; border-radius: 15px; overflow: hidden; }
+  .clockify-start-bar { grid-template-columns: minmax(0, 1fr) auto; height: auto; min-height: 0; border-radius: 15px; overflow: hidden; }
   .clockify-task-input { grid-column: 1 / -1; min-height: 52px; border-right: 0; border-bottom: 1px solid #e3e9ef; }
-  .clockify-project-picker { min-height: 46px; border-right: 0; }
-  .clockify-counter { grid-column: 1; min-height: 48px; justify-content: start; padding-left: 17px; border-top: 1px solid #e3e9ef; }
+  .clockify-project-picker { grid-column: 1 / -1; min-height: 46px; border-right: 0; border-bottom: 1px solid #e3e9ef; }
+  .clockify-counter { grid-column: 1; grid-row: 3; min-height: 48px; justify-content: start; padding-left: 17px; border-top: 0; }
   .clockify-start-bar > button { grid-column: 2; grid-row: 3; min-width: 92px; margin: 0; }
   .clockify-more { display: none; }
   .clockify-report-toolbar { grid-template-columns: 1fr; gap: 10px; margin-top: 8px; }
-  .clockify-report-toolbar .time-period-tabs,.clockify-report-toolbar .time-report-actions,.clockify-report-toolbar > p { grid-column: 1; grid-row: auto; }
+  .clockify-report-toolbar .time-period-tabs,.clockify-report-toolbar .time-report-actions,.clockify-report-toolbar > p { grid-column: 1; grid-row: auto; width: 100%; }
   .clockify-report-toolbar .time-period-tabs { overflow-x: auto; }
-  .clockify-report-toolbar .time-report-actions { display: grid; grid-template-columns: 1fr auto; }
+  .clockify-report-toolbar .time-report-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; justify-self: stretch; }
   .clockify-report-toolbar > p { justify-self: end; }
   .clockify-day-list { gap: 13px; }
   .clockify-day-group { border-radius: 13px; }
