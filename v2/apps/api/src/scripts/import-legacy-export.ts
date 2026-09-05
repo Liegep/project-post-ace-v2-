@@ -34,6 +34,8 @@ type ExportBundle = {
   socialReportTemplates: JsonRow[];
   designBriefs: JsonRow[];
   briefTemplates: JsonRow[];
+  textContents: JsonRow[];
+  textContentComments: JsonRow[];
 };
 
 function parseArguments() {
@@ -48,6 +50,7 @@ function parseArguments() {
     onlyProposals: args.includes("--only-proposals"),
     onlyReports: args.includes("--only-reports"),
     onlyDesignBriefs: args.includes("--only-design-briefs"),
+    onlyTexts: args.includes("--only-texts"),
     inputDir:
       inputIndex >= 0 && args[inputIndex + 1]
         ? path.resolve(args[inputIndex + 1])
@@ -79,7 +82,7 @@ async function readOptionalRows(inputDir: string, fileName: string) {
 }
 
 async function loadBundle(inputDir: string): Promise<ExportBundle> {
-  const [clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates, socialReports, socialReportTemplates, designBriefs, briefTemplates] =
+  const [clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates, socialReports, socialReportTemplates, designBriefs, briefTemplates, textContents, textContentComments] =
     await Promise.all([
       readRows(inputDir, "clients.json"),
       readRows(inputDir, "profiles.json"),
@@ -102,8 +105,10 @@ async function loadBundle(inputDir: string): Promise<ExportBundle> {
       readOptionalRows(inputDir, "social_report_templates.json"),
       readOptionalRows(inputDir, "design_briefs.json"),
       readOptionalRows(inputDir, "brief_templates.json"),
+      readOptionalRows(inputDir, "text_contents.json"),
+      readOptionalRows(inputDir, "text_content_comments.json"),
     ]);
-  return { clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates, socialReports, socialReportTemplates, designBriefs, briefTemplates };
+  return { clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates, socialReports, socialReportTemplates, designBriefs, briefTemplates, textContents, textContentComments };
 }
 
 function textValue(row: JsonRow, key: string, fallback = "") {
@@ -156,6 +161,7 @@ function normalizeCommentRole(value: unknown) {
   const role = String(value ?? "").toLowerCase();
   if (["super_admin", "admin", "colaborador", "cliente"].includes(role)) return role;
   if (role === "collaborator") return "colaborador";
+  if (role === "client") return "cliente";
   return "guest";
 }
 
@@ -208,6 +214,7 @@ function validateBundle(bundle: ExportBundle) {
   const postIds = new Set(bundle.posts.map((row) => textValue(row, "id")));
   const invoiceIds = new Set(bundle.invoices.map((row) => textValue(row, "id")));
   const contractIds = new Set(bundle.contracts.map((row) => textValue(row, "id")));
+  const textContentIds = new Set(bundle.textContents.map((row) => textValue(row, "id")));
 
   for (const [file, rows] of Object.entries({
     clients: bundle.clients,
@@ -228,6 +235,8 @@ function validateBundle(bundle: ExportBundle) {
     proposalTemplates: bundle.proposalTemplates,
     designBriefs: bundle.designBriefs,
     briefTemplates: bundle.briefTemplates,
+    textContents: bundle.textContents,
+    textContentComments: bundle.textContentComments,
   })) {
     rows.forEach((row, index) => {
       if (!textValue(row, "id")) errors.push(`${file}[${index}] não possui id.`);
@@ -265,6 +274,8 @@ function validateBundle(bundle: ExportBundle) {
   bundle.contractAcceptances.forEach((row) => { if (!contractIds.has(textValue(row, "contract_id"))) errors.push(`Aceite ${textValue(row, "id")} aponta para contrato ausente.`); });
   bundle.socialReports.forEach((row) => { if (!clientIds.has(textValue(row, "client_id"))) errors.push(`Relatório ${textValue(row, "id")} aponta para cliente ausente.`); });
   bundle.designBriefs.forEach((row) => { const clientId = textValue(row, "client_id"); if (clientId && !clientIds.has(clientId)) errors.push(`Brief ${textValue(row, "id")} aponta para cliente ausente.`); });
+  bundle.textContents.forEach((row) => { if (!clientIds.has(textValue(row, "client_id"))) errors.push(`Texto ${textValue(row, "id")} aponta para cliente ausente.`); });
+  bundle.textContentComments.forEach((row) => { if (!textContentIds.has(textValue(row, "text_content_id"))) errors.push(`Comentário de texto ${textValue(row, "id")} aponta para texto ausente.`); });
   return errors;
 }
 
@@ -293,6 +304,8 @@ function printSummary(bundle: ExportBundle, inputDir: string, commit: boolean) {
       social_report_templates: bundle.socialReportTemplates.length,
       design_briefs: bundle.designBriefs.length,
       brief_templates: bundle.briefTemplates.length,
+      text_contents: bundle.textContents.length,
+      text_content_comments: bundle.textContentComments.length,
       media_files_pending_copy: bundle.mediaManifest.length,
     },
   }, null, 2));
@@ -507,6 +520,46 @@ async function importDesignBriefRecords(connection: PoolConnection, bundle: Expo
   }
 }
 
+function escapeHtml(value: unknown) {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function legacyTextHtml(row: JsonRow) {
+  const rawBody = textValue(row, "body");
+  const body = /<\/?[a-z][\s\S]*>/i.test(rawBody)
+    ? rawBody.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "").replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, "")
+    : rawBody.split(/\n{2,}/).map((paragraph) => `<p>${escapeHtml(paragraph).replace(/\n/g, "<br>")}</p>`).join("");
+  const subtitle = textValue(row, "subtitle").trim();
+  const subtitleHtml = subtitle ? `<p><strong>${escapeHtml(subtitle)}</strong></p>` : "";
+  const pdfUrl = textValue(row, "pdf_url").trim();
+  const pdfHtml = /^https?:\/\//i.test(pdfUrl) ? `<p><a href="${escapeHtml(pdfUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(textValue(row, "pdf_name", "Abrir documento anexo"))}</a></p>` : "";
+  return `${subtitleHtml}${body}${pdfHtml}`;
+}
+
+function normalizeTextStatus(value: unknown) {
+  const status = String(value ?? "").toLowerCase();
+  if (["approved", "published"].includes(status)) return { label: "Aprovado", sent: 1 };
+  if (["pending_approval", "rejected"].includes(status)) return { label: "Em revisão", sent: 1 };
+  return { label: "Rascunho", sent: 0 };
+}
+
+function normalizeTextType(value: unknown) {
+  const types: Record<string, string> = { blog: "Blog", artigo: "Artigo", texto: "Texto", copy: "Copy", documento: "Documento" };
+  return types[String(value ?? "").toLowerCase()] ?? "Texto";
+}
+
+async function importTextRecords(connection: PoolConnection, bundle: ExportBundle, clientMap: Map<string, string>, userMap: Map<string, string>) {
+  for (const text of bundle.textContents) {
+    const id = textValue(text, "id");
+    const normalizedStatus = normalizeTextStatus(text.status);
+    await connection.query(`INSERT INTO client_texts (id,client_account_id,title,content_html,content_type,status,planned_at,internal_notes,is_sent_to_client,sent_at,created_by_user_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE client_account_id=VALUES(client_account_id),title=VALUES(title),content_html=VALUES(content_html),content_type=VALUES(content_type),status=VALUES(status),planned_at=VALUES(planned_at),internal_notes=VALUES(internal_notes),is_sent_to_client=VALUES(is_sent_to_client),sent_at=VALUES(sent_at),created_by_user_id=VALUES(created_by_user_id),updated_at=VALUES(updated_at)`, [id, clientMap.get(textValue(text, "client_id")), textValue(text, "title", "Sem título"), legacyTextHtml(text), normalizeTextType(text.content_type), normalizedStatus.label, nullableText(text, "planned_date"), nullableText(text, "observations"), normalizedStatus.sent, normalizedStatus.sent ? mysqlDateTime(text.updated_at) : null, userMap.get(textValue(text, "created_by")) ?? null, mysqlDateTime(text.created_at), mysqlDateTime(text.updated_at)]);
+  }
+  for (const comment of bundle.textContentComments) {
+    const legacyUserId = textValue(comment, "user_id");
+    await connection.query("INSERT INTO text_comments (id,text_id,user_id,author_name,author_role,comment_text,is_internal,created_at) VALUES (?,?,?,?,?,?,0,COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE user_id=VALUES(user_id),author_name=VALUES(author_name),author_role=VALUES(author_role),comment_text=VALUES(comment_text)", [textValue(comment, "id"), textValue(comment, "text_content_id"), userMap.get(legacyUserId) ?? null, textValue(comment, "author_name", "Usuário legado"), normalizeCommentRole(comment.author_role), legacyCommentToPlainText(comment.message), mysqlDateTime(comment.created_at)]);
+  }
+}
+
 async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
   const { userMap, roleByLegacyId } = await resolveUsers(connection, bundle.profiles);
   const clientMap = new Map<string, string>();
@@ -623,6 +676,7 @@ async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
   await importProposalRecords(connection,bundle,userMap);
   await importReportRecords(connection,bundle,clientMap,userMap);
   await importDesignBriefRecords(connection,bundle,clientMap,userMap);
+  await importTextRecords(connection,bundle,clientMap,userMap);
 }
 
 async function main() {
@@ -666,6 +720,10 @@ async function main() {
       const clientMap=await resolveExistingClients(connection,bundle.clients);
       const userMap=await resolveExistingUsers(connection,bundle.profiles);
       await importDesignBriefRecords(connection,bundle,clientMap,userMap);
+    } else if (options.onlyTexts) {
+      const clientMap=await resolveExistingClients(connection,bundle.clients);
+      const userMap=await resolveExistingUsers(connection,bundle.profiles);
+      await importTextRecords(connection,bundle,clientMap,userMap);
     } else {
       await importBundle(connection, bundle);
     }

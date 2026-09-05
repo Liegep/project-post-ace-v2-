@@ -314,6 +314,13 @@ async function main() {
     .order("created_at"));
   trace("comments");
 
+  const textContentsQuery = supabase.from("text_contents").select("id,client_id,content_type,title,subtitle,body,status,planned_date,observations,client_label,created_by,created_at,updated_at,pdf_url,pdf_name").in("client_id", foundClientIds).order("created_at");
+  const textContents = foundClientIds.length ? await fetchAll(textContentsQuery) : [];
+  trace("text-contents");
+  const textContentIds = textContents.map((item) => item.id);
+  const textContentComments = await fetchInBatches(textContentIds, (ids) => supabase.from("text_content_comments").select("id,text_content_id,user_id,author_name,author_role,message,created_at").in("text_content_id", ids).order("created_at"));
+  trace("text-content-comments");
+
   const calendarPostsQuery = supabase
     .from("calendar_posts")
     .select(
@@ -370,7 +377,7 @@ async function main() {
   trace("brief-templates");
 
   const mediaManifest = uniqueMediaUrls(
-    [...posts, ...calendarPosts, ...invoiceAttachments],
+    [...posts, ...calendarPosts, ...invoiceAttachments, ...textContents],
     [
       (row) =>
         row.image_url
@@ -394,6 +401,7 @@ async function main() {
             }))
           : [],
       (row) => row.file_url ? [{ url: row.file_url, source: "invoice_attachments.file_url", invoice_attachment_id: row.id, invoice_id: row.invoice_id }] : [],
+      (row) => row.pdf_url ? [{ url: row.pdf_url, source: "text_contents.pdf_url", text_content_id: row.id, client_id: row.client_id }] : [],
     ],
   );
 
@@ -419,6 +427,8 @@ async function main() {
       archived_posts: posts.filter((post) => post.archived).length,
       active_posts: posts.filter((post) => !post.archived).length,
       comments: comments.length,
+      text_contents: textContents.length,
+      text_content_comments: textContentComments.length,
       calendar_posts: calendarPosts.length,
       appointments: appointments.length,
       appointment_tags: appointmentTags.length,
@@ -455,6 +465,8 @@ async function main() {
   await writeJson(path.join(options.outDir, "posts.json"), posts);
   await writeJson(path.join(options.outDir, "tags.json"), tags);
   await writeJson(path.join(options.outDir, "comments.json"), comments);
+  await writeJson(path.join(options.outDir, "text_contents.json"), textContents);
+  await writeJson(path.join(options.outDir, "text_content_comments.json"), textContentComments);
   await writeJson(path.join(options.outDir, "calendar_posts.json"), calendarPosts);
   await writeJson(path.join(options.outDir, "appointments.json"), appointments);
   await writeJson(path.join(options.outDir, "appointment_tags.json"), appointmentTags);
