@@ -140,6 +140,19 @@ export type ProposalRecord = {
   services: Array<{ name: string; value: number; description: string }>;
   acceptedAt?: string | null; viewedAt?: string | null; createdAt?: string; updatedAt?: string;
 };
+export type DesignBriefFieldRecord = {
+  id: string; type: "short" | "long" | "choice" | "checklist" | "link" | "file";
+  label: string; help: string; required: boolean; options: string[];
+};
+export type DesignBriefRecord = {
+  id: string; clientAccountId: string | null; title: string; introduction: string; category: string;
+  locale: "pt" | "en" | "es" | "it" | "sv"; status: "draft" | "completed";
+  fields: DesignBriefFieldRecord[]; answers: Record<string, unknown>; submittedAt: string | null;
+  createdAt: string; updatedAt: string;
+};
+export type DesignBriefTemplateRecord = {
+  id: string; name: string; introduction: string; fields: DesignBriefFieldRecord[]; createdAt: string; updatedAt: string;
+};
 
 export type ManagedUser = {
   id: string;
@@ -665,6 +678,13 @@ export async function updateAdminProposal(proposalId: string, input: Partial<Omi
 export async function deleteAdminProposal(proposalId: string) { return sendJson<{ ok: boolean }>(`/api/proposals/${proposalId}`, { method: "DELETE" }); }
 export async function loadPublicProposal(token: string) { return fetchJson<{ proposal: ProposalRecord }>(`/api/public/proposals/${encodeURIComponent(token)}`); }
 export async function decidePublicProposal(token: string, status: "accepted" | "refused") { return sendJson<{ proposal: ProposalRecord }>(`/api/public/proposals/${encodeURIComponent(token)}/decision`, { method: "POST", body: JSON.stringify({ status }) }); }
+export async function listAdminDesignBriefs() { return fetchJson<{ items: DesignBriefRecord[] }>("/api/design-briefs"); }
+export async function createAdminDesignBrief(input: Omit<DesignBriefRecord, "id" | "submittedAt" | "createdAt" | "updatedAt">) { return sendJson<{ brief: DesignBriefRecord }>("/api/design-briefs", { method: "POST", body: JSON.stringify(input) }); }
+export async function updateAdminDesignBrief(briefId: string, input: Partial<Omit<DesignBriefRecord, "id" | "submittedAt" | "createdAt" | "updatedAt">>) { return sendJson<{ brief: DesignBriefRecord }>(`/api/design-briefs/${briefId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+export async function deleteAdminDesignBrief(briefId: string) { return sendJson<{ ok: boolean }>(`/api/design-briefs/${briefId}`, { method: "DELETE" }); }
+export async function listAdminDesignBriefTemplates() { return fetchJson<{ items: DesignBriefTemplateRecord[] }>("/api/design-brief-templates"); }
+export async function createAdminDesignBriefTemplate(input: { name: string; introduction: string; fields: DesignBriefFieldRecord[] }) { return sendJson<{ template: DesignBriefTemplateRecord }>("/api/design-brief-templates", { method: "POST", body: JSON.stringify(input) }); }
+export async function deleteAdminDesignBriefTemplate(templateId: string) { return sendJson<{ ok: boolean }>(`/api/design-brief-templates/${templateId}`, { method: "DELETE" }); }
 
 export async function loadClientPortalBySlug(slug: string): Promise<ClientPortalPreview> {
   const matchedAccount = await findPortalAccountBySlug(slug);

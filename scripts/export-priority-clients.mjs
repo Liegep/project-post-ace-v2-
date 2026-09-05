@@ -359,6 +359,11 @@ async function main() {
   const socialReportTemplates = await fetchAll(supabase.from("social_report_templates").select("id,name,created_by,metric_fields,created_at").order("created_at"));
   trace("social-report-templates");
 
+  const designBriefs = await fetchAll(supabase.from("design_briefs").select("id,user_id,client_id,title,category,locale,status,answers,brand_name,objectives,target_audience,style_preferences,preferred_colors,references_links,additional_notes,respondent_name,respondent_email,submitted_at,created_at,updated_at").order("created_at"));
+  trace("design-briefs");
+  const briefTemplates = await fetchAll(supabase.from("brief_templates").select("id,user_id,name,description,category,locale,questions,active,created_at,updated_at").order("created_at"));
+  trace("brief-templates");
+
   const mediaManifest = uniqueMediaUrls(
     [...posts, ...calendarPosts, ...invoiceAttachments],
     [
@@ -420,6 +425,8 @@ async function main() {
       proposal_templates: proposalTemplates.length,
       social_reports: socialReports.length,
       social_report_templates: socialReportTemplates.length,
+      design_briefs: designBriefs.length,
+      brief_templates: briefTemplates.length,
       media_manifest: mediaManifest.length,
     },
   };
@@ -452,6 +459,8 @@ async function main() {
   await writeJson(path.join(options.outDir, "proposal_templates.json"), proposalTemplates);
   await writeJson(path.join(options.outDir, "social_reports.json"), socialReports);
   await writeJson(path.join(options.outDir, "social_report_templates.json"), socialReportTemplates);
+  await writeJson(path.join(options.outDir, "design_briefs.json"), designBriefs);
+  await writeJson(path.join(options.outDir, "brief_templates.json"), briefTemplates);
   await writeJson(path.join(options.outDir, "media-manifest.json"), mediaManifest);
 
   console.log(`Export concluido em: ${options.outDir}`);

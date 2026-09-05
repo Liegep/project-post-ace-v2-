@@ -33,6 +33,7 @@ import { mcpOAuthRoutes } from "./modules/mcp/mcp.oauth.routes.js";
 import { mcpRoutes } from "./modules/mcp/mcp.routes.js";
 import { timeTrackingRoutes } from "./modules/time-tracking/time-tracking.routes.js";
 import { proposalRoutes } from "./modules/proposals/proposals.routes.js";
+import { designBriefRoutes } from "./modules/design-briefs/design-briefs.routes.js";
 
 export async function buildApp() {
   const appEnv = loadEnv();
@@ -81,6 +82,7 @@ export async function buildApp() {
     await app.register(contractRoutes, { prefix: "/api" });
     await app.register(timeTrackingRoutes, { prefix: "/api" });
     await app.register(proposalRoutes, { prefix: "/api" });
+    await app.register(designBriefRoutes, { prefix: "/api" });
 
     const archiveDueCards = async () => {
       try {

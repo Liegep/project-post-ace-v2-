@@ -362,6 +362,40 @@ CREATE TABLE IF NOT EXISTS report_templates (
   CONSTRAINT fk_report_templates_creator FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS design_briefs (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  client_account_id CHAR(36) NULL,
+  title VARCHAR(500) NOT NULL,
+  introduction TEXT NOT NULL,
+  category VARCHAR(100) NOT NULL DEFAULT 'custom',
+  locale ENUM('pt','en','es','it','sv') NOT NULL DEFAULT 'pt',
+  status ENUM('draft','completed') NOT NULL DEFAULT 'draft',
+  fields_json JSON NOT NULL,
+  answers_json JSON NOT NULL,
+  submitted_at DATETIME(3) NULL,
+  created_by_user_id CHAR(36) NULL,
+  legacy_id VARCHAR(120) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_design_briefs_legacy_id (legacy_id),
+  KEY idx_design_briefs_client_created (client_account_id,created_at),
+  CONSTRAINT fk_design_briefs_account FOREIGN KEY (client_account_id) REFERENCES client_accounts (id) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT fk_design_briefs_creator FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS design_brief_templates (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  introduction TEXT NOT NULL,
+  fields_json JSON NOT NULL,
+  created_by_user_id CHAR(36) NULL,
+  legacy_id VARCHAR(120) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_design_brief_templates_legacy_id (legacy_id),
+  CONSTRAINT fk_design_brief_templates_creator FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS invoices (
   id CHAR(36) NOT NULL PRIMARY KEY,
   client_account_id CHAR(36) NULL,

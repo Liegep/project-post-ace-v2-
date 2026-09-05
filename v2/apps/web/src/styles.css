@@ -2825,6 +2825,8 @@ button {
 .design-brief-paper-field small { color: #8993a7; font-size: .58rem; line-height: 1.35; }
 .design-brief-answer { display: block; height: 25px; margin-top: 7px; border-bottom: 1px solid #ccd3df; color: #adb5c3; font-size: .61rem; font-style: normal; }
 .design-brief-answer.long { height: 62px; background: repeating-linear-gradient(to bottom, transparent 0 20px, #e5e8ef 20px 21px); border: 0; }
+.design-brief-answer.filled { height: auto; min-height: 25px; padding: 7px 9px; border: 0; border-radius: 8px; color: #4d5870; background: #f5f6fa; line-height: 1.5; white-space: pre-wrap; }
+.design-brief-answer.filled.long { min-height: 44px; background: #f5f6fa; }
 .design-brief-options { display: grid; gap: 7px; margin-top: 6px; }
 .design-brief-options i { display: flex; align-items: center; gap: 7px; color: #77839a; font-size: .62rem; font-style: normal; }
 .design-brief-options em { color: #7467da; font-size: .8rem; font-style: normal; }
@@ -2848,6 +2850,8 @@ button {
 .design-brief-template-library > div { display: grid; gap: 7px; }
 .design-brief-template-library article { display: grid; grid-template-columns: minmax(0,1fr) 28px; gap: 5px; }
 .design-brief-template-library article > button:first-child { display: grid; gap: 3px; padding: 9px; border: 1px solid #e5e8f0; border-radius: 9px; color: #34415d; background: rgba(255,255,255,.82); text-align: left; cursor: pointer; }
+.design-brief-template-library article > button:first-child.active { border-color: #8f83e7; background: #f1efff; box-shadow: inset 3px 0 #6a5bd8; }
+.design-brief-saved-library > div { max-height: 210px; overflow-y: auto; }
 .design-brief-template-library article strong { overflow: hidden; font-size: .63rem; text-overflow: ellipsis; white-space: nowrap; }
 .design-brief-template-library article small { color: #8b95a8; font-size: .55rem; }
 .design-brief-template-library article > button:last-child { border: 1px solid #eddde2; border-radius: 8px; color: #bd6072; background: #fff8fa; cursor: pointer; }

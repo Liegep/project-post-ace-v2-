@@ -8,6 +8,7 @@ import { hashPassword } from "../modules/auth/auth.crypto.js";
 import { ensureInvoiceTables } from "../modules/invoices/invoices.repository.js";
 import { ensureContractTables } from "../modules/contracts/contracts.repository.js";
 import { ensureProposalTables } from "../modules/proposals/proposals.repository.js";
+import { ensureDesignBriefTables } from "../modules/design-briefs/design-briefs.repository.js";
 
 type JsonRow = Record<string, unknown>;
 
@@ -31,6 +32,8 @@ type ExportBundle = {
   proposalTemplates: JsonRow[];
   socialReports: JsonRow[];
   socialReportTemplates: JsonRow[];
+  designBriefs: JsonRow[];
+  briefTemplates: JsonRow[];
 };
 
 function parseArguments() {
@@ -44,6 +47,7 @@ function parseArguments() {
     onlyContracts: args.includes("--only-contracts"),
     onlyProposals: args.includes("--only-proposals"),
     onlyReports: args.includes("--only-reports"),
+    onlyDesignBriefs: args.includes("--only-design-briefs"),
     inputDir:
       inputIndex >= 0 && args[inputIndex + 1]
         ? path.resolve(args[inputIndex + 1])
@@ -75,7 +79,7 @@ async function readOptionalRows(inputDir: string, fileName: string) {
 }
 
 async function loadBundle(inputDir: string): Promise<ExportBundle> {
-  const [clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates, socialReports, socialReportTemplates] =
+  const [clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates, socialReports, socialReportTemplates, designBriefs, briefTemplates] =
     await Promise.all([
       readRows(inputDir, "clients.json"),
       readRows(inputDir, "profiles.json"),
@@ -96,8 +100,10 @@ async function loadBundle(inputDir: string): Promise<ExportBundle> {
       readOptionalRows(inputDir, "proposal_templates.json"),
       readOptionalRows(inputDir, "social_reports.json"),
       readOptionalRows(inputDir, "social_report_templates.json"),
+      readOptionalRows(inputDir, "design_briefs.json"),
+      readOptionalRows(inputDir, "brief_templates.json"),
     ]);
-  return { clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates, socialReports, socialReportTemplates };
+  return { clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates, socialReports, socialReportTemplates, designBriefs, briefTemplates };
 }
 
 function textValue(row: JsonRow, key: string, fallback = "") {
@@ -220,6 +226,8 @@ function validateBundle(bundle: ExportBundle) {
     contractTemplates: bundle.contractTemplates,
     proposals: bundle.proposals,
     proposalTemplates: bundle.proposalTemplates,
+    designBriefs: bundle.designBriefs,
+    briefTemplates: bundle.briefTemplates,
   })) {
     rows.forEach((row, index) => {
       if (!textValue(row, "id")) errors.push(`${file}[${index}] não possui id.`);
@@ -256,6 +264,7 @@ function validateBundle(bundle: ExportBundle) {
   bundle.contracts.forEach((row) => { if (!clientIds.has(textValue(row, "client_id"))) errors.push(`Contrato ${textValue(row, "id")} aponta para cliente ausente.`); });
   bundle.contractAcceptances.forEach((row) => { if (!contractIds.has(textValue(row, "contract_id"))) errors.push(`Aceite ${textValue(row, "id")} aponta para contrato ausente.`); });
   bundle.socialReports.forEach((row) => { if (!clientIds.has(textValue(row, "client_id"))) errors.push(`Relatório ${textValue(row, "id")} aponta para cliente ausente.`); });
+  bundle.designBriefs.forEach((row) => { const clientId = textValue(row, "client_id"); if (clientId && !clientIds.has(clientId)) errors.push(`Brief ${textValue(row, "id")} aponta para cliente ausente.`); });
   return errors;
 }
 
@@ -282,6 +291,8 @@ function printSummary(bundle: ExportBundle, inputDir: string, commit: boolean) {
       proposal_templates: bundle.proposalTemplates.length,
       social_reports: bundle.socialReports.length,
       social_report_templates: bundle.socialReportTemplates.length,
+      design_briefs: bundle.designBriefs.length,
+      brief_templates: bundle.briefTemplates.length,
       media_files_pending_copy: bundle.mediaManifest.length,
     },
   }, null, 2));
@@ -431,6 +442,71 @@ async function importReportRecords(connection: PoolConnection, bundle: ExportBun
   }
 }
 
+const legacyBriefLabels: Record<string, string> = {
+  company_name: "Qual é o nome da empresa ou profissional?",
+  profile_name: "Qual é o nome do perfil?",
+  social_networks: "Em quais redes sociais sua marca está presente?",
+  main_objective: "Qual é o principal objetivo nas redes sociais?",
+  target_audience: "Quem é o público-alvo?",
+  products_to_promote: "Quais produtos ou serviços deseja promover?",
+  tone_of_voice: "Qual tom de voz deve ser usado?",
+  topics: "Quais assuntos devem aparecer no conteúdo?",
+  topics_to_avoid: "Quais assuntos devem ser evitados?",
+  differentials: "Quais são os principais diferenciais da marca?",
+  competitors: "Quem são os principais concorrentes?",
+  reference_profiles: "Quais perfis são referência para a marca?",
+  posting_frequency: "Qual frequência de publicação deseja?",
+  content_formats: "Quais formatos de conteúdo prefere?",
+  campaigns_dates: "Existem campanhas ou datas importantes?",
+  approval_process: "Como funciona o processo de aprovação?",
+  cta: "Quais chamadas para ação devem ser usadas?",
+  brand_info: "Há outras informações importantes sobre a marca?",
+  final_notes: "Observações finais",
+};
+
+function briefAnswerObject(row: JsonRow) {
+  const raw = row.answers;
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  const fallback: Record<string, unknown> = {};
+  for (const key of ["brand_name", "objectives", "target_audience", "style_preferences", "preferred_colors", "references_links", "additional_notes"]) {
+    const value = row[key]; if (value !== null && value !== undefined && String(value).trim()) fallback[key] = value;
+  }
+  return fallback;
+}
+
+function briefFieldType(value: unknown): "short" | "long" | "choice" | "checklist" | "link" | "file" {
+  if (Array.isArray(value)) return "checklist";
+  if (typeof value === "boolean") return "choice";
+  const text = String(value ?? "");
+  if (/^https?:\/\//i.test(text)) return "link";
+  return text.length > 120 || text.includes("\n") ? "long" : "short";
+}
+
+function normalizeLegacyBriefQuestion(question: unknown, index: number) {
+  const item = question && typeof question === "object" ? question as Record<string, unknown> : {};
+  const rawType = String(item.type ?? item.field_type ?? "short_text");
+  const typeMap: Record<string, "short" | "long" | "choice" | "checklist" | "link" | "file"> = { short_text: "short", text: "short", long_text: "long", textarea: "long", multiple_choice: "choice", yes_no: "choice", checkbox: "checklist", checkboxes: "checklist", file_upload: "file", url: "link", link: "link" };
+  return { id: String(item.id ?? item.key ?? `question-${index + 1}`), type: typeMap[rawType] ?? "short", label: String(item.label ?? item.question ?? item.title ?? `Pergunta ${index + 1}`), help: String(item.help ?? item.description ?? ""), required: Boolean(item.required), options: Array.isArray(item.options) ? item.options.map(String) : [] };
+}
+
+async function importDesignBriefRecords(connection: PoolConnection, bundle: ExportBundle, clientMap: Map<string, string>, userMap: Map<string, string>) {
+  for (const brief of bundle.designBriefs) {
+    const legacyId = textValue(brief, "id");
+    const answers = briefAnswerObject(brief);
+    const fields = Object.entries(answers).map(([key, value]) => ({ id: key, type: briefFieldType(value), label: legacyBriefLabels[key] ?? key.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase()), help: "", required: false, options: Array.isArray(value) ? value.map(String) : [] }));
+    const rawLocale = textValue(brief, "locale", "pt");
+    const locale = ["pt", "en", "es", "it", "sv"].includes(rawLocale) ? rawLocale : "pt";
+    const status = ["completed", "submitted"].includes(textValue(brief, "status").toLowerCase()) ? "completed" : "draft";
+    await connection.query(`INSERT INTO design_briefs (id,client_account_id,title,introduction,category,locale,status,fields_json,answers_json,submitted_at,created_by_user_id,legacy_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE client_account_id=VALUES(client_account_id),title=VALUES(title),category=VALUES(category),locale=VALUES(locale),status=VALUES(status),fields_json=VALUES(fields_json),answers_json=VALUES(answers_json),submitted_at=VALUES(submitted_at),updated_at=VALUES(updated_at)`, [legacyId, clientMap.get(textValue(brief, "client_id")) ?? null, textValue(brief, "title", "Brief de design"), "Brief importado da V1", textValue(brief, "category", "general"), locale, status, JSON.stringify(fields), JSON.stringify(answers), mysqlDateTime(brief.submitted_at), userMap.get(textValue(brief, "user_id")) ?? null, legacyId, mysqlDateTime(brief.created_at), mysqlDateTime(brief.updated_at)]);
+  }
+  for (const template of bundle.briefTemplates) {
+    const legacyId = textValue(template, "id");
+    const questions = Array.isArray(template.questions) ? template.questions : [];
+    const fields = questions.map(normalizeLegacyBriefQuestion);
+    await connection.query("INSERT INTO design_brief_templates (id,name,introduction,fields_json,created_by_user_id,legacy_id,created_at,updated_at) VALUES (?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE name=VALUES(name),introduction=VALUES(introduction),fields_json=VALUES(fields_json),updated_at=VALUES(updated_at)", [legacyId, textValue(template, "name", "Modelo de brief"), textValue(template, "description"), JSON.stringify(fields), userMap.get(textValue(template, "user_id")) ?? null, legacyId, mysqlDateTime(template.created_at), mysqlDateTime(template.updated_at)]);
+  }
+}
+
 async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
   const { userMap, roleByLegacyId } = await resolveUsers(connection, bundle.profiles);
   const clientMap = new Map<string, string>();
@@ -546,6 +622,7 @@ async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
   await importContractRecords(connection,bundle,clientMap,userMap);
   await importProposalRecords(connection,bundle,userMap);
   await importReportRecords(connection,bundle,clientMap,userMap);
+  await importDesignBriefRecords(connection,bundle,clientMap,userMap);
 }
 
 async function main() {
@@ -567,6 +644,7 @@ async function main() {
   await ensureInvoiceTables(pool);
   await ensureContractTables(pool);
   await ensureProposalTables(pool);
+  await ensureDesignBriefTables(pool);
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -584,6 +662,10 @@ async function main() {
       const clientMap=await resolveExistingClients(connection,bundle.clients);
       const userMap=await resolveExistingUsers(connection,bundle.profiles);
       await importReportRecords(connection,bundle,clientMap,userMap);
+    } else if (options.onlyDesignBriefs) {
+      const clientMap=await resolveExistingClients(connection,bundle.clients);
+      const userMap=await resolveExistingUsers(connection,bundle.profiles);
+      await importDesignBriefRecords(connection,bundle,clientMap,userMap);
     } else {
       await importBundle(connection, bundle);
     }
