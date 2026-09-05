@@ -324,6 +324,11 @@ async function main() {
   const calendarPosts = foundClientIds.length ? await fetchAll(calendarPostsQuery) : [];
   trace("calendar");
 
+  const appointments = await fetchAll(supabase.from("appointments").select("id,user_id,title,description,appointment_date,appointment_time,category,completed,completed_at,cancelled,cancelled_at,tag_id,created_at,updated_at").order("appointment_date"));
+  trace("appointments");
+  const appointmentTags = await fetchAll(supabase.from("appointment_tags").select("id,user_id,name,color,created_at").order("created_at"));
+  trace("appointment-tags");
+
   const invoicesQuery = supabase
     .from("invoices")
     .select("id, client_id, client_visible, created_at, created_by, discount, due_date, invoice_number, issue_date, notes, paid_at, payment_details, payment_method, period_end, period_start, status, surcharge, title, updated_at")
@@ -415,6 +420,8 @@ async function main() {
       active_posts: posts.filter((post) => !post.archived).length,
       comments: comments.length,
       calendar_posts: calendarPosts.length,
+      appointments: appointments.length,
+      appointment_tags: appointmentTags.length,
       invoices: invoices.length,
       invoice_items: invoiceItems.length,
       invoice_attachments: invoiceAttachments.length,
@@ -449,6 +456,8 @@ async function main() {
   await writeJson(path.join(options.outDir, "tags.json"), tags);
   await writeJson(path.join(options.outDir, "comments.json"), comments);
   await writeJson(path.join(options.outDir, "calendar_posts.json"), calendarPosts);
+  await writeJson(path.join(options.outDir, "appointments.json"), appointments);
+  await writeJson(path.join(options.outDir, "appointment_tags.json"), appointmentTags);
   await writeJson(path.join(options.outDir, "invoices.json"), invoices);
   await writeJson(path.join(options.outDir, "invoice_items.json"), invoiceItems);
   await writeJson(path.join(options.outDir, "invoice_attachments.json"), invoiceAttachments);

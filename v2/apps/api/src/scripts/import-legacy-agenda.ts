@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import mysql, { type RowDataPacket } from "mysql2/promise";
 import { loadEnv } from "../config/env.js";
@@ -49,7 +49,19 @@ function normalizeColor(value: string | null | undefined, fallback = "#c9f7df") 
 }
 
 function normalizeName(value: string) {
-  return value.trim().toLocaleLowerCase("pt-BR");
+  return value.trim().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/gi, " ").trim().toLocaleLowerCase("pt-BR");
+}
+
+async function loadExport(input: string): Promise<{ appointments: LegacyAppointment[]; tags: LegacyTag[] }> {
+  if ((await stat(input)).isDirectory()) {
+    const [appointments, tags] = await Promise.all([
+      readFile(path.join(input, "appointments.json"), "utf8").then((value) => JSON.parse(value) as LegacyAppointment[]),
+      readFile(path.join(input, "appointment_tags.json"), "utf8").then((value) => JSON.parse(value) as LegacyTag[]),
+    ]);
+    return { appointments, tags };
+  }
+  const exported = JSON.parse(await readFile(input, "utf8")) as ExportFile;
+  return { appointments: exported.tables.appointments?.rows ?? [], tags: exported.tables.appointment_tags?.rows ?? [] };
 }
 
 function startsAt(appointment: LegacyAppointment) {
@@ -65,9 +77,9 @@ async function main() {
   const reportPath = path.resolve(argument("--report") ?? path.join(path.dirname(input), "agenda-import-result.json"));
   if (!input) throw new Error("Informe --input com o database-export.json.");
 
-  const exported = JSON.parse(await readFile(input, "utf8")) as ExportFile;
-  const appointments = exported.tables.appointments?.rows ?? [];
-  const legacyTags = exported.tables.appointment_tags?.rows ?? [];
+  const exported = await loadExport(input);
+  const appointments = exported.appointments;
+  const legacyTags = exported.tags;
   if (!appointments.length) throw new Error("Nenhum compromisso foi encontrado na exportação.");
 
   const env = loadEnv();
@@ -84,6 +96,20 @@ async function main() {
   );
   const target = admins[0];
   if (!target) throw new Error("Nenhum super admin ativo foi encontrado na V2.");
+
+  const [clientRows] = await db.query<Array<RowDataPacket & { id: string; name: string; slug: string }>>("SELECT id,name,slug FROM client_accounts");
+  const clientIdByName = new Map<string, string>();
+  for (const client of clientRows) { clientIdByName.set(normalizeName(client.name), client.id); clientIdByName.set(normalizeName(client.slug), client.id); }
+  const clientAliases: Record<string, string> = {
+    "carlos hoyos": "podcast lider de elite", "carlos hoyoa": "podcast lider de elite", "carlos hoyos aline": "podcast lider de elite",
+    kynagogi: "niko", "kynagogi detection": "niko", "reuniao com niko": "niko", "meeting with niko": "niko",
+    "serena g": "serena genovese", "seren g": "serena genovese",
+    "dj omar": "dj per eventi", "dj mar": "dj per eventi", "dj omat": "dj per eventi",
+    "dra patricia": "patricia rodrigues adv",
+    "mainas home": "minas home", "minhas home": "minas home",
+    "mattia s bat": "mattia s bar",
+  };
+  const resolveClientId = (title: string) => { const key = normalizeName(title); return clientIdByName.get(key) ?? clientIdByName.get(clientAliases[key] ?? "") ?? null; };
 
   const tagByLegacyId = new Map<string, LegacyTag>(legacyTags.map((tag) => [tag.id, tag]));
   const labelIdByName = new Map<string, string>();
@@ -141,6 +167,7 @@ async function main() {
     const existingIds = new Set(existingEvents.map((event) => event.id));
     let created = 0;
     let updated = 0;
+    let linkedToClient = 0;
     const cancelled: LegacyAppointment[] = [];
 
     for (const appointment of appointments) {
@@ -153,15 +180,18 @@ async function main() {
       const labelKey = labelName ? normalizeName(labelName) : "";
       const labelId = labelKey ? labelIdByName.get(labelKey) ?? null : null;
       const color = labelKey ? labelColorByName.get(labelKey) ?? "#c9f7df" : "#c9f7df";
+      const clientAccountId = resolveClientId(appointment.title);
+      if (clientAccountId) linkedToClient += 1;
       await db.query(
         [
           "INSERT INTO agenda_events",
           "(id, client_account_id, agenda_label_id, title, task_description, starts_at, ends_at, recurrence_type, repeat_until, color, is_completed, created_by_user_id, created_at, updated_at)",
-          "VALUES (?, NULL, ?, ?, ?, ?, NULL, 'none', NULL, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))",
-          "ON DUPLICATE KEY UPDATE agenda_label_id=VALUES(agenda_label_id), title=VALUES(title), task_description=VALUES(task_description), starts_at=VALUES(starts_at), color=VALUES(color), is_completed=VALUES(is_completed), created_by_user_id=VALUES(created_by_user_id), updated_at=VALUES(updated_at)",
+          "VALUES (?, ?, ?, ?, ?, ?, NULL, 'none', NULL, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))",
+          "ON DUPLICATE KEY UPDATE client_account_id=VALUES(client_account_id), agenda_label_id=VALUES(agenda_label_id), title=VALUES(title), task_description=VALUES(task_description), starts_at=VALUES(starts_at), color=VALUES(color), is_completed=VALUES(is_completed), created_by_user_id=VALUES(created_by_user_id), updated_at=VALUES(updated_at)",
         ].join(" "),
         [
           appointment.id,
+          clientAccountId,
           labelId,
           appointment.title.trim() || "Compromisso",
           appointment.description?.trim() || null,
@@ -186,6 +216,8 @@ async function main() {
       updated,
       cancelledSkipped: cancelled.length,
       completedImported: appointments.filter((item) => !item.cancelled && item.completed).length,
+      linkedToClient,
+      withoutClient: appointments.filter((item) => !item.cancelled).length - linkedToClient,
       labelsCreated,
       labelsAvailable: labelIdByName.size,
       cancelledItems: cancelled.map((item) => ({ id: item.id, title: item.title, date: item.appointment_date })),
