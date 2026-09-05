@@ -169,6 +169,24 @@ export function TimeTrackingWorkspace() {
     finally { setWorking(false); }
   }
 
+  async function continueEntry(entry: TimeEntry) {
+    setWorking(true); setError("");
+    try {
+      if (active) {
+        const replace = window.confirm(`Encerrar “${active.description}” e continuar “${entry.description}”?`);
+        if (!replace) return;
+        await stopTimeEntry(active.id);
+      }
+      await startTimeEntry({ clientAccountId: entry.clientAccountId, cardId: entry.cardId, description: entry.description });
+      notifyTimerChange();
+      await refresh();
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Não foi possível continuar esta atividade.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
   const totalSeconds = entries.reduce((sum, entry) => sum + elapsedSeconds(entry, now), 0);
   const grouped = entries.reduce<Map<string, { name: string; seconds: number; count: number }>>((map, entry) => {
     const current = map.get(entry.clientAccountId) ?? { name: entry.clientName, seconds: 0, count: 0 };
@@ -199,7 +217,7 @@ export function TimeTrackingWorkspace() {
     <div className="time-summary-grid"><article><span>Tempo total</span><strong>{formatDuration(totalSeconds)}</strong><small>{entries.length} {entries.length === 1 ? "registro" : "registros"}</small></article>{Array.from(grouped.entries()).slice(0, 3).map(([id, item]) => <article key={id}><span>{item.name}</span><strong>{formatDuration(item.seconds)}</strong><small>{item.count} {item.count === 1 ? "atividade" : "atividades"}</small></article>)}</div>
 
     <section className="time-entry-list">
-      {loading ? <p className="time-empty">Carregando apontamentos...</p> : entries.length ? entries.map((entry) => <article key={entry.id} className={entry.endedAt ? "" : "active"}><div className="time-entry-date"><strong>{new Intl.DateTimeFormat("pt-BR", { day: "2-digit" }).format(new Date(entry.startedAt))}</strong><span>{new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(new Date(entry.startedAt)).replace(".", "")}</span></div><div className="time-entry-main"><strong>{entry.description}</strong><span>{entry.clientName}{entry.cardTitle ? ` · ${entry.cardTitle}` : " · Atividade avulsa"}</span><small>{entry.userName} · {new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(entry.startedAt))}{entry.endedAt ? `–${new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(entry.endedAt))}` : " · em andamento"}</small></div><b>{formatDuration(elapsedSeconds(entry, now))}</b></article>) : <p className="time-empty">Nenhum tempo registrado neste período.</p>}
+      {loading ? <p className="time-empty">Carregando apontamentos...</p> : entries.length ? entries.map((entry) => <article key={entry.id} className={entry.endedAt ? "" : "active"}><div className="time-entry-date"><strong>{new Intl.DateTimeFormat("pt-BR", { day: "2-digit" }).format(new Date(entry.startedAt))}</strong><span>{new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(new Date(entry.startedAt)).replace(".", "")}</span></div><div className="time-entry-main"><strong>{entry.description}</strong><span>{entry.clientName}{entry.cardTitle ? ` · ${entry.cardTitle}` : " · Atividade avulsa"}</span><small>{entry.userName} · {new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(entry.startedAt))}{entry.endedAt ? `–${new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(entry.endedAt))}` : " · em andamento"}</small></div><div className="time-entry-actions"><b>{formatDuration(elapsedSeconds(entry, now))}</b>{entry.endedAt ? <button type="button" disabled={working} onClick={() => void continueEntry(entry)} title="Continuar esta atividade">▶ <span>Continuar</span></button> : <em>Em andamento</em>}</div></article>) : <p className="time-empty">Nenhum tempo registrado neste período.</p>}
     </section>
     {error ? <p className="time-error" role="alert">{error}</p> : null}
   </section>;

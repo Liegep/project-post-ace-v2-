@@ -8759,3 +8759,42 @@ button {
     grid-row: 1;
   }
 }
+
+.time-entry-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.time-entry-actions > b {
+  color: #3b4661;
+  font-size: 1.02rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.time-entry-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: 1px solid #dcd7fa;
+  border-radius: 10px;
+  color: #5748cd;
+  background: #f3f0ff;
+  font: inherit;
+  font-size: .74rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.time-entry-actions button:hover { border-color: #8f82e5; background: #eae5ff; }
+.time-entry-actions button:disabled { opacity: .5; cursor: wait; }
+.time-entry-actions em { color: #218963; font-size: .72rem; font-style: normal; font-weight: 650; }
+
+@media (max-width: 680px) {
+  .time-entry-actions {
+    grid-column: 2;
+    justify-content: space-between;
+  }
+}
