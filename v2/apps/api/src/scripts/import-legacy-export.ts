@@ -603,6 +603,23 @@ function detailText(label: string, value: unknown) {
   return text ? `${label}: ${text}` : "";
 }
 
+function isBrandBrainTemplateText(value: unknown) {
+  const normalized = String(value ?? "").toLocaleLowerCase();
+  return [
+    "define the core purpose of the brand",
+    "describe the long-term direction of the brand",
+    "a concise overview of the brand identity",
+    "suggested fields:",
+  ].some((marker) => normalized.includes(marker));
+}
+
+function migratedPositioning(sourcePillars: JsonRow[], fallback: unknown) {
+  if (!isBrandBrainTemplateText(fallback)) return String(fallback ?? "").trim();
+  const general = sourcePillars.find((row) => !textValue(row, "name").toLocaleLowerCase().includes("detection"));
+  const detection = sourcePillars.find((row) => textValue(row, "name").toLocaleLowerCase().includes("detection"));
+  return uniqueStrings([general, detection].map((row) => row ? textValue(row, "objective") : "")).join(" ");
+}
+
 function buildBrandBrainData(bundle: ExportBundle, clientId: string, brain: JsonRow) {
   const vocabulary = bundle.brandVocabulary.filter((row) => textValue(row, "client_id") === clientId);
   const voices = bundle.brandVoices.filter((row) => textValue(row, "client_id") === clientId);
@@ -618,7 +635,9 @@ function buildBrandBrainData(bundle: ExportBundle, clientId: string, brain: Json
   const pillars = sourcePillars.map((row, index) => ({ name: textValue(row, "name", `Pilar ${index + 1}`), focus: [textValue(row, "objective"), detailText("Temas", row.themes), detailText("Emoção", row.main_emotion), detailText("Frequência", row.suggested_frequency), textValue(row, "notes")].filter(Boolean).join(" · "), weight: baseWeight + (index < 100 - baseWeight * pillarCount ? 1 : 0) }));
   const typography = visuals.map((row) => textValue(row, "typography").trim()).find(Boolean) ?? "";
   return {
-    mission: textValue(brain, "mission"), vision: textValue(brain, "vision"), positioning: textValue(brain, "summary"), brandPromise: "",
+    mission: isBrandBrainTemplateText(brain.mission) ? "" : textValue(brain, "mission"),
+    vision: isBrandBrainTemplateText(brain.vision) ? "" : textValue(brain, "vision"),
+    positioning: migratedPositioning(sourcePillars, brain.summary), brandPromise: "",
     audience: "", audiencePains: [], audienceDesires: [],
     voice, personalityTraits: uniqueStrings(voices.flatMap((row) => [textValue(row, "archetype"), textValue(row, "emotional_tone"), textValue(row, "formality_level")])),
     voiceExamples: uniqueStrings(voices.flatMap((row) => stringList(row.good_examples))), voiceAvoidExamples: uniqueStrings(voices.flatMap((row) => stringList(row.bad_examples))),
