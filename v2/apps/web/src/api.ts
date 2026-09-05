@@ -322,7 +322,7 @@ async function getAdminClients() {
 }
 
 async function getPortalAccounts() {
-  const authKey = getAccessToken() || getDevUserId();
+  const authKey = getAccessToken();
   if (portalAccountsCache?.authKey === authKey && portalAccountsCache.expiresAt > Date.now()) {
     return portalAccountsCache.data;
   }
@@ -353,10 +353,6 @@ function getApiBaseUrl() {
   return typeof value === "string" && value.length > 0 ? value : "";
 }
 
-function getDevUserId() {
-  return window.localStorage.getItem("designhub-v2-dev-user-id")?.trim() ?? "";
-}
-
 function getAccessToken() {
   return window.localStorage.getItem(ACCESS_TOKEN_KEY)?.trim() ?? "";
 }
@@ -370,15 +366,10 @@ async function sendJson<T>(path: string, init: RequestInit): Promise<T> {
     Accept: "application/json",
   });
 
-  const devUserId = getDevUserId();
   const accessToken = getAccessToken();
 
   if (accessToken) {
     headers.set("Authorization", `Bearer ${accessToken}`);
-  }
-
-  if (devUserId) {
-    headers.set("x-user-id", devUserId);
   }
 
   if (init.body) {
@@ -1164,10 +1155,7 @@ export async function submitPublicApproval(token: string, input: { approved: boo
 export async function uploadAdminMedia(file: File) {
   const headers = new Headers();
   const accessToken = getAccessToken();
-  const devUserId = getDevUserId();
-
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
-  if (devUserId) headers.set("x-user-id", devUserId);
 
   const body = new FormData();
   body.set("file", file);
@@ -1193,9 +1181,7 @@ export async function uploadPortalMediaBySlug(slug: string, file: File) {
   const account = await findPortalAccountBySlug(slug);
   const headers = new Headers();
   const accessToken = getAccessToken();
-  const devUserId = getDevUserId();
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
-  if (devUserId) headers.set("x-user-id", devUserId);
   const body = new FormData();
   body.set("file", file);
   const response = await fetchWithTimeout(`${getApiBaseUrl()}/api/portal/accounts/${account.clientAccountId}/uploads`, { method: "POST", headers, body });

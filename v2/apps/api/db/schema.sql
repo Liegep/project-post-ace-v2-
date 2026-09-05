@@ -491,3 +491,53 @@ CREATE TABLE IF NOT EXISTS brand_brain_comments (
   CONSTRAINT fk_brand_comment_revision FOREIGN KEY (revision_id) REFERENCES brand_brain_revisions (id) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_brand_comment_creator FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS mcp_oauth_clients (
+  client_id VARCHAR(190) NOT NULL PRIMARY KEY,
+  client_name VARCHAR(190) NOT NULL,
+  redirect_uris_json JSON NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS mcp_oauth_codes (
+  code_hash CHAR(64) NOT NULL PRIMARY KEY,
+  client_id VARCHAR(190) NOT NULL,
+  user_id CHAR(36) NOT NULL,
+  redirect_uri VARCHAR(1000) NOT NULL,
+  code_challenge VARCHAR(128) NOT NULL,
+  scope VARCHAR(255) NOT NULL,
+  resource VARCHAR(1000) NOT NULL,
+  expires_at_ms BIGINT UNSIGNED NOT NULL,
+  used_at_ms BIGINT UNSIGNED NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_mcp_codes_expiry (expires_at_ms),
+  CONSTRAINT fk_mcp_codes_client FOREIGN KEY (client_id) REFERENCES mcp_oauth_clients (client_id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_mcp_codes_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS mcp_oauth_refresh_tokens (
+  token_hash CHAR(64) NOT NULL PRIMARY KEY,
+  client_id VARCHAR(190) NOT NULL,
+  user_id CHAR(36) NOT NULL,
+  scope VARCHAR(255) NOT NULL,
+  resource VARCHAR(1000) NOT NULL,
+  expires_at_ms BIGINT UNSIGNED NOT NULL,
+  revoked_at_ms BIGINT UNSIGNED NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_mcp_refresh_expiry (expires_at_ms),
+  CONSTRAINT fk_mcp_refresh_client FOREIGN KEY (client_id) REFERENCES mcp_oauth_clients (client_id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_mcp_refresh_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS mcp_audit_log (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  user_id CHAR(36) NULL,
+  oauth_client_id VARCHAR(190) NOT NULL,
+  tool_name VARCHAR(120) NOT NULL,
+  success TINYINT(1) NOT NULL,
+  arguments_json JSON NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  KEY idx_mcp_audit_created (created_at),
+  KEY idx_mcp_audit_user_created (user_id, created_at),
+  CONSTRAINT fk_mcp_audit_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

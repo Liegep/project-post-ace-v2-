@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
+import fastifyFormbody from "@fastify/formbody";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadEnv } from "./config/env.js";
@@ -27,6 +28,9 @@ import { reportRoutes } from "./modules/reports/reports.routes.js";
 import { invoiceRoutes } from "./modules/invoices/invoices.routes.js";
 import { contractRoutes } from "./modules/contracts/contracts.routes.js";
 import { archiveCardsDueForPublication } from "./modules/cards/cards.service.js";
+import { ensureMcpStorage } from "./modules/mcp/mcp.repository.js";
+import { mcpOAuthRoutes } from "./modules/mcp/mcp.oauth.routes.js";
+import { mcpRoutes } from "./modules/mcp/mcp.routes.js";
 
 export async function buildApp() {
   const appEnv = loadEnv();
@@ -37,6 +41,7 @@ export async function buildApp() {
   app.decorate("appEnv", appEnv);
 
   await app.register(httpErrorsPluginRegistered);
+  await app.register(fastifyFormbody);
 
   const uploadStorage = await prepareUploadStorage(appEnv.UPLOAD_DIR);
   if (appEnv.NODE_ENV === "production" && !uploadStorage.persistent) {
@@ -51,6 +56,9 @@ export async function buildApp() {
   } else {
     await app.register(dbPluginRegistered);
     await app.register(authPluginRegistered);
+    await ensureMcpStorage(app.db);
+    await app.register(mcpOAuthRoutes);
+    await app.register(mcpRoutes);
 
     await app.register(healthRoutes, { prefix: "/api" });
     await app.register(authRoutes, { prefix: "/api" });

@@ -45,17 +45,11 @@ O backend da V2 agora tem um bootstrap de acesso baseado em:
 - nao acessa area interna
 - ve apenas contas do portal vinculadas a ele
 
-## Como o bootstrap atual identifica o usuario
+## Como o aplicativo identifica o usuário
 
-Neste momento, para desenvolvimento local, o backend usa:
-
-- header `x-user-id`
-
-Esse header carrega:
-
-- usuario
-- memberships
-- escopo
+O backend aceita exclusivamente um token de acesso assinado, enviado no
+header `Authorization: Bearer`. Identificadores de usuário fornecidos pelo
+navegador não são usados como autenticação.
 
 ## Rotas preparadas
 

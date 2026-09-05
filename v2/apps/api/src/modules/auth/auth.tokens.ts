@@ -1,6 +1,6 @@
 import jwt from "jsonwebtoken";
 import type { FastifyInstance } from "fastify";
-import type { AppRole } from "./auth.types.js";
+import { appRoles, type AppRole } from "./auth.types.js";
 
 type TokenPayload = {
   sub: string;
@@ -28,5 +28,14 @@ export function signAccessToken(
 }
 
 export function verifyAccessToken(app: FastifyInstance, token: string) {
-  return jwt.verify(token, app.appEnv.JWT_SECRET) as TokenPayload;
+  const payload = jwt.verify(token, app.appEnv.JWT_SECRET);
+  if (
+    typeof payload === "string" ||
+    payload.type !== "access" ||
+    typeof payload.sub !== "string" ||
+    !appRoles.includes(payload.role as AppRole)
+  ) {
+    throw new jwt.JsonWebTokenError("Invalid application access token");
+  }
+  return payload as TokenPayload;
 }

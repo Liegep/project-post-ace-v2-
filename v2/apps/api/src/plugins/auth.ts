@@ -5,6 +5,17 @@ import { verifyAccessToken } from "../modules/auth/auth.tokens.js";
 
 async function authPlugin(app: FastifyInstance) {
   app.addHook("onRequest", async (request) => {
+    // OAuth and MCP tokens have their own verifier and cannot authenticate the
+    // regular application API.
+    if (
+      request.url.split("?", 1)[0] === "/mcp" ||
+      request.url.startsWith("/oauth/") ||
+      request.url.startsWith("/.well-known/oauth-")
+    ) {
+      request.auth = null;
+      return;
+    }
+
     const authorization = request.headers.authorization;
     const bearerToken =
       typeof authorization === "string" && authorization.startsWith("Bearer ")
@@ -19,25 +30,18 @@ async function authPlugin(app: FastifyInstance) {
         throw app.httpErrors.unauthorized("Token inválido ou expirado.");
       }
       const auth = await findAuthContextByUserId(app.db, payload.sub);
+      if (!auth?.user.isActive) {
+        throw app.httpErrors.unauthorized("Usuário inativo ou não encontrado.");
+      }
       request.auth = auth;
       return;
     }
 
-    const headerUserId = request.headers["x-user-id"];
-    const userId =
-      typeof headerUserId === "string"
-        ? headerUserId.trim()
-        : Array.isArray(headerUserId)
-          ? headerUserId[0]?.trim()
-          : "";
-
-    if (!userId) {
-      request.auth = null;
-      return;
-    }
-
-    const auth = await findAuthContextByUserId(app.db, userId);
-    request.auth = auth;
+    // Authentication must never be inferred from a caller-controlled user id.
+    // Earlier local builds accepted `x-user-id`, which allowed impersonation if
+    // that shortcut reached a deployed environment. All protected requests now
+    // require a signed access token.
+    request.auth = null;
   });
 }
 
