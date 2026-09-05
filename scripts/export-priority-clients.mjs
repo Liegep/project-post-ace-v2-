@@ -321,6 +321,11 @@ async function main() {
   const textContentComments = await fetchInBatches(textContentIds, (ids) => supabase.from("text_content_comments").select("id,text_content_id,user_id,author_name,author_role,message,created_at").in("text_content_id", ids).order("created_at"));
   trace("text-content-comments");
 
+  const contentBriefs = foundClientIds.length ? await fetchAll(supabase.from("content_briefs").select("id,client_id,title,description,caption,planned_date,content_type,status,assigned_to,internal_notes,created_by,created_at,updated_at,media_urls").in("client_id", foundClientIds).order("created_at")) : [];
+  const contentBriefIds = contentBriefs.map((item) => item.id);
+  const briefComments = await fetchInBatches(contentBriefIds, (ids) => supabase.from("brief_comments").select("id,brief_id,user_id,author_name,author_role,message,created_at").in("brief_id", ids).order("created_at"));
+  trace("content-briefs");
+
   const brandBrains = foundClientIds.length ? await fetchAll(supabase.from("brand_brains").select("id,client_id,summary,mission,vision,updated_by,created_at,updated_at").in("client_id", foundClientIds).order("created_at")) : [];
   const brandVocabulary = foundClientIds.length ? await fetchAll(supabase.from("brand_vocabulary").select("id,client_id,term,category,brand,content_type,emotion,frequency,priority,status,can_be_used,related_words,approved_phrases,notes,technical_notes,created_by,created_at,updated_at").in("client_id", foundClientIds).order("created_at")) : [];
   const brandVoices = foundClientIds.length ? await fetchAll(supabase.from("brand_voice").select("id,client_id,brand_name,archetype,emotional_tone,formality_level,writing_rhythm,good_examples,bad_examples,things_to_avoid,updated_by,created_at,updated_at").in("client_id", foundClientIds).order("created_at")) : [];
@@ -438,6 +443,8 @@ async function main() {
       comments: comments.length,
       text_contents: textContents.length,
       text_content_comments: textContentComments.length,
+      content_briefs: contentBriefs.length,
+      brief_comments: briefComments.length,
       brand_brains: brandBrains.length,
       brand_vocabulary: brandVocabulary.length,
       brand_voice: brandVoices.length,
@@ -483,6 +490,8 @@ async function main() {
   await writeJson(path.join(options.outDir, "comments.json"), comments);
   await writeJson(path.join(options.outDir, "text_contents.json"), textContents);
   await writeJson(path.join(options.outDir, "text_content_comments.json"), textContentComments);
+  await writeJson(path.join(options.outDir, "content_briefs.json"), contentBriefs);
+  await writeJson(path.join(options.outDir, "brief_comments.json"), briefComments);
   await writeJson(path.join(options.outDir, "brand_brains.json"), brandBrains);
   await writeJson(path.join(options.outDir, "brand_vocabulary.json"), brandVocabulary);
   await writeJson(path.join(options.outDir, "brand_voice.json"), brandVoices);

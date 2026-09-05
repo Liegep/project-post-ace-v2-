@@ -36,6 +36,8 @@ type ExportBundle = {
   briefTemplates: JsonRow[];
   textContents: JsonRow[];
   textContentComments: JsonRow[];
+  contentBriefs: JsonRow[];
+  briefComments: JsonRow[];
   brandBrains: JsonRow[];
   brandVocabulary: JsonRow[];
   brandVoices: JsonRow[];
@@ -59,6 +61,7 @@ function parseArguments() {
     onlyDesignBriefs: args.includes("--only-design-briefs"),
     onlyTexts: args.includes("--only-texts"),
     onlyBrandBrain: args.includes("--only-brand-brain"),
+    onlyPautas: args.includes("--only-pautas"),
     inputDir:
       inputIndex >= 0 && args[inputIndex + 1]
         ? path.resolve(args[inputIndex + 1])
@@ -90,7 +93,7 @@ async function readOptionalRows(inputDir: string, fileName: string) {
 }
 
 async function loadBundle(inputDir: string): Promise<ExportBundle> {
-  const [clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates, socialReports, socialReportTemplates, designBriefs, briefTemplates, textContents, textContentComments, brandBrains, brandVocabulary, brandVoices, visualDirections, wordsToAvoid, approvedExpressions, contentPillars] =
+  const [clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates, socialReports, socialReportTemplates, designBriefs, briefTemplates, textContents, textContentComments, contentBriefs, briefComments, brandBrains, brandVocabulary, brandVoices, visualDirections, wordsToAvoid, approvedExpressions, contentPillars] =
     await Promise.all([
       readRows(inputDir, "clients.json"),
       readRows(inputDir, "profiles.json"),
@@ -115,6 +118,8 @@ async function loadBundle(inputDir: string): Promise<ExportBundle> {
       readOptionalRows(inputDir, "brief_templates.json"),
       readOptionalRows(inputDir, "text_contents.json"),
       readOptionalRows(inputDir, "text_content_comments.json"),
+      readOptionalRows(inputDir, "content_briefs.json"),
+      readOptionalRows(inputDir, "brief_comments.json"),
       readOptionalRows(inputDir, "brand_brains.json"),
       readOptionalRows(inputDir, "brand_vocabulary.json"),
       readOptionalRows(inputDir, "brand_voice.json"),
@@ -123,7 +128,7 @@ async function loadBundle(inputDir: string): Promise<ExportBundle> {
       readOptionalRows(inputDir, "approved_expressions.json"),
       readOptionalRows(inputDir, "content_pillars.json"),
     ]);
-  return { clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates, socialReports, socialReportTemplates, designBriefs, briefTemplates, textContents, textContentComments, brandBrains, brandVocabulary, brandVoices, visualDirections, wordsToAvoid, approvedExpressions, contentPillars };
+  return { clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates, socialReports, socialReportTemplates, designBriefs, briefTemplates, textContents, textContentComments, contentBriefs, briefComments, brandBrains, brandVocabulary, brandVoices, visualDirections, wordsToAvoid, approvedExpressions, contentPillars };
 }
 
 function textValue(row: JsonRow, key: string, fallback = "") {
@@ -230,6 +235,7 @@ function validateBundle(bundle: ExportBundle) {
   const invoiceIds = new Set(bundle.invoices.map((row) => textValue(row, "id")));
   const contractIds = new Set(bundle.contracts.map((row) => textValue(row, "id")));
   const textContentIds = new Set(bundle.textContents.map((row) => textValue(row, "id")));
+  const contentBriefIds = new Set(bundle.contentBriefs.map((row) => textValue(row, "id")));
 
   for (const [file, rows] of Object.entries({
     clients: bundle.clients,
@@ -252,6 +258,8 @@ function validateBundle(bundle: ExportBundle) {
     briefTemplates: bundle.briefTemplates,
     textContents: bundle.textContents,
     textContentComments: bundle.textContentComments,
+    contentBriefs: bundle.contentBriefs,
+    briefComments: bundle.briefComments,
     brandBrains: bundle.brandBrains,
     brandVocabulary: bundle.brandVocabulary,
     brandVoices: bundle.brandVoices,
@@ -298,6 +306,8 @@ function validateBundle(bundle: ExportBundle) {
   bundle.designBriefs.forEach((row) => { const clientId = textValue(row, "client_id"); if (clientId && !clientIds.has(clientId)) errors.push(`Brief ${textValue(row, "id")} aponta para cliente ausente.`); });
   bundle.textContents.forEach((row) => { if (!clientIds.has(textValue(row, "client_id"))) errors.push(`Texto ${textValue(row, "id")} aponta para cliente ausente.`); });
   bundle.textContentComments.forEach((row) => { if (!textContentIds.has(textValue(row, "text_content_id"))) errors.push(`Comentário de texto ${textValue(row, "id")} aponta para texto ausente.`); });
+  bundle.contentBriefs.forEach((row) => { if (!clientIds.has(textValue(row, "client_id"))) errors.push(`Pauta ${textValue(row, "id")} aponta para cliente ausente.`); });
+  bundle.briefComments.forEach((row) => { if (!contentBriefIds.has(textValue(row, "brief_id"))) errors.push(`Comentário de pauta ${textValue(row, "id")} aponta para pauta ausente.`); });
   for (const [label, rows] of [["Brand Brain", bundle.brandBrains], ["Vocabulário", bundle.brandVocabulary], ["Voz", bundle.brandVoices], ["Direção visual", bundle.visualDirections], ["Palavra a evitar", bundle.wordsToAvoid], ["Expressão", bundle.approvedExpressions], ["Pilar", bundle.contentPillars]] as const) rows.forEach((row) => { if (!clientIds.has(textValue(row, "client_id"))) errors.push(`${label} ${textValue(row, "id")} aponta para cliente ausente.`); });
   return errors;
 }
@@ -329,6 +339,8 @@ function printSummary(bundle: ExportBundle, inputDir: string, commit: boolean) {
       brief_templates: bundle.briefTemplates.length,
       text_contents: bundle.textContents.length,
       text_content_comments: bundle.textContentComments.length,
+      content_briefs: bundle.contentBriefs.length,
+      brief_comments: bundle.briefComments.length,
       brand_brains: bundle.brandBrains.length,
       brand_vocabulary: bundle.brandVocabulary.length,
       brand_voice: bundle.brandVoices.length,
@@ -590,6 +602,37 @@ async function importTextRecords(connection: PoolConnection, bundle: ExportBundl
   }
 }
 
+function normalizePautaStatus(value: unknown): "draft" | "sent" | "approved" {
+  const status = String(value ?? "").toLocaleLowerCase();
+  if (["approved", "published"].includes(status)) return "approved";
+  if (["pending_approval", "rejected"].includes(status)) return "sent";
+  return "draft";
+}
+
+async function importPautaRecords(connection: PoolConnection, bundle: ExportBundle, clientMap: Map<string, string>) {
+  for (const legacyClientId of new Set(bundle.contentBriefs.map((row) => textValue(row, "client_id")))) {
+    const clientAccountId = clientMap.get(legacyClientId);
+    if (!clientAccountId) continue;
+    const [accounts] = await connection.query<Array<RowDataPacket & { workspace_drawer_json: unknown }>>("SELECT workspace_drawer_json FROM client_accounts WHERE id=? FOR UPDATE", [clientAccountId]);
+    let drawer: Record<string, unknown> = {};
+    try { drawer = typeof accounts[0]?.workspace_drawer_json === "string" ? JSON.parse(accounts[0].workspace_drawer_json as string) : (accounts[0]?.workspace_drawer_json as Record<string, unknown>) ?? {}; } catch { drawer = {}; }
+    const existing = Array.isArray(drawer.pautaIdeas) ? drawer.pautaIdeas as Array<Record<string, unknown>> : [];
+    const existingIds = new Set(existing.map((item) => String(item.id ?? "")));
+    const signatures = new Set(existing.map((item) => [item.title, item.description, item.caption].map((value) => String(value ?? "").trim().toLocaleLowerCase()).join("\u0000")));
+    const [cards] = await connection.query<Array<RowDataPacket & { id: string; title: string }>>("SELECT id,title FROM kanban_cards WHERE client_account_id=? AND is_brief_approval=1", [clientAccountId]);
+    const cardByTitle = new Map(cards.map((card) => [card.title.trim().toLocaleLowerCase(), card.id]));
+    const imported = bundle.contentBriefs.filter((row) => textValue(row, "client_id") === legacyClientId).flatMap((brief) => {
+      const id = textValue(brief, "id");
+      const signature = [brief.title, brief.description, brief.caption].map((value) => String(value ?? "").trim().toLocaleLowerCase()).join("\u0000");
+      if (existingIds.has(id) || signatures.has(signature)) return [];
+      const comments = bundle.briefComments.filter((comment) => textValue(comment, "brief_id") === id).map((comment) => ({ id: textValue(comment, "id"), authorName: textValue(comment, "author_name", "Usuário legado"), authorRole: normalizeCommentRole(comment.author_role), message: legacyCommentToPlainText(comment.message), createdAt: textValue(comment, "created_at") }));
+      const title = textValue(brief, "title", "Pauta sem título");
+      return [{ id, title, description: textValue(brief, "description"), caption: textValue(brief, "caption"), createdAt: textValue(brief, "created_at", new Date().toISOString()), updatedAt: textValue(brief, "updated_at"), plannedDate: nullableText(brief, "planned_date"), contentType: textValue(brief, "content_type", "post"), internalNotes: textValue(brief, "internal_notes"), mediaUrls: stringList(brief.media_urls), status: normalizePautaStatus(brief.status), cardId: cardByTitle.get(title.trim().toLocaleLowerCase()), legacySource: "v1", comments }];
+    });
+    if (imported.length) await connection.query("UPDATE client_accounts SET workspace_drawer_json=? WHERE id=?", [JSON.stringify({ ...drawer, pautaIdeas: [...imported.reverse(), ...existing] }), clientAccountId]);
+  }
+}
+
 function stringList(value: unknown) {
   return Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : [];
 }
@@ -788,6 +831,7 @@ async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
   await importDesignBriefRecords(connection,bundle,clientMap,userMap);
   await importTextRecords(connection,bundle,clientMap,userMap);
   await importBrandBrainRecords(connection,bundle,clientMap,userMap);
+  await importPautaRecords(connection,bundle,clientMap);
 }
 
 async function main() {
@@ -839,6 +883,9 @@ async function main() {
       const clientMap=await resolveExistingClients(connection,bundle.clients);
       const userMap=await resolveExistingUsers(connection,bundle.profiles);
       await importBrandBrainRecords(connection,bundle,clientMap,userMap);
+    } else if (options.onlyPautas) {
+      const clientMap=await resolveExistingClients(connection,bundle.clients);
+      await importPautaRecords(connection,bundle,clientMap);
     } else {
       await importBundle(connection, bundle);
     }
