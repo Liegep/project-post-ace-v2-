@@ -353,6 +353,12 @@ async function main() {
   const proposalTemplates = await fetchAll(supabase.from("proposal_templates").select("id,user_id,name,services,currency,scope_description,investment_description,locale,created_at,updated_at").order("created_at"));
   trace("proposal-templates");
 
+  const socialReportsQuery = supabase.from("social_reports").select("id,client_id,created_by,title,period_start,period_end,platform,locale,status,metrics,previous_metrics,best_content,worst_content,best_format,strategic_comment,recommendations,observations,template_id,created_at,updated_at").in("client_id", foundClientIds).order("created_at");
+  const socialReports = foundClientIds.length ? await fetchAll(socialReportsQuery) : [];
+  trace("social-reports");
+  const socialReportTemplates = await fetchAll(supabase.from("social_report_templates").select("id,name,created_by,metric_fields,created_at").order("created_at"));
+  trace("social-report-templates");
+
   const mediaManifest = uniqueMediaUrls(
     [...posts, ...calendarPosts, ...invoiceAttachments],
     [
@@ -412,6 +418,8 @@ async function main() {
       contract_templates: contractTemplates.length,
       proposals: proposals.length,
       proposal_templates: proposalTemplates.length,
+      social_reports: socialReports.length,
+      social_report_templates: socialReportTemplates.length,
       media_manifest: mediaManifest.length,
     },
   };
@@ -442,6 +450,8 @@ async function main() {
   await writeJson(path.join(options.outDir, "contract_templates.json"), contractTemplates);
   await writeJson(path.join(options.outDir, "proposals.json"), proposals);
   await writeJson(path.join(options.outDir, "proposal_templates.json"), proposalTemplates);
+  await writeJson(path.join(options.outDir, "social_reports.json"), socialReports);
+  await writeJson(path.join(options.outDir, "social_report_templates.json"), socialReportTemplates);
   await writeJson(path.join(options.outDir, "media-manifest.json"), mediaManifest);
 
   console.log(`Export concluido em: ${options.outDir}`);

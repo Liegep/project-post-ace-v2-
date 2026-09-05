@@ -29,6 +29,8 @@ type ExportBundle = {
   contractTemplates: JsonRow[];
   proposals: JsonRow[];
   proposalTemplates: JsonRow[];
+  socialReports: JsonRow[];
+  socialReportTemplates: JsonRow[];
 };
 
 function parseArguments() {
@@ -41,6 +43,7 @@ function parseArguments() {
     onlyInvoices: args.includes("--only-invoices"),
     onlyContracts: args.includes("--only-contracts"),
     onlyProposals: args.includes("--only-proposals"),
+    onlyReports: args.includes("--only-reports"),
     inputDir:
       inputIndex >= 0 && args[inputIndex + 1]
         ? path.resolve(args[inputIndex + 1])
@@ -72,7 +75,7 @@ async function readOptionalRows(inputDir: string, fileName: string) {
 }
 
 async function loadBundle(inputDir: string): Promise<ExportBundle> {
-  const [clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates] =
+  const [clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates, socialReports, socialReportTemplates] =
     await Promise.all([
       readRows(inputDir, "clients.json"),
       readRows(inputDir, "profiles.json"),
@@ -91,8 +94,10 @@ async function loadBundle(inputDir: string): Promise<ExportBundle> {
       readOptionalRows(inputDir, "contract_templates.json"),
       readOptionalRows(inputDir, "proposals.json"),
       readOptionalRows(inputDir, "proposal_templates.json"),
+      readOptionalRows(inputDir, "social_reports.json"),
+      readOptionalRows(inputDir, "social_report_templates.json"),
     ]);
-  return { clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates };
+  return { clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates, socialReports, socialReportTemplates };
 }
 
 function textValue(row: JsonRow, key: string, fallback = "") {
@@ -250,6 +255,7 @@ function validateBundle(bundle: ExportBundle) {
   bundle.invoiceAttachments.forEach((row) => { if (!invoiceIds.has(textValue(row, "invoice_id"))) errors.push(`Anexo ${textValue(row, "id")} aponta para fatura ausente.`); });
   bundle.contracts.forEach((row) => { if (!clientIds.has(textValue(row, "client_id"))) errors.push(`Contrato ${textValue(row, "id")} aponta para cliente ausente.`); });
   bundle.contractAcceptances.forEach((row) => { if (!contractIds.has(textValue(row, "contract_id"))) errors.push(`Aceite ${textValue(row, "id")} aponta para contrato ausente.`); });
+  bundle.socialReports.forEach((row) => { if (!clientIds.has(textValue(row, "client_id"))) errors.push(`Relatório ${textValue(row, "id")} aponta para cliente ausente.`); });
   return errors;
 }
 
@@ -274,6 +280,8 @@ function printSummary(bundle: ExportBundle, inputDir: string, commit: boolean) {
       contract_templates: bundle.contractTemplates.length,
       proposals: bundle.proposals.length,
       proposal_templates: bundle.proposalTemplates.length,
+      social_reports: bundle.socialReports.length,
+      social_report_templates: bundle.socialReportTemplates.length,
       media_files_pending_copy: bundle.mediaManifest.length,
     },
   }, null, 2));
@@ -360,6 +368,67 @@ function proposalStatus(value: unknown) { const status=String(value??"draft").to
 async function importProposalRecords(connection:PoolConnection,bundle:ExportBundle,userMap:Map<string,string>){
   for(const proposal of bundle.proposals){const legacyId=textValue(proposal,"id");await connection.query(`INSERT INTO proposals (id,token,client_name,client_email,locale,proposal_type,plan,pieces_quantity,scope_description,investment_description,currency,expires_at,status,services_json,accepted_at,viewed_at,created_by_user_id,legacy_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE client_name=VALUES(client_name),client_email=VALUES(client_email),locale=VALUES(locale),proposal_type=VALUES(proposal_type),plan=VALUES(plan),pieces_quantity=VALUES(pieces_quantity),scope_description=VALUES(scope_description),investment_description=VALUES(investment_description),currency=VALUES(currency),expires_at=VALUES(expires_at),status=VALUES(status),services_json=VALUES(services_json),accepted_at=VALUES(accepted_at),viewed_at=VALUES(viewed_at),updated_at=VALUES(updated_at)`,[legacyId,textValue(proposal,"token",crypto.randomBytes(24).toString("hex")),textValue(proposal,"client_name"),textValue(proposal,"client_email"),proposalLocale(proposal.locale),textValue(proposal,"proposal_type","Projeto"),textValue(proposal,"plan"),numberValue(proposal,"pieces_quantity"),textValue(proposal,"scope_description"),textValue(proposal,"investment_description"),proposalCurrency(proposal.currency),mysqlDateTime(proposal.expires_at)??new Date(Date.now()+7*86400000),proposalStatus(proposal.status),JSON.stringify(Array.isArray(proposal.services)?proposal.services:[]),mysqlDateTime(proposal.accepted_at),mysqlDateTime(proposal.viewed_at),userMap.get(textValue(proposal,"user_id"))??null,legacyId,mysqlDateTime(proposal.created_at),mysqlDateTime(proposal.updated_at)]);}
   for(const template of bundle.proposalTemplates){const legacyId=textValue(template,"id");await connection.query("INSERT INTO proposal_templates (id,name,locale,currency,scope_description,investment_description,services_json,created_by_user_id,legacy_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE name=VALUES(name),locale=VALUES(locale),currency=VALUES(currency),scope_description=VALUES(scope_description),investment_description=VALUES(investment_description),services_json=VALUES(services_json),updated_at=VALUES(updated_at)",[legacyId,textValue(template,"name","Modelo de proposta"),proposalLocale(template.locale),proposalCurrency(template.currency),textValue(template,"scope_description"),textValue(template,"investment_description"),JSON.stringify(Array.isArray(template.services)?template.services:[]),userMap.get(textValue(template,"user_id"))??null,legacyId,mysqlDateTime(template.created_at),mysqlDateTime(template.updated_at)]);}
+}
+
+function reportMetric(metrics: unknown, ...keys: string[]) {
+  if (!metrics || typeof metrics !== "object" || Array.isArray(metrics)) return 0;
+  for (const key of keys) {
+    const parsed = Number((metrics as JsonRow)[key]);
+    if (Number.isFinite(parsed)) return Math.max(0, parsed);
+  }
+  return 0;
+}
+
+function legacyReportNotes(report: JsonRow) {
+  return [
+    ["Observações", textValue(report, "observations")],
+    ["Comentário estratégico", textValue(report, "strategic_comment")],
+    ["Recomendações", textValue(report, "recommendations")],
+    ["Melhor conteúdo", textValue(report, "best_content")],
+    ["Formato de melhor desempenho", textValue(report, "best_format")],
+    ["Conteúdo com menor desempenho", textValue(report, "worst_content")],
+  ].filter(([, value]) => value).map(([label, value]) => `${label}:\n${value}`).join("\n\n") || null;
+}
+
+async function ensureReportMigrationTables(connection: PoolConnection) {
+  await connection.query(`CREATE TABLE IF NOT EXISTS report_templates (
+    id CHAR(36) NOT NULL PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    metric_fields_json JSON NOT NULL,
+    created_by_user_id CHAR(36) NULL,
+    legacy_id VARCHAR(120) NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_report_templates_legacy_id (legacy_id),
+    CONSTRAINT fk_report_templates_creator FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`);
+}
+
+async function importReportRecords(connection: PoolConnection, bundle: ExportBundle, clientMap: Map<string, string>, userMap: Map<string, string>) {
+  await ensureReportMigrationTables(connection);
+  for (const report of bundle.socialReports) {
+    const legacyId = textValue(report, "id");
+    const platform = textValue(report, "platform", "instagram").toLowerCase() === "facebook" ? "facebook" : "instagram";
+    const metrics = report.metrics;
+    const channelMetrics = {
+      reach: reportMetric(metrics, "reach"),
+      impressions: reportMetric(metrics, "impressions", "views"),
+      engagement: reportMetric(metrics, "engagement", "content_interactions", "interactions"),
+      followers: reportMetric(metrics, "followers", "followers_gained"),
+      visits: reportMetric(metrics, "profile_visits"),
+      clicks: reportMetric(metrics, "clicks", "link_clicks"),
+    };
+    const emptyChannel = { reach: 0, impressions: 0, engagement: 0, followers: 0, visits: 0, clicks: 0 };
+    const normalizedMetrics = { instagram: platform === "instagram" ? channelMetrics : emptyChannel, facebook: platform === "facebook" ? channelMetrics : emptyChannel };
+    const bestContent = textValue(report, "best_content");
+    const highlights = bestContent ? [{ channel: platform, title: bestContent.slice(0, 255), value: channelMetrics.reach }] : [];
+    const status = textValue(report, "status").toLowerCase() === "published" ? "published" : "draft";
+    await connection.query(`INSERT INTO client_reports (id,client_account_id,title,period_start,period_end,status,metrics_json,highlights_json,evidence_urls_json,notes,created_by_user_id,published_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE client_account_id=VALUES(client_account_id),title=VALUES(title),period_start=VALUES(period_start),period_end=VALUES(period_end),status=VALUES(status),metrics_json=VALUES(metrics_json),highlights_json=VALUES(highlights_json),notes=VALUES(notes),published_at=VALUES(published_at),updated_at=VALUES(updated_at)`, [legacyId, clientMap.get(textValue(report, "client_id")), textValue(report, "title", "Relatório"), textValue(report, "period_start"), textValue(report, "period_end"), status, JSON.stringify(normalizedMetrics), JSON.stringify(highlights), JSON.stringify([]), legacyReportNotes(report), userMap.get(textValue(report, "created_by")) ?? null, status === "published" ? mysqlDateTime(report.updated_at) ?? new Date() : null, mysqlDateTime(report.created_at), mysqlDateTime(report.updated_at)]);
+  }
+  for (const template of bundle.socialReportTemplates) {
+    const legacyId = textValue(template, "id");
+    await connection.query("INSERT INTO report_templates (id,name,metric_fields_json,created_by_user_id,legacy_id,created_at) VALUES (?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE name=VALUES(name),metric_fields_json=VALUES(metric_fields_json)", [legacyId, textValue(template, "name", "Modelo de relatório"), JSON.stringify(Array.isArray(template.metric_fields) ? template.metric_fields : []), userMap.get(textValue(template, "created_by")) ?? null, legacyId, mysqlDateTime(template.created_at)]);
+  }
 }
 
 async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
@@ -476,6 +545,7 @@ async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
   await importInvoiceRecords(connection, bundle, clientMap, userMap);
   await importContractRecords(connection,bundle,clientMap,userMap);
   await importProposalRecords(connection,bundle,userMap);
+  await importReportRecords(connection,bundle,clientMap,userMap);
 }
 
 async function main() {
@@ -510,6 +580,10 @@ async function main() {
     } else if (options.onlyProposals) {
       const userMap=await resolveExistingUsers(connection,bundle.profiles);
       await importProposalRecords(connection,bundle,userMap);
+    } else if (options.onlyReports) {
+      const clientMap=await resolveExistingClients(connection,bundle.clients);
+      const userMap=await resolveExistingUsers(connection,bundle.profiles);
+      await importReportRecords(connection,bundle,clientMap,userMap);
     } else {
       await importBundle(connection, bundle);
     }
