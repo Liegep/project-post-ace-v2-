@@ -321,6 +321,15 @@ async function main() {
   const textContentComments = await fetchInBatches(textContentIds, (ids) => supabase.from("text_content_comments").select("id,text_content_id,user_id,author_name,author_role,message,created_at").in("text_content_id", ids).order("created_at"));
   trace("text-content-comments");
 
+  const brandBrains = foundClientIds.length ? await fetchAll(supabase.from("brand_brains").select("id,client_id,summary,mission,vision,updated_by,created_at,updated_at").in("client_id", foundClientIds).order("created_at")) : [];
+  const brandVocabulary = foundClientIds.length ? await fetchAll(supabase.from("brand_vocabulary").select("id,client_id,term,category,brand,content_type,emotion,frequency,priority,status,can_be_used,related_words,approved_phrases,notes,technical_notes,created_by,created_at,updated_at").in("client_id", foundClientIds).order("created_at")) : [];
+  const brandVoices = foundClientIds.length ? await fetchAll(supabase.from("brand_voice").select("id,client_id,brand_name,archetype,emotional_tone,formality_level,writing_rhythm,good_examples,bad_examples,things_to_avoid,updated_by,created_at,updated_at").in("client_id", foundClientIds).order("created_at")) : [];
+  const visualDirections = foundClientIds.length ? await fetchAll(supabase.from("visual_directions").select("id,client_id,brand_name,category,direction,image_style,lighting,composition,typography,colors,things_to_avoid,created_by,created_at,updated_at").in("client_id", foundClientIds).order("created_at")) : [];
+  const wordsToAvoid = foundClientIds.length ? await fetchAll(supabase.from("words_to_avoid").select("id,client_id,word,category,reason,recommended_alternative,created_by,created_at,updated_at").in("client_id", foundClientIds).order("created_at")) : [];
+  const approvedExpressions = foundClientIds.length ? await fetchAll(supabase.from("approved_expressions").select("id,client_id,expression,emotion,usage_context,notes,created_by,created_at,updated_at").in("client_id", foundClientIds).order("created_at")) : [];
+  const contentPillars = foundClientIds.length ? await fetchAll(supabase.from("content_pillars").select("id,client_id,name,objective,main_emotion,suggested_frequency,themes,notes,created_by,created_at,updated_at").in("client_id", foundClientIds).order("created_at")) : [];
+  trace("brand-brain");
+
   const calendarPostsQuery = supabase
     .from("calendar_posts")
     .select(
@@ -429,6 +438,13 @@ async function main() {
       comments: comments.length,
       text_contents: textContents.length,
       text_content_comments: textContentComments.length,
+      brand_brains: brandBrains.length,
+      brand_vocabulary: brandVocabulary.length,
+      brand_voice: brandVoices.length,
+      visual_directions: visualDirections.length,
+      words_to_avoid: wordsToAvoid.length,
+      approved_expressions: approvedExpressions.length,
+      content_pillars: contentPillars.length,
       calendar_posts: calendarPosts.length,
       appointments: appointments.length,
       appointment_tags: appointmentTags.length,
@@ -467,6 +483,13 @@ async function main() {
   await writeJson(path.join(options.outDir, "comments.json"), comments);
   await writeJson(path.join(options.outDir, "text_contents.json"), textContents);
   await writeJson(path.join(options.outDir, "text_content_comments.json"), textContentComments);
+  await writeJson(path.join(options.outDir, "brand_brains.json"), brandBrains);
+  await writeJson(path.join(options.outDir, "brand_vocabulary.json"), brandVocabulary);
+  await writeJson(path.join(options.outDir, "brand_voice.json"), brandVoices);
+  await writeJson(path.join(options.outDir, "visual_directions.json"), visualDirections);
+  await writeJson(path.join(options.outDir, "words_to_avoid.json"), wordsToAvoid);
+  await writeJson(path.join(options.outDir, "approved_expressions.json"), approvedExpressions);
+  await writeJson(path.join(options.outDir, "content_pillars.json"), contentPillars);
   await writeJson(path.join(options.outDir, "calendar_posts.json"), calendarPosts);
   await writeJson(path.join(options.outDir, "appointments.json"), appointments);
   await writeJson(path.join(options.outDir, "appointment_tags.json"), appointmentTags);

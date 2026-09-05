@@ -36,6 +36,13 @@ type ExportBundle = {
   briefTemplates: JsonRow[];
   textContents: JsonRow[];
   textContentComments: JsonRow[];
+  brandBrains: JsonRow[];
+  brandVocabulary: JsonRow[];
+  brandVoices: JsonRow[];
+  visualDirections: JsonRow[];
+  wordsToAvoid: JsonRow[];
+  approvedExpressions: JsonRow[];
+  contentPillars: JsonRow[];
 };
 
 function parseArguments() {
@@ -51,6 +58,7 @@ function parseArguments() {
     onlyReports: args.includes("--only-reports"),
     onlyDesignBriefs: args.includes("--only-design-briefs"),
     onlyTexts: args.includes("--only-texts"),
+    onlyBrandBrain: args.includes("--only-brand-brain"),
     inputDir:
       inputIndex >= 0 && args[inputIndex + 1]
         ? path.resolve(args[inputIndex + 1])
@@ -82,7 +90,7 @@ async function readOptionalRows(inputDir: string, fileName: string) {
 }
 
 async function loadBundle(inputDir: string): Promise<ExportBundle> {
-  const [clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates, socialReports, socialReportTemplates, designBriefs, briefTemplates, textContents, textContentComments] =
+  const [clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates, socialReports, socialReportTemplates, designBriefs, briefTemplates, textContents, textContentComments, brandBrains, brandVocabulary, brandVoices, visualDirections, wordsToAvoid, approvedExpressions, contentPillars] =
     await Promise.all([
       readRows(inputDir, "clients.json"),
       readRows(inputDir, "profiles.json"),
@@ -107,8 +115,15 @@ async function loadBundle(inputDir: string): Promise<ExportBundle> {
       readOptionalRows(inputDir, "brief_templates.json"),
       readOptionalRows(inputDir, "text_contents.json"),
       readOptionalRows(inputDir, "text_content_comments.json"),
+      readOptionalRows(inputDir, "brand_brains.json"),
+      readOptionalRows(inputDir, "brand_vocabulary.json"),
+      readOptionalRows(inputDir, "brand_voice.json"),
+      readOptionalRows(inputDir, "visual_directions.json"),
+      readOptionalRows(inputDir, "words_to_avoid.json"),
+      readOptionalRows(inputDir, "approved_expressions.json"),
+      readOptionalRows(inputDir, "content_pillars.json"),
     ]);
-  return { clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates, socialReports, socialReportTemplates, designBriefs, briefTemplates, textContents, textContentComments };
+  return { clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates, socialReports, socialReportTemplates, designBriefs, briefTemplates, textContents, textContentComments, brandBrains, brandVocabulary, brandVoices, visualDirections, wordsToAvoid, approvedExpressions, contentPillars };
 }
 
 function textValue(row: JsonRow, key: string, fallback = "") {
@@ -237,6 +252,13 @@ function validateBundle(bundle: ExportBundle) {
     briefTemplates: bundle.briefTemplates,
     textContents: bundle.textContents,
     textContentComments: bundle.textContentComments,
+    brandBrains: bundle.brandBrains,
+    brandVocabulary: bundle.brandVocabulary,
+    brandVoices: bundle.brandVoices,
+    visualDirections: bundle.visualDirections,
+    wordsToAvoid: bundle.wordsToAvoid,
+    approvedExpressions: bundle.approvedExpressions,
+    contentPillars: bundle.contentPillars,
   })) {
     rows.forEach((row, index) => {
       if (!textValue(row, "id")) errors.push(`${file}[${index}] não possui id.`);
@@ -276,6 +298,7 @@ function validateBundle(bundle: ExportBundle) {
   bundle.designBriefs.forEach((row) => { const clientId = textValue(row, "client_id"); if (clientId && !clientIds.has(clientId)) errors.push(`Brief ${textValue(row, "id")} aponta para cliente ausente.`); });
   bundle.textContents.forEach((row) => { if (!clientIds.has(textValue(row, "client_id"))) errors.push(`Texto ${textValue(row, "id")} aponta para cliente ausente.`); });
   bundle.textContentComments.forEach((row) => { if (!textContentIds.has(textValue(row, "text_content_id"))) errors.push(`Comentário de texto ${textValue(row, "id")} aponta para texto ausente.`); });
+  for (const [label, rows] of [["Brand Brain", bundle.brandBrains], ["Vocabulário", bundle.brandVocabulary], ["Voz", bundle.brandVoices], ["Direção visual", bundle.visualDirections], ["Palavra a evitar", bundle.wordsToAvoid], ["Expressão", bundle.approvedExpressions], ["Pilar", bundle.contentPillars]] as const) rows.forEach((row) => { if (!clientIds.has(textValue(row, "client_id"))) errors.push(`${label} ${textValue(row, "id")} aponta para cliente ausente.`); });
   return errors;
 }
 
@@ -306,6 +329,13 @@ function printSummary(bundle: ExportBundle, inputDir: string, commit: boolean) {
       brief_templates: bundle.briefTemplates.length,
       text_contents: bundle.textContents.length,
       text_content_comments: bundle.textContentComments.length,
+      brand_brains: bundle.brandBrains.length,
+      brand_vocabulary: bundle.brandVocabulary.length,
+      brand_voice: bundle.brandVoices.length,
+      visual_directions: bundle.visualDirections.length,
+      words_to_avoid: bundle.wordsToAvoid.length,
+      approved_expressions: bundle.approvedExpressions.length,
+      content_pillars: bundle.contentPillars.length,
       media_files_pending_copy: bundle.mediaManifest.length,
     },
   }, null, 2));
@@ -560,6 +590,67 @@ async function importTextRecords(connection: PoolConnection, bundle: ExportBundl
   }
 }
 
+function stringList(value: unknown) {
+  return Array.isArray(value) ? value.map((item) => String(item).trim()).filter(Boolean) : [];
+}
+
+function uniqueStrings(values: string[]) {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function detailText(label: string, value: unknown) {
+  const text = Array.isArray(value) ? stringList(value).join(", ") : String(value ?? "").trim();
+  return text ? `${label}: ${text}` : "";
+}
+
+function buildBrandBrainData(bundle: ExportBundle, clientId: string, brain: JsonRow) {
+  const vocabulary = bundle.brandVocabulary.filter((row) => textValue(row, "client_id") === clientId);
+  const voices = bundle.brandVoices.filter((row) => textValue(row, "client_id") === clientId);
+  const visuals = bundle.visualDirections.filter((row) => textValue(row, "client_id") === clientId);
+  const avoided = bundle.wordsToAvoid.filter((row) => textValue(row, "client_id") === clientId);
+  const expressions = bundle.approvedExpressions.filter((row) => textValue(row, "client_id") === clientId);
+  const sourcePillars = bundle.contentPillars.filter((row) => textValue(row, "client_id") === clientId);
+  const approvedWords = uniqueStrings(vocabulary.filter((row) => row.can_be_used !== false).flatMap((row) => [textValue(row, "term"), ...stringList(row.approved_phrases)]));
+  const voice = voices.map((row) => [detailText("Arquétipo", row.archetype), detailText("Tom emocional", row.emotional_tone), detailText("Formalidade", row.formality_level), detailText("Ritmo", row.writing_rhythm), detailText("Evitar", row.things_to_avoid)].filter(Boolean).join("\n")).filter(Boolean).join("\n\n");
+  const visualNotes = visuals.map((row) => [detailText("Categoria", row.category), detailText("Direção", row.direction), detailText("Estilo de imagem", row.image_style), detailText("Iluminação", row.lighting), detailText("Composição", row.composition), detailText("Tipografia", row.typography), detailText("Evitar", row.things_to_avoid)].filter(Boolean).join("\n")).filter(Boolean).join("\n\n");
+  const pillarCount = sourcePillars.length;
+  const baseWeight = pillarCount ? Math.floor(100 / pillarCount) : 0;
+  const pillars = sourcePillars.map((row, index) => ({ name: textValue(row, "name", `Pilar ${index + 1}`), focus: [textValue(row, "objective"), detailText("Temas", row.themes), detailText("Emoção", row.main_emotion), detailText("Frequência", row.suggested_frequency), textValue(row, "notes")].filter(Boolean).join(" · "), weight: baseWeight + (index < 100 - baseWeight * pillarCount ? 1 : 0) }));
+  const typography = visuals.map((row) => textValue(row, "typography").trim()).find(Boolean) ?? "";
+  return {
+    mission: textValue(brain, "mission"), vision: textValue(brain, "vision"), positioning: textValue(brain, "summary"), brandPromise: "",
+    audience: "", audiencePains: [], audienceDesires: [],
+    voice, personalityTraits: uniqueStrings(voices.flatMap((row) => [textValue(row, "archetype"), textValue(row, "emotional_tone"), textValue(row, "formality_level")])),
+    voiceExamples: uniqueStrings(voices.flatMap((row) => stringList(row.good_examples))), voiceAvoidExamples: uniqueStrings(voices.flatMap((row) => stringList(row.bad_examples))),
+    visualNotes, typographyDisplay: typography, typographyBody: "", typographyAccent: "", typographySample: "A identidade ganha voz quando cada detalhe fala a mesma língua.",
+    approvedWords, avoidWords: uniqueStrings(avoided.map((row) => textValue(row, "word"))), expressions: uniqueStrings(expressions.map((row) => textValue(row, "expression"))),
+    colors: uniqueStrings(visuals.flatMap((row) => stringList(row.colors))).filter((color) => /^#[0-9a-f]{6}$/i.test(color)),
+    differentiators: [], proofPoints: [], references: [], pillars,
+  };
+}
+
+async function importBrandBrainRecords(connection: PoolConnection, bundle: ExportBundle, clientMap: Map<string, string>, userMap: Map<string, string>) {
+  for (const brain of bundle.brandBrains) {
+    const legacyClientId = textValue(brain, "client_id");
+    const clientAccountId = clientMap.get(legacyClientId);
+    if (!clientAccountId) continue;
+    const data = buildBrandBrainData(bundle, legacyClientId, brain);
+    const legacyId = textValue(brain, "id");
+    const userId = userMap.get(textValue(brain, "updated_by")) ?? null;
+    const [accounts] = await connection.query<Array<RowDataPacket & { workspace_drawer_json: unknown }>>("SELECT workspace_drawer_json FROM client_accounts WHERE id=?", [clientAccountId]);
+    let drawer: Record<string, unknown> = {};
+    try { drawer = typeof accounts[0]?.workspace_drawer_json === "string" ? JSON.parse(accounts[0].workspace_drawer_json as string) : (accounts[0]?.workspace_drawer_json as Record<string, unknown>) ?? {}; } catch { drawer = {}; }
+    const [versions] = await connection.query<Array<RowDataPacket & { id: string; version_number: number }>>("SELECT id,version_number FROM brand_brain_versions WHERE client_account_id=? ORDER BY version_number DESC", [clientAccountId]);
+    const existingLegacy = versions.find((row) => row.id === legacyId);
+    if (versions.length === 0 || (existingLegacy && Number(versions[0].version_number) === 1)) await connection.query("UPDATE client_accounts SET workspace_drawer_json=? WHERE id=?", [JSON.stringify({ ...drawer, brandBrain: data }), clientAccountId]);
+    if (versions.length === 0) {
+      await connection.query("INSERT INTO brand_brain_versions (id,client_account_id,version_number,data_json,created_by_user_id,author_name,created_at) VALUES (?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP))", [legacyId, clientAccountId, 1, JSON.stringify(data), userId, "Importação V1", mysqlDateTime(brain.updated_at) ?? mysqlDateTime(brain.created_at)]);
+    } else if (existingLegacy) {
+      await connection.query("UPDATE brand_brain_versions SET data_json=?,created_by_user_id=?,author_name=? WHERE id=?", [JSON.stringify(data), userId, "Importação V1", legacyId]);
+    }
+  }
+}
+
 async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
   const { userMap, roleByLegacyId } = await resolveUsers(connection, bundle.profiles);
   const clientMap = new Map<string, string>();
@@ -677,6 +768,7 @@ async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
   await importReportRecords(connection,bundle,clientMap,userMap);
   await importDesignBriefRecords(connection,bundle,clientMap,userMap);
   await importTextRecords(connection,bundle,clientMap,userMap);
+  await importBrandBrainRecords(connection,bundle,clientMap,userMap);
 }
 
 async function main() {
@@ -724,6 +816,10 @@ async function main() {
       const clientMap=await resolveExistingClients(connection,bundle.clients);
       const userMap=await resolveExistingUsers(connection,bundle.profiles);
       await importTextRecords(connection,bundle,clientMap,userMap);
+    } else if (options.onlyBrandBrain) {
+      const clientMap=await resolveExistingClients(connection,bundle.clients);
+      const userMap=await resolveExistingUsers(connection,bundle.profiles);
+      await importBrandBrainRecords(connection,bundle,clientMap,userMap);
     } else {
       await importBundle(connection, bundle);
     }
