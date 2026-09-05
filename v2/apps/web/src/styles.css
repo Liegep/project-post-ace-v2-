@@ -8807,6 +8807,9 @@ button {
 
 .proposal-status.viewed { background: #e6f5ff; color: #3177a3; }
 .proposal-status.expired { background: #ffecef; color: #bd5268; }
+.proposal-library-meta { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.proposal-library-meta small { min-width: 0; }
+.proposal-accepted-badge { flex: 0 0 auto; padding: 3px 7px; border-radius: 999px; background: #dff8e9; color: #188653; font-size: .62rem; font-weight: 700; line-height: 1.2; }
 
 /* Layout compacto do controle de tempo, inspirado na organização do Clockify. */
 .time-workspace {
