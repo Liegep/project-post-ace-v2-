@@ -52,7 +52,13 @@ import {
   listAdminHashtagGroupsBySlug,
   type HashtagGroup,
   loadDashboardOverview,
-  recordPublicProposalAcceptance,
+  listAdminProposals,
+  createAdminProposal,
+  updateAdminProposal,
+  deleteAdminProposal,
+  loadPublicProposal,
+  decidePublicProposal,
+  type ProposalRecord,
   type DashboardSubmission,
   type DashboardClientActivity,
   type DashboardUpcomingPost,
@@ -6911,18 +6917,14 @@ function BrandBrainExperience({ slug, clientName, portal = false, allowEdit = tr
 function BrandBrainWorkspaceV2({ slug, clientName }: { slug: string; clientName: string }) { return <BrandBrainExperience slug={slug} clientName={clientName} />; }
 function ClientBrandBrainView({ slug, clientName, allowEdit }: { slug: string; clientName: string; allowEdit: boolean }) { return <BrandBrainExperience slug={slug} clientName={clientName} portal allowEdit={allowEdit} />; }
 
-type ProposalStatus = "draft" | "sent" | "accepted" | "refused";
-type LocalProposal = {
-  id: string; token: string; clientName: string; email: string; locale: string; proposalType: string; plan: string;
-  pieces: number; scope: string; investment: string; currency: string; expiresAt: string; status: ProposalStatus;
-  services: Array<{ name: string; value: number; description: string }>;
-};
-
-const PROPOSALS_STORAGE_KEY = "designhub-v2-proposals";
+type ProposalStatus = ProposalRecord["status"];
+type LocalProposal = ProposalRecord;
 const proposalStatuses: Array<{ id: ProposalStatus; label: string; tone: string }> = [
   { id: "accepted", label: "Aceitas", tone: "accepted" },
+  { id: "viewed", label: "Visualizadas", tone: "sent" },
   { id: "sent", label: "Enviadas", tone: "sent" },
   { id: "refused", label: "Recusadas", tone: "refused" },
+  { id: "expired", label: "Expiradas", tone: "refused" },
   { id: "draft", label: "Rascunhos", tone: "draft" },
 ];
 
@@ -6935,17 +6937,6 @@ const proposalLocales = {
 } as const;
 
 function getProposalLocale(locale: string) { return proposalLocales[locale as keyof typeof proposalLocales] ?? proposalLocales["Português"]; }
-
-function readLocalProposals(): LocalProposal[] {
-  try { return JSON.parse(window.localStorage.getItem(PROPOSALS_STORAGE_KEY) ?? "[]") as LocalProposal[]; }
-  catch { return []; }
-}
-
-function createLocalProposalId(prefix = "proposal") {
-  return typeof window.crypto?.randomUUID === "function"
-    ? window.crypto.randomUUID()
-    : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
 
 function ProposalClientPreview({ proposal }: { proposal: LocalProposal }) {
   const total = proposal.services.reduce((sum, service) => sum + Number(service.value || 0), 0);
@@ -6960,20 +6951,26 @@ function ProposalClientPreview({ proposal }: { proposal: LocalProposal }) {
 }
 
 function ProposalsWorkspace({ newProposalSignal = 0 }: { newProposalSignal?: number }) {
-  const [proposals, setProposals] = useState<LocalProposal[]>(readLocalProposals);
-  const [selectedId, setSelectedId] = useState<string | null>(proposals[0]?.id ?? null);
+  const [proposals, setProposals] = useState<LocalProposal[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<"editor" | "preview">("editor");
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const saveTimerRef = useRef<number | null>(null);
   const selected = proposals.find((proposal) => proposal.id === selectedId) ?? null;
-  const persist = (next: LocalProposal[]) => { setProposals(next); window.localStorage.setItem(PROPOSALS_STORAGE_KEY, JSON.stringify(next)); };
-  const create = () => {
-    const id = createLocalProposalId();
-    const proposal: LocalProposal = { id, token: createLocalProposalId("token").split("-").join(""), clientName: "", email: "", locale: "Português", proposalType: "Projeto", plan: "", pieces: 0, scope: "", investment: "", currency: "R$", expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(), status: "draft", services: [{ name: "", value: 0, description: "" }] };
-    persist([proposal, ...proposals]); setSelectedId(id); setView("editor");
+  useEffect(() => { void listAdminProposals().then((result) => { setProposals(result.items); setSelectedId((current) => current ?? result.items[0]?.id ?? null); }).catch((error) => setMessage(error instanceof Error ? error.message : "Não foi possível carregar as propostas.")).finally(() => setLoading(false)); }, []);
+  useEffect(() => () => { if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current); }, []);
+  const create = async () => {
+    setMessage("");
+    try {
+      const result = await createAdminProposal({ clientName: "", email: "", locale: "Português", proposalType: "Projeto", plan: "", pieces: 0, scope: "", investment: "", currency: "R$", expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(), status: "draft", services: [{ name: "", value: 0, description: "" }] });
+      setProposals((current) => [result.proposal, ...current]); setSelectedId(result.proposal.id); setView("editor");
+    } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível criar a proposta."); }
   };
-  useEffect(() => { if (newProposalSignal > 0) create(); }, [newProposalSignal]);
-  const update = (patch: Partial<LocalProposal>) => { if (!selected) return; persist(proposals.map((proposal) => proposal.id === selected.id ? { ...proposal, ...patch } : proposal)); };
-  const remove = () => { if (!selected) return; persist(proposals.filter((proposal) => proposal.id !== selected.id)); setSelectedId(null); };
-  const send = () => { if (!selected) return; update({ status: "sent", expiresAt: new Date(Date.now() + 7 * 86400000).toISOString() }); setView("preview"); };
+  useEffect(() => { if (newProposalSignal > 0) void create(); }, [newProposalSignal]);
+  const update = (patch: Partial<LocalProposal>) => { if (!selected) return; const updated={...selected,...patch}; setProposals((current)=>current.map((proposal)=>proposal.id===selected.id?updated:proposal)); if(saveTimerRef.current) window.clearTimeout(saveTimerRef.current); saveTimerRef.current=window.setTimeout(()=>{const {id:_id,token:_token,acceptedAt:_acceptedAt,viewedAt:_viewedAt,createdAt:_createdAt,updatedAt:_updatedAt,...editable}=updated;void updateAdminProposal(selected.id,editable).catch((error)=>setMessage(error instanceof Error?error.message:"Não foi possível salvar a proposta."));},500); };
+  const remove = async () => { if (!selected || !window.confirm("Excluir esta proposta?")) return; try { await deleteAdminProposal(selected.id); setProposals((current)=>current.filter((proposal)=>proposal.id!==selected.id)); setSelectedId(null); } catch(error){setMessage(error instanceof Error?error.message:"Não foi possível excluir a proposta.");} };
+  const send = async () => { if (!selected) return; const patch={status:"sent" as const,expiresAt:new Date(Date.now()+7*86400000).toISOString()}; try { const result=await updateAdminProposal(selected.id,patch); setProposals((current)=>current.map((proposal)=>proposal.id===selected.id?result.proposal:proposal)); setView("preview"); } catch(error){setMessage(error instanceof Error?error.message:"Não foi possível enviar a proposta.");} };
   const copyLink = async () => { if (!selected) return; await navigator.clipboard?.writeText(`${window.location.origin}/#/proposta/${selected.token}`); };
   const editor = (field: "scope" | "investment", label: string, placeholder: string) => <label className="proposal-rich-field"><span>{label}</span><div className="proposal-rich-toolbar"><b>B</b><i>I</i><u>U</u><em>H2</em><em>Lista</em><em>Link</em></div><textarea value={selected?.[field] ?? ""} onChange={(event) => update({ [field]: event.target.value })} placeholder={placeholder} /></label>;
   useEffect(() => {
@@ -6984,34 +6981,37 @@ function ProposalsWorkspace({ newProposalSignal = 0 }: { newProposalSignal?: num
     return () => observer.disconnect();
   }, [view, selectedId]);
   if (selected && view === "preview") return <section className="public-proposal-page proposal-preview-shell"><button className="proposal-preview-back" onClick={() => setView("editor")}>← Voltar ao editor</button><header className="public-proposal-brand"><img src={liegePaschoaliniLogo} alt="Liege Paschoalini Studio" /><div><b>LIEGE PASCHOALINI STUDIO</b></div></header><ProposalClientPreview proposal={selected} /><section className="public-proposal-decision"><p>{getProposalLocale(selected.locale).until} {new Date(selected.expiresAt).toLocaleDateString(getProposalLocale(selected.locale).code)}.</p><h2>{getProposalLocale(selected.locale).continueTogether}</h2><div><button className="gradient-button">{getProposalLocale(selected.locale).accept}</button><button className="public-proposal-refuse">{getProposalLocale(selected.locale).refuse}</button></div></section></section>;
+  if (loading) return <section className="proposals-workspace"><p className="proposal-empty">Carregando propostas...</p></section>;
   return <section className="proposals-workspace">
     <div className={proposals.length ? "proposals-layout" : "proposals-layout empty-library"}>{proposals.length ? <aside className="proposal-library"><div><b>Biblioteca</b><button onClick={create}>+</button></div>{proposalStatuses.map((status) => <section key={status.id}><p>{status.label}<span>{proposals.filter((proposal) => proposal.status === status.id).length}</span></p>{proposals.filter((proposal) => proposal.status === status.id).map((proposal) => <button key={proposal.id} onClick={() => { setSelectedId(proposal.id); setView("editor"); }} className={selectedId === proposal.id ? "active" : ""}><strong>{proposal.clientName || "Nova proposta"}</strong><small>{proposal.proposalType} · {new Date(proposal.expiresAt).toLocaleDateString("pt-BR")}</small></button>)}</section>)}</aside> : null}
     <main className="proposal-stage">{!selected ? <div className="proposal-empty"><span>✦</span><h2>Comece por uma proposta</h2><p>Use o botão “Nova proposta” no banner para montar sua próxima proposta comercial.</p></div> : <><div className="proposal-stage-tabs"><button className="active">Editor</button><button onClick={() => setView("preview")}>Prévia do cliente</button><span>Válida por 7 dias</span></div><div className="proposal-editor"><div className="proposal-fields two"><label>Nome do cliente *<input value={selected.clientName} onChange={(event) => update({ clientName: event.target.value })} placeholder="Ex: Empresa ABC" /></label><label>E-mail<input type="email" value={selected.email} onChange={(event) => update({ email: event.target.value })} placeholder="email@cliente.com" /></label></div><div className="proposal-fields three"><label>Idioma<select value={selected.locale} onChange={(event) => update({ locale: event.target.value })}>{Object.values(proposalLocales).map((locale) => <option key={locale.label}>{locale.label}</option>)}</select></label><label>Tipo de proposta<select value={selected.proposalType} onChange={(event) => update({ proposalType: event.target.value })}><option>Projeto</option><option>Mensalidade</option><option>Consultoria</option></select></label><label>Plano<input value={selected.plan} onChange={(event) => update({ plan: event.target.value })} placeholder="Selecione..." /></label></div><label className="proposal-pieces">Qtd. de peças<input type="number" min="0" value={selected.pieces} onChange={(event) => update({ pieces: Number(event.target.value) })} /></label>{editor("scope", "Escopo do projeto", "Descreva o escopo dos serviços. Use títulos e listas para organizar.")}{editor("investment", "Descrição do investimento", "Condições de pagamento, observações e próximos passos...")}<div className="proposal-services"><header><div><span>Serviços</span><p>Monte os itens que fazem parte desta proposta.</p></div><button onClick={() => update({ services: [...selected.services, { name: "", value: 0, description: "" }] })}>+ Adicionar</button></header>{selected.services.map((service, index) => <div className="proposal-service-edit" key={index}><input value={service.name} onChange={(event) => update({ services: selected.services.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item) })} placeholder="Nome do serviço" /><input type="number" value={service.value} onChange={(event) => update({ services: selected.services.map((item, itemIndex) => itemIndex === index ? { ...item, value: Number(event.target.value) } : item) })} placeholder="Valor" /><input value={service.description} onChange={(event) => update({ services: selected.services.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item) })} placeholder="Descrição (opcional)" /><button onClick={() => update({ services: selected.services.filter((_, itemIndex) => itemIndex !== index) })}>×</button></div>)}</div></div></>}</main>
-    <aside className="proposal-actions">{selected ? <><span className={`proposal-status ${selected.status}`}>{proposalStatuses.find((status) => status.id === selected.status)?.label.slice(0, -1) ?? "Rascunho"}</span><h3>{selected.clientName || "Nova proposta"}</h3><p>O link temporário e a proposta expiram automaticamente em 7 dias.</p><button onClick={() => setView("preview")}>◫ Ver prévia</button><button onClick={copyLink}>⌁ Copiar link</button><button className="proposal-send" onClick={send}>➜ Enviar proposta</button><button className="proposal-delete" onClick={remove}>Excluir proposta</button></> : null}</aside></div>
+    <aside className="proposal-actions">{selected ? <><span className={`proposal-status ${selected.status}`}>{proposalStatuses.find((status) => status.id === selected.status)?.label.slice(0, -1) ?? "Rascunho"}</span><h3>{selected.clientName || "Nova proposta"}</h3><p>O link temporário e a proposta expiram automaticamente em 7 dias.</p><button onClick={() => setView("preview")}>◫ Ver prévia</button><button onClick={copyLink}>⌁ Copiar link</button><button className="proposal-send" onClick={() => void send()}>➜ Enviar proposta</button><button className="proposal-delete" onClick={() => void remove()}>Excluir proposta</button></> : null}</aside></div>{message ? <p className="time-error" role="alert">{message}</p> : null}
   </section>;
 }
 
 function PublicProposalPage() {
   const { token = "" } = useParams();
-  const proposal = readLocalProposals().find((item) => item.token === token);
+  const [proposal, setProposal] = useState<LocalProposal | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [decision, setDecision] = useState<"accepted" | "refused" | null>(null);
+  useEffect(() => { setLoading(true); setLoadError(false); void loadPublicProposal(token).then((result)=>setProposal(result.proposal)).catch(()=>setLoadError(true)).finally(()=>setLoading(false)); }, [token]);
   useEffect(() => {
     const elements = Array.from(document.querySelectorAll(".public-proposal-page .proposal-client-content > section, .public-proposal-decision"));
     const observer = new IntersectionObserver((entries) => entries.forEach((entry) => { if (entry.isIntersecting) entry.target.classList.add("in-view"); }), { threshold: 0.16 });
     elements.forEach((element) => observer.observe(element));
     return () => observer.disconnect();
-  }, [token]);
-  if (!proposal) return <main className="public-proposal-page"><section><span>DESIGN HUB</span><h1>Esta proposta não está disponível.</h1><p>O link pode ter expirado ou ter sido removido.</p></section></main>;
-  const expired = new Date(proposal.expiresAt).getTime() < Date.now();
+  }, [token, proposal?.id]);
+  if (loading) return <main className="public-proposal-page"><section><span>DESIGN HUB</span><h1>Carregando proposta...</h1></section></main>;
+  if (!proposal || loadError) return <main className="public-proposal-page"><section><span>DESIGN HUB</span><h1>Esta proposta não está disponível.</h1><p>O link pode ter expirado ou ter sido removido.</p></section></main>;
+  const expired = proposal.status === "expired" || new Date(proposal.expiresAt).getTime() < Date.now();
   if (expired) return <main className="public-proposal-page"><section><span>DESIGN HUB</span><h1>Esta proposta expirou.</h1><p>Peça à equipe uma nova versão para continuar.</p></section></main>;
   const copy = getProposalLocale(proposal.locale);
-  const decide = (status: "accepted" | "refused") => {
-    setDecision(status);
-    const next = readLocalProposals().map((item) => item.id === proposal.id ? { ...item, status } : item);
-    window.localStorage.setItem(PROPOSALS_STORAGE_KEY, JSON.stringify(next));
-    if (status === "accepted") void recordPublicProposalAcceptance({ sourceId: proposal.token, clientName: proposal.clientName || "Cliente", title: proposal.proposalType || "Proposta comercial", detail: proposal.plan || "Proposta aceita pelo cliente" }).catch(() => undefined);
+  const decide = async (status: "accepted" | "refused") => {
+    try { const result=await decidePublicProposal(token,status); setProposal(result.proposal); setDecision(status); }
+    catch { setLoadError(true); }
   };
-  return <main className="public-proposal-page"><div className="public-proposal-orb one" /><div className="public-proposal-orb two" /><header className="public-proposal-brand"><img src={liegePaschoaliniLogo} alt="Liege Paschoalini Studio" /><div><b>LIEGE PASCHOALINI STUDIO</b></div></header><ProposalClientPreview proposal={proposal} /><section className="public-proposal-decision">{decision ? <><span className={decision}>✓</span><h2>{decision === "accepted" ? copy.accepted : copy.refused}</h2><p>{copy.answer}</p></> : <><p>{copy.until} {new Date(proposal.expiresAt).toLocaleDateString(copy.code)}.</p><h2>{copy.continueTogether}</h2><div><button className="gradient-button" onClick={() => decide("accepted")}>{copy.accept}</button><button className="public-proposal-refuse" onClick={() => decide("refused")}>{copy.refuse}</button></div></>}</section></main>;
+  return <main className="public-proposal-page"><div className="public-proposal-orb one" /><div className="public-proposal-orb two" /><header className="public-proposal-brand"><img src={liegePaschoaliniLogo} alt="Liege Paschoalini Studio" /><div><b>LIEGE PASCHOALINI STUDIO</b></div></header><ProposalClientPreview proposal={proposal} /><section className="public-proposal-decision">{decision || proposal.status === "accepted" || proposal.status === "refused" ? <><span className={decision ?? proposal.status}>✓</span><h2>{(decision ?? proposal.status) === "accepted" ? copy.accepted : copy.refused}</h2><p>{copy.answer}</p></> : <><p>{copy.until} {new Date(proposal.expiresAt).toLocaleDateString(copy.code)}.</p><h2>{copy.continueTogether}</h2><div><button className="gradient-button" onClick={() => void decide("accepted")}>{copy.accept}</button><button className="public-proposal-refuse" onClick={() => void decide("refused")}>{copy.refuse}</button></div></>}</section></main>;
 }
 
 type ContractDraft = { title: string; client: string; bodyHtml: string; language: string; type: string; startDate: string; endDate: string; value: string; scope: string; notes: string };

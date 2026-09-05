@@ -346,6 +346,13 @@ async function main() {
   const contractTemplates = await fetchAll(supabase.from("contract_templates").select("id, title, body, created_by, created_at, updated_at").order("created_at"));
   trace("contract-templates");
 
+  let proposalsQuery = supabase.from("proposals").select("id,user_id,client_name,client_email,services,total_value,currency,scope_description,investment_description,deadline_days,locale,proposal_type,plan,pieces_quantity,status,token,expires_at,viewed_at,accepted_at,accepted_name,accepted_signature,accepted_ip,accepted_email,created_at,updated_at").order("created_at");
+  if (!options.allClients && foundClients.length) proposalsQuery = proposalsQuery.in("client_name", foundClients.map((client) => client.name));
+  const proposals = await fetchAll(proposalsQuery);
+  trace("proposals");
+  const proposalTemplates = await fetchAll(supabase.from("proposal_templates").select("id,user_id,name,services,currency,scope_description,investment_description,locale,created_at,updated_at").order("created_at"));
+  trace("proposal-templates");
+
   const mediaManifest = uniqueMediaUrls(
     [...posts, ...calendarPosts, ...invoiceAttachments],
     [
@@ -403,6 +410,8 @@ async function main() {
       contracts: contracts.length,
       contract_acceptances: contractAcceptances.length,
       contract_templates: contractTemplates.length,
+      proposals: proposals.length,
+      proposal_templates: proposalTemplates.length,
       media_manifest: mediaManifest.length,
     },
   };
@@ -431,6 +440,8 @@ async function main() {
   await writeJson(path.join(options.outDir, "contracts.json"), contracts);
   await writeJson(path.join(options.outDir, "contract_acceptances.json"), contractAcceptances);
   await writeJson(path.join(options.outDir, "contract_templates.json"), contractTemplates);
+  await writeJson(path.join(options.outDir, "proposals.json"), proposals);
+  await writeJson(path.join(options.outDir, "proposal_templates.json"), proposalTemplates);
   await writeJson(path.join(options.outDir, "media-manifest.json"), mediaManifest);
 
   console.log(`Export concluido em: ${options.outDir}`);

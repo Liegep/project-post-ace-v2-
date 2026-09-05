@@ -7,6 +7,7 @@ import { loadEnv } from "../config/env.js";
 import { hashPassword } from "../modules/auth/auth.crypto.js";
 import { ensureInvoiceTables } from "../modules/invoices/invoices.repository.js";
 import { ensureContractTables } from "../modules/contracts/contracts.repository.js";
+import { ensureProposalTables } from "../modules/proposals/proposals.repository.js";
 
 type JsonRow = Record<string, unknown>;
 
@@ -26,6 +27,8 @@ type ExportBundle = {
   contracts: JsonRow[];
   contractAcceptances: JsonRow[];
   contractTemplates: JsonRow[];
+  proposals: JsonRow[];
+  proposalTemplates: JsonRow[];
 };
 
 function parseArguments() {
@@ -37,6 +40,7 @@ function parseArguments() {
     commit: args.includes("--commit"),
     onlyInvoices: args.includes("--only-invoices"),
     onlyContracts: args.includes("--only-contracts"),
+    onlyProposals: args.includes("--only-proposals"),
     inputDir:
       inputIndex >= 0 && args[inputIndex + 1]
         ? path.resolve(args[inputIndex + 1])
@@ -68,7 +72,7 @@ async function readOptionalRows(inputDir: string, fileName: string) {
 }
 
 async function loadBundle(inputDir: string): Promise<ExportBundle> {
-  const [clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates] =
+  const [clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates] =
     await Promise.all([
       readRows(inputDir, "clients.json"),
       readRows(inputDir, "profiles.json"),
@@ -85,8 +89,10 @@ async function loadBundle(inputDir: string): Promise<ExportBundle> {
       readOptionalRows(inputDir, "contracts.json"),
       readOptionalRows(inputDir, "contract_acceptances.json"),
       readOptionalRows(inputDir, "contract_templates.json"),
+      readOptionalRows(inputDir, "proposals.json"),
+      readOptionalRows(inputDir, "proposal_templates.json"),
     ]);
-  return { clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates };
+  return { clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates, proposals, proposalTemplates };
 }
 
 function textValue(row: JsonRow, key: string, fallback = "") {
@@ -207,6 +213,8 @@ function validateBundle(bundle: ExportBundle) {
     contracts: bundle.contracts,
     contractAcceptances: bundle.contractAcceptances,
     contractTemplates: bundle.contractTemplates,
+    proposals: bundle.proposals,
+    proposalTemplates: bundle.proposalTemplates,
   })) {
     rows.forEach((row, index) => {
       if (!textValue(row, "id")) errors.push(`${file}[${index}] não possui id.`);
@@ -264,6 +272,8 @@ function printSummary(bundle: ExportBundle, inputDir: string, commit: boolean) {
       contracts: bundle.contracts.length,
       contract_acceptances: bundle.contractAcceptances.length,
       contract_templates: bundle.contractTemplates.length,
+      proposals: bundle.proposals.length,
+      proposal_templates: bundle.proposalTemplates.length,
       media_files_pending_copy: bundle.mediaManifest.length,
     },
   }, null, 2));
@@ -342,6 +352,14 @@ async function importContractRecords(connection: PoolConnection,bundle:ExportBun
   for(const contract of bundle.contracts){const legacyId=textValue(contract,"id");await connection.query(`INSERT INTO contracts (id,client_account_id,title,body_html,language,contract_type,start_date,end_date,contract_value,scope_text,notes,status,created_by_user_id,legacy_id,created_at,updated_at) VALUES (?,?,?,?,?,'',NULL,NULL,'','','',?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE client_account_id=VALUES(client_account_id),title=VALUES(title),body_html=VALUES(body_html),language=VALUES(language),status=VALUES(status),updated_at=VALUES(updated_at)`,[legacyId,clientMap.get(textValue(contract,"client_id")),textValue(contract,"title","Contrato"),textValue(contract,"body"),inferContractLanguage(contract.title),normalizeContractStatus(contract.status),userMap.get(textValue(contract,"created_by"))??null,legacyId,mysqlDateTime(contract.created_at),mysqlDateTime(contract.updated_at)]);}
   for(const acceptance of bundle.contractAcceptances){await connection.query("INSERT INTO contract_acceptances (id,contract_id,user_id,accepted_at,ip_address,legacy_id) VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE accepted_at=VALUES(accepted_at),ip_address=VALUES(ip_address)",[textValue(acceptance,"id"),textValue(acceptance,"contract_id"),userMap.get(textValue(acceptance,"user_id"))??null,mysqlDateTime(acceptance.accepted_at)??new Date(),textValue(acceptance,"ip_address"),textValue(acceptance,"id")]);}
   for(const template of bundle.contractTemplates){const legacyId=textValue(template,"id");await connection.query("INSERT INTO contract_templates (id,name,body_html,language,description,draft_json,created_by_user_id,legacy_id,created_at,updated_at) VALUES (?,?,?,?,?,NULL,?,?,COALESCE(?,CURRENT_TIMESTAMP),COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE name=VALUES(name),body_html=VALUES(body_html),language=VALUES(language),updated_at=VALUES(updated_at)",[legacyId,textValue(template,"title","Modelo de contrato"),textValue(template,"body"),inferContractLanguage(template.title),"Modelo importado da V1.",userMap.get(textValue(template,"created_by"))??null,legacyId,mysqlDateTime(template.created_at),mysqlDateTime(template.updated_at)]);}
+}
+
+function proposalLocale(value: unknown) { const locale=String(value??"").toLowerCase(); return locale.startsWith("en")?"English":locale.startsWith("es")?"Español":locale.startsWith("it")?"Italiano":locale.startsWith("sv")?"Svenska":"Português"; }
+function proposalCurrency(value: unknown) { const currency=String(value??"BRL").toUpperCase(); return currency==="EUR"?"€":currency==="USD"?"$":currency==="SEK"?"kr":"R$"; }
+function proposalStatus(value: unknown) { const status=String(value??"draft").toLowerCase(); return ["draft","sent","viewed","accepted","expired"].includes(status)?status:"draft"; }
+async function importProposalRecords(connection:PoolConnection,bundle:ExportBundle,userMap:Map<string,string>){
+  for(const proposal of bundle.proposals){const legacyId=textValue(proposal,"id");await connection.query(`INSERT INTO proposals (id,token,client_name,client_email,locale,proposal_type,plan,pieces_quantity,scope_description,investment_description,currency,expires_at,status,services_json,accepted_at,viewed_at,created_by_user_id,legacy_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE client_name=VALUES(client_name),client_email=VALUES(client_email),locale=VALUES(locale),proposal_type=VALUES(proposal_type),plan=VALUES(plan),pieces_quantity=VALUES(pieces_quantity),scope_description=VALUES(scope_description),investment_description=VALUES(investment_description),currency=VALUES(currency),expires_at=VALUES(expires_at),status=VALUES(status),services_json=VALUES(services_json),accepted_at=VALUES(accepted_at),viewed_at=VALUES(viewed_at),updated_at=VALUES(updated_at)`,[legacyId,textValue(proposal,"token",crypto.randomBytes(24).toString("hex")),textValue(proposal,"client_name"),textValue(proposal,"client_email"),proposalLocale(proposal.locale),textValue(proposal,"proposal_type","Projeto"),textValue(proposal,"plan"),numberValue(proposal,"pieces_quantity"),textValue(proposal,"scope_description"),textValue(proposal,"investment_description"),proposalCurrency(proposal.currency),mysqlDateTime(proposal.expires_at)??new Date(Date.now()+7*86400000),proposalStatus(proposal.status),JSON.stringify(Array.isArray(proposal.services)?proposal.services:[]),mysqlDateTime(proposal.accepted_at),mysqlDateTime(proposal.viewed_at),userMap.get(textValue(proposal,"user_id"))??null,legacyId,mysqlDateTime(proposal.created_at),mysqlDateTime(proposal.updated_at)]);}
+  for(const template of bundle.proposalTemplates){const legacyId=textValue(template,"id");await connection.query("INSERT INTO proposal_templates (id,name,locale,currency,scope_description,investment_description,services_json,created_by_user_id,legacy_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE name=VALUES(name),locale=VALUES(locale),currency=VALUES(currency),scope_description=VALUES(scope_description),investment_description=VALUES(investment_description),services_json=VALUES(services_json),updated_at=VALUES(updated_at)",[legacyId,textValue(template,"name","Modelo de proposta"),proposalLocale(template.locale),proposalCurrency(template.currency),textValue(template,"scope_description"),textValue(template,"investment_description"),JSON.stringify(Array.isArray(template.services)?template.services:[]),userMap.get(textValue(template,"user_id"))??null,legacyId,mysqlDateTime(template.created_at),mysqlDateTime(template.updated_at)]);}
 }
 
 async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
@@ -457,6 +475,7 @@ async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
 
   await importInvoiceRecords(connection, bundle, clientMap, userMap);
   await importContractRecords(connection,bundle,clientMap,userMap);
+  await importProposalRecords(connection,bundle,userMap);
 }
 
 async function main() {
@@ -477,6 +496,7 @@ async function main() {
   const pool = mysql.createPool({ host: env.DB_HOST, port: env.DB_PORT, user: env.DB_USER, password: env.DB_PASSWORD, database: env.DB_NAME, connectionLimit: 2 });
   await ensureInvoiceTables(pool);
   await ensureContractTables(pool);
+  await ensureProposalTables(pool);
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
@@ -487,6 +507,9 @@ async function main() {
       const clientMap=await resolveExistingClients(connection,bundle.clients);
       const userMap=await resolveExistingUsers(connection,bundle.profiles);
       await importContractRecords(connection,bundle,clientMap,userMap);
+    } else if (options.onlyProposals) {
+      const userMap=await resolveExistingUsers(connection,bundle.profiles);
+      await importProposalRecords(connection,bundle,userMap);
     } else {
       await importBundle(connection, bundle);
     }

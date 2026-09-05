@@ -565,3 +565,44 @@ CREATE TABLE IF NOT EXISTS mcp_audit_log (
   KEY idx_mcp_audit_user_created (user_id, created_at),
   CONSTRAINT fk_mcp_audit_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS proposals (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  token VARCHAR(160) NOT NULL,
+  client_name VARCHAR(255) NOT NULL,
+  client_email VARCHAR(320) NOT NULL DEFAULT '',
+  locale VARCHAR(30) NOT NULL DEFAULT 'Português',
+  proposal_type VARCHAR(120) NOT NULL DEFAULT 'Projeto',
+  plan VARCHAR(255) NOT NULL DEFAULT '',
+  pieces_quantity INT NOT NULL DEFAULT 0,
+  scope_description LONGTEXT NOT NULL,
+  investment_description LONGTEXT NOT NULL,
+  currency VARCHAR(10) NOT NULL DEFAULT 'R$',
+  expires_at DATETIME(3) NOT NULL,
+  status ENUM('draft','sent','viewed','accepted','refused','expired') NOT NULL DEFAULT 'draft',
+  services_json JSON NOT NULL,
+  accepted_at DATETIME(3) NULL,
+  viewed_at DATETIME(3) NULL,
+  created_by_user_id CHAR(36) NULL,
+  legacy_id VARCHAR(120) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_proposals_token (token),
+  UNIQUE KEY uq_proposals_legacy_id (legacy_id),
+  CONSTRAINT fk_proposals_creator FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS proposal_templates (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  locale VARCHAR(30) NOT NULL DEFAULT 'Português',
+  currency VARCHAR(10) NOT NULL DEFAULT 'R$',
+  scope_description LONGTEXT NOT NULL,
+  investment_description LONGTEXT NOT NULL,
+  services_json JSON NOT NULL,
+  created_by_user_id CHAR(36) NULL,
+  legacy_id VARCHAR(120) NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_proposal_templates_legacy_id (legacy_id),
+  CONSTRAINT fk_proposal_templates_creator FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

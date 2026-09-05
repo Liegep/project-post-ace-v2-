@@ -133,6 +133,13 @@ export type ContractRecord = {
   acceptedAt: string | null; acceptedByUserId: string | null;
 };
 export type ContractTemplateRecord = { id: string; name: string; bodyHtml: string; language: string; description: string; draft: Partial<Omit<ContractRecord, "id" | "clientAccountId" | "clientName" | "clientSlug" | "status" | "createdAt" | "updatedAt" | "acceptedAt" | "acceptedByUserId">>; custom: true; createdAt: string; updatedAt: string };
+export type ProposalRecord = {
+  id: string; token: string; clientName: string; email: string; locale: string; proposalType: string; plan: string;
+  pieces: number; scope: string; investment: string; currency: string; expiresAt: string;
+  status: "draft" | "sent" | "viewed" | "accepted" | "refused" | "expired";
+  services: Array<{ name: string; value: number; description: string }>;
+  acceptedAt?: string | null; viewedAt?: string | null; createdAt?: string; updatedAt?: string;
+};
 
 export type ManagedUser = {
   id: string;
@@ -652,6 +659,12 @@ export async function createAdminContractTemplate(input: { name: string; bodyHtm
 export async function deleteAdminContractTemplate(templateId: string) { return sendJson<{ ok: boolean }>(`/api/contract-templates/${templateId}`, { method: "DELETE" }); }
 export async function loadPendingPortalContractBySlug(slug: string) { const account=await findPortalAccountBySlug(slug); return fetchJson<{ contract: ContractRecord | null }>(`/api/portal/accounts/${account.clientAccountId}/contracts/pending`); }
 export async function acceptPortalContractBySlug(slug: string, contractId: string) { const account=await findPortalAccountBySlug(slug); return sendJson<{ ok: true; contract: ContractRecord }>(`/api/portal/accounts/${account.clientAccountId}/contracts/${contractId}/accept`, { method: "POST" }); }
+export async function listAdminProposals() { return fetchJson<{ items: ProposalRecord[] }>("/api/proposals"); }
+export async function createAdminProposal(input: Omit<ProposalRecord, "id" | "token" | "acceptedAt" | "viewedAt" | "createdAt" | "updatedAt">) { return sendJson<{ proposal: ProposalRecord }>("/api/proposals", { method: "POST", body: JSON.stringify(input) }); }
+export async function updateAdminProposal(proposalId: string, input: Partial<Omit<ProposalRecord, "id" | "token" | "acceptedAt" | "viewedAt" | "createdAt" | "updatedAt">>) { return sendJson<{ proposal: ProposalRecord }>(`/api/proposals/${proposalId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+export async function deleteAdminProposal(proposalId: string) { return sendJson<{ ok: boolean }>(`/api/proposals/${proposalId}`, { method: "DELETE" }); }
+export async function loadPublicProposal(token: string) { return fetchJson<{ proposal: ProposalRecord }>(`/api/public/proposals/${encodeURIComponent(token)}`); }
+export async function decidePublicProposal(token: string, status: "accepted" | "refused") { return sendJson<{ proposal: ProposalRecord }>(`/api/public/proposals/${encodeURIComponent(token)}/decision`, { method: "POST", body: JSON.stringify({ status }) }); }
 
 export async function loadClientPortalBySlug(slug: string): Promise<ClientPortalPreview> {
   const matchedAccount = await findPortalAccountBySlug(slug);

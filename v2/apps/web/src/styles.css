@@ -8805,6 +8805,9 @@ button {
   .time-report-actions > button { justify-self: start; }
 }
 
+.proposal-status.viewed { background: #e6f5ff; color: #3177a3; }
+.proposal-status.expired { background: #ffecef; color: #bd5268; }
+
 /* Layout compacto do controle de tempo, inspirado na organização do Clockify. */
 .time-workspace {
   align-content: start;
