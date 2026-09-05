@@ -337,6 +337,15 @@ async function main() {
   const invoiceAttachments = await fetchInBatches(invoiceIds, (ids) => supabase.from("invoice_attachments").select("id, invoice_id, created_at, file_name, file_url, uploaded_by").in("invoice_id", ids).order("created_at"));
   trace("invoice-attachments");
 
+  const contractsQuery = supabase.from("contracts").select("id, client_id, title, body, status, created_by, created_at, updated_at").in("client_id", foundClientIds).order("created_at");
+  const contracts = foundClientIds.length ? await fetchAll(contractsQuery) : [];
+  trace("contracts");
+  const contractIds = contracts.map((contract) => contract.id);
+  const contractAcceptances = await fetchInBatches(contractIds, (ids) => supabase.from("contract_acceptances").select("id, contract_id, user_id, accepted_at, ip_address").in("contract_id", ids).order("accepted_at"));
+  trace("contract-acceptances");
+  const contractTemplates = await fetchAll(supabase.from("contract_templates").select("id, title, body, created_by, created_at, updated_at").order("created_at"));
+  trace("contract-templates");
+
   const mediaManifest = uniqueMediaUrls(
     [...posts, ...calendarPosts, ...invoiceAttachments],
     [
@@ -391,6 +400,9 @@ async function main() {
       invoices: invoices.length,
       invoice_items: invoiceItems.length,
       invoice_attachments: invoiceAttachments.length,
+      contracts: contracts.length,
+      contract_acceptances: contractAcceptances.length,
+      contract_templates: contractTemplates.length,
       media_manifest: mediaManifest.length,
     },
   };
@@ -416,6 +428,9 @@ async function main() {
   await writeJson(path.join(options.outDir, "invoices.json"), invoices);
   await writeJson(path.join(options.outDir, "invoice_items.json"), invoiceItems);
   await writeJson(path.join(options.outDir, "invoice_attachments.json"), invoiceAttachments);
+  await writeJson(path.join(options.outDir, "contracts.json"), contracts);
+  await writeJson(path.join(options.outDir, "contract_acceptances.json"), contractAcceptances);
+  await writeJson(path.join(options.outDir, "contract_templates.json"), contractTemplates);
   await writeJson(path.join(options.outDir, "media-manifest.json"), mediaManifest);
 
   console.log(`Export concluido em: ${options.outDir}`);

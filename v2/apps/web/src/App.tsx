@@ -51,7 +51,6 @@ import {
   listAdminHashtagGroupsBySlug,
   type HashtagGroup,
   loadDashboardOverview,
-  recordPortalContractAcceptance,
   recordPublicProposalAcceptance,
   type DashboardSubmission,
   type DashboardClientActivity,
@@ -114,6 +113,13 @@ import {
   listPortalAppointmentsBySlug,
   listPortalReportsBySlug,
   listPortalInvoicesBySlug,
+  listAdminContracts,
+  createAdminContract,
+  listAdminContractTemplates,
+  createAdminContractTemplate,
+  loadPendingPortalContractBySlug,
+  acceptPortalContractBySlug,
+  type ContractRecord as ApiContractRecord,
   type TextComment,
   type TextDocument,
 } from "./api";
@@ -7004,24 +7010,28 @@ function PublicProposalPage() {
   return <main className="public-proposal-page"><div className="public-proposal-orb one" /><div className="public-proposal-orb two" /><header className="public-proposal-brand"><img src={liegePaschoaliniLogo} alt="Liege Paschoalini Studio" /><div><b>LIEGE PASCHOALINI STUDIO</b></div></header><ProposalClientPreview proposal={proposal} /><section className="public-proposal-decision">{decision ? <><span className={decision}>✓</span><h2>{decision === "accepted" ? copy.accepted : copy.refused}</h2><p>{copy.answer}</p></> : <><p>{copy.until} {new Date(proposal.expiresAt).toLocaleDateString(copy.code)}.</p><h2>{copy.continueTogether}</h2><div><button className="gradient-button" onClick={() => decide("accepted")}>{copy.accept}</button><button className="public-proposal-refuse" onClick={() => decide("refused")}>{copy.refuse}</button></div></>}</section></main>;
 }
 
-type ContractDraft = { title: string; client: string; language: string; type: string; startDate: string; endDate: string; value: string; scope: string; notes: string };
-const emptyContractDraft = (): ContractDraft => ({ title: "", client: "", language: "Português", type: "Prestação de serviços", startDate: "", endDate: "", value: "", scope: "", notes: "" });
-type ContractRecord = ContractDraft & { id: string; clientSlug: string; status: "pending" | "accepted"; createdAt: string; acceptedAt?: string };
-const CONTRACTS_STORAGE_KEY = "designhub-v2-contracts";
-type ContractTemplate = { id: string; name: string; language: string; description: string; draft: Partial<ContractDraft>; custom?: boolean };
-const CONTRACT_TEMPLATES_STORAGE_KEY = "designhub-v2-contract-templates";
+type ContractDraft = { title: string; client: string; bodyHtml: string; language: string; type: string; startDate: string; endDate: string; value: string; scope: string; notes: string };
+const emptyContractDraft = (): ContractDraft => ({ title: "", client: "", bodyHtml: "", language: "Português", type: "Prestação de serviços", startDate: "", endDate: "", value: "", scope: "", notes: "" });
+type ContractRecord = ApiContractRecord;
+type ContractTemplate = { id: string; name: string; bodyHtml?: string; language: string; description: string; draft: Partial<ContractDraft>; custom?: boolean };
 const CONTRACT_MODELS: ContractTemplate[] = [
   { id: "services", name: "Prestação de serviços", language: "Português", description: "Modelo completo para projetos de conteúdo e design.", draft: { title: "Contrato de prestação de serviços", type: "Prestação de serviços", scope: "Objeto, escopo, prazos e entregas do projeto serão definidos entre as partes." } },
   { id: "monthly", name: "Contrato mensal", language: "Português", description: "Ideal para contratos recorrentes e gestão contínua.", draft: { title: "Contrato de serviços mensais", type: "Mensalidade", scope: "A contratada prestará serviços recorrentes conforme o plano e o calendário acordados." } },
   { id: "consulting", name: "Consultoria", language: "Português", description: "Base para projetos estratégicos e consultorias.", draft: { title: "Contrato de consultoria", type: "Consultoria", scope: "A consultoria será conduzida em encontros e entregas definidos no cronograma do projeto." } },
 ];
-function readContractRecords() { try { return JSON.parse(window.localStorage.getItem(CONTRACTS_STORAGE_KEY) ?? "[]") as ContractRecord[]; } catch { return []; } }
-function writeContractRecords(records: ContractRecord[]) { window.localStorage.setItem(CONTRACTS_STORAGE_KEY, JSON.stringify(records)); }
-function readContractTemplates() { try { return JSON.parse(window.localStorage.getItem(CONTRACT_TEMPLATES_STORAGE_KEY) ?? "[]") as ContractTemplate[]; } catch { return []; } }
-function writeContractTemplates(templates: ContractTemplate[]) { window.localStorage.setItem(CONTRACT_TEMPLATES_STORAGE_KEY, JSON.stringify(templates)); }
+function contractRecordDraft(record: ContractRecord): ContractDraft { return { title: record.title, client: record.clientName, bodyHtml: record.bodyHtml, language: record.language, type: record.contractType, startDate: record.startDate ?? "", endDate: record.endDate ?? "", value: record.contractValue, scope: record.scope, notes: record.notes }; }
+function sanitizedContractHtml(source: string) {
+  const documentValue = new DOMParser().parseFromString(source, "text/html");
+  documentValue.querySelectorAll("script,style,iframe,object,embed,form,link,meta").forEach((node) => node.remove());
+  documentValue.querySelectorAll("*").forEach((node) => [...node.attributes].forEach((attribute) => {
+    if (attribute.name.toLowerCase().startsWith("on") || /^(javascript|data):/i.test(attribute.value.trim())) node.removeAttribute(attribute.name);
+  }));
+  return documentValue.body.innerHTML;
+}
 
 function ContractDocumentPreview({ contract, clientName }: { contract: ContractDraft; clientName?: string }) {
-  return <article className="contract-document-preview"><header><span>DESIGN HUB · CONTRATO · {contract.language || "Português"}</span><h1>{contract.title || "Novo contrato"}</h1><p>Documento preparado para {clientName || contract.client || "seu cliente"}</p></header><div className="contract-preview-meta"><div><small>Tipo</small><strong>{contract.type || "—"}</strong></div><div><small>Vigência</small><strong>{contract.startDate || "—"} {contract.endDate ? `até ${contract.endDate}` : ""}</strong></div><div><small>Valor</small><strong>{contract.value || "A definir"}</strong></div></div><section><small>ESCOPO E CONDIÇÕES</small><p>{contract.scope || "O escopo do contrato será apresentado aqui."}</p></section>{contract.notes ? <section><small>OBSERVAÇÕES</small><p>{contract.notes}</p></section> : null}<footer><span>Li e aceito os termos deste contrato.</span><b>Assinatura digital</b></footer></article>;
+  const legacyBody = useMemo(() => sanitizedContractHtml(contract.bodyHtml), [contract.bodyHtml]);
+  return <article className="contract-document-preview"><header><span>DESIGN HUB · CONTRATO · {contract.language || "Português"}</span><h1>{contract.title || "Novo contrato"}</h1><p>Documento preparado para {clientName || contract.client || "seu cliente"}</p></header>{contract.bodyHtml ? <section className="contract-rich-body" dangerouslySetInnerHTML={{ __html: legacyBody }} /> : <><div className="contract-preview-meta"><div><small>Tipo</small><strong>{contract.type || "—"}</strong></div><div><small>Vigência</small><strong>{contract.startDate || "—"} {contract.endDate ? `até ${contract.endDate}` : ""}</strong></div><div><small>Valor</small><strong>{contract.value || "A definir"}</strong></div></div><section><small>ESCOPO E CONDIÇÕES</small><p>{contract.scope || "O escopo do contrato será apresentado aqui."}</p></section>{contract.notes ? <section><small>OBSERVAÇÕES</small><p>{contract.notes}</p></section> : null}</>}<footer><span>Li e aceito os termos deste contrato.</span><b>Assinatura digital</b></footer></article>;
 }
 
 function ContractsWorkspace({ newContractSignal = 0 }: { newContractSignal?: number }) {
@@ -7030,8 +7040,8 @@ function ContractsWorkspace({ newContractSignal = 0 }: { newContractSignal?: num
   const [clients, setClients] = useState<AdminClientOption[]>([]);
   const [clientSlug, setClientSlug] = useState(recoveredDraft?.clientSlug ?? "");
   const [draft, setDraft] = useState<ContractDraft>(recoveredDraft?.draft ?? emptyContractDraft);
-  const [records, setRecords] = useState<ContractRecord[]>(readContractRecords);
-  const [customTemplates, setCustomTemplates] = useState<ContractTemplate[]>(readContractTemplates);
+  const [records, setRecords] = useState<ContractRecord[]>([]);
+  const [customTemplates, setCustomTemplates] = useState<ContractTemplate[]>([]);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [templateModalOpen, setTemplateModalOpen] = useState(false);
   const [templateName, setTemplateName] = useState("");
@@ -7041,7 +7051,7 @@ function ContractsWorkspace({ newContractSignal = 0 }: { newContractSignal?: num
   const [draftState, setDraftState] = useState<AutosaveState>(recoveredDraft ? "recovered" : "idle");
   const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
   const committedDraftRef = useRef("");
-  useEffect(() => { void listAdminClients().then((result) => { setClients(result.items); setClientSlug((current) => current || result.items[0]?.slug || ""); }).catch(() => setClients([])); }, []);
+  useEffect(() => { void Promise.all([listAdminClients(), listAdminContracts(), listAdminContractTemplates()]).then(([clientResult, contractResult, templateResult]) => { setClients(clientResult.items); setClientSlug((current) => current || clientResult.items[0]?.slug || ""); setRecords(contractResult.items); setCustomTemplates(templateResult.items.map((template) => ({ id: template.id, name: template.name, bodyHtml: template.bodyHtml, language: template.language, description: template.description, draft: template.draft as Partial<ContractDraft>, custom: true }))); }).catch(() => { setClients([]); setRecords([]); setCustomTemplates([]); }); }, []);
   useEffect(() => { if (newContractSignal > 0) { setDraft(emptyContractDraft()); setSelectedModel(""); setSaved(false); setPreviewOpen(false); committedDraftRef.current = ""; try { window.localStorage.removeItem(recoveryKey); } catch { /* Recovery remains optional. */ } setDraftState("idle"); } }, [newContractSignal]);
   useEffect(() => {
     const draftJson = JSON.stringify({ draft, clientSlug, selectedModel });
@@ -7057,21 +7067,21 @@ function ContractsWorkspace({ newContractSignal = 0 }: { newContractSignal?: num
   const selectedClient = clients.find((client) => client.slug === clientSlug);
   const allTemplates = [...CONTRACT_MODELS, ...customTemplates];
   const applyModel = (modelId: string) => { setSelectedModel(modelId); const model = allTemplates.find((item) => item.id === modelId); if (model) setDraft({ ...emptyContractDraft(), ...model.draft, language: model.language || model.draft.language || "Português" }); };
-  const saveTemplate = () => { if (!templateName.trim()) return; const template: ContractTemplate = { id: crypto.randomUUID(), name: templateName.trim(), language: templateLanguage, description: "Modelo criado por você.", draft: { ...draft, language: templateLanguage }, custom: true }; const next = [template, ...customTemplates]; setCustomTemplates(next); writeContractTemplates(next); setSelectedModel(template.id); setTemplateName(""); setTemplateModalOpen(false); };
-  const save = () => { if (!draft.title.trim() || !clientSlug) return; const record: ContractRecord = { ...draft, title: draft.title.trim(), clientSlug, client: selectedClient?.name || draft.client, id: crypto.randomUUID(), status: "pending", createdAt: new Date().toISOString() }; const next = [record, ...records]; setRecords(next); writeContractRecords(next); committedDraftRef.current = JSON.stringify({ draft, clientSlug, selectedModel }); try { window.localStorage.removeItem(recoveryKey); } catch { /* Recovery remains optional. */ } setDraftSavedAt(new Date()); setDraftState("saved"); setSaved(true); };
+  const saveTemplate = async () => { if (!templateName.trim()) return; try { const response=await createAdminContractTemplate({name:templateName.trim(),bodyHtml:draft.bodyHtml,language:templateLanguage,description:"Modelo criado por você.",draft:{...draft,language:templateLanguage}}); const template:ContractTemplate={id:response.template.id,name:response.template.name,bodyHtml:response.template.bodyHtml,language:response.template.language,description:response.template.description,draft:response.template.draft as Partial<ContractDraft>,custom:true}; setCustomTemplates((current)=>[template,...current]); setSelectedModel(template.id); setTemplateName(""); setTemplateModalOpen(false); } catch { setSaved(false); } };
+  const save = async () => { if (!draft.title.trim() || !selectedClient) return; try { const response=await createAdminContract({clientAccountId:selectedClient.id,title:draft.title.trim(),bodyHtml:draft.bodyHtml,language:draft.language,contractType:draft.type,startDate:draft.startDate||null,endDate:draft.endDate||null,contractValue:draft.value,scope:draft.scope,notes:draft.notes,status:"pending"}); setRecords((current)=>[response.contract,...current]); committedDraftRef.current=JSON.stringify({draft,clientSlug,selectedModel}); try{window.localStorage.removeItem(recoveryKey);}catch{/* Recovery remains optional. */} setDraftSavedAt(new Date());setDraftState("saved");setSaved(true); } catch { setDraftState("error"); setSaved(false); } };
   return <section className="contracts-workspace">
     <div className="contracts-workspace-grid"><div className="contracts-form-card">
       <header><div><span>CONTRATO</span><h2>Novo contrato</h2><p>Preencha os dados abaixo para registrar um novo contrato na operação.</p></div><div className="contracts-form-mark">✦</div></header>
       <div className="contracts-form-grid two"><label>Título do contrato<input autoFocus value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Ex.: Contrato de gestão de conteúdo" /></label><label>Enviar para o cliente<select value={clientSlug} onChange={(event) => setClientSlug(event.target.value)}><option value="">Selecione um cliente</option>{clients.map((client) => <option key={client.id} value={client.slug}>{client.name}</option>)}</select></label></div>
       <label className="contracts-model-picker">Usar um modelo pronto<select value={selectedModel} onChange={(event) => applyModel(event.target.value)}><option value="">Começar em branco</option>{allTemplates.map((model) => <option key={model.id} value={model.id}>{model.name} · {model.language}</option>)}</select></label>
-      <div className="contracts-form-grid three"><label>Idioma<select value={draft.language} onChange={(event) => setDraft({ ...draft, language: event.target.value })}><option>Português</option><option>English</option><option>Español</option><option>Français</option><option>Italiano</option><option>Deutsch</option></select></label><label>Tipo<select value={draft.type} onChange={(event) => setDraft({ ...draft, type: event.target.value })}><option>Prestação de serviços</option><option>Mensalidade</option><option>Consultoria</option><option>Parceria</option></select></label><label>Início<input type="date" value={draft.startDate} onChange={(event) => setDraft({ ...draft, startDate: event.target.value })} /></label></div><div className="contracts-form-grid two"><label>Vencimento<input type="date" value={draft.endDate} onChange={(event) => setDraft({ ...draft, endDate: event.target.value })} /></label><label>Valor contratado<input value={draft.value} onChange={(event) => setDraft({ ...draft, value: event.target.value })} placeholder="R$ 0,00" /></label></div>
+      <div className="contracts-form-grid three"><label>Idioma<select value={draft.language} onChange={(event) => setDraft({ ...draft, language: event.target.value })}><option>Português</option><option>English</option><option>Español</option><option>Français</option><option>Italiano</option><option>Deutsch</option><option>Svenska</option></select></label><label>Tipo<select value={draft.type} onChange={(event) => setDraft({ ...draft, type: event.target.value })}><option>Prestação de serviços</option><option>Mensalidade</option><option>Consultoria</option><option>Parceria</option></select></label><label>Início<input type="date" value={draft.startDate} onChange={(event) => setDraft({ ...draft, startDate: event.target.value })} /></label></div><div className="contracts-form-grid two"><label>Vencimento<input type="date" value={draft.endDate} onChange={(event) => setDraft({ ...draft, endDate: event.target.value })} /></label><label>Valor contratado<input value={draft.value} onChange={(event) => setDraft({ ...draft, value: event.target.value })} placeholder="R$ 0,00" /></label></div>
       <div className="contracts-form-grid two"><label className="wide">Escopo resumido<textarea value={draft.scope} onChange={(event) => setDraft({ ...draft, scope: event.target.value })} placeholder="Descreva os serviços e entregas incluídos." /></label></div>
       <label className="contracts-notes">Observações internas<textarea value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} placeholder="Condições, responsáveis e observações importantes." /></label>
       <footer><AutosaveIndicator state={draftState} savedAt={draftSavedAt} savedLabel="Rascunho protegido" /><div><button className="ghost-button" onClick={() => setPreviewOpen(true)}>Visualizar prévia</button><button className="gradient-button" onClick={save} disabled={!draft.title.trim() || !clientSlug}>Salvar contrato</button></div></footer>
       {saved ? <p className="contracts-saved" role="status">✓ Contrato salvo como rascunho.</p> : null}
-    </div><aside className="contracts-library"><header><div><span>BIBLIOTECA</span><h3>Modelos prontos</h3></div><b>{allTemplates.length}</b></header>{allTemplates.map((model) => <button key={model.id} className={selectedModel === model.id ? "selected" : ""} onClick={() => applyModel(model.id)}><strong>{model.name}</strong><small>{model.language} · {model.description}</small></button>)}<button className="contracts-create-template" onClick={() => setTemplateModalOpen(true)}>＋ Salvar formulário como modelo</button>{records.length ? <><header className="contracts-library-records"><div><span>ENVIADOS</span><h3>Contratos recentes</h3></div><b>{records.length}</b></header>{records.slice(0, 4).map((record) => <div className="contracts-library-record" key={record.id}><strong>{record.title}</strong><small>{record.client} · {record.status === "accepted" ? "Aceito" : "Aguardando aceite"}</small></div>)}</> : null}</aside></div>
+    </div><aside className="contracts-library"><header><div><span>BIBLIOTECA</span><h3>Modelos prontos</h3></div><b>{allTemplates.length}</b></header>{allTemplates.map((model) => <button key={model.id} className={selectedModel === model.id ? "selected" : ""} onClick={() => applyModel(model.id)}><strong>{model.name}</strong><small>{model.language} · {model.description}</small></button>)}<button className="contracts-create-template" onClick={() => setTemplateModalOpen(true)}>＋ Salvar formulário como modelo</button>{records.length ? <><header className="contracts-library-records"><div><span>ENVIADOS</span><h3>Contratos recentes</h3></div><b>{records.length}</b></header>{records.slice(0, 4).map((record) => <div className="contracts-library-record" key={record.id}><strong>{record.title}</strong><small>{record.clientName} · {record.status === "accepted" ? "Aceito" : record.status === "cancelled" ? "Cancelado" : "Aguardando aceite"}</small></div>)}</> : null}</aside></div>
     {previewOpen ? <div className="modal-backdrop" onClick={() => setPreviewOpen(false)}><section className="contract-preview-modal" onClick={(event) => event.stopPropagation()}><header><div><span>PRÉVIA PARA O CLIENTE</span><h2>Como o contrato será exibido</h2></div><button className="icon-close" onClick={() => setPreviewOpen(false)}>×</button></header><ContractDocumentPreview contract={draft} clientName={selectedClient?.name || draft.client} /><footer><button className="ghost-button" onClick={() => setPreviewOpen(false)}>Voltar para edição</button></footer></section></div> : null}
-    {templateModalOpen ? <div className="modal-backdrop" onClick={() => setTemplateModalOpen(false)}><section className="contract-template-modal" onClick={(event) => event.stopPropagation()}><header><div><span>NOVO MODELO</span><h2>Salvar na biblioteca</h2><p>O formulário atual ficará disponível para reutilização.</p></div><button className="icon-close" onClick={() => setTemplateModalOpen(false)}>×</button></header><label>Nome do modelo<input autoFocus value={templateName} onChange={(event) => setTemplateName(event.target.value)} placeholder="Ex.: Contrato mensal em inglês" /></label><label>Idioma<select value={templateLanguage} onChange={(event) => setTemplateLanguage(event.target.value)}><option>Português</option><option>English</option><option>Español</option><option>Français</option><option>Italiano</option><option>Deutsch</option></select></label><footer><button className="ghost-button" onClick={() => setTemplateModalOpen(false)}>Cancelar</button><button className="gradient-button" disabled={!templateName.trim()} onClick={saveTemplate}>Salvar modelo</button></footer></section></div> : null}
+    {templateModalOpen ? <div className="modal-backdrop" onClick={() => setTemplateModalOpen(false)}><section className="contract-template-modal" onClick={(event) => event.stopPropagation()}><header><div><span>NOVO MODELO</span><h2>Salvar na biblioteca</h2><p>O formulário atual ficará disponível para reutilização.</p></div><button className="icon-close" onClick={() => setTemplateModalOpen(false)}>×</button></header><label>Nome do modelo<input autoFocus value={templateName} onChange={(event) => setTemplateName(event.target.value)} placeholder="Ex.: Contrato mensal em inglês" /></label><label>Idioma<select value={templateLanguage} onChange={(event) => setTemplateLanguage(event.target.value)}><option>Português</option><option>English</option><option>Español</option><option>Français</option><option>Italiano</option><option>Deutsch</option><option>Svenska</option></select></label><footer><button className="ghost-button" onClick={() => setTemplateModalOpen(false)}>Cancelar</button><button className="gradient-button" disabled={!templateName.trim()} onClick={saveTemplate}>Salvar modelo</button></footer></section></div> : null}
   </section>;
 }
 
@@ -7080,17 +7090,13 @@ function ClientContractAcceptance({ slug, accountName, canAccept = true }: { slu
   const [contract, setContract] = useState<ContractRecord | null>(null);
   const [accepted, setAccepted] = useState(false);
   useEffect(() => {
-    const pending = readContractRecords().find((item) => item.clientSlug === slug && item.status === "pending") ?? null;
-    setContract(pending);
-    setAccepted(window.localStorage.getItem(`designhub-v2-contract-accepted:${slug}:${pending?.id ?? ""}`) === "1");
+    void loadPendingPortalContractBySlug(slug).then((response) => { setContract(response.contract); setAccepted(!response.contract); }).catch(() => setContract(null));
   }, [slug]);
   if (!canAccept || !contract || accepted) return null;
   const accept = () => {
-    const next = readContractRecords().map((item) => item.id === contract.id ? { ...item, status: "accepted" as const, acceptedAt: new Date().toISOString() } : item);
-    writeContractRecords(next); window.localStorage.setItem(`designhub-v2-contract-accepted:${slug}:${contract.id}`, "1"); setAccepted(true);
-    void recordPortalContractAcceptance(slug, { sourceId: contract.id, title: contract.title, detail: contract.type || "Contrato aceito pelo cliente" }).catch(() => undefined);
+    void acceptPortalContractBySlug(slug,contract.id).then(()=>setAccepted(true));
   };
-  return <div className="contract-acceptance-backdrop"><section className="contract-acceptance-modal"><header><span>{t("PRIMEIRO ACESSO")}</span><h1>{t("Antes de começar, leia seu contrato")}</h1><p>{accountName}, {t("este documento foi disponibilizado para sua conta. Revise os termos com calma.")}</p></header><div className="contract-acceptance-paper"><ContractDocumentPreview contract={contract} clientName={accountName} /></div><footer><small>{t("Ao clicar, você confirma que leu e está de acordo com os termos apresentados.")}</small><button className="gradient-button" onClick={accept}>{t("Li e aceito o contrato")}</button></footer></section></div>;
+  return <div className="contract-acceptance-backdrop"><section className="contract-acceptance-modal"><header><span>{t("PRIMEIRO ACESSO")}</span><h1>{t("Antes de começar, leia seu contrato")}</h1><p>{accountName}, {t("este documento foi disponibilizado para sua conta. Revise os termos com calma.")}</p></header><div className="contract-acceptance-paper"><ContractDocumentPreview contract={contractRecordDraft(contract)} clientName={accountName} /></div><footer><small>{t("Ao clicar, você confirma que leu e está de acordo com os termos apresentados.")}</small><button className="gradient-button" onClick={accept}>{t("Li e aceito o contrato")}</button></footer></section></div>;
 }
 
 function InternalAreaPage({ session, onLogout }: { session: SessionUser | null; onLogout: () => void }) {

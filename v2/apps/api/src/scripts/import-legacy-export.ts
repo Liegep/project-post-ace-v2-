@@ -6,6 +6,7 @@ import mysql, { type PoolConnection, type RowDataPacket } from "mysql2/promise";
 import { loadEnv } from "../config/env.js";
 import { hashPassword } from "../modules/auth/auth.crypto.js";
 import { ensureInvoiceTables } from "../modules/invoices/invoices.repository.js";
+import { ensureContractTables } from "../modules/contracts/contracts.repository.js";
 
 type JsonRow = Record<string, unknown>;
 
@@ -22,6 +23,9 @@ type ExportBundle = {
   invoices: JsonRow[];
   invoiceItems: JsonRow[];
   invoiceAttachments: JsonRow[];
+  contracts: JsonRow[];
+  contractAcceptances: JsonRow[];
+  contractTemplates: JsonRow[];
 };
 
 function parseArguments() {
@@ -32,6 +36,7 @@ function parseArguments() {
   return {
     commit: args.includes("--commit"),
     onlyInvoices: args.includes("--only-invoices"),
+    onlyContracts: args.includes("--only-contracts"),
     inputDir:
       inputIndex >= 0 && args[inputIndex + 1]
         ? path.resolve(args[inputIndex + 1])
@@ -63,7 +68,7 @@ async function readOptionalRows(inputDir: string, fileName: string) {
 }
 
 async function loadBundle(inputDir: string): Promise<ExportBundle> {
-  const [clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments] =
+  const [clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates] =
     await Promise.all([
       readRows(inputDir, "clients.json"),
       readRows(inputDir, "profiles.json"),
@@ -77,8 +82,11 @@ async function loadBundle(inputDir: string): Promise<ExportBundle> {
       readOptionalRows(inputDir, "invoices.json"),
       readOptionalRows(inputDir, "invoice_items.json"),
       readOptionalRows(inputDir, "invoice_attachments.json"),
+      readOptionalRows(inputDir, "contracts.json"),
+      readOptionalRows(inputDir, "contract_acceptances.json"),
+      readOptionalRows(inputDir, "contract_templates.json"),
     ]);
-  return { clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments };
+  return { clients, profiles, assignments, columns, posts, tags, comments, calendarPosts, mediaManifest, invoices, invoiceItems, invoiceAttachments, contracts, contractAcceptances, contractTemplates };
 }
 
 function textValue(row: JsonRow, key: string, fallback = "") {
@@ -182,6 +190,7 @@ function validateBundle(bundle: ExportBundle) {
   const columnIds = new Set(bundle.columns.map((row) => textValue(row, "id")));
   const postIds = new Set(bundle.posts.map((row) => textValue(row, "id")));
   const invoiceIds = new Set(bundle.invoices.map((row) => textValue(row, "id")));
+  const contractIds = new Set(bundle.contracts.map((row) => textValue(row, "id")));
 
   for (const [file, rows] of Object.entries({
     clients: bundle.clients,
@@ -195,6 +204,9 @@ function validateBundle(bundle: ExportBundle) {
     invoices: bundle.invoices,
     invoiceItems: bundle.invoiceItems,
     invoiceAttachments: bundle.invoiceAttachments,
+    contracts: bundle.contracts,
+    contractAcceptances: bundle.contractAcceptances,
+    contractTemplates: bundle.contractTemplates,
   })) {
     rows.forEach((row, index) => {
       if (!textValue(row, "id")) errors.push(`${file}[${index}] não possui id.`);
@@ -228,6 +240,8 @@ function validateBundle(bundle: ExportBundle) {
   bundle.invoices.forEach((row) => { if (!clientIds.has(textValue(row, "client_id"))) errors.push(`Fatura ${textValue(row, "id")} aponta para cliente ausente.`); });
   bundle.invoiceItems.forEach((row) => { if (!invoiceIds.has(textValue(row, "invoice_id"))) errors.push(`Item ${textValue(row, "id")} aponta para fatura ausente.`); });
   bundle.invoiceAttachments.forEach((row) => { if (!invoiceIds.has(textValue(row, "invoice_id"))) errors.push(`Anexo ${textValue(row, "id")} aponta para fatura ausente.`); });
+  bundle.contracts.forEach((row) => { if (!clientIds.has(textValue(row, "client_id"))) errors.push(`Contrato ${textValue(row, "id")} aponta para cliente ausente.`); });
+  bundle.contractAcceptances.forEach((row) => { if (!contractIds.has(textValue(row, "contract_id"))) errors.push(`Aceite ${textValue(row, "id")} aponta para contrato ausente.`); });
   return errors;
 }
 
@@ -247,6 +261,9 @@ function printSummary(bundle: ExportBundle, inputDir: string, commit: boolean) {
       invoices: bundle.invoices.length,
       invoice_items: bundle.invoiceItems.length,
       invoice_attachments: bundle.invoiceAttachments.length,
+      contracts: bundle.contracts.length,
+      contract_acceptances: bundle.contractAcceptances.length,
+      contract_templates: bundle.contractTemplates.length,
       media_files_pending_copy: bundle.mediaManifest.length,
     },
   }, null, 2));
@@ -300,6 +317,31 @@ async function importInvoiceRecords(connection: PoolConnection, bundle: ExportBu
   for (const attachment of bundle.invoiceAttachments) {
     await connection.query("INSERT INTO invoice_attachments (id, invoice_id, file_name, file_url, uploaded_by_user_id, legacy_id, created_at) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE file_name=VALUES(file_name), file_url=VALUES(file_url)", [textValue(attachment, "id"), textValue(attachment, "invoice_id"), textValue(attachment, "file_name", "Documento"), textValue(attachment, "file_url"), userMap.get(textValue(attachment, "uploaded_by")) ?? null, textValue(attachment, "id"), mysqlDateTime(attachment.created_at)]);
   }
+}
+
+async function resolveExistingUsers(connection: PoolConnection, profiles: JsonRow[]) {
+  const userMap = new Map<string, string>();
+  for (const profile of profiles) {
+    const legacyId=textValue(profile,"id"); const email=textValue(profile,"email").trim().toLowerCase();
+    const [rows]=await connection.query<Array<RowDataPacket & {id:string}>>("SELECT id FROM users WHERE id=? OR email=? LIMIT 1",[legacyId,email]);
+    if(rows[0]) userMap.set(legacyId,rows[0].id);
+  }
+  return userMap;
+}
+
+function normalizeContractStatus(value: unknown): "pending" | "accepted" | "cancelled" { const status=String(value??"").toLowerCase(); return status==="accepted"||status==="cancelled"?status:"pending"; }
+function inferContractLanguage(titleValue: unknown) {
+  const title = String(titleValue ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+  if (/\b(ACCORDO|TERMINI|SERVIZI|COLLABORAZIONE)\b/.test(title)) return "Italiano";
+  if (/\b(TERMS|SERVICES|AGREEMENT|ACCEPTANCE)\b/.test(title)) return "English";
+  if (/\b(TERMINOS|PRESTACION|ACEPTACION)\b/.test(title)) return "Español";
+  if (/\b(VILLKOR|TJANSTER|DIGITALT|GODKANNANDE)\b/.test(title)) return "Svenska";
+  return "Português";
+}
+async function importContractRecords(connection: PoolConnection,bundle:ExportBundle,clientMap:Map<string,string>,userMap:Map<string,string>){
+  for(const contract of bundle.contracts){const legacyId=textValue(contract,"id");await connection.query(`INSERT INTO contracts (id,client_account_id,title,body_html,language,contract_type,start_date,end_date,contract_value,scope_text,notes,status,created_by_user_id,legacy_id,created_at,updated_at) VALUES (?,?,?,?,?,'',NULL,NULL,'','','',?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE client_account_id=VALUES(client_account_id),title=VALUES(title),body_html=VALUES(body_html),language=VALUES(language),status=VALUES(status),updated_at=VALUES(updated_at)`,[legacyId,clientMap.get(textValue(contract,"client_id")),textValue(contract,"title","Contrato"),textValue(contract,"body"),inferContractLanguage(contract.title),normalizeContractStatus(contract.status),userMap.get(textValue(contract,"created_by"))??null,legacyId,mysqlDateTime(contract.created_at),mysqlDateTime(contract.updated_at)]);}
+  for(const acceptance of bundle.contractAcceptances){await connection.query("INSERT INTO contract_acceptances (id,contract_id,user_id,accepted_at,ip_address,legacy_id) VALUES (?,?,?,?,?,?) ON DUPLICATE KEY UPDATE accepted_at=VALUES(accepted_at),ip_address=VALUES(ip_address)",[textValue(acceptance,"id"),textValue(acceptance,"contract_id"),userMap.get(textValue(acceptance,"user_id"))??null,mysqlDateTime(acceptance.accepted_at)??new Date(),textValue(acceptance,"ip_address"),textValue(acceptance,"id")]);}
+  for(const template of bundle.contractTemplates){const legacyId=textValue(template,"id");await connection.query("INSERT INTO contract_templates (id,name,body_html,language,description,draft_json,created_by_user_id,legacy_id,created_at,updated_at) VALUES (?,?,?,?,?,NULL,?,?,COALESCE(?,CURRENT_TIMESTAMP),COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE name=VALUES(name),body_html=VALUES(body_html),language=VALUES(language),updated_at=VALUES(updated_at)",[legacyId,textValue(template,"title","Modelo de contrato"),textValue(template,"body"),inferContractLanguage(template.title),"Modelo importado da V1.",userMap.get(textValue(template,"created_by"))??null,legacyId,mysqlDateTime(template.created_at),mysqlDateTime(template.updated_at)]);}
 }
 
 async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
@@ -414,6 +456,7 @@ async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
   }
 
   await importInvoiceRecords(connection, bundle, clientMap, userMap);
+  await importContractRecords(connection,bundle,clientMap,userMap);
 }
 
 async function main() {
@@ -433,12 +476,17 @@ async function main() {
   const env = loadEnv();
   const pool = mysql.createPool({ host: env.DB_HOST, port: env.DB_PORT, user: env.DB_USER, password: env.DB_PASSWORD, database: env.DB_NAME, connectionLimit: 2 });
   await ensureInvoiceTables(pool);
+  await ensureContractTables(pool);
   const connection = await pool.getConnection();
   try {
     await connection.beginTransaction();
     if (options.onlyInvoices) {
       const clientMap = await resolveExistingClients(connection, bundle.clients);
       await importInvoiceRecords(connection, bundle, clientMap);
+    } else if (options.onlyContracts) {
+      const clientMap=await resolveExistingClients(connection,bundle.clients);
+      const userMap=await resolveExistingUsers(connection,bundle.profiles);
+      await importContractRecords(connection,bundle,clientMap,userMap);
     } else {
       await importBundle(connection, bundle);
     }

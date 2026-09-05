@@ -110,6 +110,13 @@ export type BillingInvoice = {
   attachments: Array<{ id: string; fileName: string; fileUrl: string }>;
   createdAt?: string; updatedAt?: string;
 };
+export type ContractRecord = {
+  id: string; clientAccountId: string; clientName: string; clientSlug: string; title: string; bodyHtml: string;
+  language: string; contractType: string; startDate: string | null; endDate: string | null; contractValue: string;
+  scope: string; notes: string; status: "pending" | "accepted" | "cancelled"; createdAt: string; updatedAt: string;
+  acceptedAt: string | null; acceptedByUserId: string | null;
+};
+export type ContractTemplateRecord = { id: string; name: string; bodyHtml: string; language: string; description: string; draft: Partial<Omit<ContractRecord, "id" | "clientAccountId" | "clientName" | "clientSlug" | "status" | "createdAt" | "updatedAt" | "acceptedAt" | "acceptedByUserId">>; custom: true; createdAt: string; updatedAt: string };
 
 export type ManagedUser = {
   id: string;
@@ -629,6 +636,15 @@ export async function createAdminInvoice(input: Omit<BillingInvoice, "id" | "num
 export async function updateAdminInvoice(invoiceId: string, input: Partial<Omit<BillingInvoice, "id" | "number" | "createdAt" | "updatedAt">>) { return sendJson<{ invoice: BillingInvoice }>(`/api/invoices/${invoiceId}`, { method: "PATCH", body: JSON.stringify(input) }); }
 export async function deleteAdminInvoice(invoiceId: string) { return sendJson<{ ok: true }>(`/api/invoices/${invoiceId}`, { method: "DELETE" }); }
 export async function listPortalInvoicesBySlug(slug: string) { const account = await findPortalAccountBySlug(slug); return fetchJson<{ items: BillingInvoice[] }>(`/api/portal/accounts/${account.clientAccountId}/invoices`); }
+export async function listAdminContracts() { return fetchJson<{ items: ContractRecord[] }>("/api/contracts"); }
+export async function createAdminContract(input: { clientAccountId: string; title: string; bodyHtml: string; language: string; contractType: string; startDate: string | null; endDate: string | null; contractValue: string; scope: string; notes: string; status: ContractRecord["status"] }) { return sendJson<{ contract: ContractRecord }>("/api/contracts", { method: "POST", body: JSON.stringify(input) }); }
+export async function updateAdminContract(contractId: string, input: Partial<{ clientAccountId: string; title: string; bodyHtml: string; language: string; contractType: string; startDate: string | null; endDate: string | null; contractValue: string; scope: string; notes: string; status: ContractRecord["status"] }>) { return sendJson<{ contract: ContractRecord }>(`/api/contracts/${contractId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+export async function deleteAdminContract(contractId: string) { return sendJson<{ ok: boolean }>(`/api/contracts/${contractId}`, { method: "DELETE" }); }
+export async function listAdminContractTemplates() { return fetchJson<{ items: ContractTemplateRecord[] }>("/api/contract-templates"); }
+export async function createAdminContractTemplate(input: { name: string; bodyHtml: string; language: string; description: string; draft: ContractTemplateRecord["draft"] }) { return sendJson<{ template: ContractTemplateRecord }>("/api/contract-templates", { method: "POST", body: JSON.stringify(input) }); }
+export async function deleteAdminContractTemplate(templateId: string) { return sendJson<{ ok: boolean }>(`/api/contract-templates/${templateId}`, { method: "DELETE" }); }
+export async function loadPendingPortalContractBySlug(slug: string) { const account=await findPortalAccountBySlug(slug); return fetchJson<{ contract: ContractRecord | null }>(`/api/portal/accounts/${account.clientAccountId}/contracts/pending`); }
+export async function acceptPortalContractBySlug(slug: string, contractId: string) { const account=await findPortalAccountBySlug(slug); return sendJson<{ ok: true; contract: ContractRecord }>(`/api/portal/accounts/${account.clientAccountId}/contracts/${contractId}/accept`, { method: "POST" }); }
 
 export async function loadClientPortalBySlug(slug: string): Promise<ClientPortalPreview> {
   const matchedAccount = await findPortalAccountBySlug(slug);
