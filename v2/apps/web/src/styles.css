@@ -8804,3 +8804,102 @@ button {
   }
   .time-report-actions > button { justify-self: start; }
 }
+
+/* Layout compacto do controle de tempo, inspirado na organização do Clockify. */
+.time-workspace {
+  gap: 22px;
+  padding: 24px;
+}
+
+.clockify-start-bar {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(180px, 250px) 52px 52px 150px 118px 34px;
+  align-items: stretch;
+  min-height: 66px;
+  border: 1px solid #dfe6ed;
+  background: #fff;
+  box-shadow: 0 7px 24px rgba(40, 58, 83, .12);
+}
+
+.clockify-start-bar > * { min-width: 0; }
+.clockify-task-input { padding: 0 18px; border: 0; border-right: 1px solid #e3e9ef; color: #243047; background: transparent; font: inherit; font-size: 1rem; outline: none; }
+.clockify-task-input::placeholder { color: #8995a4; }
+.clockify-task-input:focus { box-shadow: inset 0 -2px #31aee7; }
+.clockify-project-picker { display: flex; align-items: center; gap: 7px; padding: 0 13px; border-right: 1px solid #e3e9ef; color: #1ea8e7; }
+.clockify-project-picker > span { font-size: 1.45rem; font-weight: 300; }
+.clockify-project-picker select { width: 100%; border: 0; color: #168fc9; background: transparent; font: inherit; font-size: .82rem; outline: none; }
+.clockify-tag,.clockify-billing,.clockify-more { display: grid; place-items: center; border-right: 1px solid #e3e9ef; color: #9cadba; font-size: 1.35rem; }
+.clockify-billing { font-size: 1.3rem; }
+.clockify-counter { display: grid; place-items: center; padding: 0 12px; color: #26313f; font-size: 1.25rem; font-variant-numeric: tabular-nums; letter-spacing: .025em; }
+.clockify-start-bar > button { margin: 10px 0; border: 0; color: #fff; font: inherit; font-size: .78rem; font-weight: 700; cursor: pointer; }
+.clockify-start { background: #12a8e7; }
+.clockify-stop { background: #ed5965; }
+.clockify-start-bar > button:disabled { opacity: .5; cursor: default; }
+.clockify-start-bar.running { box-shadow: 0 8px 26px rgba(38, 169, 213, .18); }
+.clockify-start-bar.running .clockify-counter { color: #168bb5; }
+
+.clockify-report-toolbar { display: grid; grid-template-columns: minmax(150px, 1fr) auto minmax(190px, 250px) auto; align-items: center; gap: 18px; margin-top: 18px; color: #526071; }
+.clockify-report-toolbar > div:first-child { display: flex; align-items: baseline; gap: 12px; }
+.clockify-report-toolbar > div:first-child > span { color: #8a95a3; font-size: .75rem; }
+.clockify-report-toolbar > p { margin: 0; color: #89939f; font-size: .75rem; white-space: nowrap; }
+.clockify-report-toolbar > p b { margin-left: 8px; color: #26313e; font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.clockify-report-toolbar .time-report-actions { display: flex; align-items: center; gap: 8px; }
+.clockify-report-toolbar .time-report-actions select { min-height: 38px; }
+.clockify-report-toolbar .time-report-actions > button { white-space: nowrap; }
+
+.clockify-day-list { display: grid; gap: 18px; }
+.clockify-day-group { overflow: hidden; border: 1px solid #dfe6ec; background: #fff; box-shadow: 0 3px 12px rgba(39, 55, 78, .05); }
+.clockify-day-group > header { display: flex; align-items: center; justify-content: space-between; min-height: 43px; padding: 0 18px; color: #7b8793; background: #e8eef2; font-size: .76rem; }
+.clockify-day-group > header > strong { color: #6d7985; font-weight: 500; text-transform: capitalize; }
+.clockify-day-group > header span { display: flex; align-items: baseline; gap: 9px; }
+.clockify-day-group > header b { color: #2d3845; font-size: 1rem; font-variant-numeric: tabular-nums; }
+.clockify-day-group > div { display: grid; }
+.clockify-day-group article { display: grid; grid-template-columns: minmax(260px, 1fr) 54px 54px 170px 112px 105px 34px; align-items: center; min-height: 70px; border-bottom: 1px solid #e2e8ed; color: #35404b; }
+.clockify-day-group article:last-child { border-bottom: 0; }
+.clockify-day-group article.active { background: #f5fcff; box-shadow: inset 3px 0 #20aee6; }
+.clockify-entry-copy { display: grid; grid-template-columns: minmax(120px, auto) minmax(140px, 1fr); align-items: center; gap: 3px 22px; padding: 10px 18px; }
+.clockify-entry-copy > strong { overflow: hidden; color: #25303b; font-size: .88rem; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.clockify-entry-copy > span { overflow: hidden; color: #6a50d1; font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }
+.clockify-entry-copy > span i { display: inline-block; width: 7px; height: 7px; margin-right: 8px; border-radius: 50%; background: #9f54dc; }
+.clockify-entry-copy > small { grid-column: 1 / -1; color: #929ca7; font-size: .67rem; }
+.clockify-row-tag,.clockify-row-billing,.clockify-row-more { display: grid; align-self: stretch; place-items: center; border-left: 1px solid #e2e8ed; color: #9cabb7; font-size: 1.25rem; }
+.clockify-row-billing { color: #20a9e4; }
+.clockify-day-group article > time { padding: 0 14px; border-left: 1px solid #e2e8ed; color: #4f5a65; font-size: .78rem; text-align: center; white-space: nowrap; }
+.clockify-day-group article > b { padding: 0 12px; border-left: 1px solid #e2e8ed; font-size: 1rem; font-variant-numeric: tabular-nums; text-align: center; }
+.clockify-day-group article > button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; align-self: stretch; border: 0; border-left: 1px solid #e2e8ed; color: #7f99a8; background: transparent; font: inherit; font-size: .72rem; cursor: pointer; }
+.clockify-day-group article > button:hover { color: #159fdc; background: #f1faff; }
+.clockify-day-group article > button.is-stop { color: #d34c59; }
+
+@media (max-width: 1050px) {
+  .clockify-start-bar { grid-template-columns: minmax(220px, 1fr) minmax(170px, 220px) 120px 104px 28px; }
+  .clockify-tag,.clockify-billing { display: none; }
+  .clockify-day-group article { grid-template-columns: minmax(230px, 1fr) 145px 105px 94px 28px; }
+  .clockify-row-tag,.clockify-row-billing { display: none; }
+  .clockify-report-toolbar { grid-template-columns: 1fr auto; }
+  .clockify-report-toolbar .time-report-actions { grid-column: 1; grid-row: 2; }
+  .clockify-report-toolbar > p { grid-column: 2; grid-row: 2; }
+}
+
+@media (max-width: 680px) {
+  .time-workspace { padding: 12px; gap: 15px; }
+  .clockify-start-bar { grid-template-columns: 1fr auto; border-radius: 15px; overflow: hidden; }
+  .clockify-task-input { grid-column: 1 / -1; min-height: 52px; border-right: 0; border-bottom: 1px solid #e3e9ef; }
+  .clockify-project-picker { min-height: 46px; border-right: 0; }
+  .clockify-counter { grid-column: 1; min-height: 48px; justify-content: start; padding-left: 17px; border-top: 1px solid #e3e9ef; }
+  .clockify-start-bar > button { grid-column: 2; grid-row: 3; min-width: 92px; margin: 0; }
+  .clockify-more { display: none; }
+  .clockify-report-toolbar { grid-template-columns: 1fr; gap: 10px; margin-top: 8px; }
+  .clockify-report-toolbar .time-period-tabs,.clockify-report-toolbar .time-report-actions,.clockify-report-toolbar > p { grid-column: 1; grid-row: auto; }
+  .clockify-report-toolbar .time-period-tabs { overflow-x: auto; }
+  .clockify-report-toolbar .time-report-actions { display: grid; grid-template-columns: 1fr auto; }
+  .clockify-report-toolbar > p { justify-self: end; }
+  .clockify-day-list { gap: 13px; }
+  .clockify-day-group { border-radius: 13px; }
+  .clockify-day-group article { grid-template-columns: minmax(0, 1fr) auto; padding: 12px 14px; gap: 8px 12px; }
+  .clockify-entry-copy { grid-column: 1 / -1; grid-template-columns: 1fr; padding: 0; gap: 4px; }
+  .clockify-entry-copy > small { grid-column: auto; }
+  .clockify-day-group article > time { grid-column: 1; grid-row: 2; padding: 0; border: 0; text-align: left; }
+  .clockify-day-group article > b { grid-column: 2; grid-row: 2; padding: 0; border: 0; }
+  .clockify-day-group article > button { grid-column: 1 / -1; min-height: 34px; border: 1px solid #dfe6ed; border-radius: 8px; }
+  .clockify-row-more { display: none; }
+}

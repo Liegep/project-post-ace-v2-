@@ -109,7 +109,7 @@ export function TimeTrackingWorkspace() {
   const [clients, setClients] = useState<AdminClientOption[]>([]);
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [active, setActive] = useState<TimeEntry | null>(null);
-  const [period, setPeriod] = useState<Period>("month");
+  const [period, setPeriod] = useState<Period>("week");
   const [filterClientId, setFilterClientId] = useState("");
   const [newClientId, setNewClientId] = useState("");
   const [description, setDescription] = useState("");
@@ -148,13 +148,14 @@ export function TimeTrackingWorkspace() {
 
   async function beginStandalone(event: React.FormEvent) {
     event.preventDefault();
-    if (!newClientId || !description.trim()) return;
+    if (!active && (!newClientId || !description.trim())) return;
     setWorking(true); setError("");
     try {
       if (active) {
-        const replace = window.confirm(`Encerrar “${active.description}” e iniciar esta atividade?`);
-        if (!replace) return;
         await stopTimeEntry(active.id);
+        notifyTimerChange();
+        await refresh();
+        return;
       }
       await startTimeEntry({ clientAccountId: newClientId, description: description.trim() });
       setDescription("");
@@ -206,36 +207,41 @@ export function TimeTrackingWorkspace() {
   }
 
   const totalSeconds = entries.reduce((sum, entry) => sum + elapsedSeconds(entry, now), 0);
-  const grouped = entries.reduce<Map<string, { name: string; seconds: number; count: number }>>((map, entry) => {
-    const current = map.get(entry.clientAccountId) ?? { name: entry.clientName, seconds: 0, count: 0 };
-    current.seconds += elapsedSeconds(entry, now); current.count += 1; map.set(entry.clientAccountId, current); return map;
+  const groupedDays = entries.reduce<Map<string, TimeEntry[]>>((map, entry) => {
+    const date = new Date(entry.startedAt);
+    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+    map.set(key, [...(map.get(key) ?? []), entry]);
+    return map;
   }, new Map());
+  const dayLabel = (key: string) => {
+    const date = new Date(`${key}T12:00:00`);
+    const today = new Date(); const yesterday = new Date(); yesterday.setDate(today.getDate() - 1);
+    const sameDay = (candidate: Date) => candidate.getFullYear() === date.getFullYear() && candidate.getMonth() === date.getMonth() && candidate.getDate() === date.getDate();
+    if (sameDay(today)) return "Hoje";
+    if (sameDay(yesterday)) return "Ontem";
+    return new Intl.DateTimeFormat("pt-BR", { weekday: "short", day: "2-digit", month: "short" }).format(date).replace(/\./g, "");
+  };
 
   return <section className="time-workspace">
-    <section className={`time-active-card${active ? " running" : ""}`}>
-      <div className="time-active-symbol">{active ? "◷" : "◴"}</div>
-      <div className="time-active-copy"><span>CRONÔMETRO ATUAL</span><h2>{active?.description ?? "Nenhuma atividade em andamento"}</h2><p>{active ? `${active.clientName}${active.cardTitle ? ` · Card: ${active.cardTitle}` : " · Atividade avulsa"}` : "Inicie por um card ou registre uma atividade abaixo."}</p></div>
-      <strong className="time-active-duration">{active ? formatDuration(elapsedSeconds(active, now)) : "00:00:00"}</strong>
-      {active ? <button type="button" disabled={working} onClick={() => void stopActive()}>■ Parar</button> : null}
-    </section>
-
-    <form className="time-quick-start" onSubmit={beginStandalone}>
-      <div><span>NOVA ATIVIDADE AVULSA</span><h3>O que você vai fazer?</h3><p>O tempo será lançado diretamente no relatório do cliente.</p></div>
-      <label>Cliente<select value={newClientId} onChange={(event) => setNewClientId(event.target.value)} required><option value="">Selecione</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
-      <label>Descrição<input value={description} onChange={(event) => setDescription(event.target.value)} maxLength={255} placeholder="Ex.: reunião, planejamento, pesquisa..." required /></label>
-      <button className="gradient-button" disabled={working || !newClientId || !description.trim()}>▶ Iniciar</button>
+    <form className={`clockify-start-bar${active ? " running" : ""}`} onSubmit={beginStandalone}>
+      <input className="clockify-task-input" value={active?.description ?? description} onChange={(event) => setDescription(event.target.value)} maxLength={255} placeholder="Em que você está trabalhando?" disabled={Boolean(active)} required={!active} />
+      <label className="clockify-project-picker"><span>＋</span><select value={active?.clientAccountId ?? newClientId} onChange={(event) => setNewClientId(event.target.value)} disabled={Boolean(active)} required={!active}><option value="">Cliente / projeto</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label>
+      <span className="clockify-tag" title="Etiquetas">◇</span>
+      <span className="clockify-billing" title="Tempo do projeto">$</span>
+      <strong className="clockify-counter">{active ? formatDuration(elapsedSeconds(active, now)) : "00:00:00"}</strong>
+      <button className={active ? "clockify-stop" : "clockify-start"} disabled={working || (!active && (!newClientId || !description.trim()))}>{working ? "AGUARDE" : active ? "PARAR" : "INICIAR"}</button>
+      <span className="clockify-more" aria-hidden="true">⋮</span>
     </form>
 
-    <div className="time-report-toolbar">
-      <div><span>RELATÓRIO DE TEMPO</span><h2>Horas por cliente</h2></div>
+    <div className="clockify-report-toolbar">
+      <div><strong>{period === "today" ? "Hoje" : period === "week" ? "Esta semana" : "Este mês"}</strong><span>{entries.length} {entries.length === 1 ? "registro" : "registros"}</span></div>
       <div className="time-period-tabs">{(["today", "week", "month"] as Period[]).map((value) => <button type="button" key={value} className={period === value ? "active" : ""} onClick={() => setPeriod(value)}>{value === "today" ? "Hoje" : value === "week" ? "Esta semana" : "Este mês"}</button>)}</div>
       <div className="time-report-actions"><select aria-label="Filtrar por cliente" value={filterClientId} onChange={(event) => setFilterClientId(event.target.value)}><option value="">Todos os clientes</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select><button type="button" disabled={working || entries.every((entry) => !entry.endedAt)} onClick={() => void clearVisibleEntries()}>Limpar encerrados</button></div>
+      <p>Total do período <b>{formatDuration(totalSeconds)}</b></p>
     </div>
 
-    <div className="time-summary-grid"><article><span>Tempo total</span><strong>{formatDuration(totalSeconds)}</strong><small>{entries.length} {entries.length === 1 ? "registro" : "registros"}</small></article>{Array.from(grouped.entries()).slice(0, 3).map(([id, item]) => <article key={id}><span>{item.name}</span><strong>{formatDuration(item.seconds)}</strong><small>{item.count} {item.count === 1 ? "atividade" : "atividades"}</small></article>)}</div>
-
-    <section className="time-entry-list">
-      {loading ? <p className="time-empty">Carregando apontamentos...</p> : entries.length ? entries.map((entry) => <article key={entry.id} className={entry.endedAt ? "" : "active"}><div className="time-entry-date"><strong>{new Intl.DateTimeFormat("pt-BR", { day: "2-digit" }).format(new Date(entry.startedAt))}</strong><span>{new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(new Date(entry.startedAt)).replace(".", "")}</span></div><div className="time-entry-main"><strong>{entry.description}</strong><span>{entry.clientName}{entry.cardTitle ? ` · ${entry.cardTitle}` : " · Atividade avulsa"}</span><small>{entry.userName} · {new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(entry.startedAt))}{entry.endedAt ? `–${new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(entry.endedAt))}` : " · em andamento"}</small></div><div className="time-entry-actions"><b>{formatDuration(elapsedSeconds(entry, now))}</b>{entry.endedAt ? <button type="button" disabled={working} onClick={() => void continueEntry(entry)} title="Continuar esta atividade">▶ <span>Continuar</span></button> : <em>Em andamento</em>}</div></article>) : <p className="time-empty">Nenhum tempo registrado neste período.</p>}
+    <section className="clockify-day-list">
+      {loading ? <p className="time-empty">Carregando apontamentos...</p> : groupedDays.size ? Array.from(groupedDays.entries()).map(([key, dayEntries]) => <section className="clockify-day-group" key={key}><header><strong>{dayLabel(key)}</strong><span>Total <b>{formatDuration(dayEntries.reduce((sum, entry) => sum + elapsedSeconds(entry, now), 0))}</b></span></header><div>{dayEntries.map((entry) => <article key={entry.id} className={entry.endedAt ? "" : "active"}><div className="clockify-entry-copy"><strong>{entry.description}</strong><span><i />{entry.clientName}{entry.cardTitle && entry.cardTitle !== entry.description ? ` · ${entry.cardTitle}` : ""}</span><small>{entry.userName}</small></div><span className="clockify-row-tag">◇</span><span className="clockify-row-billing">$</span><time>{new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(entry.lastStartedAt))}{entry.endedAt ? ` – ${new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(new Date(entry.endedAt))}` : " – agora"}</time><b>{formatDuration(elapsedSeconds(entry, now))}</b>{entry.endedAt ? <button type="button" disabled={working} onClick={() => void continueEntry(entry)} title="Continuar esta atividade">▷ <span>Continuar</span></button> : <button type="button" className="is-stop" disabled={working} onClick={() => void stopActive()} title="Parar cronômetro">■ <span>Parar</span></button>}<span className="clockify-row-more">⋮</span></article>)}</div></section>) : <p className="time-empty">Nenhum tempo registrado neste período.</p>}
     </section>
     {error ? <p className="time-error" role="alert">{error}</p> : null}
   </section>;
