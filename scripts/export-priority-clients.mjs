@@ -121,8 +121,12 @@ async function fetchInBatches(values, buildQuery, chunkSize = 100) {
   return rows;
 }
 
-function pickAllowedProfiles(profiles, assignments) {
-  const allowedUserIds = new Set(assignments.map((item) => item.user_id));
+function pickAllowedProfiles(profiles, assignments, clientNotes = [], quickNotes = []) {
+  const allowedUserIds = new Set([
+    ...assignments.map((item) => item.user_id),
+    ...clientNotes.map((item) => item.user_id),
+    ...quickNotes.map((item) => item.user_id),
+  ]);
   return profiles.filter((profile) => allowedUserIds.has(profile.id));
 }
 
@@ -244,7 +248,24 @@ async function main() {
   const assignments = foundClientIds.length ? await fetchAll(assignmentsQuery) : [];
   trace("assignments");
 
-  const profileIds = [...new Set(assignments.map((item) => item.user_id))];
+  const clientNotes = foundClientIds.length ? await fetchAll(supabase
+    .from("client_notes")
+    .select("id,client_id,user_id,title,content,color,attachments,created_at,updated_at")
+    .in("client_id", foundClientIds)
+    .order("created_at")) : [];
+  trace("client-notes");
+  const quickNotes = foundClientIds.length ? await fetchAll(supabase
+    .from("quick_notes")
+    .select("id,client_id,user_id,content,color,position,created_at,updated_at")
+    .in("client_id", foundClientIds)
+    .order("position")) : [];
+  trace("quick-notes");
+
+  const profileIds = [...new Set([
+    ...assignments.map((item) => item.user_id),
+    ...clientNotes.map((item) => item.user_id),
+    ...quickNotes.map((item) => item.user_id),
+  ])];
   const profilesQuery = supabase
     .from("profiles")
     .select("id, full_name, email, avatar_url, role")
@@ -391,7 +412,7 @@ async function main() {
   trace("brief-templates");
 
   const mediaManifest = uniqueMediaUrls(
-    [...posts, ...calendarPosts, ...invoiceAttachments, ...textContents],
+    [...posts, ...calendarPosts, ...invoiceAttachments, ...textContents, ...clientNotes],
     [
       (row) =>
         row.image_url
@@ -416,6 +437,7 @@ async function main() {
           : [],
       (row) => row.file_url ? [{ url: row.file_url, source: "invoice_attachments.file_url", invoice_attachment_id: row.id, invoice_id: row.invoice_id }] : [],
       (row) => row.pdf_url ? [{ url: row.pdf_url, source: "text_contents.pdf_url", text_content_id: row.id, client_id: row.client_id }] : [],
+      (row) => Array.isArray(row.attachments) ? row.attachments.flatMap((attachment) => attachment?.url ? [{ url: attachment.url, source: "client_notes.attachments", client_note_id: row.id, client_id: row.client_id }] : []) : [],
     ],
   );
 
@@ -441,6 +463,8 @@ async function main() {
       archived_posts: posts.filter((post) => post.archived).length,
       active_posts: posts.filter((post) => !post.archived).length,
       comments: comments.length,
+      client_notes: clientNotes.length,
+      quick_notes: quickNotes.length,
       text_contents: textContents.length,
       text_content_comments: textContentComments.length,
       content_briefs: contentBriefs.length,
@@ -481,13 +505,15 @@ async function main() {
   await writeJson(path.join(options.outDir, "clients.json"), foundClients);
   await writeJson(
     path.join(options.outDir, "profiles.json"),
-    pickAllowedProfiles(profiles, assignments),
+    pickAllowedProfiles(profiles, assignments, clientNotes, quickNotes),
   );
   await writeJson(path.join(options.outDir, "user_client_assignments.json"), assignments);
   await writeJson(path.join(options.outDir, "columns.json"), columns);
   await writeJson(path.join(options.outDir, "posts.json"), posts);
   await writeJson(path.join(options.outDir, "tags.json"), tags);
   await writeJson(path.join(options.outDir, "comments.json"), comments);
+  await writeJson(path.join(options.outDir, "client_notes.json"), clientNotes);
+  await writeJson(path.join(options.outDir, "quick_notes.json"), quickNotes);
   await writeJson(path.join(options.outDir, "text_contents.json"), textContents);
   await writeJson(path.join(options.outDir, "text_content_comments.json"), textContentComments);
   await writeJson(path.join(options.outDir, "content_briefs.json"), contentBriefs);

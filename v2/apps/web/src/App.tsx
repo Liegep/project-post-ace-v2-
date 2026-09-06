@@ -941,8 +941,9 @@ function AdminUtilityBar() {
 }
 
 type DrawerLink = { id: string; type: "heading" | "link"; title: string; url?: string };
-type DrawerDraft = { id: string; text: string; attachmentUrl?: string };
-type DrawerNote = { id: string; text: string; createdAt: string; color: string };
+type DrawerAttachment = { type: "link" | "image" | "video" | "pdf"; url: string; name: string };
+type DrawerDraft = { id: string; text: string; attachmentUrl?: string; createdAt?: string; color?: string };
+type DrawerNote = { id: string; text: string; createdAt: string; color: string; authorName?: string; attachments?: DrawerAttachment[] };
 type PautaIdea = { id: string; title: string; description: string; caption: string; createdAt: string; updatedAt?: string; plannedDate?: string | null; contentType?: string; internalNotes?: string; mediaUrls?: string[]; status?: "draft" | "sent" | "approved"; cardId?: string };
 type WorkspaceDrawerData = { notes: DrawerNote[]; links: DrawerLink[]; quick: DrawerLink[]; draftsByUser: Record<string, DrawerDraft[]>; pautaIdeas: PautaIdea[] };
 type KanbanAutomation = { id: string; name: string; enabled: boolean; triggerType: "tag_added" | "column_moved"; triggerValue: string; actionType: "add_tag" | "move_column" | "change_color"; actionValue: string };
@@ -970,8 +971,25 @@ function normalizeDrawerNotes(value: unknown): DrawerNote[] {
       text: note.text,
       createdAt: typeof note.createdAt === "string" ? note.createdAt : "",
       color: typeof note.color === "string" && note.color ? note.color : DEFAULT_DRAWER_NOTE_COLOR,
+      authorName: typeof note.authorName === "string" ? note.authorName : undefined,
+      attachments: Array.isArray(note.attachments) ? note.attachments.flatMap((attachment) => {
+        if (!attachment || typeof attachment !== "object") return [];
+        const item = attachment as Partial<DrawerAttachment>;
+        if (typeof item.url !== "string" || !item.url) return [];
+        return [{ type: ["image", "video", "pdf"].includes(String(item.type)) ? item.type as DrawerAttachment["type"] : "link", url: item.url, name: typeof item.name === "string" && item.name ? item.name : "Anexo" }];
+      }) : [],
     }];
   });
+}
+
+function normalizeDrawerDrafts(value: unknown): Record<string, DrawerDraft[]> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value).map(([userId, items]) => [userId, Array.isArray(items) ? items.flatMap((item, index) => {
+    if (!item || typeof item !== "object") return [];
+    const draft = item as Partial<DrawerDraft>;
+    if (typeof draft.text !== "string" || !draft.text.trim()) return [];
+    return [{ id: typeof draft.id === "string" && draft.id ? draft.id : `legacy-draft-${index}`, text: draft.text, attachmentUrl: typeof draft.attachmentUrl === "string" ? draft.attachmentUrl : undefined, createdAt: typeof draft.createdAt === "string" ? draft.createdAt : undefined, color: typeof draft.color === "string" ? draft.color : undefined }];
+  }) : []]));
 }
 
 function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canManageAccess, onPautaCountChange }: { slug: string; userId: string; initialQuickLinks: Array<{ label: string; href: string }>; columns: BoardColumn[]; tags: ClientTagDefinition[]; canManageAccess: boolean; onPautaCountChange?: (count: number) => void }) {
@@ -1005,7 +1023,7 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
   useEffect(() => { let active = true; loadAdminWorkspaceDrawerBySlug(slug).then((result) => {
     if (!active) return;
     const saved = result.data as Partial<WorkspaceDrawerData> | null;
-    setDrawer({ ...EMPTY_DRAWER, ...saved, notes: normalizeDrawerNotes(saved?.notes), quick: saved?.quick ?? initialQuickLinks.map((link) => ({ id: crypto.randomUUID(), type: "link" as const, title: link.label, url: link.href })), draftsByUser: saved?.draftsByUser ?? {}, pautaIdeas: saved?.pautaIdeas ?? [] }); setLoaded(true);
+    setDrawer({ ...EMPTY_DRAWER, ...saved, notes: normalizeDrawerNotes(saved?.notes), quick: saved?.quick ?? initialQuickLinks.map((link) => ({ id: crypto.randomUUID(), type: "link" as const, title: link.label, url: link.href })), draftsByUser: normalizeDrawerDrafts(saved?.draftsByUser), pautaIdeas: saved?.pautaIdeas ?? [] }); setLoaded(true);
   }).catch(() => setLoaded(true)); return () => { active = false; }; }, [slug]);
   useEffect(() => { if (loaded) onPautaCountChange?.(drawer.pautaIdeas.length); }, [drawer.pautaIdeas.length, loaded, onPautaCountChange]);
   useEffect(() => { loadAdminKanbanAutomationsBySlug(slug).then((result) => setAutomations((result.items as KanbanAutomation[]) ?? [])).catch(() => setAutomations([])); }, [slug]);
@@ -1030,7 +1048,7 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
     }
     if (tab === "drafts") {
       const nextDrafts = editingDraftId === null
-        ? [{ id: crypto.randomUUID(), text: value }, ...drafts]
+        ? [{ id: crypto.randomUUID(), text: value, createdAt: new Date().toISOString() }, ...drafts]
         : drafts.map((draft) => draft.id === editingDraftId ? { ...draft, text: value } : draft);
       persist({ ...drawer, draftsByUser: { ...drawer.draftsByUser, [userId]: nextDrafts } });
     }
@@ -1040,7 +1058,7 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
   const editDraft = (draft: DrawerDraft) => { setText(draft.text); setEditingDraftId(draft.id); };
   const deleteNote = (index: number) => persist({ ...drawer, notes: drawer.notes.filter((_, noteIndex) => noteIndex !== index) });
   const deleteDraft = (id: string) => persist({ ...drawer, draftsByUser: { ...drawer.draftsByUser, [userId]: drafts.filter((draft) => draft.id !== id) } });
-  const addDraftAttachment = async (file: File | null) => { if (!file) return; const attachmentUrl = await uploadAdminMedia(file); persist({ ...drawer, draftsByUser: { ...drawer.draftsByUser, [userId]: [{ id: crypto.randomUUID(), text: text.trim() || file.name, attachmentUrl }, ...drafts] } }); setText(""); };
+  const addDraftAttachment = async (file: File | null) => { if (!file) return; const attachmentUrl = await uploadAdminMedia(file); persist({ ...drawer, draftsByUser: { ...drawer.draftsByUser, [userId]: [{ id: crypto.randomUUID(), text: text.trim() || file.name, attachmentUrl, createdAt: new Date().toISOString() }, ...drafts] } }); setText(""); };
   const addLink = (type: "heading" | "link") => { const title = type === "heading" ? "Novo título" : "Novo link"; const next = [...items, { id: crypto.randomUUID(), type, title, url: type === "link" ? "https://" : undefined }]; persist({ ...drawer, [tab === "quick" ? "quick" : "links"]: next }); };
   const updateLink = (id: string, changes: Partial<DrawerLink>) => { const next = items.map((item) => item.id === id ? { ...item, ...changes } : item); persist({ ...drawer, [tab === "quick" ? "quick" : "links"]: next }); };
   const deleteLink = (id: string) => { const next = items.filter((item) => item.id !== id); persist({ ...drawer, [tab === "quick" ? "quick" : "links"]: next }); };
@@ -1065,7 +1083,7 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
       {tab === "tracker" ? <ClientSettingsPanel slug={slug} canManageAccess={canManageAccess} onTrackingChange={setTrackingActive} /> : tab === "progress" ? <ProjectTrackerPanel slug={slug} columns={columns} filterOpen={trackerFilterOpen} /> : tab === "ideas" ? <section className="drawer-ideas"><div className="drawer-ideas-count"><span>💡</span><div><strong>{drawer.pautaIdeas.length} {drawer.pautaIdeas.length === 1 ? "pauta" : "pautas"}</strong><small>salvas para este cliente</small></div></div><p className="drawer-helper">Registre uma ideia rápida aqui. A organização e o envio ficam na aba Pautas.</p><button className="gradient-button drawer-ideas-create" type="button" onClick={() => { setIdeaSaved(false); setIdeaFormOpen(true); }}>+ Nova ideia de pauta</button>{ideaSaved ? <p className="drawer-idea-success">Pauta enviada para a aba Pautas.</p> : null}{ideaFormOpen ? <div className="drawer-ideas-form"><label>Título<input autoFocus value={ideaTitle} onChange={(event) => setIdeaTitle(event.target.value)} placeholder="Ex.: Carrossel com mitos e verdades" /></label><label>Descrição<textarea value={ideaDescription} onChange={(event) => setIdeaDescription(event.target.value)} placeholder="Contexto e objetivo da pauta" /></label><label>Legenda sugerida<textarea value={ideaCaption} onChange={(event) => setIdeaCaption(event.target.value)} placeholder="Primeira direção para a legenda" /></label><div><button type="button" onClick={saveIdea}>Enviar para Pautas</button><button type="button" className="drawer-secondary-action" onClick={() => setIdeaFormOpen(false)}>Cancelar</button></div></div> : null}</section> : (tab === "notes" || tab === "drafts") ? <>
         <p className="drawer-helper">{tab === "notes" ? "Recados são visíveis para toda a equipe." : "Rascunhos e anexos são visíveis somente para você."}</p>
         <div className="drawer-compose"><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder={tab === "notes" ? "Escreva um recado para a equipe" : "Escreva uma anotação privada"} />{tab === "notes" ? <div className="drawer-note-color-picker"><span>Cor da notinha</span>{DRAWER_NOTE_COLORS.map((color) => <button type="button" key={color.value} className={noteColor === color.value ? "selected" : ""} style={{ "--drawer-note-color": color.value } as CSSProperties} onClick={() => setNoteColor(color.value)} aria-label={`Usar fundo ${color.label}`} title={color.label} />)}</div> : null}<div><button onClick={saveText}>{editingNoteIndex !== null || editingDraftId !== null ? "Salvar alterações" : tab === "notes" ? "Publicar recado" : "Salvar rascunho"}</button>{(editingNoteIndex !== null || editingDraftId !== null) ? <button className="drawer-secondary-action" onClick={resetTextEditor}>Cancelar</button> : null}{tab === "drafts" ? <label className="drawer-attachment">Anexar foto<input type="file" accept="image/*" onChange={(event) => void addDraftAttachment(event.target.files?.[0] ?? null)} /></label> : null}</div></div>
-        {tab === "notes" ? <div className="drawer-card-list drawer-note-list">{drawer.notes.map((note, index) => <article className="drawer-note" key={note.id} style={{ "--drawer-note-color": note.color } as CSSProperties}><p>{note.text}</p><footer className="drawer-note-footer"><div className="drawer-item-actions"><button onClick={() => editNote(note, index)}>Editar</button><button className="danger" onClick={() => deleteNote(index)}>Excluir</button></div><time dateTime={note.createdAt || undefined}>{formatNoteDate(note.createdAt)}</time></footer></article>)}</div> : <div className="drawer-card-list">{drafts.map((draft) => <article key={draft.id}><p>{draft.text}</p>{draft.attachmentUrl ? <a href={draft.attachmentUrl} target="_blank" rel="noreferrer">Ver anexo</a> : null}<div className="drawer-item-actions"><button onClick={() => editDraft(draft)}>Editar</button><button className="danger" onClick={() => deleteDraft(draft.id)}>Excluir</button></div></article>)}</div>}
+        {tab === "notes" ? <div className="drawer-card-list drawer-note-list">{drawer.notes.map((note, index) => <article className="drawer-note" key={note.id} style={{ "--drawer-note-color": note.color } as CSSProperties}>{note.authorName ? <small className="drawer-note-author">{note.authorName}</small> : null}<p>{note.text}</p>{note.attachments?.length ? <div className="drawer-note-attachments">{note.attachments.map((attachment, attachmentIndex) => <a key={`${attachment.url}-${attachmentIndex}`} href={attachment.url} target="_blank" rel="noreferrer">{attachment.name || "Ver anexo"} ↗</a>)}</div> : null}<footer className="drawer-note-footer"><div className="drawer-item-actions"><button onClick={() => editNote(note, index)}>Editar</button><button className="danger" onClick={() => deleteNote(index)}>Excluir</button></div><time dateTime={note.createdAt || undefined}>{formatNoteDate(note.createdAt)}</time></footer></article>)}</div> : <div className="drawer-card-list">{drafts.map((draft) => <article key={draft.id} className={draft.color ? "drawer-draft-colored" : undefined} style={draft.color ? { "--drawer-note-color": draft.color } as CSSProperties : undefined}><p>{draft.text}</p>{draft.attachmentUrl ? <a href={draft.attachmentUrl} target="_blank" rel="noreferrer">Ver anexo</a> : null}<footer className="drawer-note-footer"><div className="drawer-item-actions"><button onClick={() => editDraft(draft)}>Editar</button><button className="danger" onClick={() => deleteDraft(draft.id)}>Excluir</button></div>{draft.createdAt ? <time dateTime={draft.createdAt}>{formatNoteDate(draft.createdAt)}</time> : null}</footer></article>)}</div>}
       </> : <>
         <p className="drawer-helper">{tab === "links" ? "Crie títulos para organizar os links compartilhados da equipe." : "Acesse os atalhos mais usados do workspace."}</p>
         <div className="drawer-link-actions"><button onClick={() => setEditingLinks((value) => !value)}>{editingLinks ? "Concluir edição" : "Organizar links"}</button>{editingLinks ? <><button onClick={() => addLink("heading")}>+ Adicionar título</button><button onClick={() => addLink("link")}>+ Adicionar link</button></> : null}</div><div className="drawer-link-list">{items.map((item) => item.type === "heading" ? <h4 key={item.id}>{editingLinks ? <><input value={item.title} onChange={(event) => updateLink(item.id, { title: event.target.value })} /><button className="drawer-inline-delete" onClick={() => deleteLink(item.id)}>Excluir</button></> : item.title}</h4> : <article key={item.id}>{editingLinks ? <><input value={item.title} onChange={(event) => updateLink(item.id, { title: event.target.value })} /><input value={item.url ?? ""} onChange={(event) => updateLink(item.id, { url: event.target.value })} /><button onClick={() => moveLink(item.id, -1)}>↑</button><button onClick={() => moveLink(item.id, 1)}>↓</button><button className="danger" onClick={() => deleteLink(item.id)}>Excluir</button></> : <a href={item.url} target="_blank" rel="noreferrer">{item.title} ↗</a>}</article>)}</div>
