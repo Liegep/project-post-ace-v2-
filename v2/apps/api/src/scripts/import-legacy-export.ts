@@ -683,8 +683,16 @@ async function importPautaRecords(connection: PoolConnection, bundle: ExportBund
 }
 
 function legacyNoteAttachments(value: unknown) {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item) => {
+  let attachments = value;
+  if (typeof attachments === "string") {
+    try {
+      attachments = JSON.parse(attachments);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(attachments)) return [];
+  return attachments.flatMap((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return [];
     const attachment = item as JsonRow;
     const url = textValue(attachment, "url").trim();
