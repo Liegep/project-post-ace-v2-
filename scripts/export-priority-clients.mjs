@@ -96,6 +96,17 @@ function uniqueMediaUrls(rows, extractors) {
   return [...seen.values()];
 }
 
+function urlsFromUnknown(value) {
+  if (Array.isArray(value)) return value.flatMap(urlsFromUnknown);
+  if (value && typeof value === "object") return Object.values(value).flatMap(urlsFromUnknown);
+  if (typeof value !== "string") return [];
+  const trimmed = value.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try { return urlsFromUnknown(JSON.parse(trimmed)); } catch { /* Keep scanning as plain text. */ }
+  }
+  return trimmed.match(/https?:\/\/[^\s"'<>]+/g) ?? [];
+}
+
 async function fetchAll(query, pageSize = 1000) {
   const rows = [];
   let from = 0;
@@ -412,7 +423,7 @@ async function main() {
   trace("brief-templates");
 
   const mediaManifest = uniqueMediaUrls(
-    [...posts, ...calendarPosts, ...invoiceAttachments, ...textContents, ...clientNotes],
+    [...posts, ...calendarPosts, ...invoiceAttachments, ...textContents, ...clientNotes, ...socialReports],
     [
       (row) =>
         row.image_url
@@ -438,6 +449,7 @@ async function main() {
       (row) => row.file_url ? [{ url: row.file_url, source: "invoice_attachments.file_url", invoice_attachment_id: row.id, invoice_id: row.invoice_id }] : [],
       (row) => row.pdf_url ? [{ url: row.pdf_url, source: "text_contents.pdf_url", text_content_id: row.id, client_id: row.client_id }] : [],
       (row) => Array.isArray(row.attachments) ? row.attachments.flatMap((attachment) => attachment?.url ? [{ url: attachment.url, source: "client_notes.attachments", client_note_id: row.id, client_id: row.client_id }] : []) : [],
+      (row) => row.metrics && row.period_start && row.period_end ? urlsFromUnknown([row.best_content, row.worst_content, row.observations]).map((url) => ({ url, source: "social_reports.evidence", social_report_id: row.id, client_id: row.client_id })) : [],
     ],
   );
 

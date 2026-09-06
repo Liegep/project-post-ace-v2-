@@ -65,6 +65,9 @@ function parseArguments() {
     onlyBrandBrain: args.includes("--only-brand-brain"),
     onlyPautas: args.includes("--only-pautas"),
     onlyNotes: args.includes("--only-notes"),
+    onlyComments: args.includes("--only-comments"),
+    onlyCalendar: args.includes("--only-calendar"),
+    missingOnly: args.includes("--missing-only"),
     inputDir:
       inputIndex >= 0 && args[inputIndex + 1]
         ? path.resolve(args[inputIndex + 1])
@@ -394,9 +397,13 @@ async function resolveUsers(connection: PoolConnection, profiles: JsonRow[]) {
   return { userMap, roleByLegacyId };
 }
 
-async function importInvoiceRecords(connection: PoolConnection, bundle: ExportBundle, clientMap: Map<string, string>, userMap = new Map<string, string>()) {
+async function importInvoiceRecords(connection: PoolConnection, bundle: ExportBundle, clientMap: Map<string, string>, userMap = new Map<string, string>(), missingOnly = false) {
   const clientsByLegacyId = new Map(bundle.clients.map((client) => [textValue(client, "id"), client]));
+  const existingInvoices = missingOnly ? await existingIds(connection, "invoices", bundle.invoices) : new Set<string>();
+  const existingItems = missingOnly ? await existingIds(connection, "invoice_items", bundle.invoiceItems) : new Set<string>();
+  const existingAttachments = missingOnly ? await existingIds(connection, "invoice_attachments", bundle.invoiceAttachments) : new Set<string>();
   for (const invoice of bundle.invoices) {
+    if (existingInvoices.has(textValue(invoice, "id"))) continue;
     const legacyId = textValue(invoice, "id"); const legacyClientId = textValue(invoice, "client_id"); const client = clientsByLegacyId.get(legacyClientId) ?? {};
     const currency = ["BRL", "EUR", "USD", "SEK"].includes(textValue(client, "billing_currency").toUpperCase()) ? textValue(client, "billing_currency").toUpperCase() : "BRL";
     const locale = ["pt", "en", "it", "es", "sv"].includes(textValue(client, "locale")) ? textValue(client, "locale") : "pt";
@@ -406,10 +413,12 @@ async function importInvoiceRecords(connection: PoolConnection, bundle: ExportBu
       [legacyId, clientMap.get(legacyClientId), numberValue(invoice, "invoice_number"), textValue(invoice, "title", "Fatura"), textValue(client, "name"), textValue(client, "address"), textValue(client, "country"), textValue(client, "tax_id"), textValue(invoice, "issue_date", new Date().toISOString().slice(0, 10)), textValue(invoice, "due_date", new Date().toISOString().slice(0, 10)), period, currency, locale, status, boolValue(client, "billing_recurrence_active"), boolValue(invoice, "client_visible"), boolValue(invoice, "client_visible") ? mysqlDateTime(invoice.updated_at) ?? new Date() : null, textValue(invoice, "notes"), userMap.get(textValue(invoice, "created_by")) ?? null, legacyId, mysqlDateTime(invoice.created_at), mysqlDateTime(invoice.updated_at)]);
   }
   for (const item of bundle.invoiceItems) {
+    if (existingItems.has(textValue(item, "id"))) continue;
     const description = textValue(item, "description") || textValue(item, "name", "Serviço");
     await connection.query("INSERT INTO invoice_items (id, invoice_id, description, quantity, unit_price, position, legacy_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE description=VALUES(description), quantity=VALUES(quantity), unit_price=VALUES(unit_price)", [textValue(item, "id"), textValue(item, "invoice_id"), description, numberValue(item, "quantity") || 1, numberValue(item, "unit_price"), 0, textValue(item, "id"), mysqlDateTime(item.created_at)]);
   }
   for (const attachment of bundle.invoiceAttachments) {
+    if (existingAttachments.has(textValue(attachment, "id"))) continue;
     await connection.query("INSERT INTO invoice_attachments (id, invoice_id, file_name, file_url, uploaded_by_user_id, legacy_id, created_at) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE file_name=VALUES(file_name), file_url=VALUES(file_url)", [textValue(attachment, "id"), textValue(attachment, "invoice_id"), textValue(attachment, "file_name", "Documento"), textValue(attachment, "file_url"), userMap.get(textValue(attachment, "uploaded_by")) ?? null, textValue(attachment, "id"), mysqlDateTime(attachment.created_at)]);
   }
 }
@@ -442,9 +451,11 @@ async function importContractRecords(connection: PoolConnection,bundle:ExportBun
 function proposalLocale(value: unknown) { const locale=String(value??"").toLowerCase(); return locale.startsWith("en")?"English":locale.startsWith("es")?"Español":locale.startsWith("it")?"Italiano":locale.startsWith("sv")?"Svenska":"Português"; }
 function proposalCurrency(value: unknown) { const currency=String(value??"BRL").toUpperCase(); return currency==="EUR"?"€":currency==="USD"?"$":currency==="SEK"?"kr":"R$"; }
 function proposalStatus(value: unknown) { const status=String(value??"draft").toLowerCase(); return ["draft","sent","viewed","accepted","expired"].includes(status)?status:"draft"; }
-async function importProposalRecords(connection:PoolConnection,bundle:ExportBundle,userMap:Map<string,string>){
-  for(const proposal of bundle.proposals){const legacyId=textValue(proposal,"id");await connection.query(`INSERT INTO proposals (id,token,client_name,client_email,locale,proposal_type,plan,pieces_quantity,scope_description,investment_description,currency,expires_at,status,services_json,accepted_at,viewed_at,created_by_user_id,legacy_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE client_name=VALUES(client_name),client_email=VALUES(client_email),locale=VALUES(locale),proposal_type=VALUES(proposal_type),plan=VALUES(plan),pieces_quantity=VALUES(pieces_quantity),scope_description=VALUES(scope_description),investment_description=VALUES(investment_description),currency=VALUES(currency),expires_at=VALUES(expires_at),status=VALUES(status),services_json=VALUES(services_json),accepted_at=VALUES(accepted_at),viewed_at=VALUES(viewed_at),updated_at=VALUES(updated_at)`,[legacyId,textValue(proposal,"token",crypto.randomBytes(24).toString("hex")),textValue(proposal,"client_name"),textValue(proposal,"client_email"),proposalLocale(proposal.locale),textValue(proposal,"proposal_type","Projeto"),textValue(proposal,"plan"),numberValue(proposal,"pieces_quantity"),textValue(proposal,"scope_description"),textValue(proposal,"investment_description"),proposalCurrency(proposal.currency),mysqlDateTime(proposal.expires_at)??new Date(Date.now()+7*86400000),proposalStatus(proposal.status),JSON.stringify(Array.isArray(proposal.services)?proposal.services:[]),mysqlDateTime(proposal.accepted_at),mysqlDateTime(proposal.viewed_at),userMap.get(textValue(proposal,"user_id"))??null,legacyId,mysqlDateTime(proposal.created_at),mysqlDateTime(proposal.updated_at)]);}
-  for(const template of bundle.proposalTemplates){const legacyId=textValue(template,"id");await connection.query("INSERT INTO proposal_templates (id,name,locale,currency,scope_description,investment_description,services_json,created_by_user_id,legacy_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE name=VALUES(name),locale=VALUES(locale),currency=VALUES(currency),scope_description=VALUES(scope_description),investment_description=VALUES(investment_description),services_json=VALUES(services_json),updated_at=VALUES(updated_at)",[legacyId,textValue(template,"name","Modelo de proposta"),proposalLocale(template.locale),proposalCurrency(template.currency),textValue(template,"scope_description"),textValue(template,"investment_description"),JSON.stringify(Array.isArray(template.services)?template.services:[]),userMap.get(textValue(template,"user_id"))??null,legacyId,mysqlDateTime(template.created_at),mysqlDateTime(template.updated_at)]);}
+async function importProposalRecords(connection:PoolConnection,bundle:ExportBundle,userMap:Map<string,string>,missingOnly=false){
+  const existingProposals=missingOnly?await existingIds(connection,"proposals",bundle.proposals):new Set<string>();
+  const existingTemplates=missingOnly?await existingIds(connection,"proposal_templates",bundle.proposalTemplates):new Set<string>();
+  for(const proposal of bundle.proposals){const legacyId=textValue(proposal,"id");if(existingProposals.has(legacyId))continue;await connection.query(`INSERT INTO proposals (id,token,client_name,client_email,locale,proposal_type,plan,pieces_quantity,scope_description,investment_description,currency,expires_at,status,services_json,accepted_at,viewed_at,created_by_user_id,legacy_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE client_name=VALUES(client_name),client_email=VALUES(client_email),locale=VALUES(locale),proposal_type=VALUES(proposal_type),plan=VALUES(plan),pieces_quantity=VALUES(pieces_quantity),scope_description=VALUES(scope_description),investment_description=VALUES(investment_description),currency=VALUES(currency),expires_at=VALUES(expires_at),status=VALUES(status),services_json=VALUES(services_json),accepted_at=VALUES(accepted_at),viewed_at=VALUES(viewed_at),updated_at=VALUES(updated_at)`,[legacyId,textValue(proposal,"token",crypto.randomBytes(24).toString("hex")),textValue(proposal,"client_name"),textValue(proposal,"client_email"),proposalLocale(proposal.locale),textValue(proposal,"proposal_type","Projeto"),textValue(proposal,"plan"),numberValue(proposal,"pieces_quantity"),textValue(proposal,"scope_description"),textValue(proposal,"investment_description"),proposalCurrency(proposal.currency),mysqlDateTime(proposal.expires_at)??new Date(Date.now()+7*86400000),proposalStatus(proposal.status),JSON.stringify(Array.isArray(proposal.services)?proposal.services:[]),mysqlDateTime(proposal.accepted_at),mysqlDateTime(proposal.viewed_at),userMap.get(textValue(proposal,"user_id"))??null,legacyId,mysqlDateTime(proposal.created_at),mysqlDateTime(proposal.updated_at)]);}
+  for(const template of bundle.proposalTemplates){const legacyId=textValue(template,"id");if(existingTemplates.has(legacyId))continue;await connection.query("INSERT INTO proposal_templates (id,name,locale,currency,scope_description,investment_description,services_json,created_by_user_id,legacy_id,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE name=VALUES(name),locale=VALUES(locale),currency=VALUES(currency),scope_description=VALUES(scope_description),investment_description=VALUES(investment_description),services_json=VALUES(services_json),updated_at=VALUES(updated_at)",[legacyId,textValue(template,"name","Modelo de proposta"),proposalLocale(template.locale),proposalCurrency(template.currency),textValue(template,"scope_description"),textValue(template,"investment_description"),JSON.stringify(Array.isArray(template.services)?template.services:[]),userMap.get(textValue(template,"user_id"))??null,legacyId,mysqlDateTime(template.created_at),mysqlDateTime(template.updated_at)]);}
 }
 
 function reportMetric(metrics: unknown, ...keys: string[]) {
@@ -578,9 +589,12 @@ function normalizeLegacyBriefQuestion(question: unknown, index: number) {
   return { id: String(item.id ?? item.key ?? `question-${index + 1}`), type: typeMap[rawType] ?? "short", label: String(item.label ?? item.question ?? item.title ?? `Pergunta ${index + 1}`), help: String(item.help ?? item.description ?? ""), required: Boolean(item.required), options: Array.isArray(item.options) ? item.options.map(String) : [] };
 }
 
-async function importDesignBriefRecords(connection: PoolConnection, bundle: ExportBundle, clientMap: Map<string, string>, userMap: Map<string, string>) {
+async function importDesignBriefRecords(connection: PoolConnection, bundle: ExportBundle, clientMap: Map<string, string>, userMap: Map<string, string>, missingOnly = false) {
+  const existingBriefs = missingOnly ? await existingIds(connection, "design_briefs", bundle.designBriefs) : new Set<string>();
+  const existingTemplates = missingOnly ? await existingIds(connection, "design_brief_templates", bundle.briefTemplates) : new Set<string>();
   for (const brief of bundle.designBriefs) {
     const legacyId = textValue(brief, "id");
+    if (existingBriefs.has(legacyId)) continue;
     const answers = briefAnswerObject(brief);
     const fields = Object.entries(answers).map(([key, value]) => ({ id: key, type: briefFieldType(value), label: legacyBriefLabels[key] ?? key.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase()), help: "", required: false, options: Array.isArray(value) ? value.map(String) : [] }));
     const rawLocale = textValue(brief, "locale", "pt");
@@ -590,6 +604,7 @@ async function importDesignBriefRecords(connection: PoolConnection, bundle: Expo
   }
   for (const template of bundle.briefTemplates) {
     const legacyId = textValue(template, "id");
+    if (existingTemplates.has(legacyId)) continue;
     const questions = Array.isArray(template.questions) ? template.questions : [];
     const fields = questions.map(normalizeLegacyBriefQuestion);
     await connection.query("INSERT INTO design_brief_templates (id,name,introduction,fields_json,created_by_user_id,legacy_id,created_at,updated_at) VALUES (?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE name=VALUES(name),introduction=VALUES(introduction),fields_json=VALUES(fields_json),updated_at=VALUES(updated_at)", [legacyId, textValue(template, "name", "Modelo de brief"), textValue(template, "description"), JSON.stringify(fields), userMap.get(textValue(template, "user_id")) ?? null, legacyId, mysqlDateTime(template.created_at), mysqlDateTime(template.updated_at)]);
@@ -736,6 +751,43 @@ async function importNoteRecords(connection: PoolConnection, bundle: ExportBundl
     }
   }
   console.log(JSON.stringify({ imported_client_notes: importedNotes, imported_quick_notes: importedDrafts }));
+}
+
+async function existingIds(connection: PoolConnection, table: string, rows: JsonRow[]) {
+  const ids = rows.map((row) => textValue(row, "id")).filter(Boolean);
+  if (!ids.length) return new Set<string>();
+  const [found] = await connection.query<Array<RowDataPacket & { id: string }>>(`SELECT id FROM ${table} WHERE id IN (${ids.map(() => "?").join(",")})`, ids);
+  return new Set(found.map((row) => row.id));
+}
+
+async function importCommentRecords(connection: PoolConnection, bundle: ExportBundle, userMap: Map<string, string>, roleByLegacyId: Map<string, string>, missingOnly = false) {
+  const found = missingOnly ? await existingIds(connection, "card_comments", bundle.comments) : new Set<string>();
+  let imported = 0;
+  for (const comment of bundle.comments) {
+    if (found.has(textValue(comment, "id"))) continue;
+    const legacyUserId = textValue(comment, "user_id");
+    await connection.query(
+      "INSERT INTO card_comments (id, card_id, user_id, author_name, author_role, comment_text, is_internal, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, COALESCE(?, CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE author_name=VALUES(author_name), comment_text=VALUES(comment_text)",
+      [textValue(comment, "id"), textValue(comment, "post_id"), userMap.get(legacyUserId) ?? null, textValue(comment, "author", "Usuário legado"), normalizeCommentRole(roleByLegacyId.get(legacyUserId)), legacyCommentToPlainText(comment.text), mysqlDateTime(comment.created_at)],
+    );
+    imported += 1;
+  }
+  await connection.query("UPDATE kanban_cards card SET comments_count_cache = (SELECT COUNT(*) FROM card_comments comment WHERE comment.card_id = card.id) WHERE card.legacy_id IS NOT NULL");
+  console.log(JSON.stringify({ imported_card_comments: imported }));
+}
+
+async function importCalendarRecords(connection: PoolConnection, bundle: ExportBundle, clientMap: Map<string, string>, userMap: Map<string, string>, missingOnly = false) {
+  const found = missingOnly ? await existingIds(connection, "card_calendar_events", bundle.calendarPosts) : new Set<string>();
+  let imported = 0;
+  for (const event of bundle.calendarPosts) {
+    if (found.has(textValue(event, "id"))) continue;
+    await connection.query(
+      "INSERT INTO card_calendar_events (id, client_account_id, card_id, title, caption, media_type, media_urls_json, publish_date, publish_time, status, event_color, created_by_user_id) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE title=VALUES(title), caption=VALUES(caption), media_type=VALUES(media_type), media_urls_json=VALUES(media_urls_json), publish_date=VALUES(publish_date), publish_time=VALUES(publish_time), status=VALUES(status), event_color=VALUES(event_color)",
+      [textValue(event, "id"), clientMap.get(textValue(event, "client_id")), textValue(event, "title", "Sem título"), nullableText(event, "caption"), textValue(event, "media_type", "image"), jsonValue(event.media_urls), textValue(event, "publish_date"), nullableText(event, "publish_time"), normalizeCalendarStatus(event.status), nullableText(event, "event_color"), userMap.get(textValue(event, "created_by")) ?? null],
+    );
+    imported += 1;
+  }
+  console.log(JSON.stringify({ imported_calendar_posts: imported }));
 }
 
 function stringList(value: unknown) {
@@ -912,22 +964,8 @@ async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
     );
   }
 
-  for (const comment of bundle.comments) {
-    const legacyUserId = textValue(comment, "user_id");
-    await connection.query(
-      "INSERT INTO card_comments (id, card_id, user_id, author_name, author_role, comment_text, is_internal, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, COALESCE(?, CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE author_name=VALUES(author_name), comment_text=VALUES(comment_text)",
-      [textValue(comment, "id"), textValue(comment, "post_id"), userMap.get(legacyUserId) ?? null, textValue(comment, "author", "Usuário legado"), normalizeCommentRole(roleByLegacyId.get(legacyUserId)), legacyCommentToPlainText(comment.text), mysqlDateTime(comment.created_at)],
-    );
-  }
-
-  await connection.query("UPDATE kanban_cards card SET comments_count_cache = (SELECT COUNT(*) FROM card_comments comment WHERE comment.card_id = card.id) WHERE card.legacy_id IS NOT NULL");
-
-  for (const event of bundle.calendarPosts) {
-    await connection.query(
-      "INSERT INTO card_calendar_events (id, client_account_id, card_id, title, caption, media_type, media_urls_json, publish_date, publish_time, status, event_color, created_by_user_id) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE title=VALUES(title), caption=VALUES(caption), media_type=VALUES(media_type), media_urls_json=VALUES(media_urls_json), publish_date=VALUES(publish_date), publish_time=VALUES(publish_time), status=VALUES(status), event_color=VALUES(event_color)",
-      [textValue(event, "id"), clientMap.get(textValue(event, "client_id")), textValue(event, "title", "Sem título"), nullableText(event, "caption"), textValue(event, "media_type", "image"), jsonValue(event.media_urls), textValue(event, "publish_date"), nullableText(event, "publish_time"), normalizeCalendarStatus(event.status), nullableText(event, "event_color"), userMap.get(textValue(event, "created_by")) ?? null],
-    );
-  }
+  await importCommentRecords(connection, bundle, userMap, roleByLegacyId);
+  await importCalendarRecords(connection, bundle, clientMap, userMap);
 
   await importInvoiceRecords(connection, bundle, clientMap, userMap);
   await importContractRecords(connection,bundle,clientMap,userMap);
@@ -965,14 +1003,14 @@ async function main() {
     await connection.beginTransaction();
     if (options.onlyInvoices) {
       const clientMap = await resolveExistingClients(connection, bundle.clients);
-      await importInvoiceRecords(connection, bundle, clientMap);
+      await importInvoiceRecords(connection, bundle, clientMap, new Map(), options.missingOnly);
     } else if (options.onlyContracts) {
       const clientMap=await resolveExistingClients(connection,bundle.clients);
       const userMap=await resolveExistingUsers(connection,bundle.profiles);
       await importContractRecords(connection,bundle,clientMap,userMap);
     } else if (options.onlyProposals) {
       const userMap=await resolveExistingUsers(connection,bundle.profiles);
-      await importProposalRecords(connection,bundle,userMap);
+      await importProposalRecords(connection,bundle,userMap,options.missingOnly);
     } else if (options.onlyReports) {
       const clientMap=await resolveExistingClients(connection,bundle.clients);
       const userMap=await resolveExistingUsers(connection,bundle.profiles);
@@ -980,7 +1018,7 @@ async function main() {
     } else if (options.onlyDesignBriefs) {
       const clientMap=await resolveExistingClients(connection,bundle.clients);
       const userMap=await resolveExistingUsers(connection,bundle.profiles);
-      await importDesignBriefRecords(connection,bundle,clientMap,userMap);
+      await importDesignBriefRecords(connection,bundle,clientMap,userMap,options.missingOnly);
     } else if (options.onlyTexts) {
       const clientMap=await resolveExistingClients(connection,bundle.clients);
       const userMap=await resolveExistingUsers(connection,bundle.profiles);
@@ -996,6 +1034,14 @@ async function main() {
       const clientMap=await resolveExistingClients(connection,bundle.clients);
       const userMap=await resolveExistingUsers(connection,bundle.profiles);
       await importNoteRecords(connection,bundle,clientMap,userMap);
+    } else if (options.onlyComments) {
+      const userMap=await resolveExistingUsers(connection,bundle.profiles);
+      const roleByLegacyId = new Map(bundle.profiles.map((profile) => [textValue(profile, "id"), textValue(profile, "role")]));
+      await importCommentRecords(connection,bundle,userMap,roleByLegacyId,options.missingOnly);
+    } else if (options.onlyCalendar) {
+      const clientMap=await resolveExistingClients(connection,bundle.clients);
+      const userMap=await resolveExistingUsers(connection,bundle.profiles);
+      await importCalendarRecords(connection,bundle,clientMap,userMap,options.missingOnly);
     } else {
       await importBundle(connection, bundle);
     }
