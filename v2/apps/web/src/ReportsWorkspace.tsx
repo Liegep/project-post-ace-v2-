@@ -190,7 +190,12 @@ export function ReportsWorkspace({ newReportSignal = 0 }: { newReportSignal?: nu
   const selectedClient = clients.find((client) => client.id === clientId);
   const refresh = async (id = clientId) => { if (!id) return; try { const response = await listAdminReports(id); setReports(response.items); setLocalMode(false); } catch { setLocalMode(true); setReports(readLocalReports(id)); } };
   useEffect(() => { void listAdminClients().then((result) => { if (result.items.length) { setClients(result.items); setClientId(result.items[0].id); } }).catch(() => setLocalMode(true)); }, []);
-  useEffect(() => { void refresh(); }, [clientId]);
+  useEffect(() => {
+    setEditing((current) => current?.clientAccountId === clientId ? current : null);
+    setFiles({});
+    setMessage("");
+    void refresh(clientId);
+  }, [clientId]);
   const newReport = () => { const end = new Date(); const start = new Date(); start.setDate(end.getDate() - 30); setFiles({}); setEditing({ id: "", clientAccountId: clientId, title: `Relatório ${selectedClient?.name ?? ""}`, periodStart: dateValue(start), periodEnd: dateValue(end), status: "draft", metrics: emptyMetrics(), highlights: [], evidenceUrls: [], notes: null, publishedAt: null, createdAt: "", updatedAt: "" }); };
   useEffect(() => { if (newReportSignal > 0) newReport(); }, [newReportSignal]);
   const readScreenshots = async () => { if (!editing || !Object.keys(files).length) return; setReading(true); setOcrProgress("Enviando capturas para análise..."); setMessage(""); try { const evidenceUrls = await Promise.all(Object.values(files).map(uploadAdminMedia)); setOcrProgress("Extraindo métricas com IA..."); const extracted = await extractAdminReportMetrics(clientId, evidenceUrls); setEditing({ ...editing, metrics: extracted.metrics, highlights: extracted.highlights, evidenceUrls: [...editing.evidenceUrls, ...evidenceUrls] }); setMessage("Análise concluída. Revise os números e os conteúdos em destaque antes de salvar."); } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível analisar as capturas. Você pode preencher os campos manualmente."); } finally { setReading(false); setOcrProgress(""); } };
