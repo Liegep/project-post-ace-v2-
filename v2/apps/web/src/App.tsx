@@ -1876,8 +1876,8 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
 
           <div className="dashboard-grid">
             <DashboardCommemorativeWidget clients={clients} />
-            <DashboardTasksWidget posts={upcomingPosts} />
-            <DashboardAgendaWidget
+            {upcomingPosts.length > 0 ? <DashboardTasksWidget posts={upcomingPosts} /> : null}
+            {agendaToday.length > 0 ? <DashboardAgendaWidget
               events={agendaToday}
               canPersist={session.source === "api"}
               onCreated={(created) => {
@@ -1885,8 +1885,8 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
                 setAgendaToday((current) => [...current, created].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()));
               }}
               onCompleted={(eventId) => setAgendaToday((current) => current.map((event) => event.id === eventId ? { ...event, isCompleted: true } : event))}
-            />
-            <DashboardTodayPostsWidget items={postsToday} />
+            /> : null}
+            {postsToday.length > 0 ? <DashboardTodayPostsWidget items={postsToday} /> : null}
             {clientActivities.length > 0 ? <DashboardClientActivitiesWidget items={clientActivities} userId={session.id} onSchedule={setScheduleActivity} /> : null}
             {internalMessages.length > 0 ? <DashboardInternalMessagesWidget items={internalMessages} onOpen={(item) => { if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; }} /> : null}
             {clientSubmissions.length > 0 ? <DashboardClientSubmissionsWidget items={clientSubmissions} userId={session.id} /> : null}
