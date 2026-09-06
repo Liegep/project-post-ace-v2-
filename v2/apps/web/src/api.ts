@@ -329,10 +329,19 @@ const adminDrawerNotes = [
 ];
 
 const adminQuickLinks = [
-  { label: "Instagram", href: "#" },
-  { label: "Business Suite", href: "#" },
-  { label: "Google Drive", href: "#" },
-  { label: "ChatGPT", href: "#" },
+  { label: "E-mail", href: "https://mail.google.com/mail/u/0/?tab=rm&ogbl#inbox" },
+  { label: "Freepik", href: "https://freepik.com/app" },
+  { label: "ChatGPT", href: "https://chatgpt.com/" },
+  { label: "Instagram", href: "https://instagram.com/digitaldreams_design/" },
+  { label: "Facebook", href: "https://facebook.com/" },
+  { label: "Linkedin", href: "https://linkedin.com/feed/" },
+  { label: "Business Suite", href: "https://business.facebook.com/latest/content_calendar?business_id=163613944340244&asset_id=216482862072892" },
+  { label: "Loft", href: "https://crmx.novovista.com.br/vista" },
+  { label: "PayPal", href: "https://paypal.com/it/home" },
+  { label: "Google Drive", href: "https://drive.google.com/drive/u/0/home" },
+  { label: "PromoRepublic", href: "https://app.promorepublic.com/#/calendar/week/1783202400000?pageIds=308470" },
+  { label: "Spotify", href: "https://creators.spotify.com/home/show/6s7iEStD3CoUOwB3e9p1on?source=manage-accept-invite&team-id=spotify:show:6s7iEStD3CoUOwB3e9p1on" },
+  { label: "Keyframe Audio", href: "https://keyframeaudio.com/" },
 ];
 
 const adminQuickApps = ["Recados", "Rascunhos", "Links", "Rapidos"];
@@ -1130,6 +1139,17 @@ export async function saveAdminWorkspaceDrawerBySlug(slug: string, data: unknown
   return sendJson(`/api/clients/${matchedClient.id}/workspace-drawer`, {
     method: "PUT",
     body: JSON.stringify({ data }),
+  });
+}
+
+export async function loadAdminGlobalQuickLinks() {
+  return fetchJson<{ items: unknown[] }>("/api/clients/workspace-quick-links");
+}
+
+export async function saveAdminGlobalQuickLinks(items: unknown[]) {
+  return sendJson<{ ok: true; items: unknown[] }>("/api/clients/workspace-quick-links", {
+    method: "PUT",
+    body: JSON.stringify({ items }),
   });
 }
 

@@ -110,6 +110,8 @@ import {
   updatePortalCardTagsBySlug,
   loadAdminWorkspaceDrawerBySlug,
   saveAdminWorkspaceDrawerBySlug,
+  loadAdminGlobalQuickLinks,
+  saveAdminGlobalQuickLinks,
   loadAdminKanbanAutomationsBySlug,
   saveAdminKanbanAutomationsBySlug,
   loadAdminTrackerSettingsBySlug,
@@ -1020,19 +1022,24 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, mobileMenuOpen]);
-  useEffect(() => { let active = true; loadAdminWorkspaceDrawerBySlug(slug).then((result) => {
+  useEffect(() => { let active = true; Promise.all([loadAdminWorkspaceDrawerBySlug(slug), loadAdminGlobalQuickLinks()]).then(([result, quickResult]) => {
     if (!active) return;
     const saved = result.data as Partial<WorkspaceDrawerData> | null;
-    setDrawer({ ...EMPTY_DRAWER, ...saved, notes: normalizeDrawerNotes(saved?.notes), quick: saved?.quick ?? initialQuickLinks.map((link) => ({ id: crypto.randomUUID(), type: "link" as const, title: link.label, url: link.href })), draftsByUser: normalizeDrawerDrafts(saved?.draftsByUser), pautaIdeas: saved?.pautaIdeas ?? [] }); setLoaded(true);
+    const globalQuick = Array.isArray(quickResult.items) && quickResult.items.length > 0
+      ? quickResult.items as DrawerLink[]
+      : initialQuickLinks.map((link) => ({ id: crypto.randomUUID(), type: "link" as const, title: link.label, url: link.href }));
+    setDrawer({ ...EMPTY_DRAWER, ...saved, notes: normalizeDrawerNotes(saved?.notes), quick: globalQuick, draftsByUser: normalizeDrawerDrafts(saved?.draftsByUser), pautaIdeas: saved?.pautaIdeas ?? [] }); setLoaded(true);
   }).catch(() => setLoaded(true)); return () => { active = false; }; }, [slug]);
   useEffect(() => { if (loaded) onPautaCountChange?.(drawer.pautaIdeas.length); }, [drawer.pautaIdeas.length, loaded, onPautaCountChange]);
   useEffect(() => { loadAdminKanbanAutomationsBySlug(slug).then((result) => setAutomations((result.items as KanbanAutomation[]) ?? [])).catch(() => setAutomations([])); }, [slug]);
   useEffect(() => { loadAdminTrackerSettingsBySlug(slug).then((result) => setTrackingActive(result.settings.trackingEnabled)).catch(() => setTrackingActive(false)); }, [slug]);
   const persist = (next: WorkspaceDrawerData) => {
+    const quickChanged = JSON.stringify(next.quick) !== JSON.stringify(drawer.quick);
     setDrawer(next);
     // Keeps the dashboard shortcut in sync with the Kanban's single link source.
     window.dispatchEvent(new CustomEvent("design-hub:workspace-links-updated", { detail: { slug, links: next.links } }));
     void saveAdminWorkspaceDrawerBySlug(slug, next);
+    if (quickChanged && canManageAccess) void saveAdminGlobalQuickLinks(next.quick);
   };
   const items = tab === "quick" ? drawer.quick : tab === "links" ? drawer.links : [];
   const drafts = drawer.draftsByUser[userId] ?? [];
@@ -4509,7 +4516,11 @@ function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen =
 
 function ClosedCardMedia({ card, onPreview, showOverlay = false }: { card: BoardCard; onPreview?: () => void; showOverlay?: boolean }) {
   const urls = portalCardAssets(card);
-  if (urls.length === 0) return <div className="closed-card-media"><CardMediaFallback title={card.title} /></div>;
+  if (urls.length === 0) {
+    return linkedCardMaterial(card)
+      ? <div className="closed-card-media"><CardMediaFallback title={card.title} linked /></div>
+      : null;
+  }
   const multiple = urls.length > 1;
   return <div className={`closed-card-media${onPreview ? " card-media-zoom" : ""}${multiple ? " carousel" : ""}`} onClick={(event) => { if (!onPreview) return; event.stopPropagation(); onPreview(); }}>
     {showOverlay ? <div className="card-media-overlay"><span className="card-type">{compactArtTypeLabel(card.typeLabel)}</span><span className="card-media-menu">{onPreview ? "⌕" : "..."}</span></div> : null}
@@ -5628,7 +5639,7 @@ function CardDetailModal({
               <div className={`media-frame ${detail.card.mediaAspect}`}>
                 <ResilientCardMedia url={portalCardAssets(detail.card)[0]} title={detail.card.title} />
               </div>
-            ) : <CardMediaFallback title={detail.card.title} />}
+            ) : linkedCardMaterial(detail.card) ? <CardMediaFallback title={detail.card.title} linked /> : null}
             <div className="badge-row">
               {detail.card.statusBadges.map((badge) => (
                 <span key={badge} className="mini-badge status">

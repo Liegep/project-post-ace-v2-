@@ -31,6 +31,18 @@ import {
 } from "./brand-brain.service.js";
 import { ensureClientFeedbackEventsTable, recordClientFeedbackEvent } from "./client-feedback.service.js";
 
+function parseWorkspaceDrawer(value: unknown): Record<string, unknown> {
+  if (!value) return {};
+  if (typeof value === "object") return value as Record<string, unknown>;
+  if (typeof value !== "string") return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
 export const clientRoutes: FastifyPluginAsync = async (app) => {
   await ensureClientMembershipAccessLevels(app.db);
   await ensureBrandBrainTables(app.db);
@@ -426,12 +438,50 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     return { data: rows[0]?.workspace_drawer_json ?? null };
   });
 
+  app.get("/clients/workspace-quick-links", async (request) => {
+    assertInternalAccess(request);
+    const [rows] = await app.db.query<Array<RowDataPacket & { workspace_drawer_json: unknown }>>(
+      "SELECT workspace_drawer_json FROM client_accounts WHERE workspace_drawer_json IS NOT NULL ORDER BY updated_at DESC",
+    );
+    for (const row of rows) {
+      const quick = parseWorkspaceDrawer(row.workspace_drawer_json).quick;
+      if (Array.isArray(quick) && quick.length > 0) return { items: quick };
+    }
+    return { items: [] };
+  });
+
+  app.put("/clients/workspace-quick-links", async (request) => {
+    assertInternalAccess(request);
+    if (!hasGlobalRole(request.auth!.user.globalRole, "super_admin")) {
+      throw app.httpErrors.forbidden("Apenas o super admin pode editar os links rápidos globais.");
+    }
+    const body = request.body as { items?: unknown };
+    if (!Array.isArray(body.items)) throw app.httpErrors.badRequest("Lista de links rápidos inválida.");
+    const [rows] = await app.db.query<Array<RowDataPacket & { id: string; workspace_drawer_json: unknown }>>(
+      "SELECT id, workspace_drawer_json FROM client_accounts",
+    );
+    for (const row of rows) {
+      const drawer = parseWorkspaceDrawer(row.workspace_drawer_json);
+      await app.db.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...drawer, quick: body.items }), row.id]);
+    }
+    return { ok: true, items: body.items };
+  });
+
   app.put("/clients/:clientAccountId/workspace-drawer", async (request) => {
     assertInternalAccess(request);
     const params = request.params as { clientAccountId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador"]);
     const body = request.body as { data?: unknown };
-    await app.db.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify(body.data ?? {}), params.clientAccountId]);
+    const [rows] = await app.db.query<Array<RowDataPacket & { workspace_drawer_json: unknown }>>(
+      "SELECT workspace_drawer_json FROM client_accounts WHERE id = ? LIMIT 1",
+      [params.clientAccountId],
+    );
+    const current = parseWorkspaceDrawer(rows[0]?.workspace_drawer_json);
+    const incoming = parseWorkspaceDrawer(body.data);
+    // "Rápidos" is global. A client-specific drawer save must never replace it
+    // with a stale copy loaded from another Kanban.
+    const data = { ...incoming, quick: current.quick ?? incoming.quick ?? [] };
+    await app.db.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify(data), params.clientAccountId]);
     return { ok: true };
   });
 
