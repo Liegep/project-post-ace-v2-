@@ -4423,6 +4423,26 @@ function getArchiveGroupDate(card: BoardCard) {
   return Number.isNaN(date.getTime()) ? new Date(0) : date;
 }
 
+function CardMediaFallback({ title, linked = false }: { title: string; linked?: boolean }) {
+  return <div className="card-media-fallback" role="img" aria-label={`Prévia indisponível para ${title}`}>
+    <span><UiIcon name="image" /></span>
+    <strong>{linked ? "Material vinculado" : "Sem prévia"}</strong>
+    <small>{linked ? "Abra o card para acessar" : "Mídia não disponível"}</small>
+  </div>;
+}
+
+function ResilientCardMedia({ url, title, video = false, controls = false, onRatio }: { url: string; title: string; video?: boolean; controls?: boolean; onRatio?: (width: number, height: number) => void }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [url]);
+  const linked = /(?:drive|docs)\.google\.com/i.test(url);
+  const driveFileId = url.match(/drive\.google\.com\/file\/d\/([^/?]+)/i)?.[1];
+  const previewUrl = driveFileId ? `https://drive.google.com/thumbnail?id=${encodeURIComponent(driveFileId)}&sz=w1200` : url;
+  if (failed || (linked && !driveFileId)) return <CardMediaFallback title={title} linked={linked} />;
+  return video && !driveFileId
+    ? <video src={previewUrl} controls={controls} onError={() => setFailed(true)} onLoadedMetadata={(event) => onRatio?.(event.currentTarget.videoWidth, event.currentTarget.videoHeight)} />
+    : <img src={previewUrl} alt={title} draggable={false} onError={() => setFailed(true)} onLoad={(event) => onRatio?.(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />;
+}
+
 function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen = false, compact = false }: { urls: string[]; title: string; activeIndex?: number; onIndexChange?: (index: number) => void; fullscreen?: boolean; compact?: boolean }) {
   const [internalIndex, setInternalIndex] = useState(0);
   const [mediaRatios, setMediaRatios] = useState<Record<number, number>>({});
@@ -4465,7 +4485,13 @@ function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen =
         {urls.map((url, itemIndex) => {
           const isVideo = /\.(mp4|webm|mov)(\?.*)?$/i.test(url);
           return <figure className={itemIndex === index ? "artwork-carousel-slide active" : "artwork-carousel-slide"} key={`${url}-${itemIndex}`} aria-hidden={itemIndex !== index}>
-            {isVideo ? <video src={url} controls={itemIndex === index} onLoadedMetadata={(event) => rememberRatio(itemIndex, event.currentTarget.videoWidth, event.currentTarget.videoHeight)} /> : <img src={url} alt={`${title} - arte ${itemIndex + 1}`} draggable={false} onLoad={(event) => rememberRatio(itemIndex, event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />}
+            <ResilientCardMedia
+              url={url}
+              title={`${title} - arte ${itemIndex + 1}`}
+              video={isVideo}
+              controls={itemIndex === index}
+              onRatio={(width, height) => rememberRatio(itemIndex, width, height)}
+            />
           </figure>;
         })}
       </div>
@@ -4483,11 +4509,11 @@ function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen =
 
 function ClosedCardMedia({ card, onPreview, showOverlay = false }: { card: BoardCard; onPreview?: () => void; showOverlay?: boolean }) {
   const urls = portalCardAssets(card);
-  if (urls.length === 0) return null;
+  if (urls.length === 0) return <div className="closed-card-media"><CardMediaFallback title={card.title} /></div>;
   const multiple = urls.length > 1;
   return <div className={`closed-card-media${onPreview ? " card-media-zoom" : ""}${multiple ? " carousel" : ""}`} onClick={(event) => { if (!onPreview) return; event.stopPropagation(); onPreview(); }}>
     {showOverlay ? <div className="card-media-overlay"><span className="card-type">{compactArtTypeLabel(card.typeLabel)}</span><span className="card-media-menu">{onPreview ? "⌕" : "..."}</span></div> : null}
-    {multiple ? <ArtworkCarousel urls={urls} title={card.title} compact /> : <div className={`media-frame ${card.mediaAspect}`}><img src={urls[0]} alt={card.title} /></div>}
+    {multiple ? <ArtworkCarousel urls={urls} title={card.title} compact /> : <div className={`media-frame ${card.mediaAspect}`}><ResilientCardMedia url={urls[0]} title={card.title} /></div>}
   </div>;
 }
 
@@ -4707,6 +4733,10 @@ function isPortalApprovedColumn(name: string) {
 
 function portalCardAssets(card: BoardCard) {
   return Array.from(new Set([...(card.mediaUrls ?? []), ...(card.mediaUrl ? [card.mediaUrl] : [])]));
+}
+
+function linkedCardMaterial(card: BoardCard) {
+  return card.externalLinkUrl ?? portalCardAssets(card).find((url) => /(?:drive|docs)\.google\.com/i.test(url)) ?? null;
 }
 
 function portalAssetExtension(url: string, contentType?: string | null) {
@@ -5594,11 +5624,11 @@ function CardDetailModal({
           <div className="modal-media">
             {portalCardAssets(detail.card).length > 1 ? (
               <ArtworkCarousel urls={portalCardAssets(detail.card)} title={detail.card.title} />
-            ) : detail.card.mediaUrl ? (
+            ) : portalCardAssets(detail.card)[0] ? (
               <div className={`media-frame ${detail.card.mediaAspect}`}>
-                <img src={detail.card.mediaUrl} alt={detail.card.title} />
+                <ResilientCardMedia url={portalCardAssets(detail.card)[0]} title={detail.card.title} />
               </div>
-            ) : null}
+            ) : <CardMediaFallback title={detail.card.title} />}
             <div className="badge-row">
               {detail.card.statusBadges.map((badge) => (
                 <span key={badge} className="mini-badge status">
@@ -5611,8 +5641,8 @@ function CardDetailModal({
                 </span>
               ))}
             </div>
-            {detail.card.externalLinkUrl ? (
-              <a className="external-card-link" href={detail.card.externalLinkUrl} target="_blank" rel="noreferrer">
+            {linkedCardMaterial(detail.card) ? (
+              <a className="external-card-link" href={linkedCardMaterial(detail.card) ?? undefined} target="_blank" rel="noreferrer">
                 {t("Abrir link externo ↗")}
               </a>
             ) : null}
