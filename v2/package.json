@@ -20,6 +20,7 @@
     "start": "npm run start:api",
     "start:api": "npm --workspace @design-hub-v2/api run start",
     "db:prepare:staging": "npm --workspace @design-hub-v2/api run db:prepare:staging",
-    "import:legacy": "tsx apps/api/src/scripts/import-legacy-export.ts"
+    "import:legacy": "tsx apps/api/src/scripts/import-legacy-export.ts",
+    "audit:legacy": "npm --workspace @design-hub-v2/api run audit:legacy --"
   }
 }

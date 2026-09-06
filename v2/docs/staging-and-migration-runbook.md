@@ -123,6 +123,18 @@ storage legado são mantidos no relatório de falhas para revisão manual.
 6. Manter o legado disponível somente para contingência durante o período
    combinado.
 
+Antes da troca do domínio, execute a conferência final contra a exportação mais
+recente. Ela é somente leitura e falha se encontrar conteúdo ausente, vínculos
+órfãos ou clientes sem permissões:
+
+```sh
+npm run audit:legacy -- --input /caminho/exportacao-final
+```
+
+Colunas vazias omitidas são informadas separadamente e não bloqueiam a virada.
+Conteúdos criados diretamente na V2 também podem aparecer como registros extras
+e são preservados.
+
 ## Informações ainda necessárias da hospedagem
 
 - suporte a processo Node persistente

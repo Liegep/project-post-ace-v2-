@@ -4,6 +4,8 @@ Data da conferência inicial: 06/09/2026.
 
 Última atualização: 07/09/2026.
 
+Status da virada: pronta, sem diferenças bloqueantes na auditoria automatizada.
+
 ## Resultado da comparação
 
 - 11 contas de clientes localizadas e configuradas.
@@ -24,6 +26,8 @@ Data da conferência inicial: 06/09/2026.
 - Brand Brain do cliente Niko presente.
 - Todos os clientes possuem registro de permissões.
 - Não foram encontrados cards, colunas, comentários, calendários ou vínculos de usuários órfãos.
+- A atualização incremental de 07/09 trouxe 35 alterações recentes de cards e 4 atualizações de calendário da V1. Três comentários do mesmo período já estavam presentes e não foram duplicados.
+- Quatro cards com edições comprovadamente mais recentes na V2 foram preservados durante a atualização incremental.
 
 ## Diferenças encontradas e corrigidas
 
@@ -38,6 +42,19 @@ Data da conferência inicial: 06/09/2026.
 - Leitura de anexos em formato JSON textual no importador de recados.
 
 As correções foram feitas apenas para registros ausentes, sem substituir edições já existentes na V2.
+
+## Verificação automatizada para a virada
+
+Foi adicionado um verificador somente leitura que compara a exportação final com
+o banco da V2 e também procura vínculos órfãos e clientes sem permissões. A
+execução de 07/09/2026 terminou com `ready: true` e zero diferenças bloqueantes.
+
+```sh
+npm run audit:legacy -- --input /caminho/exportacao-final
+```
+
+Esse comando deve ser repetido logo após a última exportação da V1 e antes da
+troca do domínio oficial.
 
 ## Exceções conhecidas
 
