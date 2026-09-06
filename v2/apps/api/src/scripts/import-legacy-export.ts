@@ -445,9 +445,31 @@ function reportMetric(metrics: unknown, ...keys: string[]) {
   return 0;
 }
 
+function legacyReportObservations(value: unknown) {
+  const raw = String(value ?? "").trim();
+  if (!raw) return { text: "", evidenceUrls: [] as string[] };
+  try {
+    const parsed = JSON.parse(raw) as JsonRow;
+    const evidenceUrls: string[] = [];
+    const collectUrls = (item: unknown) => {
+      if (Array.isArray(item)) return item.forEach(collectUrls);
+      if (!item || typeof item !== "object") return;
+      for (const [key, nested] of Object.entries(item as JsonRow)) {
+        if ((key === "image_url" || key === "imageUrl") && typeof nested === "string" && nested.trim()) evidenceUrls.push(nested.trim());
+        else collectUrls(nested);
+      }
+    };
+    collectUrls(parsed.top_content);
+    return { text: textValue(parsed, "text").trim(), evidenceUrls: [...new Set(evidenceUrls)] };
+  } catch {
+    return { text: raw, evidenceUrls: [] as string[] };
+  }
+}
+
 function legacyReportNotes(report: JsonRow) {
+  const observations = legacyReportObservations(report.observations);
   return [
-    ["Observações", textValue(report, "observations")],
+    ["Observações", observations.text],
     ["Comentário estratégico", textValue(report, "strategic_comment")],
     ["Recomendações", textValue(report, "recommendations")],
     ["Melhor conteúdo", textValue(report, "best_content")],
@@ -489,7 +511,8 @@ async function importReportRecords(connection: PoolConnection, bundle: ExportBun
     const bestContent = textValue(report, "best_content");
     const highlights = bestContent ? [{ channel: platform, title: bestContent.slice(0, 255), value: channelMetrics.reach }] : [];
     const status = textValue(report, "status").toLowerCase() === "published" ? "published" : "draft";
-    await connection.query(`INSERT INTO client_reports (id,client_account_id,title,period_start,period_end,status,metrics_json,highlights_json,evidence_urls_json,notes,created_by_user_id,published_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE client_account_id=VALUES(client_account_id),title=VALUES(title),period_start=VALUES(period_start),period_end=VALUES(period_end),status=VALUES(status),metrics_json=VALUES(metrics_json),highlights_json=VALUES(highlights_json),notes=VALUES(notes),published_at=VALUES(published_at),updated_at=VALUES(updated_at)`, [legacyId, clientMap.get(textValue(report, "client_id")), textValue(report, "title", "Relatório"), textValue(report, "period_start"), textValue(report, "period_end"), status, JSON.stringify(normalizedMetrics), JSON.stringify(highlights), JSON.stringify([]), legacyReportNotes(report), userMap.get(textValue(report, "created_by")) ?? null, status === "published" ? mysqlDateTime(report.updated_at) ?? new Date() : null, mysqlDateTime(report.created_at), mysqlDateTime(report.updated_at)]);
+    const observations = legacyReportObservations(report.observations);
+    await connection.query(`INSERT INTO client_reports (id,client_account_id,title,period_start,period_end,status,metrics_json,highlights_json,evidence_urls_json,notes,created_by_user_id,published_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,COALESCE(?,CURRENT_TIMESTAMP),COALESCE(?,CURRENT_TIMESTAMP)) ON DUPLICATE KEY UPDATE client_account_id=VALUES(client_account_id),title=VALUES(title),period_start=VALUES(period_start),period_end=VALUES(period_end),status=VALUES(status),metrics_json=VALUES(metrics_json),highlights_json=VALUES(highlights_json),evidence_urls_json=VALUES(evidence_urls_json),notes=VALUES(notes),published_at=VALUES(published_at),updated_at=VALUES(updated_at)`, [legacyId, clientMap.get(textValue(report, "client_id")), textValue(report, "title", "Relatório"), textValue(report, "period_start"), textValue(report, "period_end"), status, JSON.stringify(normalizedMetrics), JSON.stringify(highlights), JSON.stringify(observations.evidenceUrls), legacyReportNotes(report), userMap.get(textValue(report, "created_by")) ?? null, status === "published" ? mysqlDateTime(report.updated_at) ?? new Date() : null, mysqlDateTime(report.created_at), mysqlDateTime(report.updated_at)]);
   }
   for (const template of bundle.socialReportTemplates) {
     const legacyId = textValue(template, "id");

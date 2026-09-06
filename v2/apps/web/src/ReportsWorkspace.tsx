@@ -50,6 +50,22 @@ function reportSummary(report: Pick<ClientReport, "metrics" | "highlights">, loc
   return `${winner} ${copy.inPeriod} ${number(totalReach, locale)} ${copy.acrossChannels}${best ? ` ${copy.bestContent} “${best.title}”.` : ""}`;
 }
 
+function visibleReportNotes(value: string | null) {
+  const raw = value?.trim() ?? "";
+  if (!raw.startsWith("Observações:\n{")) return raw;
+  const jsonStart = raw.indexOf("{");
+  const jsonEnd = raw.indexOf("\n\n", jsonStart);
+  const candidate = raw.slice(jsonStart, jsonEnd < 0 ? undefined : jsonEnd);
+  try {
+    const parsed = JSON.parse(candidate) as { text?: unknown };
+    const observation = typeof parsed.text === "string" ? parsed.text.trim() : "";
+    const remainder = jsonEnd < 0 ? "" : raw.slice(jsonEnd + 2).trim();
+    return [observation ? `Observações:\n${observation}` : "", remainder].filter(Boolean).join("\n\n");
+  } catch {
+    return raw;
+  }
+}
+
 function metricFromText(text: string, aliases: readonly string[]) {
   const lines = text.toLocaleLowerCase("pt-BR").split("\n");
   for (let index = 0; index < lines.length; index += 1) {
@@ -70,7 +86,8 @@ function metricFromText(text: string, aliases: readonly string[]) {
 function ReportDocument({ report, clientName, locale = "pt", printable = false }: { report: ClientReport; clientName: string; locale?: string; printable?: boolean }) {
   const language = reportLocale(locale); const copy = reportText[language];
   const maxReach = Math.max(report.metrics.instagram.reach, report.metrics.facebook.reach, 1);
-  return <article className={printable ? "report-document printable-report" : "report-document"}><header><div><span>{copy.performance}</span><h2>{clientName}</h2><p>{formatReportDate(report.periodStart, language)} a {formatReportDate(report.periodEnd, language)}</p></div><b>{report.status === "published" ? copy.published : copy.draft}</b></header><section className="report-summary"><strong>{copy.summary}</strong><p>{reportSummary(report, language)}</p></section><section className="report-kpis">{METRICS.slice(0, 4).map(([key]) => <article key={key}><span>{metricText[language][key]}</span><strong>{number(report.metrics.instagram[key] + report.metrics.facebook[key], language)}</strong><small>{copy.combined}</small></article>)}</section><section className="report-chart"><header><div><span>{copy.reachByChannel}</span><h3>{copy.comparison}</h3></div></header>{(["instagram", "facebook"] as const).map((channel) => <div className={`report-bar ${channel}`} key={channel}><span>{channel === "instagram" ? "Instagram" : "Facebook"}</span><i><b style={{ width: `${(report.metrics[channel].reach / maxReach) * 100}%` }} /></i><strong>{number(report.metrics[channel].reach, language)}</strong></div>)}</section><section className="report-detail-grid">{(["instagram", "facebook"] as const).map((channel) => <article key={channel}><h3>{channel === "instagram" ? "Instagram" : "Facebook"}</h3>{METRICS.slice(2).map(([key]) => <p key={key}><span>{metricText[language][key]}</span><b>{number(report.metrics[channel][key], language)}</b></p>)}</article>)}</section>{report.highlights.length ? <section className="report-highlights"><span>{copy.highlights}</span>{report.highlights.map((item, index) => <p key={`${item.title}-${index}`}><b>{index + 1}</b>{item.title}<em>{item.channel === "instagram" ? "Instagram" : "Facebook"} · {number(item.value, language)}</em></p>)}</section> : null}{report.notes ? <section className="report-notes"><strong>{copy.teamNotes}</strong><p>{report.notes}</p></section> : null}</article>;
+  const notes = visibleReportNotes(report.notes);
+  return <article className={printable ? "report-document printable-report" : "report-document"}><header><div><span>{copy.performance}</span><h2>{clientName}</h2><p>{formatReportDate(report.periodStart, language)} a {formatReportDate(report.periodEnd, language)}</p></div><b>{report.status === "published" ? copy.published : copy.draft}</b></header><section className="report-summary"><strong>{copy.summary}</strong><p>{reportSummary(report, language)}</p></section><section className="report-kpis">{METRICS.slice(0, 4).map(([key]) => <article key={key}><span>{metricText[language][key]}</span><strong>{number(report.metrics.instagram[key] + report.metrics.facebook[key], language)}</strong><small>{copy.combined}</small></article>)}</section><section className="report-chart"><header><div><span>{copy.reachByChannel}</span><h3>{copy.comparison}</h3></div></header>{(["instagram", "facebook"] as const).map((channel) => <div className={`report-bar ${channel}`} key={channel}><span>{channel === "instagram" ? "Instagram" : "Facebook"}</span><i><b style={{ width: `${(report.metrics[channel].reach / maxReach) * 100}%` }} /></i><strong>{number(report.metrics[channel].reach, language)}</strong></div>)}</section><section className="report-detail-grid">{(["instagram", "facebook"] as const).map((channel) => <article key={channel}><h3>{channel === "instagram" ? "Instagram" : "Facebook"}</h3>{METRICS.slice(2).map(([key]) => <p key={key}><span>{metricText[language][key]}</span><b>{number(report.metrics[channel][key], language)}</b></p>)}</article>)}</section>{report.highlights.length ? <section className="report-highlights"><span>{copy.highlights}</span>{report.highlights.map((item, index) => <p key={`${item.title}-${index}`}><b>{index + 1}</b>{item.title}<em>{item.channel === "instagram" ? "Instagram" : "Facebook"} · {number(item.value, language)}</em></p>)}</section> : null}{notes ? <section className="report-notes"><strong>{copy.teamNotes}</strong><p>{notes}</p></section> : null}</article>;
 }
 
 async function downloadReportPdf(report: ClientReport, clientName: string, locale = "pt") {
