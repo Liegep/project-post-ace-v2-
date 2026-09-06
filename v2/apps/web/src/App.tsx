@@ -5243,6 +5243,17 @@ function ClientPortalWorkspacePage({
       </aside>
 
       <main className="portal-main">
+        {portalView === "board" ? <section className="portal-welcome-banner" aria-label={tr("Boas-vindas")}>
+          <div className="portal-welcome-avatar" aria-hidden="true">
+            {data.clientLogoUrl ? <img src={data.clientLogoUrl} alt="" /> : <span>{(data.accountName || "C").slice(0, 1).toUpperCase()}</span>}
+          </div>
+          <div className="portal-welcome-copy">
+            <p>{tr("Área do cliente")}</p>
+            <h1>{tr("Olá")}, {data.accountName}! <span aria-hidden="true">👋</span></h1>
+            <small>{tr("Bem-vindo à sua área do cliente. Aqui você acompanha conteúdos, aprovações e próximos passos.")}</small>
+          </div>
+          <span className="portal-welcome-spark" aria-hidden="true">✦</span>
+        </section> : null}
         {postSuccess ? <div className="portal-post-success"><span>✓</span><p>{postSuccess}</p><button onClick={() => setPostSuccess("")} aria-label={tr("Fechar aviso")}>×</button></div> : null}
         {approvedTransfer ? <><span className="portal-approved-fly-to-nav" style={{ "--approved-target-x": `${approvedTransfer.targetX}px`, "--approved-target-y": `${approvedTransfer.targetY}px` } as CSSProperties} aria-hidden="true"><UiIcon name="send" /></span><div className="portal-approved-transfer" role="status" aria-live="polite"><div><strong>{tr("Enviado para Aprovados!")}</strong><small>{approvedTransfer.title}</small></div><span className="portal-approved-check">✓</span></div></> : null}
 

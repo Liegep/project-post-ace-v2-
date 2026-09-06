@@ -1257,6 +1257,59 @@ button {
   gap: 22px;
 }
 
+.portal-welcome-banner {
+  position: relative;
+  isolation: isolate;
+  display: grid;
+  grid-template-columns: 62px minmax(0, 1fr) 58px;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+  padding: 22px 26px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, .88);
+  border-radius: 24px;
+  background:
+    radial-gradient(circle at 88% 18%, rgba(214, 111, 173, .18), transparent 29%),
+    linear-gradient(120deg, rgba(235, 247, 255, .92), rgba(255, 255, 255, .86) 48%, rgba(255, 239, 247, .88));
+  box-shadow: 0 16px 38px rgba(54, 67, 112, .08);
+  backdrop-filter: blur(20px);
+}
+
+.portal-welcome-banner::after {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  right: 22px;
+  bottom: -65px;
+  width: 170px;
+  height: 170px;
+  border-radius: 50%;
+  background: rgba(112, 83, 226, .07);
+}
+
+.portal-welcome-avatar {
+  display: grid;
+  width: 58px;
+  height: 58px;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid rgba(217, 222, 236, .85);
+  border-radius: 18px;
+  color: #6755dc;
+  background: rgba(255, 255, 255, .84);
+  box-shadow: 0 9px 22px rgba(61, 69, 111, .1);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.portal-welcome-avatar img { width: 100%; height: 100%; object-fit: contain; }
+.portal-welcome-copy { min-width: 0; }
+.portal-welcome-copy p { margin: 0 0 4px; color: #7869dc; font-size: .7rem; font-weight: 650; letter-spacing: .13em; text-transform: uppercase; }
+.portal-welcome-copy h1 { margin: 0; overflow-wrap: anywhere; color: #202b4b; font-family: var(--v1-font); font-size: clamp(1.45rem, 2vw, 2rem); font-weight: 650; line-height: 1.12; letter-spacing: -.025em; }
+.portal-welcome-copy small { display: block; margin-top: 7px; color: #69758d; font-size: .86rem; line-height: 1.45; }
+.portal-welcome-spark { display: grid; width: 52px; height: 52px; place-items: center; justify-self: end; border-radius: 17px; color: #7357df; background: rgba(255, 255, 255, .54); font-size: 1.65rem; transform: rotate(8deg); }
+
 .admin-layout .main-column {
   min-height: calc(100vh - 28px);
   grid-template-rows: auto minmax(0, 1fr);
@@ -6389,6 +6442,12 @@ button {
   .portal-secondary {
     gap: 12px;
   }
+
+  .portal-welcome-banner { grid-template-columns: 48px minmax(0, 1fr); gap: 13px; padding: 17px; border-radius: 19px; }
+  .portal-welcome-avatar { width: 46px; height: 46px; border-radius: 14px; }
+  .portal-welcome-copy h1 { font-size: 1.3rem; }
+  .portal-welcome-copy small { margin-top: 5px; font-size: .78rem; }
+  .portal-welcome-spark { display: none; }
 
   /* Arquivados no mobile: os meses e os cards passam a formar uma lista
      vertical. No desktop, as colunas por mês continuam lado a lado. */
