@@ -1,21 +1,26 @@
 # Auditoria final da migração V1 → V2
 
-Data da conferência: 06/09/2026.
+Data da conferência inicial: 06/09/2026.
+
+Última atualização: 07/09/2026.
 
 ## Resultado da comparação
 
 - 11 contas de clientes localizadas e configuradas.
-- 58 colunas e 653 cards da V1 presentes na V2.
+- Todos os 653 cards da V1 presentes na V2; a V2 possui 654 cards no total por conter também um registro novo.
+- 57 das 58 colunas legadas presentes, além de 2 colunas criadas na V2. A única coluna legada omitida era uma duplicata vazia chamada “Entrada” no Minas Home ADS.
 - 225 comentários presentes, sem HTML bruto e sem vínculos quebrados.
-- 300 posts de calendário presentes.
+- Todos os 300 posts legados de calendário presentes; a V2 possui 301 no total.
 - 40 faturas, 118 itens e 10 anexos presentes.
 - 2 contratos, 2 aceites e 5 modelos de contrato presentes.
-- 2 propostas presentes.
+- As 2 propostas legadas presentes; a V2 possui 4 no total por conter também 2 rascunhos novos.
 - 8 relatórios e 2 modelos de relatório presentes, sem JSON bruto visível.
 - 2 briefs de design presentes.
-- 5 textos e 1 comentário de texto presentes.
+- Os 5 textos legados e 1 comentário de texto presentes; a V2 possui 7 textos no total.
 - 112 pautas presentes no espaço de pautas dos Kanbans.
-- 37 recados compartilhados e 1 rascunho privado presentes.
+- Os 37 recados compartilhados e 1 rascunho privado legados presentes. A V2 possui 44 recados e 2 rascunhos no total.
+- 25 links específicos dos clientes e 13 links rápidos globais presentes.
+- 2 PDFs funcionais anexados aos recados da Aplikasi, recuperados pelo Google Drive.
 - Brand Brain do cliente Niko presente.
 - Todos os clientes possuem registro de permissões.
 - Não foram encontrados cards, colunas, comentários, calendários ou vínculos de usuários órfãos.
@@ -28,6 +33,9 @@ Data da conferência: 06/09/2026.
 - Proposta de teste que ainda não estava na V2.
 - 2 briefs gerais sem cliente vinculado.
 - 31 imagens internas dos relatórios que ainda apontavam para o armazenamento antigo.
+- Card “Imóveis Tráfego Pago” e sua coluna “Entrada” no Minas Home ADS.
+- Links específicos de Niko, Aplikasi, DJ Per Eventi, Mattia's Bar, Podcast Líder de Elite e Serena Genovese.
+- Leitura de anexos em formato JSON textual no importador de recados.
 
 As correções foram feitas apenas para registros ausentes, sem substituir edições já existentes na V2.
 
@@ -35,7 +43,9 @@ As correções foram feitas apenas para registros ausentes, sem substituir ediç
 
 - Datas comemorativas não foram migradas por decisão da usuária; serão configuradas novamente na V2.
 - Um compromisso cancelado da agenda antiga não foi migrado, conforme a regra do importador.
+- A coluna vazia e duplicada “Entrada” do Minas Home ADS não foi recriada. A coluna funcional com o card correspondente foi restaurada e permanece oculta no portal do cliente.
 - 21 arquivos já estavam indisponíveis no armazenamento da V1. Eles afetam 9 registros: 5 cards e 4 itens de calendário. Todos os demais arquivos localizados foram preservados na hospedagem da V2.
+- Três PDFs antigos dos recados da Aplikasi já não existem no armazenamento da V1 e não foram encontrados no Google Drive: Easy2Work, VT Cards e TransAol. Os atalhos quebrados não foram mantidos na V2.
 
 Registros com arquivos antigos indisponíveis:
 
