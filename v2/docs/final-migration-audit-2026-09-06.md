@@ -49,6 +49,16 @@ Registros com arquivos antigos indisponíveis:
 - Niko — calendário “KYNAGOGI - Cosa osserviamo prima di intervenire.”.
 - Serena Genovese — calendário “12 -📍 VENICE”.
 
-## Próxima conferência
+## Conferência visual publicada
 
-Fazer uma passagem visual nas páginas publicadas, nos portais dos clientes e nos idiomas configurados. Qualquer item percebido pela usuária deve ser confrontado com esta lista para distinguir conteúdo ausente de diferença de apresentação.
+- Dashboard, faturamento, propostas, contratos, briefs, calendário social e equipe carregaram normalmente na versão publicada.
+- O Kanban da Aplikasi exibiu colunas, cards, mídias, etiquetas e pautas.
+- Os recados migrados apareceram com autor, data e cores de fundo.
+- O portal da Aplikasi respeitou as permissões habilitadas e exibiu o menu, as boas-vindas e os compromissos.
+- Foi corrigido o formulário de relatórios para não manter o título do cliente anterior ao trocar de conta.
+
+## Itens preservados para decisão manual
+
+- A área de equipe ainda contém perfis de demonstração e alguns cadastros aparentemente duplicados. Eles não foram removidos durante a auditoria porque a exclusão é destrutiva e deve ser confirmada pela usuária.
+
+Qualquer item percebido pela usuária deve ser confrontado com esta lista para distinguir conteúdo ausente de diferença de apresentação.
