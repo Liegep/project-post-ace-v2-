@@ -88,6 +88,31 @@ criados inativos e sem senha utilizável; eles devem ser ativados somente depois
 da definição do fluxo de primeiro acesso. A cópia física das mídias listadas no
 manifesto continua sendo uma etapa separada.
 
+### Preservação das mídias
+
+O manifesto bruto da exportação também pode ser transformado em um backup local
+retomável. Links externos permanecem como links; somente objetos do storage
+legado são copiados:
+
+```sh
+npm --workspace @design-hub-v2/api run backup:legacy-media -- \
+  --input /caminho/media-manifest.json \
+  --output /caminho/backup-midia
+```
+
+Depois, envie o backup para a pasta persistente da aplicação e substitua as
+referências do banco:
+
+```sh
+npm --workspace @design-hub-v2/api run migrate:legacy-media -- \
+  --backup-dir /caminho/backup-midia \
+  --api-base https://dominio-da-v2
+```
+
+Os dois comandos registram o progresso. Se houver interrupção, uma nova execução
+continua apenas os arquivos pendentes. Arquivos que já estavam ausentes no
+storage legado são mantidos no relatório de falhas para revisão manual.
+
 ## 6. Virada oficial
 
 1. Definir uma janela curta sem novas alterações no app antigo.

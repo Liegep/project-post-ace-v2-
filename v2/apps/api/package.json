@@ -14,6 +14,7 @@
     "import:legacy": "tsx src/scripts/import-legacy-export.ts",
     "import:legacy-agenda": "tsx src/scripts/import-legacy-agenda.ts",
     "backup:legacy-invoice-attachments": "tsx src/scripts/backup-legacy-invoice-attachments.ts",
+    "backup:legacy-media": "tsx src/scripts/backup-legacy-media.ts",
     "migrate:legacy-media": "tsx src/scripts/migrate-legacy-media.ts",
     "sync:agenda:legacy": "tsx src/scripts/sync-legacy-agenda-to-supabase.ts"
   },
