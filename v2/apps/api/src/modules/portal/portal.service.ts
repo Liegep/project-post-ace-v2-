@@ -25,17 +25,20 @@ function currentDateKey(timeZone: string) {
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
+function calendarDateKey(value: string | Date | null | undefined) {
+  return value instanceof Date
+    ? value.toISOString().slice(0, 10)
+    : String(value ?? "").slice(0, 10);
+}
+
 function calendarDateTime(publishDate: string | Date, publishTime: string | null) {
-  const date = publishDate instanceof Date
-    ? publishDate.toISOString().slice(0, 10)
-    : String(publishDate).slice(0, 10);
+  const date = calendarDateKey(publishDate);
   const time = String(publishTime ?? "12:00").slice(0, 5) || "12:00";
   return `${date}T${time}:00`;
 }
 
 function calendarPostSignature(title: string, value: string | Date | null | undefined) {
-  const date = value instanceof Date ? value.toISOString().slice(0, 10) : String(value ?? "").slice(0, 10);
-  return `${title.trim().toLocaleLowerCase()}|${date}`;
+  return `${title.trim().toLocaleLowerCase()}|${calendarDateKey(value)}`;
 }
 
 function groupPortalCards(
@@ -98,7 +101,14 @@ export async function getPortalHome(
     listCardsByClientAccountId(app.db, clientAccountId, {}),
     listCalendarEvents(app.db, { clientAccountIds: [clientAccountId] }),
   ]);
-  const nativeCalendarCards = portalCards.filter((card) => Boolean(card.scheduledAt || card.publishedAt));
+  const today = currentDateKey(app.appEnv.APP_TIMEZONE);
+  const nativeCalendarCards = portalCards
+    .filter((card) => Boolean(card.scheduledAt || card.publishedAt))
+    .map((card) => {
+      const calendarDate = card.scheduledAt || card.publishedAt;
+      const isPast = String(calendarDate ?? "").slice(0, 10) < today;
+      return isPast && !card.publishedAt ? { ...card, publishedAt: card.scheduledAt } : card;
+    });
   const nativeCalendarSignatures = new Set(nativeCalendarCards.map((card) =>
     calendarPostSignature(card.title, card.scheduledAt || card.publishedAt),
   ));
@@ -124,7 +134,7 @@ export async function getPortalHome(
         deadlineAt: null,
         scheduledAt,
         scheduledTimeZone: app.appEnv.APP_TIMEZONE,
-        publishedAt: event.status === "published" ? scheduledAt : null,
+        publishedAt: event.status === "published" || calendarDateKey(event.publishDate) < today ? scheduledAt : null,
         archived: false,
         archivedAt: null,
         clientLabel: "",
@@ -139,7 +149,6 @@ export async function getPortalHome(
     });
   const calendarPosts = [...nativeCalendarCards, ...importedCalendarCards];
   const upcomingCards = client.show_upcoming_posts ? calendarPosts : [];
-  const today = currentDateKey(app.appEnv.APP_TIMEZONE);
   const upcomingItems = upcomingCards
     .filter((card) => !card.archived && !card.publishedAt)
     .filter((card) => Boolean(card.scheduledAt))
