@@ -1941,12 +1941,45 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
 
 function DashboardTasksWidget({ posts }: { posts: DashboardUpcomingPost[] }) {
   const [expanded, setExpanded] = useState(false);
+  const [visibleLimit, setVisibleLimit] = useState(() => Math.min(3, posts.length));
+  const widgetRef = useRef<HTMLElement>(null);
+  const rowsRef = useRef<HTMLDivElement>(null);
   const postCount = posts.length;
-  const displayedPosts = expanded ? posts : posts.slice(0, 3);
+  useEffect(() => {
+    const widget = widgetRef.current;
+    const rows = rowsRef.current;
+    if (!widget || !rows || expanded) return;
+
+    const fitRows = () => {
+      const firstRow = rows.querySelector<HTMLElement>("article");
+      if (!firstRow) return;
+      const widgetRect = widget.getBoundingClientRect();
+      const rowsRect = rows.getBoundingClientRect();
+      const styles = window.getComputedStyle(widget);
+      const bottomPadding = Number.parseFloat(styles.paddingBottom) || 0;
+      const gap = Number.parseFloat(window.getComputedStyle(rows).rowGap) || 0;
+      const rowHeight = firstRow.getBoundingClientRect().height;
+      const availableWithoutButton = widgetRect.bottom - bottomPadding - rowsRect.top;
+      const allRowsHeight = posts.length * rowHeight + Math.max(0, posts.length - 1) * gap;
+      if (allRowsHeight <= availableWithoutButton + 1) {
+        setVisibleLimit(posts.length);
+        return;
+      }
+      const moreButtonSpace = 34;
+      const availableWithButton = Math.max(rowHeight, availableWithoutButton - moreButtonSpace);
+      setVisibleLimit(Math.max(1, Math.min(posts.length, Math.floor((availableWithButton + gap) / (rowHeight + gap)))));
+    };
+
+    fitRows();
+    const observer = new ResizeObserver(fitRows);
+    observer.observe(widget);
+    return () => observer.disconnect();
+  }, [expanded, posts]);
+  const displayedPosts = expanded ? posts : posts.slice(0, visibleLimit);
   const hiddenCount = Math.max(0, posts.length - displayedPosts.length);
-  return <section className="dashboard-tasks-widget">
+  return <section className="dashboard-tasks-widget" ref={widgetRef}>
     <header><div><span className="dashboard-task-icon">◴</span><h3>Próximos posts</h3></div><span className="dashboard-task-count">Próximos 3 dias ({postCount})</span></header>
-    <div className="dashboard-task-rows">
+    <div className="dashboard-task-rows" ref={rowsRef}>
       {displayedPosts.map((post) => <article key={post.id}>
         <span className="dashboard-task-dot" />
         <span className="dashboard-task-avatar">{post.clientLogoUrl ? <img src={post.clientLogoUrl} alt="" /> : post.clientName.slice(0, 2).toUpperCase()}</span>
