@@ -4377,6 +4377,7 @@ button {
 .portal-upcoming-groups > section > div { display: grid; gap: 7px; }
 .portal-upcoming-post { display: grid; grid-template-columns: 42px minmax(0, 1fr) 8px auto; align-items: center; gap: 11px; width: 100%; min-width: 0; padding: 9px 11px; border: 1px solid #f0d9aa; border-radius: 13px; color: inherit; background: #fff9ed; font: inherit; text-align: left; cursor: pointer; transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease; }
 .portal-upcoming-post:hover { transform: translateY(-1px); border-color: #edc879; box-shadow: 0 8px 18px rgba(127,101,46,.08); }
+.portal-upcoming-post.calendar-only, .social-calendar-event.calendar-only, .social-agenda-item.calendar-only { cursor: default; }
 .portal-upcoming-post > img, .portal-upcoming-placeholder { display: grid; width: 42px; height: 42px; place-items: center; overflow: hidden; border-radius: 10px; background: #f1efff; object-fit: cover; }
 .portal-upcoming-placeholder { color: #7769d8; }
 .portal-upcoming-placeholder svg { width: 17px; height: 17px; }

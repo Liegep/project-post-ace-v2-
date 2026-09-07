@@ -22,6 +22,7 @@ export type BoardCard = {
   isBriefApproval?: boolean;
   keepFiles?: boolean;
   deadlineAt?: string | null;
+  calendarOnly?: boolean;
 };
 
 export type UserRole = "super_admin" | "admin" | "collaborator" | "client";
@@ -132,6 +133,7 @@ export type ClientPortalPreview = {
     scheduledAt: string;
     channel: string;
     mediaUrl?: string | null;
+    cardId?: string | null;
   }>;
 };
 

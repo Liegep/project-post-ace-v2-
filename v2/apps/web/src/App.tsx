@@ -4963,7 +4963,7 @@ function ClientUpcomingPostsWidget({ items, onSelectPost }: { items: ClientPorta
       <h4>{shortDate(group.start)} – {shortDate(group.end)}</h4>
       <div>{group.items.map((item) => {
         const scheduledAt = new Date(item.scheduledAt);
-        return <button type="button" key={item.id} className="portal-upcoming-post" onClick={() => onSelectPost(item.id)}>
+        return <button type="button" key={item.id} className={`portal-upcoming-post${item.cardId ? "" : " calendar-only"}`} onClick={() => { if (item.cardId) onSelectPost(item.cardId); }}>
           {item.mediaUrl ? <img src={item.mediaUrl} alt="" /> : <span className="portal-upcoming-placeholder"><UiIcon name="image" /></span>}
           <span className="portal-upcoming-copy"><strong>{item.title}</strong><small>{new Intl.DateTimeFormat(localeTag, { weekday: "long", day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(scheduledAt)}</small></span>
           <i aria-hidden="true" />
@@ -6699,7 +6699,7 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
               <div key={key} className={muted ? "social-calendar-day muted" : "social-calendar-day"}>
                 <time>{day.getDate()}</time>
                 {visiblePosts.map((card) => (
-                  <button key={card.id} type="button" className={`social-calendar-event${isPublishedPost(card) ? " published" : ""}`} style={{ "--calendar-event-color": isPublishedPost(card) ? "#26ad78" : "#3c8ee9" } as CSSProperties} onMouseEnter={(event) => artworkHover.show(event, portalCardAssets(card)[0] ?? "", card.title)} onMouseMove={(event) => artworkHover.move(event, portalCardAssets(card)[0] ?? "", card.title)} onMouseLeave={artworkHover.hide} onClick={() => onSelectCard(card.id)}>
+                  <button key={card.id} type="button" className={`social-calendar-event${isPublishedPost(card) ? " published" : ""}${card.calendarOnly ? " calendar-only" : ""}`} style={{ "--calendar-event-color": isPublishedPost(card) ? "#26ad78" : "#3c8ee9" } as CSSProperties} onMouseEnter={(event) => artworkHover.show(event, portalCardAssets(card)[0] ?? "", card.title)} onMouseMove={(event) => artworkHover.move(event, portalCardAssets(card)[0] ?? "", card.title)} onMouseLeave={artworkHover.hide} onClick={() => { if (!card.calendarOnly) onSelectCard(card.id); }}>
                     <span>{card.title}</span>
                     {isPublishedPost(card) ? <small>✓ {t("Publicado")}</small> : null}
                   </button>
@@ -6725,7 +6725,7 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
           return <article className={`social-agenda-day${isToday ? " today" : ""}`} key={key}>
             <header><div><time>{day.getDate()}</time><span><strong>{new Intl.DateTimeFormat(localeTag, { weekday: "long" }).format(day)}</strong><small>{new Intl.DateTimeFormat(localeTag, { month: "long", year: "numeric" }).format(day)}</small></span></div></header>
             <div className="social-agenda-items">
-              {posts.map((card) => { const imageUrl = portalCardAssets(card)[0] ?? ""; const calendarDate = postCalendarDate(card); const published = isPublishedPost(card); return <button key={card.id} type="button" className={`social-agenda-item post${published ? " published" : ""}`} onClick={() => onSelectCard(card.id)}><span className="social-agenda-time">{new Intl.DateTimeFormat(localeTag, { timeStyle: "short" }).format(calendarDate)}</span>{imageUrl ? <img src={imageUrl} alt="" /> : <i><UiIcon name={published ? "check" : "send"} /></i>}<span><strong>{card.title}</strong><small>{t(published ? "Publicado" : "Post agendado")}</small></span><b>›</b></button>; })}
+              {posts.map((card) => { const imageUrl = portalCardAssets(card)[0] ?? ""; const calendarDate = postCalendarDate(card); const published = isPublishedPost(card); return <button key={card.id} type="button" className={`social-agenda-item post${published ? " published" : ""}${card.calendarOnly ? " calendar-only" : ""}`} onClick={() => { if (!card.calendarOnly) onSelectCard(card.id); }}><span className="social-agenda-time">{new Intl.DateTimeFormat(localeTag, { timeStyle: "short" }).format(calendarDate)}</span>{imageUrl ? <img src={imageUrl} alt="" /> : <i><UiIcon name={published ? "check" : "send"} /></i>}<span><strong>{card.title}</strong><small>{t(published ? "Publicado" : "Post agendado")}</small></span>{card.calendarOnly ? null : <b>›</b>}</button>; })}
               {events.map((event) => <button key={event.id} type="button" className="social-agenda-item appointment" style={{ "--calendar-event-color": event.color || "#8b45dd" } as CSSProperties} onClick={() => setSelectedEvent(event)}><span className="social-agenda-time">{new Intl.DateTimeFormat(localeTag, { timeStyle: "short" }).format(new Date(event.startsAt))}</span><i><UiIcon name={event.meetLink ? "link" : "clock"} /></i><span><strong>{event.title}</strong><small>{event.taskDescription || event.labelName || t("Compromisso")}</small></span><b>›</b></button>)}
             </div>
           </article>;

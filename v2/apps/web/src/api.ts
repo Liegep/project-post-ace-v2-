@@ -217,6 +217,7 @@ type ApiBoardCard = {
   archivedAt?: string | null;
   clientLabel: string;
   priorityLevel?: "high" | "medium" | "normal" | null;
+  calendarOnly?: boolean;
 };
 
 type ApiBoardColumn = {
@@ -519,6 +520,7 @@ function mapCard(card: ApiBoardCard, tagColors: Record<string, string> = {}): Bo
     isBriefApproval: card.isBriefApproval ?? false,
     keepFiles: card.keepFiles ?? false,
     deadlineAt: card.deadlineAt,
+    calendarOnly: card.calendarOnly ?? false,
   };
 }
 

@@ -5,6 +5,7 @@ import {
 } from "../clients/clients.repository.js";
 import { listColumnsByClientAccountId } from "../columns/columns.repository.js";
 import { listCardsByClientAccountId } from "../cards/cards.repository.js";
+import { listCalendarEvents } from "../calendar/calendar.repository.js";
 import type { PortalBoardQueryInput } from "./portal.schemas.js";
 import type { PortalAccessLevel } from "../auth/auth.types.js";
 
@@ -22,6 +23,19 @@ function currentDateKey(timeZone: string) {
   }).formatToParts(new Date());
   const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? "";
   return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function calendarDateTime(publishDate: string | Date, publishTime: string | null) {
+  const date = publishDate instanceof Date
+    ? publishDate.toISOString().slice(0, 10)
+    : String(publishDate).slice(0, 10);
+  const time = String(publishTime ?? "12:00").slice(0, 5) || "12:00";
+  return `${date}T${time}:00`;
+}
+
+function calendarPostSignature(title: string, value: string | Date | null | undefined) {
+  const date = value instanceof Date ? value.toISOString().slice(0, 10) : String(value ?? "").slice(0, 10);
+  return `${title.trim().toLocaleLowerCase()}|${date}`;
 }
 
 function groupPortalCards(
@@ -80,8 +94,51 @@ export async function getPortalHome(
     throw app.httpErrors.notFound("Permissões da conta não encontradas.");
   }
 
-  const portalCards = await listCardsByClientAccountId(app.db, clientAccountId, {});
-  const upcomingCards = client.show_upcoming_posts ? portalCards : [];
+  const [portalCards, legacyCalendarEvents] = await Promise.all([
+    listCardsByClientAccountId(app.db, clientAccountId, {}),
+    listCalendarEvents(app.db, { clientAccountIds: [clientAccountId] }),
+  ]);
+  const nativeCalendarCards = portalCards.filter((card) => Boolean(card.scheduledAt || card.publishedAt));
+  const nativeCalendarSignatures = new Set(nativeCalendarCards.map((card) =>
+    calendarPostSignature(card.title, card.scheduledAt || card.publishedAt),
+  ));
+  const importedCalendarCards = legacyCalendarEvents
+    .filter((event) => !event.cardId)
+    .filter((event) => !nativeCalendarSignatures.has(calendarPostSignature(event.title, event.publishDate)))
+    .map((event) => {
+      const scheduledAt = calendarDateTime(event.publishDate, event.publishTime);
+      return {
+        id: `calendar:${event.id}`,
+        title: event.title,
+        caption: event.caption,
+        mediaType: event.mediaType,
+        primaryMediaUrl: event.mediaUrls[0] ?? null,
+        mediaUrls: event.mediaUrls,
+        externalLinkUrl: null,
+        artType: event.mediaType || "Post",
+        status: [event.status],
+        tags: [],
+        hashtags: [],
+        isBriefApproval: false,
+        keepFiles: false,
+        deadlineAt: null,
+        scheduledAt,
+        scheduledTimeZone: app.appEnv.APP_TIMEZONE,
+        publishedAt: event.status === "published" ? scheduledAt : null,
+        archived: false,
+        archivedAt: null,
+        clientLabel: "",
+        priorityLevel: null,
+        eventColor: event.eventColor,
+        commentsCount: 0,
+        createdByUserId: event.createdByUserId,
+        position: 0,
+        legacyId: event.id,
+        calendarOnly: true,
+      };
+    });
+  const calendarPosts = [...nativeCalendarCards, ...importedCalendarCards];
+  const upcomingCards = client.show_upcoming_posts ? calendarPosts : [];
   const today = currentDateKey(app.appEnv.APP_TIMEZONE);
   const upcomingItems = upcomingCards
     .filter((card) => !card.archived && !card.publishedAt)
@@ -102,9 +159,8 @@ export async function getPortalHome(
       scheduledAt: card.scheduledAt,
       channel: "",
       mediaUrl: card.primaryMediaUrl ?? card.mediaUrls[0] ?? null,
+      cardId: "calendarOnly" in card && card.calendarOnly ? null : card.id,
     }));
-
-  const calendarPosts = portalCards.filter((card) => Boolean(card.scheduledAt || card.publishedAt));
 
   return {
     account: {
