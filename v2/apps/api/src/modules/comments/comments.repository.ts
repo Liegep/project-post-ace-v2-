@@ -35,8 +35,10 @@ export async function listCommentsByCardId(
   options: { includeInternal: boolean },
 ) {
   let sql = [
-    "SELECT cc.id, cc.card_id, cc.user_id, cc.author_name, cc.author_role, cc.comment_text, cc.is_internal, cc.created_at, cc.updated_at, u.avatar_url AS author_avatar_url",
+    "SELECT cc.id, cc.card_id, cc.user_id, cc.author_name, cc.author_role, cc.comment_text, cc.is_internal, cc.created_at, cc.updated_at, COALESCE(u.avatar_url, CASE WHEN cc.author_role = 'cliente' THEN ca.logo_url ELSE NULL END) AS author_avatar_url",
     "FROM card_comments cc",
+    "INNER JOIN kanban_cards kc ON kc.id = cc.card_id",
+    "INNER JOIN client_accounts ca ON ca.id = kc.client_account_id",
     "LEFT JOIN users u ON u.id = cc.user_id",
     "WHERE cc.card_id = ?",
   ].join(" ");
