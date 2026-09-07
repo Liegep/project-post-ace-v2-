@@ -9032,3 +9032,37 @@ button {
   .clockify-day-group article > button { grid-column: 1 / -1; min-height: 34px; border: 1px solid #dfe6ed; border-radius: 8px; }
   .clockify-row-more { display: none; }
 }
+/* Download action belongs to the report itself, after the client has read it. */
+.portal-report-download {
+  display: grid;
+  grid-template-columns: 48px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  margin-top: 16px;
+  padding: 17px 18px;
+  border: 1px solid rgba(207, 215, 235, .9);
+  border-radius: 17px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, .96), rgba(241, 239, 255, .94));
+  box-shadow: 0 13px 30px rgba(59, 71, 121, .1);
+}
+.portal-report-download > span {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 13px;
+  color: #fff;
+  background: linear-gradient(135deg, #6258df, #8b4cd2);
+  box-shadow: 0 9px 18px rgba(99, 79, 211, .25);
+  font-size: .68rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+}
+.portal-report-download strong { display: block; color: #2d3957; font-size: .92rem; }
+.portal-report-download p { margin: 4px 0 0; color: #7a859b; font-size: .74rem; line-height: 1.45; }
+
+@media (max-width: 620px) {
+  .portal-report-download { grid-template-columns: 42px minmax(0, 1fr); padding: 14px; }
+  .portal-report-download > span { width: 40px; height: 40px; }
+  .portal-report-download button { grid-column: 1 / -1; width: 100%; }
+}
