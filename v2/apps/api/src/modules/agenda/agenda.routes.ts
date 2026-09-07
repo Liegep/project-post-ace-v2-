@@ -24,7 +24,7 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
     const query = listAgendaEventsSchema.parse(request.query);
     const [rows] = await app.db.query(
-      "SELECT e.id, e.title, e.task_description AS taskDescription, e.starts_at AS startsAt, e.ends_at AS endsAt, e.recurrence_type AS recurrenceType, e.repeat_until AS repeatUntil, e.color, e.is_completed AS isCompleted, e.client_account_id AS clientAccountId, e.meet_link AS meetLink, a.name AS clientName FROM agenda_events e LEFT JOIN client_accounts a ON a.id = e.client_account_id WHERE e.client_account_id = ? AND e.starts_at < ? AND (e.recurrence_type <> 'none' OR e.starts_at >= ?) ORDER BY e.starts_at ASC",
+      "SELECT e.id, e.title, e.task_description AS taskDescription, e.starts_at AS startsAt, e.ends_at AS endsAt, e.recurrence_type AS recurrenceType, e.repeat_until AS repeatUntil, e.color, e.is_completed AS isCompleted, e.client_account_id AS clientAccountId, e.meet_link AS meetLink, a.name AS clientName FROM agenda_events e LEFT JOIN client_accounts a ON a.id = e.client_account_id WHERE e.client_account_id = ? AND e.meet_link IS NOT NULL AND TRIM(e.meet_link) <> '' AND e.starts_at < ? AND (e.recurrence_type <> 'none' OR e.starts_at >= ?) ORDER BY e.starts_at ASC",
       [params.clientAccountId, query.to, query.from],
     );
     return { items: rows };
