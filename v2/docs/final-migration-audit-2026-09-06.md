@@ -101,6 +101,19 @@ Registros com arquivos antigos indisponíveis:
 - As prévias indisponíveis encontradas nesse quadro correspondem a arquivos já ausentes na V1 e permanecem dentro das exceções conhecidas abaixo.
 - A auditoria automatizada foi repetida ao final da conferência e permaneceu com `ready: true`, `blockingDifferences: 0` e nenhum vínculo órfão.
 
+### Etapa 3 — acessos e permissões de 08/09/2026
+
+- As 11 contas possuem uma configuração própria de permissões; nenhuma conta ficou sem registro.
+- A matriz salva no banco foi conferida para criação de posts, edição de legenda, etiquetas, download, pesquisa, textos, faturas, relatórios, Brand Brain e acompanhamento.
+- A navegação do portal é montada a partir da resposta de permissões da conta e remove automaticamente recursos desabilitados.
+- As rotas de textos, faturas, relatórios, Brand Brain, pesquisa, criação de posts, edição de legenda e etiquetas repetem a validação no servidor; esconder o botão não é a única proteção.
+- A criação de post pelo cliente exige permissão e nível de acesso compatível, grava o card na coluna `Entrada` e não aceita uma coluna arbitrária enviada pelo navegador.
+- O quadro do cliente retorna apenas colunas marcadas como visíveis; a visualização de arquivados depende também da opção específica da conta.
+- A agenda do portal retorna somente compromissos da própria conta que tenham link de reunião preenchido, mantendo tarefas internas fora da área do cliente.
+- O portal italiano de Niko confirmou em produção a combinação esperada: criar post, textos, aprovados, Brand Brain e acompanhamento visíveis; faturas e relatórios ocultos.
+- Português, italiano e inglês estão associados corretamente às contas; sueco continua disponível no sistema para novas contas.
+- As verificações de tipos do site e da API passaram sem erros; os testes de separação entre acesso da aplicação e acesso MCP também passaram integralmente.
+
 ## Itens preservados para decisão manual
 
 - A área de equipe ainda contém perfis de demonstração e alguns cadastros aparentemente duplicados. Eles não foram removidos durante a auditoria porque a exclusão é destrutiva e deve ser confirmada pela usuária.
