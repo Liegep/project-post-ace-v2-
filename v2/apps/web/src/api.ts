@@ -37,6 +37,16 @@ export type TimeEntry = {
   createdAt: string;
 };
 
+export type DashboardNoteColor = "yellow" | "pink" | "blue" | "green" | "lavender";
+export type DashboardNote = {
+  id: string;
+  text: string;
+  color: DashboardNoteColor;
+  reminderDate: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type CreateAdminClientInput = {
   name: string;
   slug: string;
@@ -1193,6 +1203,22 @@ export async function listAdminHashtagGroupsBySlug(slug: string) {
 
 export async function loadDashboardOverview() {
   return fetchJson<{ dueTasks: DashboardTask[]; upcomingPosts: DashboardUpcomingPost[]; postsToday: DashboardTodayPost[]; agendaToday: AgendaEvent[]; clientSubmissions: DashboardSubmission[]; clientActivities: DashboardClientActivity[] }>("/api/dashboard/overview");
+}
+
+export async function loadDashboardNotes() {
+  return fetchJson<{ items: DashboardNote[] }>("/api/dashboard/notes");
+}
+
+export async function createDashboardNote(input: { text: string; color: DashboardNoteColor; reminderDate?: string | null }) {
+  return sendJson<{ note: DashboardNote }>("/api/dashboard/notes", { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function updateDashboardNote(noteId: string, input: Partial<{ text: string; color: DashboardNoteColor; reminderDate: string | null }>) {
+  return sendJson<{ note: DashboardNote }>(`/api/dashboard/notes/${noteId}`, { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export async function deleteDashboardNote(noteId: string) {
+  return sendJson<{ ok: true }>(`/api/dashboard/notes/${noteId}`, { method: "DELETE" });
 }
 
 export async function recordPortalContractAcceptance(slug: string, input: { sourceId: string; title: string; detail?: string }) {

@@ -34,6 +34,7 @@ import { mcpRoutes } from "./modules/mcp/mcp.routes.js";
 import { timeTrackingRoutes } from "./modules/time-tracking/time-tracking.routes.js";
 import { proposalRoutes } from "./modules/proposals/proposals.routes.js";
 import { designBriefRoutes } from "./modules/design-briefs/design-briefs.routes.js";
+import { dashboardNotesRoutes } from "./modules/dashboard-notes/dashboard-notes.routes.js";
 
 export async function buildApp() {
   const appEnv = loadEnv();
@@ -83,6 +84,7 @@ export async function buildApp() {
     await app.register(timeTrackingRoutes, { prefix: "/api" });
     await app.register(proposalRoutes, { prefix: "/api" });
     await app.register(designBriefRoutes, { prefix: "/api" });
+    await app.register(dashboardNotesRoutes, { prefix: "/api" });
 
     const archiveDueCards = async () => {
       try {

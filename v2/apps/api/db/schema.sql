@@ -652,3 +652,15 @@ CREATE TABLE IF NOT EXISTS proposal_templates (
   UNIQUE KEY uq_proposal_templates_legacy_id (legacy_id),
   CONSTRAINT fk_proposal_templates_creator FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS dashboard_notes (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  user_id CHAR(36) NOT NULL,
+  note_text VARCHAR(500) NOT NULL,
+  color ENUM('yellow','pink','blue','green','lavender') NOT NULL DEFAULT 'yellow',
+  reminder_date DATE NULL,
+  created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  KEY idx_dashboard_notes_user_updated (user_id, updated_at),
+  CONSTRAINT fk_dashboard_notes_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

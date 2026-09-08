@@ -52,6 +52,12 @@ import {
   listAdminHashtagGroupsBySlug,
   type HashtagGroup,
   loadDashboardOverview,
+  loadDashboardNotes,
+  createDashboardNote,
+  updateDashboardNote,
+  deleteDashboardNote,
+  type DashboardNote,
+  type DashboardNoteColor,
   listAdminProposals,
   createAdminProposal,
   updateAdminProposal,
@@ -1671,7 +1677,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
   const [linksLoading, setLinksLoading] = useState(false);
 
   useEffect(() => {
-    const interval = window.setInterval(() => setCurrentTime(new Date()), 60_000);
+    const interval = window.setInterval(() => setCurrentTime(new Date()), 1_000);
     return () => window.clearInterval(interval);
   }, []);
   useEffect(() => {
@@ -1917,6 +1923,10 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
             {internalMessages.length > 0 ? <DashboardInternalMessagesWidget items={internalMessages} onOpen={(item) => { if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; }} /> : null}
             {clientSubmissions.length > 0 ? <DashboardClientSubmissionsWidget items={clientSubmissions} userId={session.id} /> : null}
           </div>
+          <section className="dashboard-focus-row" aria-label="Relógio e lembretes pessoais">
+            <DashboardClockWidget currentTime={currentTime} />
+            <DashboardNotesWidget userId={session.id} canPersist={session.source === "api"} />
+          </section>
           <div className="dashboard-section-divider" aria-hidden="true"><span /></div>
           <section className="dashboard-clients-panel dashboard-clients-full">
             <div className="dashboard-section-head"><div><p className="eyebrow">Projetos</p><h2>Clientes</h2></div></div>
@@ -1938,6 +1948,113 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
       </main>
     </div>
   );
+}
+
+function DashboardClockWidget({ currentTime }: { currentTime: Date }) {
+  const seconds = currentTime.getSeconds();
+  const minutes = currentTime.getMinutes() + seconds / 60;
+  const hours = (currentTime.getHours() % 12) + minutes / 60;
+  const clockStyle = {
+    "--clock-hour": `${hours * 30}deg`,
+    "--clock-minute": `${minutes * 6}deg`,
+    "--clock-second": `${seconds * 6}deg`,
+  } as CSSProperties;
+  return <article className="dashboard-clock-widget">
+    <div className="dashboard-clock-face" style={clockStyle} aria-label={`Agora são ${currentTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`}>
+      {Array.from({ length: 12 }, (_, index) => <i key={index} style={{ "--clock-mark": `${index * 30}deg` } as CSSProperties} />)}
+      <span className="dashboard-clock-hand hour" /><span className="dashboard-clock-hand minute" /><span className="dashboard-clock-hand second" /><b />
+    </div>
+    <div className="dashboard-clock-copy"><small>Horário local</small><strong>{currentTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</strong><span>{currentTime.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "")}</span></div>
+  </article>;
+}
+
+const DASHBOARD_NOTE_COLORS: Array<{ value: DashboardNoteColor; label: string }> = [
+  { value: "yellow", label: "Amarelo" }, { value: "pink", label: "Rosa" }, { value: "blue", label: "Azul" }, { value: "green", label: "Verde" }, { value: "lavender", label: "Lilás" },
+];
+
+function DashboardNotesWidget({ userId, canPersist }: { userId: string; canPersist: boolean }) {
+  const storageKey = `designhub-v2-dashboard-notes:${userId}`;
+  const [notes, setNotes] = useState<DashboardNote[]>([]);
+  const [text, setText] = useState("");
+  const [color, setColor] = useState<DashboardNoteColor>("yellow");
+  const [reminderDate, setReminderDate] = useState("");
+  const [composing, setComposing] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const writeLocal = (next: DashboardNote[]) => {
+    setNotes(next);
+    try { window.localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* Keep notes available for this visit. */ }
+  };
+
+  useEffect(() => {
+    let active = true;
+    const localNotes = () => {
+      try { return JSON.parse(window.localStorage.getItem(storageKey) ?? "[]") as DashboardNote[]; } catch { return []; }
+    };
+    if (!canPersist) { setNotes(localNotes()); return () => { active = false; }; }
+    void loadDashboardNotes().then(({ items }) => { if (active) { setNotes(items); window.localStorage.setItem(storageKey, JSON.stringify(items)); } }).catch(() => { if (active) setNotes(localNotes()); });
+    return () => { active = false; };
+  }, [canPersist, storageKey]);
+
+  const addNote = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!text.trim()) return;
+    setSaving(true); setError("");
+    try {
+      if (editingId && canPersist) {
+        const { note } = await updateDashboardNote(editingId, { text: text.trim(), color, reminderDate: reminderDate || null });
+        writeLocal(notes.map((item) => item.id === editingId ? note : item));
+      } else if (editingId) {
+        writeLocal(notes.map((item) => item.id === editingId ? { ...item, text: text.trim(), color, reminderDate: reminderDate || null, updatedAt: new Date().toISOString() } : item));
+      } else if (canPersist) {
+        const { note } = await createDashboardNote({ text: text.trim(), color, reminderDate: reminderDate || null });
+        writeLocal([note, ...notes]);
+      } else {
+        const now = new Date().toISOString();
+        writeLocal([{ id: crypto.randomUUID(), text: text.trim(), color, reminderDate: reminderDate || null, createdAt: now, updatedAt: now }, ...notes]);
+      }
+      setText(""); setReminderDate(""); setColor("yellow"); setEditingId(null); setComposing(false);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível salvar o lembrete."); }
+    finally { setSaving(false); }
+  };
+
+  const removeNote = async (note: DashboardNote) => {
+    const next = notes.filter((item) => item.id !== note.id);
+    writeLocal(next);
+    if (canPersist) try { await deleteDashboardNote(note.id); } catch { writeLocal(notes); }
+  };
+
+  const cycleColor = async (note: DashboardNote) => {
+    const index = DASHBOARD_NOTE_COLORS.findIndex((item) => item.value === note.color);
+    const nextColor = DASHBOARD_NOTE_COLORS[(index + 1) % DASHBOARD_NOTE_COLORS.length].value;
+    writeLocal(notes.map((item) => item.id === note.id ? { ...item, color: nextColor } : item));
+    if (canPersist) try { await updateDashboardNote(note.id, { color: nextColor }); } catch { writeLocal(notes); }
+  };
+
+  const editNote = (note: DashboardNote) => {
+    setText(note.text); setColor(note.color); setReminderDate(note.reminderDate ?? ""); setEditingId(note.id); setError(""); setComposing(true);
+  };
+
+  const closeComposer = () => {
+    setText(""); setReminderDate(""); setColor("yellow"); setEditingId(null); setError(""); setComposing(false);
+  };
+
+  const formatReminder = (value: string | null) => {
+    if (!value) return "";
+    const date = new Date(`${value}T12:00:00`);
+    const today = new Date(); const tomorrow = new Date(); tomorrow.setDate(today.getDate() + 1);
+    if (value === localDateKey(today)) return "Hoje";
+    if (value === localDateKey(tomorrow)) return "Amanhã";
+    return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(date).replace(".", "");
+  };
+
+  return <article className="dashboard-notes-widget">
+    <header><div><span className="dashboard-notes-icon">✦</span><div><h3>Meus lembretes</h3><small>Post-its rápidos para não deixar nada passar</small></div></div><button type="button" onClick={() => composing ? closeComposer() : setComposing(true)}>{composing ? "Cancelar" : "+ Nova nota"}</button></header>
+    {composing ? <form className="dashboard-note-compose" onSubmit={addNote}><textarea autoFocus maxLength={500} value={text} onChange={(event) => setText(event.target.value)} placeholder="O que você não pode esquecer?" /><div><label>Quando<input type="date" value={reminderDate} onChange={(event) => setReminderDate(event.target.value)} /></label><fieldset aria-label="Cor da nota">{DASHBOARD_NOTE_COLORS.map((item) => <button key={item.value} type="button" className={`${item.value} ${color === item.value ? "active" : ""}`} title={item.label} aria-label={item.label} onClick={() => setColor(item.value)} />)}</fieldset><button className="dashboard-note-save" type="submit" disabled={saving || !text.trim()}>{saving ? "Salvando..." : editingId ? "Salvar nota" : "Fixar nota"}</button></div>{error ? <p>{error}</p> : null}</form> : null}
+    <div className="dashboard-notes-list">{notes.map((note) => <section className={`dashboard-postit ${note.color}`} key={note.id}><span className="dashboard-postit-pin" /><div className="dashboard-postit-actions"><button type="button" onClick={() => editNote(note)} title="Editar lembrete" aria-label="Editar lembrete">✎</button><button type="button" onClick={() => void cycleColor(note)} title="Trocar cor" aria-label="Trocar cor">●</button><button type="button" onClick={() => void removeNote(note)} title="Remover lembrete" aria-label="Remover lembrete">×</button></div><p>{note.text}</p>{note.reminderDate ? <time dateTime={note.reminderDate}>{formatReminder(note.reminderDate)}</time> : <small>Sem data</small>}</section>)}{notes.length === 0 && !composing ? <button className="dashboard-notes-empty" type="button" onClick={() => setComposing(true)}><span>＋</span><strong>Fixe aqui o que precisa lembrar</strong><small>Uma entrega, um agendamento ou um recado para amanhã.</small></button> : null}</div>
+  </article>;
 }
 
 function DashboardTasksWidget({ posts }: { posts: DashboardUpcomingPost[] }) {
