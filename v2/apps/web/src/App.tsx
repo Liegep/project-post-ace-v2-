@@ -476,7 +476,7 @@ function navClass(isActive: boolean) {
 
 type PageMetric = { label: string; value: string | number; note: string; icon: ReactNode; tone?: string };
 
-function WorkspaceNavbar({ session, onLogout, clientKanban = false, workspaceContext }: { session: SessionUser; onLogout: () => void; clientKanban?: boolean; workspaceContext?: ReactNode }) {
+function WorkspaceNavbar({ session, onLogout, clientKanban = false, workspaceContext, utilityAction }: { session: SessionUser; onLogout: () => void; clientKanban?: boolean; workspaceContext?: ReactNode; utilityAction?: ReactNode }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [messages, setMessages] = useState<InternalApprovalRecord[]>(() => loadInternalApprovalMessages(session.id));
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => { try { return JSON.parse(window.localStorage.getItem(`designhub-v2-read-notifications:${session.id}`) ?? "[]") as string[]; } catch { return []; } });
@@ -488,7 +488,7 @@ function WorkspaceNavbar({ session, onLogout, clientKanban = false, workspaceCon
   return <div className={`dashboard-nav workspace-navbar${clientKanban ? " client-kanban-navbar" : ""}`}>
     {!clientKanban ? <NavLink to="/dashboard" className="dashboard-nav-brand" aria-label="Abrir dashboard"><span className="brand-badge"><img src={designHubV2Logo} alt="Design Hub" /></span><strong>Design Hub</strong></NavLink> : null}
     {workspaceContext}
-    <div className="dashboard-user"><div className="notification-menu" ref={notificationMenuRef}><button className={`dashboard-icon-button ${unreadMessages.length ? "has-notification" : ""}`} type="button" aria-label="Notificações" onClick={() => setNotificationsOpen((open) => !open)}><UiIcon name="bell" />{unreadMessages.length ? <span aria-hidden="true">{unreadMessages.length > 9 ? "9+" : unreadMessages.length}</span> : null}</button>{notificationsOpen ? <div className="notification-popover"><header><strong>Notificações</strong><b>{unreadMessages.length}</b></header>{messages.length ? messages.slice(0, 5).map((item) => <button key={item.id} className={readNotificationIds.includes(item.id) ? "read" : ""} onClick={() => { markNotificationRead(item.id); if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; setNotificationsOpen(false); }}><span>♙</span><div><strong>{readNotificationIds.includes(item.id) ? "Aprovação interna" : "Nova aprovação interna"}</strong><small>{item.cardTitle}</small></div></button>) : <p>Nenhuma notificação nova.</p>}</div> : null}</div><ProfileMenu session={session} onLogout={onLogout} /></div>
+    <div className="dashboard-user">{utilityAction}<div className="notification-menu" ref={notificationMenuRef}><button className={`dashboard-icon-button ${unreadMessages.length ? "has-notification" : ""}`} type="button" aria-label="Notificações" onClick={() => setNotificationsOpen((open) => !open)}><UiIcon name="bell" />{unreadMessages.length ? <span aria-hidden="true">{unreadMessages.length > 9 ? "9+" : unreadMessages.length}</span> : null}</button>{notificationsOpen ? <div className="notification-popover"><header><strong>Notificações</strong><b>{unreadMessages.length}</b></header>{messages.length ? messages.slice(0, 5).map((item) => <button key={item.id} className={readNotificationIds.includes(item.id) ? "read" : ""} onClick={() => { markNotificationRead(item.id); if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; setNotificationsOpen(false); }}><span>♙</span><div><strong>{readNotificationIds.includes(item.id) ? "Aprovação interna" : "Nova aprovação interna"}</strong><small>{item.cardTitle}</small></div></button>) : <p>Nenhuma notificação nova.</p>}</div> : null}</div><ProfileMenu session={session} onLogout={onLogout} /></div>
   </div>;
 }
 
@@ -1898,7 +1898,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
       <main className="main-column">
         <section className="dashboard-shell">
           <div className="dashboard-hero-panel">
-            <WorkspaceNavbar session={session} onLogout={onLogout} />
+            <WorkspaceNavbar session={session} onLogout={onLogout} utilityAction={<button className="dashboard-icon-button dashboard-note-trigger" type="button" aria-label="Criar lembrete" title="Criar post-it" onClick={() => window.dispatchEvent(new Event("design-hub:open-dashboard-note"))}><UiIcon name="pencil" /></button>} />
             <div className="dashboard-welcome">
               <div className="dashboard-liquid-field" aria-hidden="true"><i /><i /><i /></div>
               <div className="dashboard-welcome-copy"><p className="eyebrow">Seu estúdio hoje</p><h1>{greeting}, {session.name.split(" ")[0]}</h1><p className="dashboard-date">{new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(currentTime)}</p></div>
@@ -1908,6 +1908,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
 
           <div className="dashboard-grid">
             <DashboardCommemorativeWidget clients={clients} />
+            <DashboardClockWidget currentTime={currentTime} />
             {upcomingPosts.length > 0 ? <DashboardTasksWidget posts={upcomingPosts} /> : null}
             {agendaToday.length > 0 ? <DashboardAgendaWidget
               events={agendaToday}
@@ -1923,10 +1924,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
             {internalMessages.length > 0 ? <DashboardInternalMessagesWidget items={internalMessages} onOpen={(item) => { if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; }} /> : null}
             {clientSubmissions.length > 0 ? <DashboardClientSubmissionsWidget items={clientSubmissions} userId={session.id} /> : null}
           </div>
-          <section className="dashboard-focus-row" aria-label="Relógio e lembretes pessoais">
-            <DashboardClockWidget currentTime={currentTime} />
-            <DashboardNotesWidget userId={session.id} canPersist={session.source === "api"} />
-          </section>
+          <DashboardNotesWidget userId={session.id} canPersist={session.source === "api"} />
           <div className="dashboard-section-divider" aria-hidden="true"><span /></div>
           <section className="dashboard-clients-panel dashboard-clients-full">
             <div className="dashboard-section-head"><div><p className="eyebrow">Projetos</p><h2>Clientes</h2></div></div>
@@ -1998,6 +1996,12 @@ function DashboardNotesWidget({ userId, canPersist }: { userId: string; canPersi
     return () => { active = false; };
   }, [canPersist, storageKey]);
 
+  useEffect(() => {
+    const openComposer = () => { setEditingId(null); setText(""); setReminderDate(""); setColor("yellow"); setError(""); setComposing(true); };
+    window.addEventListener("design-hub:open-dashboard-note", openComposer);
+    return () => window.removeEventListener("design-hub:open-dashboard-note", openComposer);
+  }, []);
+
   const addNote = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!text.trim()) return;
@@ -2050,11 +2054,10 @@ function DashboardNotesWidget({ userId, canPersist }: { userId: string; canPersi
     return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(date).replace(".", "");
   };
 
-  return <article className="dashboard-notes-widget">
-    <header><div><span className="dashboard-notes-icon">✦</span><div><h3>Meus lembretes</h3><small>Post-its rápidos para não deixar nada passar</small></div></div><button type="button" onClick={() => composing ? closeComposer() : setComposing(true)}>{composing ? "Cancelar" : "+ Nova nota"}</button></header>
-    {composing ? <form className="dashboard-note-compose" onSubmit={addNote}><textarea autoFocus maxLength={500} value={text} onChange={(event) => setText(event.target.value)} placeholder="O que você não pode esquecer?" /><div><label>Quando<input type="date" value={reminderDate} onChange={(event) => setReminderDate(event.target.value)} /></label><fieldset aria-label="Cor da nota">{DASHBOARD_NOTE_COLORS.map((item) => <button key={item.value} type="button" className={`${item.value} ${color === item.value ? "active" : ""}`} title={item.label} aria-label={item.label} onClick={() => setColor(item.value)} />)}</fieldset><button className="dashboard-note-save" type="submit" disabled={saving || !text.trim()}>{saving ? "Salvando..." : editingId ? "Salvar nota" : "Fixar nota"}</button></div>{error ? <p>{error}</p> : null}</form> : null}
-    <div className="dashboard-notes-list">{notes.map((note) => <section className={`dashboard-postit ${note.color}`} key={note.id}><span className="dashboard-postit-pin" /><div className="dashboard-postit-actions"><button type="button" onClick={() => editNote(note)} title="Editar lembrete" aria-label="Editar lembrete">✎</button><button type="button" onClick={() => void cycleColor(note)} title="Trocar cor" aria-label="Trocar cor">●</button><button type="button" onClick={() => void removeNote(note)} title="Remover lembrete" aria-label="Remover lembrete">×</button></div><p>{note.text}</p>{note.reminderDate ? <time dateTime={note.reminderDate}>{formatReminder(note.reminderDate)}</time> : <small>Sem data</small>}</section>)}{notes.length === 0 && !composing ? <button className="dashboard-notes-empty" type="button" onClick={() => setComposing(true)}><span>＋</span><strong>Fixe aqui o que precisa lembrar</strong><small>Uma entrega, um agendamento ou um recado para amanhã.</small></button> : null}</div>
-  </article>;
+  return <>
+    {notes.length ? <section className="dashboard-postits-board" aria-label="Meus lembretes"><header><div><span className="dashboard-notes-icon">✦</span><h3>Meus lembretes</h3></div><button type="button" onClick={() => window.dispatchEvent(new Event("design-hub:open-dashboard-note"))}>+ Nova nota</button></header><div className="dashboard-notes-list">{notes.map((note) => <section className={`dashboard-postit ${note.color}`} key={note.id}><span className="dashboard-postit-pin" /><div className="dashboard-postit-actions"><button type="button" onClick={() => editNote(note)} title="Editar lembrete" aria-label="Editar lembrete">✎</button><button type="button" onClick={() => void cycleColor(note)} title="Trocar cor" aria-label="Trocar cor">●</button><button type="button" onClick={() => void removeNote(note)} title="Remover lembrete" aria-label="Remover lembrete">×</button></div><p>{note.text}</p>{note.reminderDate ? <time dateTime={note.reminderDate}>{formatReminder(note.reminderDate)}</time> : <small>Sem data</small>}</section>)}</div></section> : null}
+    {composing ? createPortal(<div className="modal-backdrop dashboard-note-backdrop" onMouseDown={() => { if (!saving) closeComposer(); }}><section className="dashboard-note-modal" role="dialog" aria-modal="true" aria-labelledby="dashboard-note-modal-title" onMouseDown={(event) => event.stopPropagation()}><header><div><span className="dashboard-notes-icon">✦</span><div><small>LEMBRETE PESSOAL</small><h2 id="dashboard-note-modal-title">{editingId ? "Editar post-it" : "Novo post-it"}</h2></div></div><button type="button" className="icon-close" onClick={closeComposer} aria-label="Fechar">×</button></header><form className="dashboard-note-compose" onSubmit={addNote}><textarea autoFocus maxLength={500} value={text} onChange={(event) => setText(event.target.value)} placeholder="O que você não pode esquecer?" /><div><label>Quando<input type="date" value={reminderDate} onChange={(event) => setReminderDate(event.target.value)} /></label><fieldset aria-label="Cor da nota">{DASHBOARD_NOTE_COLORS.map((item) => <button key={item.value} type="button" className={`${item.value} ${color === item.value ? "active" : ""}`} title={item.label} aria-label={item.label} onClick={() => setColor(item.value)} />)}</fieldset><button className="dashboard-note-save" type="submit" disabled={saving || !text.trim()}>{saving ? "Salvando..." : editingId ? "Salvar nota" : "Fixar nota"}</button></div>{error ? <p>{error}</p> : null}</form></section></div>, document.body) : null}
+  </>;
 }
 
 function DashboardTasksWidget({ posts }: { posts: DashboardUpcomingPost[] }) {
