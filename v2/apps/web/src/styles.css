@@ -9337,6 +9337,81 @@ button {
 .dashboard-postits-board > header > button { padding: 7px 10px; border: 1px solid rgba(119,99,202,.15); border-radius: 9px; color: #705dcc; background: rgba(255,255,255,.62); font: inherit; font-size: .68rem; font-weight: 650; cursor: pointer; }
 .dashboard-postits-board .dashboard-notes-list { padding-bottom: 5px; }
 
+/* The first dashboard row has four lighter widgets on desktop. The remaining
+   cards keep the three-column rhythm defined by the main 12-column grid. */
+@media (min-width: 1181px) {
+  .dashboard-layout .dashboard-grid > .dashboard-first-row-widget {
+    grid-column: span 3;
+  }
+
+  .dashboard-layout .dashboard-grid > .dashboard-clock-widget.dashboard-first-row-widget {
+    min-height: 230px;
+    gap: 13px;
+    padding: 18px 14px;
+  }
+
+  .dashboard-layout .dashboard-clock-widget.dashboard-first-row-widget .dashboard-clock-face {
+    width: 92px;
+    height: 92px;
+    flex-basis: 92px;
+    border-width: 6px;
+  }
+
+  .dashboard-layout .dashboard-clock-widget.dashboard-first-row-widget .dashboard-clock-face > i {
+    top: 5px;
+    transform-origin: 1px 35px;
+  }
+
+  .dashboard-layout .dashboard-clock-widget.dashboard-first-row-widget .dashboard-clock-hand.hour { height: 21px; }
+  .dashboard-layout .dashboard-clock-widget.dashboard-first-row-widget .dashboard-clock-hand.minute { height: 29px; }
+  .dashboard-layout .dashboard-clock-widget.dashboard-first-row-widget .dashboard-clock-hand.second { height: 32px; }
+  .dashboard-layout .dashboard-clock-widget.dashboard-first-row-widget .dashboard-clock-copy strong { font-size: 1.28rem; }
+}
+
+.dashboard-layout .dashboard-grid > .dashboard-postits-board {
+  min-height: 230px;
+  align-content: start;
+  margin-top: 0;
+  padding: 16px;
+  background: rgba(255,255,255,.82);
+}
+
+.dashboard-layout .dashboard-grid > .dashboard-postits-board > header > button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  border-radius: 10px;
+  font-size: 1rem;
+}
+
+.dashboard-layout .dashboard-grid > .dashboard-postits-board .dashboard-notes-list {
+  width: 100%;
+  scroll-snap-type: x proximity;
+}
+
+.dashboard-layout .dashboard-grid > .dashboard-postits-board .dashboard-postit {
+  width: 100%;
+  min-width: 100%;
+  max-width: 100%;
+  min-height: 142px;
+  scroll-snap-align: start;
+  cursor: pointer;
+}
+
+.dashboard-layout .dashboard-grid > .dashboard-postits-board .dashboard-postit p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.dashboard-postit[role="button"]:focus-visible {
+  outline: 3px solid rgba(105,93,222,.32);
+  outline-offset: 2px;
+}
+
 .dashboard-note-backdrop { z-index: 130; }
 .dashboard-note-modal { width: min(540px, calc(100vw - 30px)); overflow: hidden; border: 1px solid rgba(255,255,255,.86); border-radius: 23px; background: rgba(255,255,255,.94); box-shadow: 0 28px 80px rgba(43,49,86,.24); backdrop-filter: blur(24px) saturate(150%); }
 .dashboard-note-modal > header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 20px 22px 14px; }
@@ -9345,6 +9420,25 @@ button {
 .dashboard-note-modal h2 { margin: 2px 0 0; color: #2d3754; font-size: 1.25rem; font-weight: 620; }
 .dashboard-note-modal .dashboard-note-compose { margin: 0 18px 18px; padding: 15px; }
 .dashboard-note-modal .dashboard-note-compose textarea { min-height: 120px; }
+
+.dashboard-note-view::before {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 5px;
+  background: linear-gradient(90deg,#f1bb55,#ee8caf,#9c74df);
+  content: "";
+}
+.dashboard-note-view.yellow { background: linear-gradient(145deg,rgba(255,255,255,.96),#fff8d9); }
+.dashboard-note-view.pink { background: linear-gradient(145deg,rgba(255,255,255,.96),#ffedf4); }
+.dashboard-note-view.blue { background: linear-gradient(145deg,rgba(255,255,255,.96),#eaf8ff); }
+.dashboard-note-view.green { background: linear-gradient(145deg,rgba(255,255,255,.96),#edfff6); }
+.dashboard-note-view.lavender { background: linear-gradient(145deg,rgba(255,255,255,.96),#f4efff); }
+.dashboard-note-view-copy { margin: 0 22px; padding: 22px; border: 1px solid rgba(122,119,151,.1); border-radius: 17px; background: rgba(255,255,255,.56); }
+.dashboard-note-view-copy p { margin: 0; color: #3d455d; font-size: 1rem; font-weight: 560; line-height: 1.65; white-space: pre-wrap; }
+.dashboard-note-view-copy time,
+.dashboard-note-view-copy small { display: block; width: fit-content; margin-top: 18px; color: #746b91; font-size: .7rem; font-weight: 650; text-transform: uppercase; }
+.dashboard-note-view > footer { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 22px 21px; }
+.dashboard-note-view > footer button { min-height: 38px; padding: 0 16px; }
 
 @media (max-width: 900px) {
   .dashboard-focus-row { grid-template-columns: 1fr; }
@@ -9366,8 +9460,12 @@ button {
   .dashboard-postit { min-width: 158px; }
   .dashboard-postit-actions { opacity: 1; }
   .dashboard-postits-board { margin-top: 14px; padding: 14px 12px 9px; }
+  .dashboard-layout .dashboard-grid > .dashboard-postits-board { min-height: auto; margin-top: 0; }
+  .dashboard-layout .dashboard-grid > .dashboard-postits-board .dashboard-postit { min-height: 120px; }
   .dashboard-note-modal > header { padding: 17px 17px 12px; }
   .dashboard-note-modal .dashboard-note-compose { margin: 0 12px 12px; }
+  .dashboard-note-view-copy { margin: 0 12px; padding: 17px; }
+  .dashboard-note-view > footer { padding: 13px 12px 16px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

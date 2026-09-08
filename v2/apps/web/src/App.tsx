@@ -1909,7 +1909,6 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
           <div className="dashboard-grid">
             <DashboardClockWidget currentTime={currentTime} />
             {upcomingPosts.length > 0 ? <DashboardTasksWidget posts={upcomingPosts} /> : null}
-            <DashboardCommemorativeWidget clients={clients} />
             {agendaToday.length > 0 ? <DashboardAgendaWidget
               events={agendaToday}
               canPersist={session.source === "api"}
@@ -1919,12 +1918,13 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
               }}
               onCompleted={(eventId) => setAgendaToday((current) => current.map((event) => event.id === eventId ? { ...event, isCompleted: true } : event))}
             /> : null}
+            <DashboardNotesWidget userId={session.id} canPersist={session.source === "api"} />
+            <DashboardCommemorativeWidget clients={clients} />
             {postsToday.length > 0 ? <DashboardTodayPostsWidget items={postsToday} /> : null}
             {clientActivities.length > 0 ? <DashboardClientActivitiesWidget items={clientActivities} userId={session.id} onSchedule={setScheduleActivity} /> : null}
             {internalMessages.length > 0 ? <DashboardInternalMessagesWidget items={internalMessages} onOpen={(item) => { if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; }} /> : null}
             {clientSubmissions.length > 0 ? <DashboardClientSubmissionsWidget items={clientSubmissions} userId={session.id} /> : null}
           </div>
-          <DashboardNotesWidget userId={session.id} canPersist={session.source === "api"} />
           <div className="dashboard-section-divider" aria-hidden="true"><span /></div>
           <section className="dashboard-clients-panel dashboard-clients-full">
             <div className="dashboard-section-head"><div><p className="eyebrow">Projetos</p><h2>Clientes</h2></div></div>
@@ -1957,7 +1957,7 @@ function DashboardClockWidget({ currentTime }: { currentTime: Date }) {
     "--clock-minute": `${minutes * 6}deg`,
     "--clock-second": `${seconds * 6}deg`,
   } as CSSProperties;
-  return <article className="dashboard-clock-widget">
+  return <article className="dashboard-clock-widget dashboard-first-row-widget">
     <div className="dashboard-clock-face" style={clockStyle} aria-label={`Agora são ${currentTime.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`}>
       {Array.from({ length: 12 }, (_, index) => <i key={index} style={{ "--clock-mark": `${index * 30}deg` } as CSSProperties} />)}
       <span className="dashboard-clock-hand hour" /><span className="dashboard-clock-hand minute" /><span className="dashboard-clock-hand second" /><b />
@@ -1978,6 +1978,7 @@ function DashboardNotesWidget({ userId, canPersist }: { userId: string; canPersi
   const [reminderDate, setReminderDate] = useState("");
   const [composing, setComposing] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [viewingNote, setViewingNote] = useState<DashboardNote | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -2026,6 +2027,7 @@ function DashboardNotesWidget({ userId, canPersist }: { userId: string; canPersi
 
   const removeNote = async (note: DashboardNote) => {
     const next = notes.filter((item) => item.id !== note.id);
+    if (viewingNote?.id === note.id) setViewingNote(null);
     writeLocal(next);
     if (canPersist) try { await deleteDashboardNote(note.id); } catch { writeLocal(notes); }
   };
@@ -2038,6 +2040,7 @@ function DashboardNotesWidget({ userId, canPersist }: { userId: string; canPersi
   };
 
   const editNote = (note: DashboardNote) => {
+    setViewingNote(null);
     setText(note.text); setColor(note.color); setReminderDate(note.reminderDate ?? ""); setEditingId(note.id); setError(""); setComposing(true);
   };
 
@@ -2055,7 +2058,8 @@ function DashboardNotesWidget({ userId, canPersist }: { userId: string; canPersi
   };
 
   return <>
-    {notes.length ? <section className="dashboard-postits-board" aria-label="Meus lembretes"><header><div><span className="dashboard-notes-icon">✦</span><h3>Meus lembretes</h3></div><button type="button" onClick={() => window.dispatchEvent(new Event("design-hub:open-dashboard-note"))}>+ Nova nota</button></header><div className="dashboard-notes-list">{notes.map((note) => <section className={`dashboard-postit ${note.color}`} key={note.id}><span className="dashboard-postit-pin" /><div className="dashboard-postit-actions"><button type="button" onClick={() => editNote(note)} title="Editar lembrete" aria-label="Editar lembrete">✎</button><button type="button" onClick={() => void cycleColor(note)} title="Trocar cor" aria-label="Trocar cor">●</button><button type="button" onClick={() => void removeNote(note)} title="Remover lembrete" aria-label="Remover lembrete">×</button></div><p>{note.text}</p>{note.reminderDate ? <time dateTime={note.reminderDate}>{formatReminder(note.reminderDate)}</time> : <small>Sem data</small>}</section>)}</div></section> : null}
+    {notes.length ? <section className="dashboard-postits-board dashboard-first-row-widget" aria-label="Meus lembretes"><header><div><span className="dashboard-notes-icon">✦</span><h3>Meus lembretes</h3></div><button type="button" onClick={() => window.dispatchEvent(new Event("design-hub:open-dashboard-note"))} aria-label="Criar nova nota" title="Nova nota">＋</button></header><div className="dashboard-notes-list">{notes.map((note) => <section className={`dashboard-postit ${note.color}`} key={note.id} role="button" tabIndex={0} aria-label={`Ler lembrete: ${note.text}`} onClick={() => setViewingNote(note)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setViewingNote(note); } }}><span className="dashboard-postit-pin" /><div className="dashboard-postit-actions"><button type="button" onClick={(event) => { event.stopPropagation(); editNote(note); }} title="Editar lembrete" aria-label="Editar lembrete">✎</button><button type="button" onClick={(event) => { event.stopPropagation(); void cycleColor(note); }} title="Trocar cor" aria-label="Trocar cor">●</button><button type="button" onClick={(event) => { event.stopPropagation(); void removeNote(note); }} title="Remover lembrete" aria-label="Remover lembrete">×</button></div><p>{note.text}</p>{note.reminderDate ? <time dateTime={note.reminderDate}>{formatReminder(note.reminderDate)}</time> : <small>Sem data</small>}</section>)}</div></section> : null}
+    {viewingNote ? createPortal(<div className="modal-backdrop dashboard-note-backdrop" onMouseDown={() => setViewingNote(null)}><section className={`dashboard-note-modal dashboard-note-view ${viewingNote.color}`} role="dialog" aria-modal="true" aria-labelledby="dashboard-note-view-title" onMouseDown={(event) => event.stopPropagation()}><header><div><span className="dashboard-notes-icon">✦</span><div><small>LEMBRETE PESSOAL</small><h2 id="dashboard-note-view-title">Meu post-it</h2></div></div><button type="button" className="icon-close" onClick={() => setViewingNote(null)} aria-label="Fechar">×</button></header><div className="dashboard-note-view-copy"><p>{viewingNote.text}</p>{viewingNote.reminderDate ? <time dateTime={viewingNote.reminderDate}>{formatReminder(viewingNote.reminderDate)}</time> : <small>Sem data</small>}</div><footer><button type="button" className="ghost-button" onClick={() => setViewingNote(null)}>Fechar</button><button type="button" className="gradient-button" onClick={() => editNote(viewingNote)}>Editar nota</button></footer></section></div>, document.body) : null}
     {composing ? createPortal(<div className="modal-backdrop dashboard-note-backdrop" onMouseDown={() => { if (!saving) closeComposer(); }}><section className="dashboard-note-modal" role="dialog" aria-modal="true" aria-labelledby="dashboard-note-modal-title" onMouseDown={(event) => event.stopPropagation()}><header><div><span className="dashboard-notes-icon">✦</span><div><small>LEMBRETE PESSOAL</small><h2 id="dashboard-note-modal-title">{editingId ? "Editar post-it" : "Novo post-it"}</h2></div></div><button type="button" className="icon-close" onClick={closeComposer} aria-label="Fechar">×</button></header><form className="dashboard-note-compose" onSubmit={addNote}><textarea autoFocus maxLength={500} value={text} onChange={(event) => setText(event.target.value)} placeholder="O que você não pode esquecer?" /><div><label>Quando<input type="date" value={reminderDate} onChange={(event) => setReminderDate(event.target.value)} /></label><fieldset aria-label="Cor da nota">{DASHBOARD_NOTE_COLORS.map((item) => <button key={item.value} type="button" className={`${item.value} ${color === item.value ? "active" : ""}`} title={item.label} aria-label={item.label} onClick={() => setColor(item.value)} />)}</fieldset><button className="dashboard-note-save" type="submit" disabled={saving || !text.trim()}>{saving ? "Salvando..." : editingId ? "Salvar nota" : "Fixar nota"}</button></div>{error ? <p>{error}</p> : null}</form></section></div>, document.body) : null}
   </>;
 }
@@ -2098,7 +2102,7 @@ function DashboardTasksWidget({ posts }: { posts: DashboardUpcomingPost[] }) {
   }, [expanded, posts]);
   const displayedPosts = expanded ? posts : posts.slice(0, visibleLimit);
   const hiddenCount = Math.max(0, posts.length - displayedPosts.length);
-  return <section className="dashboard-tasks-widget" ref={widgetRef}>
+  return <section className="dashboard-tasks-widget dashboard-first-row-widget" ref={widgetRef}>
     <header><div><span className="dashboard-task-icon">◴</span><h3>Próximos posts</h3></div><span className="dashboard-task-count">Próximos 3 dias ({postCount})</span></header>
     <div className="dashboard-task-rows" ref={rowsRef}>
       {displayedPosts.map((post) => <article key={post.id}>
@@ -2163,7 +2167,7 @@ function DashboardAgendaWidget({ events, canPersist, onCreated, onCompleted }: {
   };
 
   return <>
-    <section className="dashboard-tasks-widget dashboard-agenda-widget">
+    <section className="dashboard-tasks-widget dashboard-agenda-widget dashboard-first-row-widget">
       <header><div><span className="dashboard-task-icon">▣</span><h3>Agenda de hoje</h3></div><div className="dashboard-agenda-header-actions"><button type="button" className="dashboard-agenda-add" onClick={openQuickCreate}><span>＋</span>Novo</button><span className="dashboard-task-count">{events.length} {events.length === 1 ? "compromisso" : "compromissos"}</span></div></header>
       {events.length ? <div className="dashboard-task-rows">{events.map((agendaEvent) => <article key={agendaEvent.id} className={agendaEvent.isCompleted ? "completed" : ""}><span className="dashboard-task-dot" style={{ backgroundColor: agendaEvent.isCompleted ? "#35b987" : agendaEvent.color }} /><span className="agenda-time">{formatAgendaTime(agendaEvent.startsAt)}</span><div><strong>{agendaEvent.title}</strong><small>{agendaEvent.taskDescription || agendaEvent.labelName || agendaEvent.clientName || "Compromisso"}{agendaEvent.isCompleted ? " · Concluído" : ""}</small></div><button type="button" className={agendaEvent.isCompleted ? "dashboard-agenda-complete completed" : "dashboard-agenda-complete"} disabled={agendaEvent.isCompleted || completingId === agendaEvent.id} onClick={() => void completeEvent(agendaEvent)} aria-label={agendaEvent.isCompleted ? `${agendaEvent.title} concluído` : `Marcar ${agendaEvent.title} como feito`} title={agendaEvent.isCompleted ? "Compromisso concluído" : "Marcar como feito"}><UiIcon name="check" /></button></article>)}</div> : <p className="dashboard-agenda-empty">Nenhum compromisso para hoje.</p>}
       {error && !quickOpen ? <p className="dashboard-agenda-error">{error}</p> : null}
