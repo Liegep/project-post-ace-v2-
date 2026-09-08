@@ -114,6 +114,17 @@ Registros com arquivos antigos indisponíveis:
 - Português, italiano e inglês estão associados corretamente às contas; sueco continua disponível no sistema para novas contas.
 - As verificações de tipos do site e da API passaram sem erros; os testes de separação entre acesso da aplicação e acesso MCP também passaram integralmente.
 
+### Etapa 4 — pré-voo da virada de 08/09/2026
+
+- A V2 publicada respondeu em HTTPS com status saudável, banco disponível e armazenamento persistente de uploads ativo.
+- A página inicial da V2 e a API estão no mesmo domínio, mantendo autenticação e arquivos sem dependência de CORS adicional.
+- Uma amostra dos 20 arquivos internos modificados mais recentemente foi baixada pela URL pública; todos responderam com HTTP 200.
+- O domínio oficial `liegestudio.com` continua servindo a V1 pela infraestrutura da Hostinger. Nenhum DNS ou domínio foi alterado nesta etapa.
+- O backup bruto mais recente da V1 permanece preservado em `migration-export/final-2026-09-08` e continua sendo a base da auditoria.
+- A V1 permanece como fonte oficial até a janela de congelamento; alterações feitas nela depois da exportação de 08/09 ainda exigirão uma sincronização incremental final.
+- A troca do domínio só será realizada depois de: definir a janela sem edições, gerar a última exportação, importar as diferenças, repetir a auditoria, preparar os logins e testar um acesso real por idioma.
+- Para contingência, a V1 deverá permanecer acessível por um endereço alternativo durante o período combinado após a virada.
+
 ## Itens preservados para decisão manual
 
 - A área de equipe ainda contém perfis de demonstração e alguns cadastros aparentemente duplicados. Eles não foram removidos durante a auditoria porque a exclusão é destrutiva e deve ser confirmada pela usuária.
