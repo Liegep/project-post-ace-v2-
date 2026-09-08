@@ -1907,9 +1907,9 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
           </div>
 
           <div className="dashboard-grid">
-            <DashboardCommemorativeWidget clients={clients} />
             <DashboardClockWidget currentTime={currentTime} />
             {upcomingPosts.length > 0 ? <DashboardTasksWidget posts={upcomingPosts} /> : null}
+            <DashboardCommemorativeWidget clients={clients} />
             {agendaToday.length > 0 ? <DashboardAgendaWidget
               events={agendaToday}
               canPersist={session.source === "api"}
