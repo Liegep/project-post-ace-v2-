@@ -1894,7 +1894,8 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
           <div className="dashboard-hero-panel">
             <WorkspaceNavbar session={session} onLogout={onLogout} />
             <div className="dashboard-welcome">
-              <div className="dashboard-welcome-copy"><p className="eyebrow">Dashboard</p><h1>{greeting}, {session.name.split(" ")[0]}</h1><p className="dashboard-date">{new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(currentTime)}</p></div>
+              <div className="dashboard-liquid-field" aria-hidden="true"><i /><i /><i /></div>
+              <div className="dashboard-welcome-copy"><p className="eyebrow">Seu estúdio hoje</p><h1>{greeting}, {session.name.split(" ")[0]}</h1><p className="dashboard-date">{new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(currentTime)}</p></div>
               <div className="dashboard-welcome-aside"><div className="dashboard-orbs" aria-hidden="true"><i /><i /><i /></div><div className="dashboard-metrics dashboard-metrics-inline"><article className="dashboard-metric clients"><UiIcon name="users" /><div><span>Clientes ativos</span><strong>{loading ? "-" : clients.length}</strong><small>Contas em andamento</small></div></article><article className="dashboard-metric posts"><UiIcon name="calendar" /><div><span>Posts este mês</span><strong>128</strong><small>+18% vs mês anterior</small></div></article><article className="dashboard-metric pending"><UiIcon name="clock" /><div><span>Pendentes</span><strong>24</strong><small className="dashboard-alert">8 vencem hoje</small></div></article><article className="dashboard-metric approved"><UiIcon name="check" /><div><span>Aprovados</span><strong>88</strong><small>+20% vs mês anterior</small></div></article></div></div>
             </div>
           </div>
