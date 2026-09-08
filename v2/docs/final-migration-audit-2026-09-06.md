@@ -87,6 +87,20 @@ Registros com arquivos antigos indisponíveis:
 - O portal da Aplikasi respeitou as permissões habilitadas e exibiu o menu, as boas-vindas e os compromissos.
 - Foi corrigido o formulário de relatórios para não manter o título do cliente anterior ao trocar de conta.
 
+### Etapa 2 — conferência publicada de 08/09/2026
+
+- O dashboard publicou os 11 clientes, 6 próximos posts, 3 compromissos do dia e 8 feedbacks recentes.
+- O Kanban da Aplikasi publicou 11 colunas e 31 cards ativos, com carrosséis, etiquetas e contagens coerentes.
+- Os 6 recados migrados da Aplikasi carregaram com datas; os 2 PDFs recuperados abriram como links do Google Drive.
+- Os 9 links operacionais da Aplikasi ficaram organizados nos grupos `APLIKASI FILES` e `PLANILHAS`.
+- O Kanban de Niko publicou 7 colunas e 29 cards ativos; a coluna `Aprovados` está visível ao cliente e contém 7 cards.
+- O Brand Brain de Niko carregou com posicionamento, voz, 9 pilares, paleta, tipografia e as demais seções estruturadas.
+- O portal italiano de Niko exibiu menus, banner de boas-vindas e textos localizados corretamente.
+- O calendário de setembro de Niko está vazio por coerência com a V1: os 25 eventos migrados dessa conta terminam em agosto de 2026; os cards atuais ainda não possuem data de publicação.
+- O Kanban do Podcast Líder de Elite publicou 3 colunas e 15 cards, incluindo carrosséis com 2, 9 e 11 artes.
+- As prévias indisponíveis encontradas nesse quadro correspondem a arquivos já ausentes na V1 e permanecem dentro das exceções conhecidas abaixo.
+- A auditoria automatizada foi repetida ao final da conferência e permaneceu com `ready: true`, `blockingDifferences: 0` e nenhum vínculo órfão.
+
 ## Itens preservados para decisão manual
 
 - A área de equipe ainda contém perfis de demonstração e alguns cadastros aparentemente duplicados. Eles não foram removidos durante a auditoria porque a exclusão é destrutiva e deve ser confirmada pela usuária.
