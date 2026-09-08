@@ -234,7 +234,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         "ORDER BY e.occurred_at DESC LIMIT 8",
       ].join(" "), params),
       app.db.query<RowDataPacket[]>(
-        ["SELECT c.id, c.title, COALESCE(c.scheduled_at, c.deadline_at) AS scheduledAt, c.client_label AS clientLabel, a.name AS clientName, a.logo_url AS clientLogoUrl FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id WHERE c.archived = 0 AND COALESCE(c.scheduled_at, c.deadline_at) >= ? AND COALESCE(c.scheduled_at, c.deadline_at) < ?", scopeSql, "ORDER BY COALESCE(c.scheduled_at, c.deadline_at) ASC LIMIT 20"].join(" "),
+        ["SELECT c.id, c.title, c.deadline_at AS scheduledAt, c.client_label AS clientLabel, a.name AS clientName, a.logo_url AS clientLogoUrl FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id WHERE c.archived = 0 AND c.deadline_at >= ? AND c.deadline_at < ?", scopeSql, "ORDER BY c.deadline_at ASC LIMIT 20"].join(" "),
         [tomorrowStart, upcomingEnd, ...params],
       ),
       app.db.query<RowDataPacket[]>(
