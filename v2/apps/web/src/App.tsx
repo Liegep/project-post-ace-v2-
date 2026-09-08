@@ -3431,7 +3431,9 @@ function AdminWorkspacePage({
           clients={clientOptions.filter((client) => client.slug !== slug)}
           onClose={() => setCardMenu(null)}
           onUpdateStatus={(status) => updateAdminCardBySlug(slug, cardMenu.card.id, {
-            status: [status, ...cardMenu.card.statusBadges.slice(1)],
+            status: status
+              ? [status, ...cardMenu.card.statusBadges.slice(1)]
+              : [],
           }).then(() => setRefreshKey((value) => value + 1))}
           onToggleTag={(tag) => updateAdminCardBySlug(slug, cardMenu.card.id, {
             tags: cardMenu.card.tags.includes(tag)
@@ -3463,7 +3465,7 @@ function AdminWorkspacePage({
         }}
         onArchive={async () => { await Promise.all(selectedCards.map((card) => archiveAdminCardBySlug(slug, card.id))); finishBulkAction(); }}
         onSendToClient={async () => { await Promise.all(selectedCards.map((card) => updateAdminCardBySlug(slug, card.id, { status: ["Enviar para Cliente", ...card.statusBadges.slice(1)] }))); finishBulkAction(); }}
-        onStatus={async (status) => { await Promise.all(selectedCards.map((card) => updateAdminCardBySlug(slug, card.id, { status: [status, ...card.statusBadges.slice(1)] }))); finishBulkAction(); }}
+        onStatus={async (status) => { await Promise.all(selectedCards.map((card) => updateAdminCardBySlug(slug, card.id, { status: status ? [status, ...card.statusBadges.slice(1)] : [] }))); finishBulkAction(); }}
         onCopy={() => setBulkColumnDialog("copy")}
         onMove={() => setBulkColumnDialog("move")}
       /> : null}
@@ -4224,7 +4226,7 @@ function CardContextMenu({
       <button className="card-menu-backdrop" aria-label="Fechar menu" onClick={onClose} />
       <section className={`card-context-menu${position.openLeft ? " opens-left" : ""}`} style={{ left: position.x, top: position.y }} aria-label={`Ações para ${card.title}`} onMouseLeave={() => setPanel(null)}>
         <button type="button" className={panel === "status" ? "active" : ""} aria-haspopup="menu" aria-expanded={panel === "status"} onPointerEnter={() => setPanel("status")} onClick={() => setPanel((current) => current === "status" ? null : "status")}>☷ <span>Status</span><b>›</b></button>
-        {panel === "status" ? <div className="card-menu-submenu status-submenu">{CARD_STATUS_OPTIONS.map((status) => <button key={status} onClick={() => run(() => onUpdateStatus(status))}>{card.statusBadges[0] === status ? "✓ " : ""}{status}</button>)}</div> : null}
+        {panel === "status" ? <div className="card-menu-submenu status-submenu"><button className={!card.statusBadges[0] ? "selected" : ""} onClick={() => run(() => onUpdateStatus(""))}>{!card.statusBadges[0] ? "✓ " : "○ "}Sem status</button>{CARD_STATUS_OPTIONS.map((status) => { const selected = card.statusBadges[0] === status; return <button key={status} className={selected ? "selected" : ""} onClick={() => run(() => onUpdateStatus(selected ? "" : status))}>{selected ? "✓ " : ""}{status}</button>; })}</div> : null}
         <button type="button" className={panel === "tags" ? "active" : ""} aria-haspopup="menu" aria-expanded={panel === "tags"} onPointerEnter={() => setPanel("tags")} onClick={() => setPanel((current) => current === "tags" ? null : "tags")}>◇ <span>Etiquetas</span><b>›</b></button>
         {panel === "tags" ? <div className="card-menu-submenu tags-submenu">{tags.map((tag) => <button key={tag.id} onClick={() => run(() => onToggleTag(tag.name))}>{card.tags.includes(tag.name) ? <b className="tag-menu-check">✓</b> : <i className="tag-menu-dot" style={{ backgroundColor: tag.color }} />}{tag.name}</button>)}</div> : null}
         <hr />
@@ -4295,7 +4297,7 @@ function BulkActionBar({ selectedCount, onCancel, onDelete, onArchive, onSendToC
     <strong>{selectedCount} {selectedCount === 1 ? "card selecionado" : "cards selecionados"}</strong>
     <button disabled={!selectedCount} onClick={onCopy}>Copiar</button><button disabled={!selectedCount} onClick={onMove}>Mover</button>
     <button disabled={!selectedCount} onClick={() => void onSendToClient()}>Enviar para cliente</button>
-    <select disabled={!selectedCount} defaultValue="" onChange={(event) => { if (event.target.value) { void onStatus(event.target.value); event.target.value = ""; } }}><option value="">Mudar status</option>{CARD_STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}</select>
+    <select disabled={!selectedCount} defaultValue="" onChange={(event) => { if (event.target.value) { void onStatus(event.target.value === "__none__" ? "" : event.target.value); event.target.value = ""; } }}><option value="">Mudar status</option><option value="__none__">Sem status</option>{CARD_STATUS_OPTIONS.map((status) => <option key={status}>{status}</option>)}</select>
     <button disabled={!selectedCount} onClick={() => void onArchive()}>Arquivar</button><button className="danger" disabled={!selectedCount} onClick={() => void onDelete()}>Apagar</button>
     <button className="bulk-close" onClick={onCancel}>×</button>
   </aside>;
@@ -5946,7 +5948,7 @@ function AdminCardEditor({
     caption: card.subtitle ?? "",
     artType: normalizeArtType(card.typeLabel),
     columnId: columns.find((column) => column.cards.some((item) => item.id === card.id))?.id ?? "",
-    status: card.statusBadges[0] ?? "Entrada",
+    status: card.statusBadges[0] ?? "",
     clientLabel: card.clientLabel,
     priorityLevel: card.priorityLevel ?? "",
     tags: card.tags.join(", "),
@@ -6132,7 +6134,7 @@ ${internalMessage.trim()}`, isInternal: true });
         primaryMediaUrl: currentDraft.mediaUrls[0] ?? null,
         mediaUrls: currentDraft.mediaUrls,
         externalLinkUrl: currentDraft.externalLinkUrl.trim() || null,
-        status: [currentDraft.status, ...card.statusBadges.slice(1)],
+        status: currentDraft.status ? [currentDraft.status, ...card.statusBadges.slice(1)] : [],
         tags: splitValues(currentDraft.tags),
         hashtags: splitValues(currentDraft.hashtags).map((item) => item.startsWith("#") ? item : `#${item}`),
         isBriefApproval: card.isBriefApproval ?? false,
@@ -6319,7 +6321,7 @@ ${internalMessage.trim()}`, isInternal: true });
         <aside className="admin-card-side">
           <CardTimeTracker slug={slug} cardId={card.id} cardTitle={title || card.title} />
           <ArtTypeSelect value={artType} onChange={setArtType} />
-          <EditorSelect label="Status" value={status} onChange={setStatus} options={CARD_STATUS_OPTIONS} />
+          <EditorSelect label="Status" value={status} onChange={setStatus} options={CARD_STATUS_OPTIONS} emptyLabel="Sem status" />
           <label className="editor-field"><span>Prioridade</span><select value={priorityLevel} onChange={(event) => setPriorityLevel(event.target.value as CardPriority | "")}><option value="">Sem prioridade</option><option value="high">Alta prioridade</option><option value="medium">Média prioridade</option><option value="normal">Prioridade normal</option></select></label>
           <EditorSelect label="Feedback do cliente" value={clientLabel} onChange={setClientLabel} options={["Pendente", "Aprovado", "Alteração solicitada"]} />
           <EditorField label="Agendamento"><input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /><small className="editor-field-hint">Na data e hora informadas, o card será movido para Arquivados.</small></EditorField>
@@ -6374,8 +6376,8 @@ function EditorField({ label, action, children }: { label: string; action?: Reac
   return <label className="editor-field"><span>{label}{action ? <em>{action}</em> : null}</span>{children}</label>;
 }
 
-function EditorSelect({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {
-  return <label className="editor-field"><span>{label}</span><select value={value} onChange={(event) => onChange(event.target.value)}>{options.map((option) => <option key={option}>{option}</option>)}</select></label>;
+function EditorSelect({ label, value, onChange, options, emptyLabel }: { label: string; value: string; onChange: (value: string) => void; options: string[]; emptyLabel?: string }) {
+  return <label className="editor-field"><span>{label}</span><select value={value} onChange={(event) => onChange(event.target.value)}>{emptyLabel ? <option value="">{emptyLabel}</option> : null}{options.map((option) => <option key={option}>{option}</option>)}</select></label>;
 }
 
 function ArtTypeIcon({ type }: { type: string }) {
