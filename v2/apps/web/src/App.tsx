@@ -1908,6 +1908,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
 
           <div className="dashboard-grid">
             <DashboardClockWidget currentTime={currentTime} />
+            <DashboardNotesWidget userId={session.id} canPersist={session.source === "api"} />
             {upcomingPosts.length > 0 ? <DashboardTasksWidget posts={upcomingPosts} /> : null}
             {agendaToday.length > 0 ? <DashboardAgendaWidget
               events={agendaToday}
@@ -1918,7 +1919,6 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
               }}
               onCompleted={(eventId) => setAgendaToday((current) => current.map((event) => event.id === eventId ? { ...event, isCompleted: true } : event))}
             /> : null}
-            <DashboardNotesWidget userId={session.id} canPersist={session.source === "api"} />
             <DashboardCommemorativeWidget clients={clients} />
             {postsToday.length > 0 ? <DashboardTodayPostsWidget items={postsToday} /> : null}
             {clientActivities.length > 0 ? <DashboardClientActivitiesWidget items={clientActivities} userId={session.id} onSchedule={setScheduleActivity} /> : null}

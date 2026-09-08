@@ -9337,8 +9337,7 @@ button {
 .dashboard-postits-board > header > button { padding: 7px 10px; border: 1px solid rgba(119,99,202,.15); border-radius: 9px; color: #705dcc; background: rgba(255,255,255,.62); font: inherit; font-size: .68rem; font-weight: 650; cursor: pointer; }
 .dashboard-postits-board .dashboard-notes-list { padding-bottom: 5px; }
 
-/* The first dashboard row has four lighter widgets on desktop. The remaining
-   cards keep the three-column rhythm defined by the main 12-column grid. */
+/* The first dashboard row has four lighter widgets on desktop. */
 @media (min-width: 1181px) {
   .dashboard-layout .dashboard-grid > .dashboard-first-row-widget {
     grid-column: span 3;
@@ -9405,6 +9404,44 @@ button {
   overflow: hidden;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 4;
+}
+
+/* On wide desktops, the clock and post-its form a pair of square tiles. The
+   two information-heavy widgets remain rectangular beside them. */
+@media (min-width: 1500px) {
+  .dashboard-layout .dashboard-grid > :is(
+    .dashboard-clock-widget.dashboard-first-row-widget,
+    .dashboard-postits-board.dashboard-first-row-widget
+  ) {
+    grid-column: span 2;
+    min-height: 0;
+    aspect-ratio: 1;
+    align-self: start;
+  }
+
+  .dashboard-layout .dashboard-grid > .dashboard-tasks-widget.dashboard-first-row-widget {
+    grid-column: span 4;
+  }
+
+  .dashboard-layout .dashboard-grid > .dashboard-clock-widget.dashboard-first-row-widget {
+    flex-direction: column;
+    gap: 12px;
+    padding: 17px;
+  }
+
+  .dashboard-layout .dashboard-clock-widget.dashboard-first-row-widget .dashboard-clock-copy {
+    justify-items: center;
+    text-align: center;
+  }
+
+  .dashboard-layout .dashboard-grid > .dashboard-postits-board .dashboard-notes-list {
+    min-height: 0;
+    flex: 1;
+  }
+
+  .dashboard-layout .dashboard-grid > .dashboard-postits-board .dashboard-postit {
+    min-height: 0;
+  }
 }
 
 .dashboard-postit[role="button"]:focus-visible {
