@@ -77,5 +77,7 @@ export async function changeMyPassword(app: FastifyInstance, userId: string, inp
 export async function resetManagedUserPassword(app: FastifyInstance, userId: string, newPassword: string) {
   const user = await findAuthContextByUserId(app.db, userId);
   if (!user) throw app.httpErrors.notFound("Usuário não encontrado.");
-  await updateUserPasswordHash(app.db, userId, await hashPassword(newPassword));
+  // Imported accounts intentionally start inactive. A password defined by the
+  // super admin is the explicit activation step and does not send any email.
+  await updateUserPasswordHash(app.db, userId, await hashPassword(newPassword), true);
 }

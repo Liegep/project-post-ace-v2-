@@ -110,8 +110,13 @@ export async function updateUserAvatar(db: Pool, userId: string, avatarUrl: stri
   return findAuthContextByUserId(db, userId);
 }
 
-export async function updateUserPasswordHash(db: Pool, userId: string, passwordHash: string) {
-  await db.query("UPDATE users SET password_hash = ? WHERE id = ?", [passwordHash, userId]);
+export async function updateUserPasswordHash(db: Pool, userId: string, passwordHash: string, activate = false) {
+  await db.query(
+    activate
+      ? "UPDATE users SET password_hash = ?, is_active = 1 WHERE id = ?"
+      : "UPDATE users SET password_hash = ? WHERE id = ?",
+    [passwordHash, userId],
+  );
 }
 
 export async function listUsers(db: Pool) {
