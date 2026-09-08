@@ -2,7 +2,7 @@
 
 Data da conferência inicial: 06/09/2026.
 
-Última atualização: 07/09/2026.
+Última atualização: 08/09/2026.
 
 Status da virada: pronta, sem diferenças bloqueantes na auditoria automatizada.
 
@@ -28,6 +28,9 @@ Status da virada: pronta, sem diferenças bloqueantes na auditoria automatizada.
 - Não foram encontrados cards, colunas, comentários, calendários ou vínculos de usuários órfãos.
 - A atualização incremental de 07/09 trouxe 35 alterações recentes de cards e 4 atualizações de calendário da V1. Três comentários do mesmo período já estavam presentes e não foram duplicados.
 - Quatro cards com edições comprovadamente mais recentes na V2 foram preservados durante a atualização incremental.
+- A sincronização incremental de 08/09 trouxe 27 cards alterados, 5 atualizações de calendário, 1 etiqueta nova e 8 compromissos novos da V1.
+- Foram preservados e transferidos 25 arquivos de mídia ainda pendentes; depois da substituição das referências, os cards atualizados não mantiveram links para o armazenamento antigo.
+- A auditoria posterior à sincronização de 08/09 terminou novamente com `ready: true`, sem diferenças bloqueantes ou vínculos órfãos.
 
 ## Diferenças encontradas e corrigidas
 
