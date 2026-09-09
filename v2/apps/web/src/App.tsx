@@ -132,6 +132,7 @@ import {
   sendAdminTextToClientBySlug,
   updateAdminTextBySlug,
   listPortalTextsBySlug,
+  updatePortalTextBySlug,
   listPortalTextCommentsBySlug,
   addPortalTextCommentBySlug,
   submitPortalTextDecisionBySlug,
@@ -5052,6 +5053,51 @@ function portalTextExcerpt(text: TextDocument) {
   return text.contentHtml.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim().slice(0, 180);
 }
 
+function ClientPortalRichTextEditor({ slug, text, onSaved }: { slug: string; text: TextDocument; onSaved: (text: TextDocument) => void }) {
+  const { t } = usePortalTranslation();
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  useEffect(() => {
+    if (editorRef.current) editorRef.current.innerHTML = text.contentHtml;
+    setMessage("");
+  }, [text.id, text.contentHtml]);
+  const format = (command: string, value?: string) => {
+    editorRef.current?.focus();
+    document.execCommand(command, false, value);
+  };
+  const save = async () => {
+    setSaving(true);
+    setMessage("");
+    try {
+      const response = await updatePortalTextBySlug(slug, text.id, { contentHtml: editorRef.current?.innerHTML ?? text.contentHtml });
+      onSaved(response.text);
+      setMessage(t("Alterações salvas."));
+    } catch (caught) {
+      setMessage(caught instanceof Error ? caught.message : t("Não foi possível salvar as alterações."));
+    } finally {
+      setSaving(false);
+    }
+  };
+  return <section className="portal-text-doc-editor">
+    <div className="portal-text-doc-toolbar" role="toolbar" aria-label={t("Ferramentas de edição")}>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("undo")} title={t("Desfazer")}>↶</button>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("redo")} title={t("Refazer")}>↷</button><i />
+      <select aria-label={t("Estilo do texto")} defaultValue="p" onChange={(event) => format("formatBlock", event.target.value)}><option value="p">{t("Texto normal")}</option><option value="h2">{t("Título")}</option><option value="h3">{t("Subtítulo")}</option><option value="blockquote">{t("Citação")}</option></select><i />
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("bold")} title={t("Negrito")}><b>B</b></button>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("italic")} title={t("Itálico")}><em>I</em></button>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("underline")} title={t("Sublinhado")}><u>U</u></button>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("insertUnorderedList")} title={t("Lista")}>☷</button>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("justifyLeft")} title={t("Alinhar à esquerda")}>≡</button>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("justifyCenter")} title={t("Centralizar")}>≡</button>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("justifyRight")} title={t("Alinhar à direita")}>≡</button>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("createLink", window.prompt(t("Cole o link")) ?? "")} title={t("Inserir link")}>⌁</button>
+    </div>
+    <div ref={editorRef} className="portal-text-content portal-text-doc-paper" contentEditable suppressContentEditableWarning />
+    <footer><span>{message}</span><button type="button" className="gradient-button" disabled={saving} onClick={() => void save()}>{saving ? t("Salvando...") : t("Salvar alterações")}</button></footer>
+  </section>;
+}
+
 function ClientApprovedPostsView({ cards, texts, allowDownload, onOpenCard, onOpenText }: { cards: BoardCard[]; texts: TextDocument[]; allowDownload: boolean; onOpenCard: (cardId: string) => void; onOpenText: (textId: string) => void }) {
   const { t } = usePortalTranslation();
   const approvedCards = cards.filter(isPortalApproved);
@@ -5575,7 +5621,7 @@ function ClientPortalWorkspacePage({
         {postSuccess ? <div className="portal-post-success"><span>✓</span><p>{postSuccess}</p><button onClick={() => setPostSuccess("")} aria-label={tr("Fechar aviso")}>×</button></div> : null}
         {approvedTransfer ? <><span className="portal-approved-fly-to-nav" style={{ "--approved-target-x": `${approvedTransfer.targetX}px`, "--approved-target-y": `${approvedTransfer.targetY}px` } as CSSProperties} aria-hidden="true"><UiIcon name="send" /></span><div className="portal-approved-transfer" role="status" aria-live="polite"><div><strong>{tr("Enviado para Aprovados!")}</strong><small>{approvedTransfer.title}</small></div><span className="portal-approved-check">✓</span></div></> : null}
 
-        {portalView === "brand" && data.permissions.allowClientViewBrandBrain ? <ClientBrandBrainView slug={slug} clientName={data.accountName} allowEdit={canUseEnabledClientTools && data.permissions.allowClientEditBrandBrain} /> : portalView === "search" && data.permissions.allowClientSearch ? <ClientPortalSearchView slug={slug} onOpenCard={setSelectedCardId} /> : portalView === "archived" && data.showArchivedToClient ? <ClientPortalArchivedView cards={portalArchivedCards} loading={portalArchivedLoading} error={portalArchivedError} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} /> : portalView === "tracker" && portalTrackerEnabled ? <ClientPortalTrackerView columns={data.boardColumns} withoutColumn={data.withoutColumn} onOpenCard={setSelectedCardId} /> : portalView === "approved" ? <ClientApprovedPostsView cards={portalCardsWithLocalApprovals} texts={portalTexts} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} onOpenText={(textId) => { setSelectedPortalTextId(textId); setPortalView("texts"); }} /> : portalView === "invoices" && data.permissions.allowClientViewInvoices ? <ClientPortalInvoicesView invoices={portalInvoices} onViewInvoice={markInvoiceViewed} /> : portalView === "reports" && data.permissions.allowClientViewReports ? <PortalReports slug={slug} clientName={data.accountName} locale={portalLocale} /> : portalView === "texts" ? <section className="portal-texts-view glass"><aside>{portalTexts.map((item) => <button key={item.id} className={item.id === selectedPortalTextId ? "selected" : ""} onClick={() => { setSelectedPortalTextId(item.id); setPortalTextCommentDraft(""); setPortalTextFeedback(null); }}><small>{item.contentType}</small><strong>{item.title}</strong></button>)}</aside><article>{selectedPortalText ? <><p className="eyebrow">{selectedPortalText.contentType}</p>{selectedPortalTextBanner ? <div className="portal-text-banner" style={{ backgroundImage: `url(${selectedPortalTextBanner})` }} aria-label={tr("Banner do texto")} /> : null}<div className="portal-text-heading"><div><h1>{selectedPortalText.title}</h1><span className={`portal-text-status ${selectedPortalText.status === "Aprovado" ? "approved" : ""}`}>{tr(selectedPortalText.status)}</span></div></div><div className="portal-text-content" dangerouslySetInnerHTML={{ __html: selectedPortalText.contentHtml }} />{canRespondToClientContent ? <section className="portal-text-feedback"><h3>{tr("Seu feedback")}</h3><p>{tr("Comente sobre este texto ou escolha uma ação para enviar seu retorno à equipe.")}</p><textarea value={portalTextCommentDraft} onChange={(event) => setPortalTextCommentDraft(event.target.value)} placeholder={tr("Escreva aqui seu comentário sobre este texto")} /><div className="portal-text-actions"><button className="ghost-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("comment")}>{tr(portalTextSubmitting === "comment" ? "Enviando..." : "Adicionar comentário")}</button><button className="gradient-button" disabled={portalTextSubmitting !== null} onClick={() => void handlePortalTextAction("approve")}>{tr(portalTextSubmitting === "approve" ? "Enviando..." : "Aprovar")}</button><button className="danger-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("changes")}>{tr(portalTextSubmitting === "changes" ? "Enviando..." : "Pedir alteração")}</button></div>{portalTextFeedback ? <p className="portal-text-feedback-message">{portalTextFeedback}</p> : null}<div className="portal-text-comments"><h4>{tr("Comentários")} ({portalTextComments.length})</h4>{portalTextComments.map((comment) => <article key={comment.id}><div><strong>{comment.authorName}</strong><span>{comment.authorRole}</span></div><p>{comment.commentText}</p></article>)}</div></section> : <p className="client-access-notice">{tr("Acesso somente para visualização.")}</p>}</> : <p>{tr("Nenhum texto foi enviado para sua área ainda.")}</p>}</article></section> : <section className="portal-grid">
+        {portalView === "brand" && data.permissions.allowClientViewBrandBrain ? <ClientBrandBrainView slug={slug} clientName={data.accountName} allowEdit={canUseEnabledClientTools && data.permissions.allowClientEditBrandBrain} /> : portalView === "search" && data.permissions.allowClientSearch ? <ClientPortalSearchView slug={slug} onOpenCard={setSelectedCardId} /> : portalView === "archived" && data.showArchivedToClient ? <ClientPortalArchivedView cards={portalArchivedCards} loading={portalArchivedLoading} error={portalArchivedError} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} /> : portalView === "tracker" && portalTrackerEnabled ? <ClientPortalTrackerView columns={data.boardColumns} withoutColumn={data.withoutColumn} onOpenCard={setSelectedCardId} /> : portalView === "approved" ? <ClientApprovedPostsView cards={portalCardsWithLocalApprovals} texts={portalTexts} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} onOpenText={(textId) => { setSelectedPortalTextId(textId); setPortalView("texts"); }} /> : portalView === "invoices" && data.permissions.allowClientViewInvoices ? <ClientPortalInvoicesView invoices={portalInvoices} onViewInvoice={markInvoiceViewed} /> : portalView === "reports" && data.permissions.allowClientViewReports ? <PortalReports slug={slug} clientName={data.accountName} locale={portalLocale} /> : portalView === "texts" ? <section className="portal-texts-view glass"><aside>{portalTexts.map((item) => <button key={item.id} className={item.id === selectedPortalTextId ? "selected" : ""} onClick={() => { setSelectedPortalTextId(item.id); setPortalTextCommentDraft(""); setPortalTextFeedback(null); }}><small>{item.contentType}</small><strong>{item.title}</strong></button>)}</aside><article>{selectedPortalText ? <><p className="eyebrow">{selectedPortalText.contentType}</p>{selectedPortalTextBanner ? <div className="portal-text-banner" style={{ backgroundImage: `url(${selectedPortalTextBanner})` }} aria-label={tr("Banner do texto")} /> : null}<div className="portal-text-heading"><div><h1>{selectedPortalText.title}</h1><span className={`portal-text-status ${selectedPortalText.status === "Aprovado" ? "approved" : ""}`}>{tr(selectedPortalText.status)}</span></div></div>{canUseEnabledClientTools && data.permissions.allowClientEditCaption ? <ClientPortalRichTextEditor slug={slug} text={selectedPortalText} onSaved={(savedText) => setPortalTexts((items) => items.map((item) => item.id === savedText.id ? savedText : item))} /> : <div className="portal-text-content" dangerouslySetInnerHTML={{ __html: selectedPortalText.contentHtml }} />}{canRespondToClientContent ? <section className="portal-text-feedback"><h3>{tr("Seu feedback")}</h3><p>{tr("Comente sobre este texto ou escolha uma ação para enviar seu retorno à equipe.")}</p><textarea value={portalTextCommentDraft} onChange={(event) => setPortalTextCommentDraft(event.target.value)} placeholder={tr("Escreva aqui seu comentário sobre este texto")} /><div className="portal-text-actions"><button className="ghost-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("comment")}>{tr(portalTextSubmitting === "comment" ? "Enviando..." : "Adicionar comentário")}</button><button className="gradient-button" disabled={portalTextSubmitting !== null} onClick={() => void handlePortalTextAction("approve")}>{tr(portalTextSubmitting === "approve" ? "Enviando..." : "Aprovar")}</button><button className="danger-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("changes")}>{tr(portalTextSubmitting === "changes" ? "Enviando..." : "Pedir alteração")}</button></div>{portalTextFeedback ? <p className="portal-text-feedback-message">{portalTextFeedback}</p> : null}<div className="portal-text-comments"><h4>{tr("Comentários")} ({portalTextComments.length})</h4>{portalTextComments.map((comment) => <article key={comment.id}><div><strong>{comment.authorName}</strong><span>{comment.authorRole}</span></div><p>{comment.commentText}</p></article>)}</div></section> : <p className="client-access-notice">{tr("Acesso somente para visualização.")}</p>}</> : <p>{tr("Nenhum texto foi enviado para sua área ainda.")}</p>}</article></section> : <section className="portal-grid">
           <div className="portal-primary">
             <div className="glass board-shell">
               <div className="board-topbar">

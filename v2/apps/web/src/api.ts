@@ -653,6 +653,14 @@ export async function listPortalTextsBySlug(slug: string) {
   return fetchJson<{ items: TextDocument[] }>(`/api/portal/accounts/${account.clientAccountId}/texts`);
 }
 
+export async function updatePortalTextBySlug(slug: string, textId: string, input: { title?: string; contentHtml?: string }) {
+  const account = await findPortalAccountBySlug(slug);
+  return sendJson<{ text: TextDocument }>(`/api/portal/accounts/${account.clientAccountId}/texts/${textId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
 export async function listPortalTextCommentsBySlug(slug: string, textId: string) {
   const account = await findPortalAccountBySlug(slug);
   return fetchJson<{ comments: TextComment[] }>(`/api/portal/accounts/${account.clientAccountId}/texts/${textId}/comments`);
