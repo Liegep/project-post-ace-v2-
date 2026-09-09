@@ -1674,7 +1674,7 @@ button {
    previsível com mouse e trackpad no desktop. */
 @media (min-width: 761px) {
   .kanban-admin-layout .columns-scroll {
-    grid-auto-columns: 360px;
+    grid-auto-columns: 332px;
     gap: 10px;
     scroll-behavior: auto;
     scroll-padding-inline: 2px 24px;
@@ -1690,9 +1690,9 @@ button {
   .kanban-admin-layout .column-drag-slot,
   .kanban-admin-layout .column-drag-slot > .kanban-column {
     box-sizing: border-box;
-    width: 360px;
+    width: 332px;
     min-width: 0;
-    max-width: 360px;
+    max-width: 332px;
   }
 
   .kanban-admin-layout .kanban-column {
@@ -5594,6 +5594,32 @@ button {
   height: 100%;
   max-height: 100%;
   min-height: 0;
+}
+
+@media (min-width: 761px) {
+  .kanban-admin-layout .columns-scroll .column-head {
+    min-height: 53px;
+    padding: 8px 10px;
+  }
+
+  .kanban-admin-layout .columns-scroll .column-cards-scroll {
+    gap: 11px;
+    padding-inline: 8px;
+  }
+
+  .kanban-admin-layout .columns-scroll .content-card {
+    padding: 13px;
+    border-radius: 14px;
+  }
+
+  .kanban-admin-layout .columns-scroll .content-card .card-title-block {
+    margin: -13px -13px 12px;
+    padding: 13px 13px 12px;
+  }
+
+  .kanban-admin-layout .columns-scroll .content-card .card-title-block h4 {
+    font-size: .92rem;
+  }
 }
 
 /* Dentro do Kanban do cliente, a navegação operacional não compete com o workspace. */
