@@ -3,10 +3,12 @@ import { z } from "zod/v4";
 import type { FastifyInstance } from "fastify";
 import type { AuthContext } from "../auth/auth.types.js";
 import { recordMcpAudit } from "./mcp.repository.js";
-import { mcpCardSummary, mcpListClients, mcpListDueCards, mcpListPendingApprovals, mcpListRecentClientComments, mcpWeeklyWorkload } from "./mcp.read.service.js";
+import { mcpCardSummary, mcpClientRadarContext, mcpCreatePautaDraft, mcpListClients, mcpListDueCards, mcpListPendingApprovals, mcpListRecentClientComments, mcpWeeklyWorkload } from "./mcp.read.service.js";
+import { MCP_PAUTA_CREATE_SCOPE } from "./mcp.security.js";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
+const createsDraft = { readOnlyHint: false, destructiveHint: false, idempotentHint: false, openWorldHint: false } as const;
 
 function result(data: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }] };
@@ -20,7 +22,7 @@ function validPeriod(from: string, to: string) {
   }
 }
 
-export function createPlanningMcpServer(app: FastifyInstance, auth: AuthContext, oauthClientId: string) {
+export function createPlanningMcpServer(app: FastifyInstance, auth: AuthContext, oauthClientId: string, scopes: string[] = []) {
   const server = new McpServer({ name: "design-hub-planning", version: "1.0.0" });
   const audited = <T extends Record<string, unknown>>(toolName: string, action: (input: T) => Promise<unknown>) => async (input: T) => {
     try {
@@ -74,6 +76,30 @@ export function createPlanningMcpServer(app: FastifyInstance, auth: AuthContext,
     annotations: readOnly,
   }, audited("get_card_summary", async ({ cardId }) => ({ card: await mcpCardSummary(app.db, auth, cardId) })));
 
+  server.registerTool("get_client_radar_context", {
+    title: "Consultar Radar do cliente",
+    description: "Consulta o contexto de monitoramento, Brand Brain, links de referência e pautas existentes de um cliente para evitar sugestões duplicadas.",
+    inputSchema: { clientId: z.string().min(1).max(100) },
+    annotations: readOnly,
+  }, audited("get_client_radar_context", async ({ clientId }) => mcpClientRadarContext(app.db, auth, clientId)));
+
+  if (scopes.includes(MCP_PAUTA_CREATE_SCOPE)) server.registerTool("create_pauta_draft", {
+    title: "Criar pauta aprovada pelo usuário",
+    description: "Cria somente uma pauta em RASCUNHO no banco interno do cliente. Use exclusivamente depois de mostrar a pauta e receber confirmação explícita do usuário. Não envia ao cliente, não cria card, não move Kanban e não publica.",
+    inputSchema: {
+      clientId: z.string().min(1).max(100),
+      title: z.string().min(1).max(240),
+      description: z.string().max(6000).optional(),
+      caption: z.string().max(10000).optional(),
+      contentType: z.string().max(80).optional(),
+      plannedDate: isoDate.optional(),
+      radarSource: z.string().max(500).optional(),
+      sourceUrl: z.string().url().max(2000).optional(),
+      confirmed: z.literal(true).describe("Deve ser true somente após a confirmação explícita do usuário nesta conversa."),
+      confirmationId: z.string().min(8).max(120).describe("Identificador único desta confirmação para impedir pautas duplicadas."),
+    },
+    annotations: createsDraft,
+  }, audited("create_pauta_draft", async ({ confirmed: _confirmed, ...input }) => mcpCreatePautaDraft(app.db, auth, input)));
+
   return server;
 }
-

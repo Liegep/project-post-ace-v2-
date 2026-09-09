@@ -3,6 +3,8 @@ import jwt from "jsonwebtoken";
 import type { FastifyInstance } from "fastify";
 
 export const MCP_READ_SCOPE = "planning:read";
+export const MCP_PAUTA_CREATE_SCOPE = "pauta:create";
+export const MCP_SUPPORTED_SCOPES = [MCP_READ_SCOPE, MCP_PAUTA_CREATE_SCOPE] as const;
 export const MCP_ACCESS_TTL_SECONDS = 60 * 60;
 export const MCP_REFRESH_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
@@ -84,4 +86,3 @@ export function verifyMcpAccessToken(app: FastifyInstance, token: string): McpAc
   }
   return payload as McpAccessClaims;
 }
-

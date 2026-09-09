@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type { Pool, RowDataPacket } from "mysql2/promise";
 import { getClientScope } from "../auth/auth.access.js";
 import type { AuthContext } from "../auth/auth.types.js";
@@ -41,6 +42,93 @@ export async function mcpListClients(db: Pool, auth: AuthContext) {
     scope.params,
   );
   return rows.map(cleanRow);
+}
+
+function parseObject(value: unknown): Record<string, unknown> {
+  if (value && typeof value === "object" && !Array.isArray(value)) return value as Record<string, unknown>;
+  try {
+    const parsed = JSON.parse(String(value ?? "{}"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+async function mcpClientForAction(db: Pool, auth: AuthContext, clientId: string) {
+  const scope = scopeSql(auth, "a.id");
+  const [rows] = await db.query<JsonRow[]>(
+    `SELECT a.id, a.name, a.slug, a.locale, a.workspace_drawer_json FROM client_accounts a WHERE a.id = ?${scope.sql} LIMIT 1`,
+    [clientId, ...scope.params],
+  );
+  return rows[0] ?? null;
+}
+
+export async function mcpClientRadarContext(db: Pool, auth: AuthContext, clientId: string) {
+  const client = await mcpClientForAction(db, auth, clientId);
+  if (!client) throw new Error("Cliente não encontrado ou fora do seu acesso.");
+  const drawer = parseObject(client.workspace_drawer_json);
+  const links = Array.isArray(drawer.links) ? drawer.links : [];
+  const radar = drawer.radar ?? drawer.monitoring ?? drawer.monitoramentos ?? null;
+  return {
+    client: { id: client.id, name: client.name, slug: client.slug, locale: client.locale },
+    radar,
+    brandBrain: drawer.brandBrain ?? null,
+    referenceLinks: links,
+    existingPautas: Array.isArray(drawer.pautaIdeas) ? drawer.pautaIdeas : [],
+  };
+}
+
+export async function mcpCreatePautaDraft(db: Pool, auth: AuthContext, input: {
+  clientId: string;
+  title: string;
+  description?: string;
+  caption?: string;
+  contentType?: string;
+  plannedDate?: string;
+  radarSource?: string;
+  sourceUrl?: string;
+  confirmationId: string;
+}) {
+  const allowedClient = await mcpClientForAction(db, auth, input.clientId);
+  if (!allowedClient) throw new Error("Cliente não encontrado ou fora do seu acesso.");
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.query<JsonRow[]>("SELECT workspace_drawer_json FROM client_accounts WHERE id = ? FOR UPDATE", [input.clientId]);
+    if (!rows[0]) throw new Error("Cliente não encontrado.");
+    const drawer = parseObject(rows[0].workspace_drawer_json);
+    const pautas = Array.isArray(drawer.pautaIdeas) ? drawer.pautaIdeas as Array<Record<string, unknown>> : [];
+    const existing = pautas.find((item) => item.mcpConfirmationId === input.confirmationId);
+    if (existing) {
+      await connection.commit();
+      return { pauta: existing, created: false, duplicatePrevented: true };
+    }
+    const now = new Date().toISOString();
+    const pauta = {
+      id: crypto.randomUUID(),
+      title: input.title.trim(),
+      description: input.description?.trim() ?? "",
+      caption: input.caption?.trim() ?? "",
+      createdAt: now,
+      updatedAt: now,
+      plannedDate: input.plannedDate ?? null,
+      contentType: input.contentType?.trim() || "Post",
+      internalNotes: input.radarSource ? `Origem: Radar — ${input.radarSource}` : "Origem: Radar — ChatGPT",
+      status: "draft",
+      createdBy: "chatgpt",
+      radarSource: input.radarSource?.trim() || null,
+      sourceUrl: input.sourceUrl?.trim() || null,
+      mcpConfirmationId: input.confirmationId,
+    };
+    await connection.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...drawer, pautaIdeas: [pauta, ...pautas] }), input.clientId]);
+    await connection.commit();
+    return { pauta, created: true, duplicatePrevented: false };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 export async function mcpListDueCards(db: Pool, auth: AuthContext, input: { dateFrom: string; dateTo: string; clientId?: string; limit: number }) {

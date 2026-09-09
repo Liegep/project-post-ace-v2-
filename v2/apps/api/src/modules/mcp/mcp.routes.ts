@@ -40,7 +40,7 @@ export const mcpRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(403).send({ jsonrpc: "2.0", error: { code: -32003, message: "Esta autorização não possui mais acesso." }, id: null });
     }
 
-    const server = createPlanningMcpServer(app, auth, claims.client_id);
+    const server = createPlanningMcpServer(app, auth, claims.client_id, claims.scope.split(/\s+/));
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,
@@ -68,4 +68,3 @@ export const mcpRoutes: FastifyPluginAsync = async (app) => {
   app.get("/mcp", async (_request, reply) => reply.code(405).header("Allow", "POST").send({ error: "Use POST para conectar ao MCP." }));
   app.delete("/mcp", async (_request, reply) => reply.code(405).header("Allow", "POST").send({ error: "Sessões persistentes não são utilizadas." }));
 };
-
