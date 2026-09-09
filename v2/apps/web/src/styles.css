@@ -3923,6 +3923,10 @@ button {
 .dashboard-grid h3 {
   color: #111318 !important;
 }
+
+.dashboard-clients-full .client-showcase-head h3 {
+  color: #111318 !important;
+}
 .dashboard-task-rows strong,
 .dashboard-list p,
 .dashboard-submission-copy strong,
