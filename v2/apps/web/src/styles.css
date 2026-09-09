@@ -3900,6 +3900,12 @@ button {
   font-size: var(--type-widget-heading-size) !important;
   line-height: var(--type-widget-heading-leading);
 }
+
+/* Variação visual solicitada: apenas os títulos dos widgets principais usam
+   preto; o restante da hierarquia tipográfica permanece inalterado. */
+.dashboard-grid h3 {
+  color: #111318 !important;
+}
 .dashboard-task-rows strong,
 .dashboard-list p,
 .dashboard-submission-copy strong,
