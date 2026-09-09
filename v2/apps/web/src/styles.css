@@ -3387,6 +3387,17 @@ button {
   background: rgba(239, 242, 247, .88);
 }
 
+.content-card.changed-card {
+  border-color: rgba(239, 51, 64, .56);
+  background: linear-gradient(145deg, rgba(255, 245, 246, .97), rgba(255, 255, 255, .94));
+  box-shadow: 0 12px 30px rgba(239, 51, 64, .12);
+}
+
+.content-card.changed-card .card-title-block {
+  background: rgba(255, 235, 237, .9);
+  border-bottom-color: rgba(239, 51, 64, .2);
+}
+
 .card-title-block h4 {
   margin: 0;
   font-size: 1rem;

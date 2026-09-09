@@ -255,7 +255,7 @@ function cardStatusLabel(value: string) {
 
 function cardTagColor(value: string, color?: string) {
   const normalized = value.trim().toLocaleLowerCase("pt-BR").replace(/[_\s-]+/g, "_");
-  if (normalized === "alteracao_solicitada" || normalized === "changes_requested") return "#ef3340";
+  if (normalized === "alterado" || normalized === "alteracao_solicitada" || normalized === "changes_requested") return "#ef3340";
   return color || "#8263e8";
 }
 
@@ -4738,9 +4738,10 @@ function CardView({ card, onOpen, onContextMenu, selectionMode = false, selected
   const primaryBadge = card.statusBadges[0] ?? null;
   const isInDevelopment = /^em desenvolvimento$/i.test(primaryBadge?.trim() ?? "");
   const isApprovedBrief = card.isBriefApproval && !isInDevelopment && /aprovad/i.test(`${card.clientLabel} ${card.statusBadges.join(" ")}`);
+  const hasChangedTag = card.tags.some((tag) => ["alterado", "alteracao_solicitada", "changes_requested"].includes(tag.trim().toLocaleLowerCase("pt-BR").replace(/[_\s-]+/g, "_")));
   const visibleBadge = (badge: string) => card.isBriefApproval && /^aprovado$/i.test(badge.trim()) ? "Pauta aprovada" : cardStatusLabel(badge);
   const priorityLabel: Record<CardPriority, string> = { high: "Alta prioridade", medium: "Média prioridade", normal: "Prioridade normal" };
-  const cardClassName = ["content-card", "glass-subtle", "card-button", selected ? "selected" : "", isApprovedBrief ? "approved-brief-card" : "", card.priorityLevel ? "has-priority" : ""].filter(Boolean).join(" ");
+  const cardClassName = ["content-card", "glass-subtle", "card-button", selected ? "selected" : "", isApprovedBrief ? "approved-brief-card" : "", hasChangedTag ? "changed-card" : "", card.priorityLevel ? "has-priority" : ""].filter(Boolean).join(" ");
 
   return (
     <button className={cardClassName} onClick={onOpen} onContextMenu={onContextMenu} draggable={draggable} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", card.id); onDragStart?.(); }} onDragEnd={onDragEnd}>
