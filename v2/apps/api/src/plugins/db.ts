@@ -22,6 +22,15 @@ async function dbPlugin(app: FastifyInstance) {
     queueLimit: 50
   });
 
+  // Hostinger's global wait_timeout is only 20 seconds. Raise it for this
+  // session so the single pooled connection is reused instead of reopened for
+  // every interaction after a brief pause.
+  pool.on("connection", (connection) => {
+    void connection.query("SET SESSION wait_timeout = 3600").catch((error: unknown) => {
+      app.log.warn(error, "Unable to extend database session timeout");
+    });
+  });
+
   app.decorate("db", pool);
 
   app.addHook("onClose", async () => {
