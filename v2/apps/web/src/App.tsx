@@ -253,6 +253,12 @@ function cardStatusLabel(value: string) {
   return readable.charAt(0).toLocaleUpperCase("pt-BR") + readable.slice(1);
 }
 
+function cardTagColor(value: string, color?: string) {
+  const normalized = value.trim().toLocaleLowerCase("pt-BR").replace(/[_\s-]+/g, "_");
+  if (normalized === "alteracao_solicitada" || normalized === "changes_requested") return "#ef3340";
+  return color || "#8263e8";
+}
+
 function formatScheduledCardDate(value: string) {
   // Preserve the stored wall-clock time while presenting a concise, localized label.
   const match = value.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
@@ -4247,7 +4253,7 @@ function CardContextMenu({
         <button type="button" className={panel === "status" ? "active" : ""} aria-haspopup="menu" aria-expanded={panel === "status"} onPointerEnter={() => setPanel("status")} onClick={() => setPanel((current) => current === "status" ? null : "status")}>☷ <span>Status</span><b>›</b></button>
         {panel === "status" ? <div className="card-menu-submenu status-submenu"><button className={!card.statusBadges[0] ? "selected" : ""} onClick={() => run(() => onUpdateStatus(""))}>{!card.statusBadges[0] ? "✓ " : "○ "}Sem status</button>{CARD_STATUS_OPTIONS.map((status) => { const selected = card.statusBadges[0] === status; return <button key={status} className={selected ? "selected" : ""} onClick={() => run(() => onUpdateStatus(selected ? "" : status))}>{selected ? "✓ " : ""}{status}</button>; })}</div> : null}
         <button type="button" className={panel === "tags" ? "active" : ""} aria-haspopup="menu" aria-expanded={panel === "tags"} onPointerEnter={() => setPanel("tags")} onClick={() => setPanel((current) => current === "tags" ? null : "tags")}>◇ <span>Etiquetas</span><b>›</b></button>
-        {panel === "tags" ? <div className="card-menu-submenu tags-submenu">{tags.map((tag) => <button key={tag.id} onClick={() => run(() => onToggleTag(tag.name))}>{card.tags.includes(tag.name) ? <b className="tag-menu-check">✓</b> : <i className="tag-menu-dot" style={{ backgroundColor: tag.color }} />}{tag.name}</button>)}</div> : null}
+        {panel === "tags" ? <div className="card-menu-submenu tags-submenu">{tags.map((tag) => <button key={tag.id} onClick={() => run(() => onToggleTag(tag.name))}>{card.tags.includes(tag.name) ? <b className="tag-menu-check">✓</b> : <i className="tag-menu-dot" style={{ backgroundColor: cardTagColor(tag.name, tag.color) }} />}{cardStatusLabel(tag.name)}</button>)}</div> : null}
         <hr />
         <button onClick={onCopyToColumn}>▣ <span>Copiar card</span></button>
         <button onClick={onMoveToColumn}>⇄ <span>Mover para coluna</span></button>
@@ -4747,7 +4753,7 @@ function CardView({ card, onOpen, onContextMenu, selectionMode = false, selected
           {card.statusBadges.slice(1).map((badge) => (
             <span key={badge} className={card.isBriefApproval && /^aprovado$/i.test(badge.trim()) ? "mini-badge subtle approved-brief-badge" : "mini-badge subtle"}>{visibleBadge(badge)}</span>
           ))}
-          {card.tags.map((tag) => { const tagColor = card.tagColors?.[tag] ?? "#8263e8"; return <span key={tag} className={onRemoveTag ? "mini-badge tag tag-filled removable" : "mini-badge tag tag-filled"} style={{ backgroundColor: tagColor, color: calendarTextColor(tagColor) }} onClick={(event) => { if (!onRemoveTag) return; event.stopPropagation(); onRemoveTag(card, tag); }}><span className="card-tag-dot" />{tag}{onRemoveTag ? <span className="card-tag-remove" aria-label={`Remover ${tag}`}>×</span> : null}</span>; })}
+          {card.tags.map((tag) => { const tagColor = cardTagColor(tag, card.tagColors?.[tag]); return <span key={tag} className={onRemoveTag ? "mini-badge tag tag-filled removable" : "mini-badge tag tag-filled"} style={{ backgroundColor: tagColor, color: calendarTextColor(tagColor) }} onClick={(event) => { if (!onRemoveTag) return; event.stopPropagation(); onRemoveTag(card, tag); }}><span className="card-tag-dot" />{cardStatusLabel(tag)}{onRemoveTag ? <span className="card-tag-remove" aria-label={`Remover ${cardStatusLabel(tag)}`}>×</span> : null}</span>; })}
           {card.commentsCount > 0 ? <span className="card-comment-count" title={`${card.commentsCount} ${card.commentsCount === 1 ? "comentário" : "comentários"}`}><UiIcon name="comment" />{card.commentsCount}</span> : null}
         </div>
       </div>
@@ -5822,8 +5828,8 @@ function CardDetailModal({
                 </span>
               ))}
               {detail.card.tags.map((tag) => (
-                <span key={tag} className="mini-badge tag">
-                  {tag}
+                <span key={tag} className="mini-badge tag tag-filled" style={{ backgroundColor: cardTagColor(tag, detail.card.tagColors?.[tag]), color: calendarTextColor(cardTagColor(tag, detail.card.tagColors?.[tag])) }}>
+                  {cardStatusLabel(tag)}
                 </span>
               ))}
             </div>
@@ -6350,7 +6356,7 @@ ${internalMessage.trim()}`, isInternal: true });
             <div className="tag-selected-row">
               {splitValues(tags).map((name) => {
                 const definition = tagLibrary.find((tag) => tag.name === name);
-                return <button key={name} type="button" className="tag-selected-pill" style={{ backgroundColor: definition?.color ?? "#8263e8" }} onClick={() => setTags((current) => splitValues(current).filter((item) => item !== name).join(", "))}>{name}<span className="editor-tag-remove">×</span></button>;
+                return <button key={name} type="button" className="tag-selected-pill" style={{ backgroundColor: cardTagColor(name, definition?.color) }} onClick={() => setTags((current) => splitValues(current).filter((item) => item !== name).join(", "))}>{cardStatusLabel(name)}<span className="editor-tag-remove">×</span></button>;
               })}
               <button type="button" className="tag-picker-trigger" onClick={() => setTagPickerOpen((open) => !open)}>◇ Tags</button>
             </div>
@@ -6359,7 +6365,7 @@ ${internalMessage.trim()}`, isInternal: true });
               <div className="tag-picker-list">
                 {tagLibrary.filter((tag) => tag.name.toLocaleLowerCase("pt-BR").includes(tagSearch.toLocaleLowerCase("pt-BR"))).map((tag) => {
                   const selected = splitValues(tags).includes(tag.name);
-                  return <button key={tag.id} type="button" className={selected ? "tag-picker-item selected" : "tag-picker-item"} onClick={() => setTags((current) => selected ? splitValues(current).filter((item) => item !== tag.name).join(", ") : [...splitValues(current), tag.name].join(", "))}><i style={{ backgroundColor: tag.color }} />{tag.name}<span>{selected ? "Selecionada" : ""}</span></button>;
+                  return <button key={tag.id} type="button" className={selected ? "tag-picker-item selected" : "tag-picker-item"} onClick={() => setTags((current) => selected ? splitValues(current).filter((item) => item !== tag.name).join(", ") : [...splitValues(current), tag.name].join(", "))}><i style={{ backgroundColor: cardTagColor(tag.name, tag.color) }} />{cardStatusLabel(tag.name)}<span>{selected ? "Selecionada" : ""}</span></button>;
                 })}
                 {tagLibrary.length === 0 ? <p className="tag-empty">Nenhuma etiqueta criada ainda.</p> : null}
                 {tagLibrary.length > 0 && tagLibrary.filter((tag) => tag.name.toLocaleLowerCase("pt-BR").includes(tagSearch.toLocaleLowerCase("pt-BR"))).length === 0 ? <p className="tag-empty">Nenhuma etiqueta encontrada.</p> : null}
