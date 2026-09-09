@@ -7632,12 +7632,13 @@ const DEMO_TEAM_CLIENTS: TeamClient[] = [
 ];
 
 function TeamManagementWorkspace({ session, newMemberSignal = 0 }: { session: SessionUser; newMemberSignal?: number }) {
-  const [members, setMembers] = useState<ManagedUser[]>(() => demoUsers.map((user) => ({
+  const demoMembers = (): ManagedUser[] => demoUsers.map((user) => ({
     id: user.id, fullName: user.name, email: user.email, globalRole: user.role === "collaborator" ? "colaborador" : user.role === "client" ? "cliente" : user.role,
     locale: user.locale, isActive: true, createdAt: "2026-08-23",
-  })));
-  const [clients, setClients] = useState<TeamClient[]>(DEMO_TEAM_CLIENTS);
-  const [assignments, setAssignments] = useState<Record<string, string[]>>(() => Object.fromEntries(demoUsers.map((user) => [user.id, [...user.assignedAdminSlugs, ...user.assignedPortalSlugs]])));
+  }));
+  const [members, setMembers] = useState<ManagedUser[]>(() => session.source === "api" ? [] : demoMembers());
+  const [clients, setClients] = useState<TeamClient[]>(() => session.source === "api" ? [] : DEMO_TEAM_CLIENTS);
+  const [assignments, setAssignments] = useState<Record<string, string[]>>(() => session.source === "api" ? {} : Object.fromEntries(demoUsers.map((user) => [user.id, [...user.assignedAdminSlugs, ...user.assignedPortalSlugs]])));
   const [filter, setFilter] = useState<"all" | TeamRole>("all");
   const [modal, setModal] = useState<"new" | "role" | "clients" | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -7660,7 +7661,13 @@ function TeamManagementWorkspace({ session, newMemberSignal = 0 }: { session: Se
         setAssignments(nextAssignments);
       })
       .catch(() => {
-        // The V2 login stays useful while its local API is offline.
+        // Never present demo records as real accounts in an authenticated
+        // production session when the API is temporarily unavailable.
+        if (session.source === "api" && active) {
+          setMembers([]);
+          setClients([]);
+          setAssignments({});
+        }
       });
     return () => { active = false; };
   }, []);
