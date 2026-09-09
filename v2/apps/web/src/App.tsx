@@ -7721,13 +7721,13 @@ function TeamManagementWorkspace({ session, newMemberSignal = 0 }: { session: Se
       })}
     </div>
 
-    {modal ? <div className="modal-backdrop" onMouseDown={() => setModal(null)}><section className="team-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+    {modal ? createPortal(<div className="modal-backdrop team-modal-backdrop" onMouseDown={() => setModal(null)}><section className="team-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
       <header><div><p className="eyebrow">{modal === "new" ? "Novo acesso" : modal === "role" ? "Nível de acesso" : "Clientes atribuídos"}</p><h2>{modal === "new" ? "Adicionar membro" : selected?.fullName}</h2></div><button onClick={() => setModal(null)} aria-label="Fechar">×</button></header>
       {modal === "new" ? <div className="team-form-fields"><label>Nome completo<input value={form.fullName} onChange={(event) => setForm({ ...form, fullName: event.target.value })} /></label><label>E-mail<input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label><label>Senha inicial<input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label></div> : null}
       {modal !== "clients" ? <fieldset className="team-role-options"><legend>Papel</legend>{(Object.keys(TEAM_ROLE_COPY) as TeamRole[]).map((role) => <label key={role} className={form.role === role ? "selected" : ""}><input type="radio" checked={form.role === role} onChange={() => setForm((current) => ({ ...current, role, clientIds: role === "super_admin" ? [] : current.clientIds }))} /><span><b>{TEAM_ROLE_COPY[role].label}</b><small>{role === "super_admin" ? "Acesso total à operação" : role === "admin" ? "Gerencia clientes atribuídos" : role === "colaborador" ? "Trabalha nos clientes atribuídos" : "Acessa o próprio portal"}</small></span></label>)}</fieldset> : null}
       {(modal === "clients" || modal === "new") && form.role !== "super_admin" ? <fieldset className="team-client-options"><legend>{form.role === "cliente" ? "Cliente do portal" : "Clientes atribuídos"}</legend>{clients.map((client) => <label key={client.id}><input type={form.role === "cliente" ? "radio" : "checkbox"} checked={form.clientIds.includes(client.slug)} onChange={() => toggleClient(client.slug)} /><span>{client.name}</span></label>)}</fieldset> : null}
       <footer><button className="team-cancel" onClick={() => setModal(null)}>Cancelar</button><button className="gradient-button" onClick={save}>{modal === "new" ? "Criar membro" : "Salvar alterações"}</button></footer>
-    </section></div> : null}
+    </section></div>, document.body) : null}
   </section>;
 }
 
