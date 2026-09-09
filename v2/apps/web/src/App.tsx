@@ -1749,10 +1749,16 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
       .catch(() => undefined);
     const refreshDashboard = () => Promise.all([refreshClients(), refreshOverview()]);
     void refreshDashboard();
-    const interval = window.setInterval(() => void refreshDashboard(), 30_000);
-    const refreshOnFocus = () => void refreshDashboard();
+    let lastRefreshAt = Date.now();
+    const refreshOnFocus = () => {
+      if (Date.now() - lastRefreshAt < 60_000) return;
+      lastRefreshAt = Date.now();
+      void refreshDashboard();
+    };
+    const refreshOnVisibility = () => { if (document.visibilityState === "visible") refreshOnFocus(); };
     window.addEventListener("focus", refreshOnFocus);
-    return () => { active = false; window.clearInterval(interval); window.removeEventListener("focus", refreshOnFocus); };
+    document.addEventListener("visibilitychange", refreshOnVisibility);
+    return () => { active = false; window.removeEventListener("focus", refreshOnFocus); document.removeEventListener("visibilitychange", refreshOnVisibility); };
   }, []);
   useEffect(() => { const sync = () => setInternalMessages(loadInternalApprovalMessages(session.id)); window.addEventListener("storage", sync); const timer = window.setInterval(sync, 5_000); return () => { window.removeEventListener("storage", sync); window.clearInterval(timer); }; }, [session.id]);
 
@@ -2791,8 +2797,10 @@ function AdminWorkspacePage({
     const refreshScheduledCards = () => {
       if (document.visibilityState === "visible") setRefreshKey((value) => value + 1);
     };
-    const interval = window.setInterval(refreshScheduledCards, 5_000);
-    return () => window.clearInterval(interval);
+    const refreshOnVisibility = () => { if (document.visibilityState === "visible") refreshScheduledCards(); };
+    window.addEventListener("focus", refreshScheduledCards);
+    document.addEventListener("visibilitychange", refreshOnVisibility);
+    return () => { window.removeEventListener("focus", refreshScheduledCards); document.removeEventListener("visibilitychange", refreshOnVisibility); };
   }, [boardView, scheduledCardIds]);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(() => new URLSearchParams(location.search).get("card"));
   const [editingColumn, setEditingColumn] = useState<BoardColumn | "new" | null>(null);
@@ -4464,7 +4472,7 @@ function AdminTextsView({ clientName, slug, onCountChange }: { clientName: strin
     if (draftJson === lastSavedTextRef.current) return;
     try { window.localStorage.setItem(recoveryKey, draftJson); } catch { /* Recovery remains optional. */ }
     setAutosaveState((current) => current === "saving" ? current : "pending");
-    const timeout = window.setTimeout(() => { void saveText("Salvo automaticamente."); }, 2_000);
+    const timeout = window.setTimeout(() => { if (document.visibilityState === "visible") void saveText("Salvo automaticamente."); }, 8_000);
     return () => window.clearTimeout(timeout);
   }, [editorRevision, selected?.contentType, selected?.internalNotes, selected?.plannedAt, selected?.status, selected?.title, selected?.id, slug]);
   const createText = async () => {
@@ -6042,7 +6050,7 @@ function AdminCardEditor({
     try { window.localStorage.setItem(recoveryKey, draftJson); } catch { /* Recovery remains optional. */ }
     setAutosaveState((current) => current === "saving" ? current : "pending");
     if (uploading) return;
-    const timeout = window.setTimeout(() => { void persistCard(false); }, 2_000);
+    const timeout = window.setTimeout(() => { if (document.visibilityState === "visible") void persistCard(false); }, 8_000);
     return () => window.clearTimeout(timeout);
   }, [draft, recoveryKey, uploading]);
 
@@ -6988,8 +6996,10 @@ function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: {
     let active = true;
     const refreshPautaCards = () => { void loadAdminWorkspaceBySlug(slug, { archived: false }).then((workspace) => { if (active) setPautaCards([...workspace.columns.flatMap((column) => column.cards), ...workspace.withoutColumn]); }).catch(() => undefined); };
     refreshPautaCards();
-    const interval = window.setInterval(refreshPautaCards, 10_000);
-    return () => { active = false; window.clearInterval(interval); };
+    const refreshOnVisibility = () => { if (document.visibilityState === "visible") refreshPautaCards(); };
+    window.addEventListener("focus", refreshPautaCards);
+    document.addEventListener("visibilitychange", refreshOnVisibility);
+    return () => { active = false; window.removeEventListener("focus", refreshPautaCards); document.removeEventListener("visibilitychange", refreshOnVisibility); };
   }, [slug]);
   useEffect(() => {
     if (!pautaCards.length || !ideas.length) return;

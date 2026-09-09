@@ -101,8 +101,9 @@ export async function buildApp() {
     } catch (error) {
       app.log.error(error, "Unable to organize approved cards");
     }
-    // Keep scheduled publication responsive without requiring a browser refresh.
-    const scheduler = setInterval(() => { void archiveDueCards(); }, 5_000);
+    // A minute is sufficiently responsive for scheduled publication and avoids
+    // continuously waking a shared-hosting database connection.
+    const scheduler = setInterval(() => { void archiveDueCards(); }, 60_000);
     scheduler.unref();
     app.addHook("onClose", async () => clearInterval(scheduler));
   }
