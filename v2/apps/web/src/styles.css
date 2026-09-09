@@ -9468,6 +9468,12 @@ button {
   padding: 1px 2px;
 }
 
+.dashboard-layout .dashboard-grid > .dashboard-postits-board .dashboard-notes-empty {
+  min-height: 0;
+  height: 100%;
+  padding: 16px;
+}
+
 .dashboard-layout .dashboard-grid > .dashboard-postits-board .dashboard-postit {
   width: 100%;
   height: 84px;
