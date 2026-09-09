@@ -146,6 +146,21 @@ body h6 {
 .dashboard-agenda-quick-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
 .dashboard-agenda-quick-modal footer { display: flex; justify-content: flex-end; gap: 9px; padding-top: 3px; }
 .dashboard-agenda-quick-modal footer button { width: auto; }
+.dashboard-agenda-event-row { cursor: pointer; transition: border-color .16s ease, background .16s ease, transform .16s ease; }
+.dashboard-agenda-event-row:hover { border-color: rgba(104,91,222,.32) !important; background: rgba(248,247,255,.96) !important; transform: translateY(-1px); }
+.dashboard-agenda-event-row:focus-visible { outline: 3px solid rgba(101,82,221,.18); outline-offset: 2px; }
+.dashboard-agenda-action-modal { width: min(470px, calc(100vw - 36px)); display: grid; gap: 17px; padding: 25px; border: 1px solid rgba(255,255,255,.92); border-radius: 23px; color: #253250; background: linear-gradient(145deg,rgba(255,255,255,.98),rgba(246,248,255,.96)); box-shadow: 0 28px 85px rgba(35,45,82,.28); }
+.dashboard-agenda-action-modal > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding-bottom: 13px; border-bottom: 1px solid #e7eaf2; }
+.dashboard-agenda-action-modal h2 { margin: 4px 0 0; font-size: 1.25rem; }
+.dashboard-agenda-action-modal > p { margin: 0; color: #6c7890; line-height: 1.5; }
+.dashboard-agenda-current-date { display: flex; align-items: center; gap: 11px; padding: 13px 14px; border: 1px solid #e0e5f0; border-radius: 13px; background: rgba(255,255,255,.8); }
+.dashboard-agenda-current-date > svg { width: 20px; color: #6657d9; }
+.dashboard-agenda-current-date > span { display: grid; gap: 3px; }
+.dashboard-agenda-current-date small { color: #8993a8; font-size: .67rem; text-transform: uppercase; letter-spacing: .06em; }
+.dashboard-agenda-current-date strong { color: #35415d; font-size: .82rem; text-transform: capitalize; }
+.dashboard-agenda-date-picker input { min-height: 44px; padding: 0 12px; border: 1px solid #d9e0ec; border-radius: 11px; color: #293653; background: #fff; font: inherit; }
+.dashboard-agenda-action-modal footer { display: flex; justify-content: space-between; gap: 10px; padding-top: 3px; }
+.dashboard-agenda-action-modal footer button { width: auto; }
 @media (max-width: 600px) { .dashboard-agenda-header-actions { align-items: flex-end; flex-direction: column-reverse; }.dashboard-agenda-quick-grid { grid-template-columns: 1fr; }.dashboard-agenda-quick-modal { padding: 21px; } }
 
 .agenda-time {

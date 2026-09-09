@@ -1931,6 +1931,11 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
                 setAgendaToday((current) => [...current, created].sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()));
               }}
               onCompleted={(eventId) => setAgendaToday((current) => current.map((event) => event.id === eventId ? { ...event, isCompleted: true } : event))}
+              onRescheduled={(eventId, startsAt) => setAgendaToday((current) => current
+                .map((event) => event.id === eventId ? { ...event, startsAt } : event)
+                .filter((event) => localDateKey(new Date(event.startsAt)) === localDateKey(new Date()))
+                .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()))}
+              onDeleted={(eventId) => setAgendaToday((current) => current.filter((event) => event.id !== eventId))}
             /> : null}
             <DashboardCommemorativeWidget clients={clients} />
             {postsToday.length > 0 ? <DashboardTodayPostsWidget items={postsToday} /> : null}
@@ -2146,8 +2151,11 @@ function DashboardTasksWidget({ posts }: { posts: DashboardUpcomingPost[] }) {
   </section>;
 }
 
-function DashboardAgendaWidget({ events, canPersist, onCreated, onCompleted }: { events: AgendaEvent[]; canPersist: boolean; onCreated: (event: AgendaEvent) => void; onCompleted: (eventId: string) => void }) {
+function DashboardAgendaWidget({ events, canPersist, onCreated, onCompleted, onRescheduled, onDeleted }: { events: AgendaEvent[]; canPersist: boolean; onCreated: (event: AgendaEvent) => void; onCompleted: (eventId: string) => void; onRescheduled: (eventId: string, startsAt: string) => void; onDeleted: (eventId: string) => void }) {
   const [quickOpen, setQuickOpen] = useState(false);
+  const [selectedEvent, setSelectedEvent] = useState<AgendaEvent | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState("");
+  const [eventAction, setEventAction] = useState<"" | "reschedule" | "delete">("");
   const [labels, setLabels] = useState<AgendaLabel[]>([]);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -2194,14 +2202,46 @@ function DashboardAgendaWidget({ events, canPersist, onCreated, onCompleted }: {
     finally { setCompletingId(""); }
   };
 
+  const openEventActions = (agendaEvent: AgendaEvent) => {
+    setSelectedEvent(agendaEvent);
+    setRescheduleDate(localDateKey(new Date(agendaEvent.startsAt)));
+    setError("");
+  };
+
+  const rescheduleEvent = async () => {
+    if (!selectedEvent || !rescheduleDate || !canPersist || eventAction) return;
+    const currentLocal = toDateTimeLocal(selectedEvent.startsAt);
+    const nextStartsAt = `${rescheduleDate}T${currentLocal.slice(11, 16)}`;
+    setEventAction("reschedule"); setError("");
+    try {
+      await updateAgendaEvent(selectedEvent.sourceEventId ?? selectedEvent.id, { startsAt: nextStartsAt });
+      onRescheduled(selectedEvent.id, nextStartsAt);
+      setSelectedEvent(null);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível reagendar o compromisso."); }
+    finally { setEventAction(""); }
+  };
+
+  const removeEvent = async () => {
+    if (!selectedEvent || !canPersist || eventAction) return;
+    if (!window.confirm("Excluir este compromisso? Esta ação não pode ser desfeita.")) return;
+    setEventAction("delete"); setError("");
+    try {
+      await deleteAgendaEvent(selectedEvent.sourceEventId ?? selectedEvent.id);
+      onDeleted(selectedEvent.id);
+      setSelectedEvent(null);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível excluir o compromisso."); }
+    finally { setEventAction(""); }
+  };
+
   return <>
     <section className="dashboard-tasks-widget dashboard-agenda-widget dashboard-first-row-widget">
       <header><div><span className="dashboard-task-icon">▣</span><h3>Agenda de hoje</h3></div><div className="dashboard-agenda-header-actions"><button type="button" className="dashboard-agenda-add" onClick={openQuickCreate}><span>＋</span>Novo</button><span className="dashboard-task-count">{events.length} {events.length === 1 ? "compromisso" : "compromissos"}</span></div></header>
-      {events.length ? <div className="dashboard-task-rows">{events.map((agendaEvent) => <article key={agendaEvent.id} className={agendaEvent.isCompleted ? "completed" : ""}><span className="dashboard-task-dot" style={{ backgroundColor: agendaEvent.isCompleted ? "#35b987" : agendaEvent.color }} /><span className="agenda-time">{formatAgendaTime(agendaEvent.startsAt)}</span><div><strong>{agendaEvent.title}</strong><small>{agendaEvent.taskDescription || agendaEvent.labelName || agendaEvent.clientName || "Compromisso"}{agendaEvent.isCompleted ? " · Concluído" : ""}</small></div><button type="button" className={agendaEvent.isCompleted ? "dashboard-agenda-complete completed" : "dashboard-agenda-complete"} disabled={agendaEvent.isCompleted || completingId === agendaEvent.id} onClick={() => void completeEvent(agendaEvent)} aria-label={agendaEvent.isCompleted ? `${agendaEvent.title} concluído` : `Marcar ${agendaEvent.title} como feito`} title={agendaEvent.isCompleted ? "Compromisso concluído" : "Marcar como feito"}><UiIcon name="check" /></button></article>)}</div> : <p className="dashboard-agenda-empty">Nenhum compromisso para hoje.</p>}
+      {events.length ? <div className="dashboard-task-rows">{events.map((agendaEvent) => <article key={agendaEvent.id} className={agendaEvent.isCompleted ? "completed dashboard-agenda-event-row" : "dashboard-agenda-event-row"} role="button" tabIndex={0} onClick={() => openEventActions(agendaEvent)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); openEventActions(agendaEvent); } }}><span className="dashboard-task-dot" style={{ backgroundColor: agendaEvent.isCompleted ? "#35b987" : agendaEvent.color }} /><span className="agenda-time">{formatAgendaTime(agendaEvent.startsAt)}</span><div><strong>{agendaEvent.title}</strong><small>{agendaEvent.taskDescription || agendaEvent.labelName || agendaEvent.clientName || "Compromisso"}{agendaEvent.isCompleted ? " · Concluído" : ""}</small></div><button type="button" className={agendaEvent.isCompleted ? "dashboard-agenda-complete completed" : "dashboard-agenda-complete"} disabled={agendaEvent.isCompleted || completingId === agendaEvent.id} onClick={(event) => { event.stopPropagation(); void completeEvent(agendaEvent); }} aria-label={agendaEvent.isCompleted ? `${agendaEvent.title} concluído` : `Marcar ${agendaEvent.title} como feito`} title={agendaEvent.isCompleted ? "Compromisso concluído" : "Marcar como feito"}><UiIcon name="check" /></button></article>)}</div> : <p className="dashboard-agenda-empty">Nenhum compromisso para hoje.</p>}
       {error && !quickOpen ? <p className="dashboard-agenda-error">{error}</p> : null}
       <NavLink to="/agenda" className="dashboard-task-link dashboard-agenda-link"><UiIcon name="calendar" /><strong>Ver agenda completa</strong><span>→</span></NavLink>
     </section>
     {quickOpen ? createPortal(<div className="modal-backdrop dashboard-agenda-quick-backdrop" onMouseDown={() => { if (!saving) setQuickOpen(false); }}><form className="dashboard-agenda-quick-modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={submitQuickEvent}><header><div><p className="eyebrow">Agenda de hoje</p><h2>Novo compromisso rápido</h2></div><button type="button" className="icon-close" onClick={() => { if (!saving) setQuickOpen(false); }} aria-label="Fechar">×</button></header><label className="field-stack"><span>Nome</span><input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Revisar calendário do cliente" required /></label><label className="field-stack"><span>Descrição</span><textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Detalhes ou observações do compromisso" /></label><div className="dashboard-agenda-quick-grid"><label className="field-stack"><span>Data e horário</span><input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} required /></label><label className="field-stack"><span>Etiqueta</span><select value={labelId} onChange={(event) => setLabelId(event.target.value)}><option value="">Sem etiqueta</option>{labels.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}</select></label></div>{error ? <p className="form-feedback error-text">{error}</p> : null}<footer><button type="button" className="ghost-button" disabled={saving} onClick={() => setQuickOpen(false)}>Cancelar</button><button type="submit" className="gradient-button" disabled={saving}>{saving ? "Salvando..." : "Adicionar compromisso"}</button></footer></form></div>, document.body) : null}
+    {selectedEvent ? createPortal(<div className="modal-backdrop dashboard-agenda-quick-backdrop" onMouseDown={() => { if (!eventAction) setSelectedEvent(null); }}><section className="dashboard-agenda-action-modal" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Compromisso</p><h2>{selectedEvent.title}</h2></div><button type="button" className="icon-close" onClick={() => setSelectedEvent(null)} aria-label="Fechar">×</button></header><p>{selectedEvent.taskDescription || selectedEvent.labelName || selectedEvent.clientName || "Sem descrição."}</p><div className="dashboard-agenda-current-date"><UiIcon name="calendar" /><span><small>Data atual</small><strong>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(selectedEvent.startsAt))}</strong></span></div>{selectedEvent.recurrenceType && selectedEvent.recurrenceType !== "none" ? <small className="agenda-series-note">Este compromisso é recorrente; a alteração será aplicada à série.</small> : null}<label className="field-stack dashboard-agenda-date-picker"><span>Escolha o novo dia</span><input type="date" value={rescheduleDate} onChange={(event) => setRescheduleDate(event.target.value)} /></label>{error ? <p className="form-feedback error-text">{error}</p> : null}<footer><button type="button" className="danger-button" disabled={Boolean(eventAction)} onClick={() => void removeEvent()}>{eventAction === "delete" ? "Excluindo..." : "Excluir"}</button><button type="button" className="gradient-button" disabled={Boolean(eventAction) || !rescheduleDate} onClick={() => void rescheduleEvent()}>{eventAction === "reschedule" ? "Reagendando..." : "Reagendar"}</button></footer></section></div>, document.body) : null}
   </>;
 }
 
