@@ -1911,7 +1911,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
       <main className="main-column">
         <section className="dashboard-shell">
           <div className="dashboard-hero-panel">
-            <WorkspaceNavbar session={session} onLogout={onLogout} utilityAction={<button className="dashboard-icon-button dashboard-note-trigger" type="button" aria-label="Criar lembrete" title="Criar post-it" onClick={() => window.dispatchEvent(new Event("design-hub:open-dashboard-note"))}><UiIcon name="pencil" /></button>} />
+            <WorkspaceNavbar session={session} onLogout={onLogout} utilityAction={<button className="dashboard-icon-button dashboard-clients-trigger" type="button" aria-label="Ver clientes cadastrados" title="Ver clientes" onClick={() => document.getElementById("dashboard-clients")?.scrollIntoView({ behavior: "smooth", block: "start" })}><UiIcon name="users" /></button>} />
             <div className="dashboard-welcome">
               <div className="dashboard-liquid-field" aria-hidden="true"><i /><i /><i /></div>
               <div className="dashboard-welcome-copy"><p className="eyebrow">Seu estúdio hoje</p><h1>{greeting}, {session.name.split(" ")[0]}</h1><p className="dashboard-date">{new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(currentTime)}</p></div>
@@ -1944,7 +1944,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
             {clientSubmissions.length > 0 ? <DashboardClientSubmissionsWidget items={clientSubmissions} userId={session.id} /> : null}
           </div>
           <div className="dashboard-section-divider" aria-hidden="true"><span /></div>
-          <section className="dashboard-clients-panel dashboard-clients-full">
+          <section id="dashboard-clients" className="dashboard-clients-panel dashboard-clients-full">
             <div className="dashboard-section-head"><div><p className="eyebrow">Projetos</p><h2>Clientes</h2></div></div>
             <div className="dashboard-client-tabs" role="tablist" aria-label="Filtrar clientes">
               <button className={clientFilter === "all" ? "active" : ""} onClick={() => setClientFilter("all")}>Todos <span>({clients.length})</span></button>

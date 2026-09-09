@@ -9390,8 +9390,9 @@ button {
 .dashboard-notes-empty > span { display: grid; width: 28px; height: 28px; margin-bottom: 2px; place-items: center; border-radius: 50%; color: #7563d8; background: #eeebff; font-size: 1rem; }
 .dashboard-notes-empty strong { font-size: .78rem; }.dashboard-notes-empty small { color: #939bad; font-size: .66rem; }
 
-.dashboard-note-trigger { color: #8c62cf; background: linear-gradient(145deg,#fff9dc,#fff0f7); }
-.dashboard-note-trigger:hover { color: #b34b86; background: linear-gradient(145deg,#fff5c8,#ffe5f1); }
+.dashboard-clients-trigger { color: #5276cb; background: linear-gradient(145deg,#eff8ff,#f3efff); }
+.dashboard-clients-trigger:hover { color: #4d5fd0; background: linear-gradient(145deg,#e7f5ff,#eee8ff); }
+.dashboard-clients-full { scroll-margin-top: 18px; }
 
 .dashboard-postits-board {
   display: grid;
