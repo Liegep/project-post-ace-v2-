@@ -3008,7 +3008,10 @@ function AdminWorkspacePage({
         : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
           ? scroller.clientWidth
           : 1;
-      const horizontalGesture = Math.abs(event.deltaX) >= Math.abs(event.deltaY) * 0.55;
+      // Preserve the gesture axis reported by the trackpad/Magic Mouse. A
+      // vertical gesture reaching the end of a column must not unexpectedly
+      // turn into horizontal board navigation.
+      const horizontalGesture = Math.abs(event.deltaX) > Math.abs(event.deltaY);
 
       if (horizontalGesture && Math.abs(event.deltaX) > 0.1) {
         event.preventDefault();
@@ -3016,18 +3019,8 @@ function AdminWorkspacePage({
         return;
       }
 
-      const cardScroller = (event.target as Element).closest<HTMLElement>(".column-cards-scroll");
-      if (cardScroller && cardScroller.scrollHeight > cardScroller.clientHeight) {
-        const canScrollVertically = event.deltaY > 0
-          ? cardScroller.scrollTop + cardScroller.clientHeight < cardScroller.scrollHeight - 1
-          : cardScroller.scrollTop > 1;
-        if (canScrollVertically) return;
-      }
-
-      if (Math.abs(event.deltaY) > 0.1) {
-        event.preventDefault();
-        scroller.scrollLeft += event.deltaY * modeMultiplier * 1.45;
-      }
+      // Vertical scrolling belongs to the card column (or its ancestor). At
+      // the boundary we deliberately let it stop instead of moving the board.
     };
 
     scroller.addEventListener("wheel", handleWheel, { passive: false });
