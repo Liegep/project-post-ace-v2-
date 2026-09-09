@@ -27,7 +27,6 @@ import { textRoutes } from "./modules/texts/texts.routes.js";
 import { reportRoutes } from "./modules/reports/reports.routes.js";
 import { invoiceRoutes } from "./modules/invoices/invoices.routes.js";
 import { contractRoutes } from "./modules/contracts/contracts.routes.js";
-import { archiveCardsDueForPublication } from "./modules/cards/cards.service.js";
 import { ensureMcpStorage } from "./modules/mcp/mcp.repository.js";
 import { mcpOAuthRoutes } from "./modules/mcp/mcp.oauth.routes.js";
 import { mcpRoutes } from "./modules/mcp/mcp.routes.js";
@@ -86,26 +85,12 @@ export async function buildApp() {
     await app.register(designBriefRoutes, { prefix: "/api" });
     await app.register(dashboardNotesRoutes, { prefix: "/api" });
 
-    const archiveDueCards = async () => {
-      try {
-        const archived = await archiveCardsDueForPublication(app);
-        if (archived > 0) app.log.info({ archived }, "Scheduled cards archived automatically");
-      } catch (error) {
-        app.log.error(error, "Unable to archive scheduled cards");
-      }
-    };
-    await archiveDueCards();
     try {
       const organized = await reconcileApprovedCardColumns(app);
       if (organized > 0) app.log.info({ organized }, "Approved cards organized into their client columns");
     } catch (error) {
       app.log.error(error, "Unable to organize approved cards");
     }
-    // A minute is sufficiently responsive for scheduled publication and avoids
-    // continuously waking a shared-hosting database connection.
-    const scheduler = setInterval(() => { void archiveDueCards(); }, 60_000);
-    scheduler.unref();
-    app.addHook("onClose", async () => clearInterval(scheduler));
   }
 
   if (appEnv.NODE_ENV === "production") {

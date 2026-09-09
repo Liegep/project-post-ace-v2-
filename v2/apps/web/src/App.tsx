@@ -1751,14 +1751,15 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
     void refreshDashboard();
     let lastRefreshAt = Date.now();
     const refreshOnFocus = () => {
-      if (Date.now() - lastRefreshAt < 60_000) return;
+      if (Date.now() - lastRefreshAt < 10 * 60_000) return;
       lastRefreshAt = Date.now();
       void refreshDashboard();
     };
     const refreshOnVisibility = () => { if (document.visibilityState === "visible") refreshOnFocus(); };
+    const interval = window.setInterval(() => { if (document.visibilityState === "visible") refreshOnFocus(); }, 10 * 60_000);
     window.addEventListener("focus", refreshOnFocus);
     document.addEventListener("visibilitychange", refreshOnVisibility);
-    return () => { active = false; window.removeEventListener("focus", refreshOnFocus); document.removeEventListener("visibilitychange", refreshOnVisibility); };
+    return () => { active = false; window.clearInterval(interval); window.removeEventListener("focus", refreshOnFocus); document.removeEventListener("visibilitychange", refreshOnVisibility); };
   }, []);
   useEffect(() => { const sync = () => setInternalMessages(loadInternalApprovalMessages(session.id)); window.addEventListener("storage", sync); const timer = window.setInterval(sync, 5_000); return () => { window.removeEventListener("storage", sync); window.clearInterval(timer); }; }, [session.id]);
 
@@ -2787,21 +2788,21 @@ function AdminWorkspacePage({
   };
   const workspaceViewChanging = workspaceResource.data.mode !== workspaceMode;
   const data = resource.data;
-  const scheduledCardIds = [...data.columns.flatMap((column) => column.cards), ...data.withoutColumn]
-    .filter((card) => card.scheduledAt)
-    .map((card) => card.id)
-    .join(",");
   useEffect(() => {
-    if (boardView !== "board" || !scheduledCardIds) return;
+    if (boardView !== "board") return;
 
+    let lastRefreshAt = 0;
     const refreshScheduledCards = () => {
-      if (document.visibilityState === "visible") setRefreshKey((value) => value + 1);
+      if (document.visibilityState !== "visible" || Date.now() - lastRefreshAt < 5_000) return;
+      lastRefreshAt = Date.now();
+      setRefreshKey((value) => value + 1);
     };
     const refreshOnVisibility = () => { if (document.visibilityState === "visible") refreshScheduledCards(); };
+    const interval = window.setInterval(refreshScheduledCards, 30 * 60_000);
     window.addEventListener("focus", refreshScheduledCards);
     document.addEventListener("visibilitychange", refreshOnVisibility);
-    return () => { window.removeEventListener("focus", refreshScheduledCards); document.removeEventListener("visibilitychange", refreshOnVisibility); };
-  }, [boardView, scheduledCardIds]);
+    return () => { window.clearInterval(interval); window.removeEventListener("focus", refreshScheduledCards); document.removeEventListener("visibilitychange", refreshOnVisibility); };
+  }, [boardView]);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(() => new URLSearchParams(location.search).get("card"));
   const [editingColumn, setEditingColumn] = useState<BoardColumn | "new" | null>(null);
   const [invoiceLineDialog, setInvoiceLineDialog] = useState<BillingLineRequest | null>(null);
@@ -3893,7 +3894,7 @@ function ReorderableMediaGrid({
         }}
         onDragEnd={() => { setDraggedIndex(null); setDropIndex(null); }}
       >
-        {item.isVideo ? <video src={item.url} muted /> : <img src={item.url} alt={`Slide ${index + 1}`} />}
+        {item.isVideo ? <video src={item.url} muted preload="metadata" /> : <img src={item.url} alt={`Slide ${index + 1}`} loading="lazy" decoding="async" />}
         <span>{index === 0 ? "1 · Capa" : `Slide ${index + 1}`}</span>
         <i className="media-order-grip" aria-hidden="true">⠿</i>
         <button type="button" aria-label={`Remover slide ${index + 1}`} onClick={(event) => { event.stopPropagation(); onRemove(index); }}>×</button>
@@ -4635,8 +4636,8 @@ function ResilientCardMedia({ url, title, video = false, controls = false, onRat
   const previewUrl = driveFileId ? `https://drive.google.com/thumbnail?id=${encodeURIComponent(driveFileId)}&sz=w1200` : url;
   if (failed || (linked && !driveFileId)) return <CardMediaFallback title={title} linked={linked} />;
   return video && !driveFileId
-    ? <video src={previewUrl} controls={controls} onError={() => setFailed(true)} onLoadedMetadata={(event) => onRatio?.(event.currentTarget.videoWidth, event.currentTarget.videoHeight)} />
-    : <img src={previewUrl} alt={title} draggable={false} onError={() => setFailed(true)} onLoad={(event) => onRatio?.(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />;
+    ? <video src={previewUrl} controls={controls} preload="metadata" onError={() => setFailed(true)} onLoadedMetadata={(event) => onRatio?.(event.currentTarget.videoWidth, event.currentTarget.videoHeight)} />
+    : <img src={previewUrl} alt={title} draggable={false} loading="lazy" decoding="async" onError={() => setFailed(true)} onLoad={(event) => onRatio?.(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />;
 }
 
 function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen = false, compact = false }: { urls: string[]; title: string; activeIndex?: number; onIndexChange?: (index: number) => void; fullscreen?: boolean; compact?: boolean }) {
@@ -5700,13 +5701,13 @@ function CardDetailModal({
     void onLoadTags().then((result) => setPortalTagLibrary(result.items)).catch(() => setPortalTagLibrary([]));
   }, [allowManageTags, detail?.card.id, onLoadTags]);
   useEffect(() => {
-    if (!detail) return;
+    if (!detail || mode === "admin") return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onClose();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [detail, onClose]);
+  }, [detail, mode, onClose]);
 
   if (!detail) return null;
 
@@ -6049,10 +6050,7 @@ function AdminCardEditor({
     if (draftJson === lastSavedDraftRef.current) return;
     try { window.localStorage.setItem(recoveryKey, draftJson); } catch { /* Recovery remains optional. */ }
     setAutosaveState((current) => current === "saving" ? current : "pending");
-    if (uploading) return;
-    const timeout = window.setTimeout(() => { if (document.visibilityState === "visible") void persistCard(false); }, 8_000);
-    return () => window.clearTimeout(timeout);
-  }, [draft, recoveryKey, uploading]);
+  }, [draft, recoveryKey]);
 
   async function sendInternalApproval() {
     if (!internalRecipientIds.length || !internalMessage.trim()) return;
@@ -6214,6 +6212,17 @@ ${internalMessage.trim()}`, isInternal: true });
     onRefresh();
     onClose();
   }
+
+  useEffect(() => {
+    const saveAndCloseOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void requestClose();
+    };
+    window.addEventListener("keydown", saveAndCloseOnEscape, true);
+    return () => window.removeEventListener("keydown", saveAndCloseOnEscape, true);
+  });
 
   async function sendComment() {
     if (!commentDraft.trim()) return;
@@ -6996,10 +7005,7 @@ function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: {
     let active = true;
     const refreshPautaCards = () => { void loadAdminWorkspaceBySlug(slug, { archived: false }).then((workspace) => { if (active) setPautaCards([...workspace.columns.flatMap((column) => column.cards), ...workspace.withoutColumn]); }).catch(() => undefined); };
     refreshPautaCards();
-    const refreshOnVisibility = () => { if (document.visibilityState === "visible") refreshPautaCards(); };
-    window.addEventListener("focus", refreshPautaCards);
-    document.addEventListener("visibilitychange", refreshOnVisibility);
-    return () => { active = false; window.removeEventListener("focus", refreshPautaCards); document.removeEventListener("visibilitychange", refreshOnVisibility); };
+    return () => { active = false; };
   }, [slug]);
   useEffect(() => {
     if (!pautaCards.length || !ideas.length) return;
