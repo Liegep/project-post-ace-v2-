@@ -1,5 +1,6 @@
 import fp from "fastify-plugin";
 import mysql from "mysql2/promise";
+import type { PoolConnection as CallbackPoolConnection } from "mysql2";
 import type { FastifyInstance } from "fastify";
 
 async function dbPlugin(app: FastifyInstance) {
@@ -26,8 +27,8 @@ async function dbPlugin(app: FastifyInstance) {
   // session so the single pooled connection is reused instead of reopened for
   // every interaction after a brief pause.
   pool.on("connection", (connection) => {
-    void connection.query("SET SESSION wait_timeout = 3600").catch((error: unknown) => {
-      app.log.warn(error, "Unable to extend database session timeout");
+    (connection as unknown as CallbackPoolConnection).query("SET SESSION wait_timeout = 3600", (error) => {
+      if (error) app.log.warn(error, "Unable to extend database session timeout");
     });
   });
 
