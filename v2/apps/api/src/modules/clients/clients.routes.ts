@@ -214,8 +214,11 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         "SELECT CONCAT('comment-', cc.id) AS id, c.id AS cardId, c.title, cc.created_at AS occurredAt,",
         "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl, 'comment' AS activityType, LEFT(cc.comment_text, 240) AS detail",
         "FROM card_comments cc JOIN kanban_cards c ON c.id = cc.card_id JOIN client_accounts a ON a.id = c.client_account_id",
-        "WHERE c.archived = 0 AND c.scheduled_at IS NULL AND cc.is_internal = 0 AND cc.author_role IN ('cliente', 'guest')", scopeSql,
-        ") activity ORDER BY activity.occurredAt DESC LIMIT 8",
+        // A client response remains useful feedback even if the card was later
+        // scheduled or archived. The dashboard's X control is what explicitly
+        // marks it as viewed; card workflow changes must not hide it first.
+        "WHERE cc.is_internal = 0 AND cc.author_role IN ('cliente', 'guest')", scopeSql,
+        ") activity ORDER BY activity.occurredAt DESC LIMIT 24",
       ].join(" "), [...params, ...params]),
       app.db.query<RowDataPacket[]>([
         "SELECT CONCAT('brand-revision-', r.id) AS id, NULL AS cardId, 'Sugestão para o Brand Brain' AS title, r.created_at AS occurredAt,",
@@ -248,7 +251,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     ]);
     const combinedClientActivities = [...clientActivities, ...brandBrainActivities, ...documentActivities]
       .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
-      .slice(0, 8);
+      .slice(0, 24);
     return { dueTasks, upcomingPosts, postsToday, agendaToday, clientSubmissions, clientActivities: combinedClientActivities };
   });
 
