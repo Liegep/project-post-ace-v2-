@@ -3517,6 +3517,25 @@ button {
   text-shadow: 0 1px 1px rgba(0,0,0,.18);
 }
 
+/* Etiquetas compactas dentro dos cards deixam mais conteúdo visível sem
+   reduzir os demais badges usados em cabeçalhos, filtros e relatórios. */
+.content-card .card-inline {
+  gap: 5px;
+}
+
+.content-card .mini-badge.tag-filled {
+  gap: 4px;
+  padding: 4px 7px;
+  border-radius: 5px;
+  font-size: .68rem;
+  line-height: 1.15;
+}
+
+.content-card .mini-badge.tag-filled .card-tag-dot {
+  width: 5px;
+  height: 5px;
+}
+
 .mini-badge.tag-filled.removable {
   cursor: pointer;
 }
