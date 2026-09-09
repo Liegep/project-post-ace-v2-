@@ -13,11 +13,13 @@ async function dbPlugin(app: FastifyInstance) {
     // per hour. Keep a small, persistent pool and reuse it across requests.
     connectionLimit: 1,
     maxIdle: 1,
-    idleTimeout: 600_000,
+    idleTimeout: 3_600_000,
+    connectTimeout: 5_000,
     enableKeepAlive: true,
     keepAliveInitialDelay: 10_000,
     waitForConnections: true,
-    queueLimit: 0
+    // Never let an unavailable database build an unlimited in-memory queue.
+    queueLimit: 50
   });
 
   app.decorate("db", pool);

@@ -38,7 +38,8 @@ import { dashboardNotesRoutes } from "./modules/dashboard-notes/dashboard-notes.
 export async function buildApp() {
   const appEnv = loadEnv();
   const app = Fastify({
-    logger: appEnv.NODE_ENV === "development"
+    // Production failures need to reach the hosting logs as well.
+    logger: true
   });
 
   app.decorate("appEnv", appEnv);
@@ -59,7 +60,13 @@ export async function buildApp() {
   } else {
     await app.register(dbPluginRegistered);
     await app.register(authPluginRegistered);
-    await ensureMcpStorage(app.db);
+    let databaseAvailableAtStartup = true;
+    try {
+      await ensureMcpStorage(app.db);
+    } catch (error) {
+      databaseAvailableAtStartup = false;
+      app.log.error(error, "Database unavailable during startup; continuing with degraded API");
+    }
     await app.register(mcpOAuthRoutes);
     await app.register(mcpRoutes);
 
@@ -85,11 +92,13 @@ export async function buildApp() {
     await app.register(designBriefRoutes, { prefix: "/api" });
     await app.register(dashboardNotesRoutes, { prefix: "/api" });
 
-    try {
-      const organized = await reconcileApprovedCardColumns(app);
-      if (organized > 0) app.log.info({ organized }, "Approved cards organized into their client columns");
-    } catch (error) {
-      app.log.error(error, "Unable to organize approved cards");
+    if (databaseAvailableAtStartup) {
+      try {
+        const organized = await reconcileApprovedCardColumns(app);
+        if (organized > 0) app.log.info({ organized }, "Approved cards organized into their client columns");
+      } catch (error) {
+        app.log.error(error, "Unable to organize approved cards");
+      }
     }
   }
 
