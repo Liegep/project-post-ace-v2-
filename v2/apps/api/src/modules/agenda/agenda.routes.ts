@@ -50,15 +50,26 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
     const mappings: Array<[keyof typeof input, string]> = [["title", "title"], ["taskDescription", "task_description"], ["startsAt", "starts_at"], ["endsAt", "ends_at"], ["color", "color"], ["clientAccountId", "client_account_id"], ["labelId", "agenda_label_id"], ["recurrenceType", "recurrence_type"], ["repeatUntil", "repeat_until"], ["meetLink", "meet_link"], ["isCompleted", "is_completed"]];
     for (const [key, column] of mappings) if (key in input) { updates.push(`${column} = ?`); values.push(input[key] ?? null); }
     if (!updates.length) return { ok: true };
-    values.push(eventId, request.auth!.user.id);
-    await app.db.query(`UPDATE agenda_events SET ${updates.join(", ")} WHERE id = ? AND created_by_user_id = ?`, values);
+    const isSuperAdmin = request.auth!.user.globalRole === "super_admin";
+    values.push(eventId);
+    if (!isSuperAdmin) values.push(request.auth!.user.id);
+    const [result] = await app.db.query<import("mysql2/promise").ResultSetHeader>(
+      `UPDATE agenda_events SET ${updates.join(", ")} WHERE id = ?${isSuperAdmin ? "" : " AND created_by_user_id = ?"}`,
+      values,
+    );
+    if (result.affectedRows === 0) throw app.httpErrors.notFound("Compromisso não encontrado ou sem permissão para alterar.");
     return { ok: true };
   });
 
   app.delete("/agenda/events/:eventId", async (request) => {
     assertInternalAccess(request);
     const { eventId } = request.params as { eventId: string };
-    await app.db.query("DELETE FROM agenda_events WHERE id = ? AND created_by_user_id = ?", [eventId, request.auth!.user.id]);
+    const isSuperAdmin = request.auth!.user.globalRole === "super_admin";
+    const [result] = await app.db.query<import("mysql2/promise").ResultSetHeader>(
+      `DELETE FROM agenda_events WHERE id = ?${isSuperAdmin ? "" : " AND created_by_user_id = ?"}`,
+      isSuperAdmin ? [eventId] : [eventId, request.auth!.user.id],
+    );
+    if (result.affectedRows === 0) throw app.httpErrors.notFound("Compromisso não encontrado ou sem permissão para excluir.");
     return { ok: true };
   });
 
