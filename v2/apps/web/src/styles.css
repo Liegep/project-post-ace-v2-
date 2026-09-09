@@ -2867,13 +2867,10 @@ button {
 
 .archived-board {
   display: grid;
-  grid-template-rows: auto auto;
-  align-content: start;
-  height: 100%;
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   padding: 4px 8px 16px;
-  overflow-x: hidden;
-  overflow-y: auto;
+  overflow: hidden;
   overscroll-behavior: contain;
 }
 
@@ -3042,18 +3039,47 @@ button {
 
 .archive-month-columns {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: 22px;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(340px, 370px);
+  gap: 14px;
   min-height: 0;
-  overflow: visible;
+  overflow-x: scroll;
+  overflow-y: hidden;
   padding: 18px 2px 12px;
+  overscroll-behavior-x: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(91, 109, 157, .62) rgba(226, 232, 245, .72);
+  touch-action: pan-x pan-y;
+}
+
+.archive-month-columns::-webkit-scrollbar {
+  height: 10px;
+}
+
+.archive-month-columns::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgba(226, 232, 245, .72);
+}
+
+.archive-month-columns::-webkit-scrollbar-thumb {
+  min-width: 48px;
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: rgba(91, 109, 157, .62);
+  background-clip: padding-box;
+}
+
+.archive-month-columns::-webkit-scrollbar-thumb:hover {
+  background: rgba(66, 83, 132, .86);
+  background-clip: padding-box;
 }
 
 .archive-month {
   display: grid;
-  grid-template-rows: auto auto;
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
-  overflow: visible;
+  overflow: hidden;
   border: 1px solid rgba(225, 231, 241, .98);
   border-radius: 16px;
   background: rgba(255, 255, 255, .7);
@@ -3079,19 +3105,14 @@ button {
 
 .archive-month-cards {
   min-height: 0;
-  columns: 320px;
-  column-gap: 14px;
-  overflow: visible;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 0 11px 14px;
 }
 
 .archived-card {
-  display: inline-grid;
-  width: 100%;
+  display: grid;
   gap: 8px;
-  margin: 0 0 14px;
-  break-inside: avoid;
-  vertical-align: top;
 }
 
 .archived-card-actions {
