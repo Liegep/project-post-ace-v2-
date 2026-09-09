@@ -3039,47 +3039,18 @@ button {
 
 .archive-month-columns {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(340px, 370px);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 22px;
   min-height: 0;
-  overflow-x: scroll;
-  overflow-y: hidden;
+  overflow: visible;
   padding: 18px 2px 12px;
-  overscroll-behavior-x: contain;
-  scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: rgba(91, 109, 157, .62) rgba(226, 232, 245, .72);
-  touch-action: pan-x pan-y;
-}
-
-.archive-month-columns::-webkit-scrollbar {
-  height: 10px;
-}
-
-.archive-month-columns::-webkit-scrollbar-track {
-  border-radius: 999px;
-  background: rgba(226, 232, 245, .72);
-}
-
-.archive-month-columns::-webkit-scrollbar-thumb {
-  min-width: 48px;
-  border: 2px solid transparent;
-  border-radius: 999px;
-  background: rgba(91, 109, 157, .62);
-  background-clip: padding-box;
-}
-
-.archive-month-columns::-webkit-scrollbar-thumb:hover {
-  background: rgba(66, 83, 132, .86);
-  background-clip: padding-box;
 }
 
 .archive-month {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid rgba(225, 231, 241, .98);
   border-radius: 16px;
   background: rgba(255, 255, 255, .7);
@@ -3105,14 +3076,19 @@ button {
 
 .archive-month-cards {
   min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
+  columns: 320px;
+  column-gap: 14px;
+  overflow: visible;
   padding: 0 11px 14px;
 }
 
 .archived-card {
-  display: grid;
+  display: inline-grid;
+  width: 100%;
   gap: 8px;
+  margin: 0 0 14px;
+  break-inside: avoid;
+  vertical-align: top;
 }
 
 .archived-card-actions {
@@ -5181,10 +5157,10 @@ button {
 .portal-archive-head h1 { margin: 3px 0 5px; color: #202e50; font-size: clamp(1.25rem,2vw,1.65rem); }.portal-archive-head > div > span { color: #7e879b; font-size: .75rem; font-weight: 600; }.portal-archive-head > b { padding: 8px 11px; border-radius: 999px; color: #666f84; background: #eef0f5; font-size: .66rem; white-space: nowrap; }
 .portal-archive-state { display: grid; min-height: 280px; padding: 30px; place-items: center; align-content: center; border-radius: 22px; color: #7f899d; font-size: .75rem; text-align: center; }.portal-archive-state > span { display: grid; width: 54px; height: 54px; place-items: center; border-radius: 17px; color: #6c64c9; background: #efedff; }.portal-archive-state svg { width: 24px; height: 24px; }.portal-archive-state h2 { margin: 14px 0 5px; color: #33415e; font-size: 1rem; }.portal-archive-state p { margin: 0; }.portal-archive-state.error { color: #ad4a55; background: #fff8f9; }
 .portal-archive-groups { display: grid; gap: 20px; }.portal-archive-groups > section { display: grid; gap: 11px; }.portal-archive-groups > section > header { display: flex; align-items: center; gap: 8px; padding: 0 3px; }.portal-archive-groups > section > header h2 { margin: 0; color: #3a4662; font-size: .84rem; text-transform: capitalize; }.portal-archive-groups > section > header span { display: grid; min-width: 23px; height: 23px; padding: 0 3px; place-items: center; border-radius: 999px; color: #717c91; background: #e9ecf2; font-size: .6rem; font-weight: 650; }
-.portal-archive-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(230px,1fr)); gap: 13px; }.portal-archive-card { position: relative; overflow: hidden; padding: 0; border: 1px solid rgba(112,123,160,.14); border-radius: 17px; color: inherit; background: rgba(255,255,255,.84); font: inherit; text-align: left; cursor: pointer; box-shadow: 0 11px 28px rgba(58,68,104,.07); transition: transform .2s ease,box-shadow .2s ease; }.portal-archive-card:hover { box-shadow: 0 16px 36px rgba(58,68,104,.12); transform: translateY(-2px); }
+.portal-archive-grid { columns: 230px; column-gap: 13px; }.portal-archive-card { position: relative; display: inline-block; width: 100%; margin: 0 0 13px; overflow: hidden; padding: 0; break-inside: avoid; vertical-align: top; border: 1px solid rgba(112,123,160,.14); border-radius: 17px; color: inherit; background: rgba(255,255,255,.84); font: inherit; text-align: left; cursor: pointer; box-shadow: 0 11px 28px rgba(58,68,104,.07); transition: transform .2s ease,box-shadow .2s ease; }.portal-archive-card:hover { box-shadow: 0 16px 36px rgba(58,68,104,.12); transform: translateY(-2px); }
 .portal-archive-download { position: absolute; z-index: 8; top: 12px; right: 12px; display: inline-flex; min-height: 31px; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid rgba(83,94,127,.14); border-radius: 10px; color: #59657e; background: rgba(255,255,255,.92); font: inherit; font-size: .6rem; font-weight: 650; box-shadow: 0 7px 18px rgba(45,55,84,.12); cursor: pointer; backdrop-filter: blur(10px); }
 .portal-archive-download:hover { color: #4f55ba; background: #fff; }.portal-archive-download svg { width: 14px; height: 14px; }
-.portal-archive-preview { display: grid; min-height: 165px; place-items: center; overflow: hidden; background: #f1f2f7; }.portal-archive-preview > span { display: grid; gap: 6px; place-items: center; color: #9aa1b0; font-size: .64rem; }.portal-archive-preview > span svg { width: 22px; height: 22px; }.portal-archive-preview .closed-card-carousel { border-radius: 0; }
+.portal-archive-preview { display: grid; min-height: 0; place-items: center; overflow: hidden; background: #f1f2f7; }.portal-archive-preview > span { display: grid; min-height: 165px; gap: 6px; place-items: center; align-content: center; color: #9aa1b0; font-size: .64rem; }.portal-archive-preview > span svg { width: 22px; height: 22px; }.portal-archive-preview .closed-card-carousel { border-radius: 0; }.portal-archive-preview .media-frame { width: 100%; aspect-ratio: auto; }.portal-archive-preview .media-frame img,.portal-archive-preview .media-frame video { display: block; width: 100%; height: auto; object-fit: contain; }
 .portal-archive-copy { padding: 13px 14px 15px; }.portal-archive-copy > span { color: #8a91a0; font-size: .54rem; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; }.portal-archive-copy h3 { margin: 4px 0 4px; overflow: hidden; color: #2e3b59; font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }.portal-archive-copy p { margin: 0; color: #8790a3; font-size: .61rem; }.portal-archive-copy > div { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 9px; }.portal-archive-copy i { padding: 3px 6px; border-radius: 999px; color: #665db8; background: #f0eeff; font-size: .52rem; font-style: normal; font-weight: 650; }
 @media (max-width: 650px) { .portal-archive-head { align-items: flex-start; padding: 19px; }.portal-archive-grid { grid-template-columns: 1fr; } }
 .portal-caption-content { display: grid; gap: 14px; padding: 17px 2px 18px; }
@@ -6649,20 +6625,18 @@ button {
   }
 
   .portal-archive-grid {
-    grid-template-columns: minmax(0, 1fr);
+    columns: 1;
   }
 
   .portal-archive-card {
-    display: grid;
-    grid-template-columns: 118px minmax(0, 1fr);
-    align-items: stretch;
-    min-height: 118px;
+    display: inline-block;
+    min-height: 0;
   }
 
   .portal-archive-preview {
-    width: 118px;
-    min-height: 118px;
-    aspect-ratio: 1;
+    width: 100%;
+    min-height: 0;
+    aspect-ratio: auto;
   }
 
   .portal-archive-preview .closed-card-media,
@@ -6672,9 +6646,9 @@ button {
   .portal-archive-preview .artwork-carousel-track,
   .portal-archive-preview .artwork-carousel-slide {
     width: 100%;
-    height: 100%;
+    height: auto;
     min-height: 0;
-    aspect-ratio: 1;
+    aspect-ratio: auto;
   }
 
   .portal-archive-preview .artwork-carousel.compact {
@@ -6682,12 +6656,16 @@ button {
     --artwork-gap: 0px;
   }
 
+  .portal-archive-preview .artwork-carousel.compact .artwork-carousel-slide {
+    aspect-ratio: var(--artwork-aspect, 1);
+  }
+
   .portal-archive-preview .media-frame img,
   .portal-archive-preview .artwork-carousel-slide.active img,
   .portal-archive-preview .artwork-carousel-slide.active video {
     width: 100%;
-    height: 100%;
-    object-fit: cover;
+    height: auto;
+    object-fit: contain;
   }
 
   .portal-archive-preview .artwork-carousel.compact .artwork-carousel-nav {
@@ -6708,7 +6686,7 @@ button {
   .portal-archive-copy {
     display: grid;
     min-width: 0;
-    align-content: center;
+    align-content: start;
     padding: 14px;
   }
 
