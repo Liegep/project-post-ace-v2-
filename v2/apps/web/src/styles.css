@@ -9194,6 +9194,9 @@ button {
 }
 
 .dashboard-layout .dashboard-grid > :is(.dashboard-tasks-widget, .dashboard-agenda-widget) { grid-column: span 4; }
+.dashboard-layout .dashboard-agenda-widget { display: flex; flex-direction: column; }
+.dashboard-layout .dashboard-agenda-widget .dashboard-agenda-link { margin-top: auto; padding-top: 0; transform: translateY(2px); }
+.dashboard-layout .dashboard-agenda-widget .dashboard-agenda-link:hover { transform: translateY(1px); }
 
 .dashboard-layout .dashboard-grid > .commemorative-dashboard-widget { grid-column: span 4; }
 
