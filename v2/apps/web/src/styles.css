@@ -3512,47 +3512,43 @@ button {
 
 .card-tag-remove {
   display: inline-grid;
-  width: 0;
+  width: 14px;
+  margin-left: 2px;
   overflow: hidden;
   place-items: center;
   opacity: 0;
   font-size: 1rem;
   line-height: 1;
-  transition: width .16s ease, opacity .16s ease, margin-left .16s ease;
-}
-
-.mini-badge.tag-filled.removable:hover .card-tag-remove {
-  width: 14px;
-  margin-left: 2px;
-  opacity: 1;
+  transition: opacity .16s ease;
 }
 
 .tag-selected-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0;
+  gap: 7px;
   border-radius: 7px;
-  transition: gap .16s ease, filter .16s ease;
+  transition: filter .16s ease;
 }
 
 .editor-tag-remove {
-  width: 0;
+  width: 12px;
+  margin-left: 1px;
   overflow: hidden;
   opacity: 0;
   font-size: 1.2rem;
   line-height: .8;
-  transition: width .16s ease, opacity .16s ease, margin-left .16s ease;
+  transition: opacity .16s ease;
 }
 
-.tag-selected-pill:hover {
-  gap: 7px;
-  filter: brightness(.95);
-}
+@media (hover: hover) and (pointer: fine) {
+  .mini-badge.tag-filled.removable:hover .card-tag-remove,
+  .tag-selected-pill:hover .editor-tag-remove {
+    opacity: 1;
+  }
 
-.tag-selected-pill:hover .editor-tag-remove {
-  width: 12px;
-  margin-left: 1px;
-  opacity: 1;
+  .tag-selected-pill:hover {
+    filter: brightness(.95);
+  }
 }
 
 .tag-picker-search {
