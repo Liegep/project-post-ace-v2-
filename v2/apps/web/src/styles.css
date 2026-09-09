@@ -2401,6 +2401,23 @@ button {
   line-height: 1;
 }
 
+/* A lupa permanece disponível, mas só aparece quando a própria mídia recebe
+   hover. Em telas de toque a imagem continua abrindo normalmente sem ícone. */
+.content-card .card-media-zoom .card-media-menu {
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-3px) scale(.92);
+  transition: opacity .16s ease, transform .16s ease, visibility .16s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .content-card .card-media-zoom:hover .card-media-menu {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0) scale(1);
+  }
+}
+
 .card-media-count {
   position: absolute;
   z-index: 2;
