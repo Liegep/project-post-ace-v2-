@@ -45,6 +45,12 @@ const envSchema = z.object({
   SMTP_FROM_EMAIL: optionalEmail,
   SMTP_FROM_NAME: z.string().min(1).default("Design Hub"),
   PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().min(10).max(120).default(30),
+  // During the V1 -> V2 cutover, imported users can keep their existing
+  // password. The first successful V1 login activates the account in V2 and
+  // stores a fresh bcrypt hash locally. These variables can be removed after
+  // every account has migrated.
+  LEGACY_SUPABASE_URL: z.string().url().optional(),
+  LEGACY_SUPABASE_ANON_KEY: optionalString,
 });
 
 export type AppEnv = z.infer<typeof envSchema>;

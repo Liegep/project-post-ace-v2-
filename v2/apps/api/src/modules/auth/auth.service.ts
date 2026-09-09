@@ -4,15 +4,24 @@ import { createUserWithMemberships, findAuthContextByUserId, findUserByEmail, up
 import { hashPassword, verifyPassword } from "./auth.crypto.js";
 import type { ChangeMyPasswordInput, CreateUserInput, LoginInput, UpdateMyProfileInput } from "./auth.schemas.js";
 import { signAccessToken } from "./auth.tokens.js";
+import { verifyLegacyPassword } from "./legacy-auth.service.js";
 
 export async function loginWithPassword(app: FastifyInstance, input: LoginInput) {
   const user = await findUserByEmail(app.db, input.email);
 
-  if (!user || !user.is_active) {
+  if (!user) {
     throw app.httpErrors.unauthorized("Email ou senha inválidos.");
   }
 
-  const passwordOk = await verifyPassword(input.password, user.password_hash);
+  let passwordOk = Boolean(user.is_active) && await verifyPassword(input.password, user.password_hash);
+
+  // Supabase Auth does not export plaintext passwords or reusable hashes.
+  // Imported V1 accounts therefore migrate lazily on their first valid login.
+  if (!passwordOk && await verifyLegacyPassword(app, user.email, input.password)) {
+    await updateUserPasswordHash(app.db, user.id, await hashPassword(input.password), true);
+    passwordOk = true;
+  }
+
   if (!passwordOk) {
     throw app.httpErrors.unauthorized("Email ou senha inválidos.");
   }
