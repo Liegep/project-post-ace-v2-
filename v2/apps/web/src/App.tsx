@@ -2294,6 +2294,8 @@ function AgendaPage({ session, onLogout }: { session: SessionUser | null; onLogo
   const [newLabelColor, setNewLabelColor] = useState("#4285f4");
   const [error, setError] = useState("");
   const [refresh, setRefresh] = useState(0);
+  const [draggedAgendaEvent, setDraggedAgendaEvent] = useState<AgendaEvent | null>(null);
+  const [agendaDropDay, setAgendaDropDay] = useState("");
   const range = useMemo(() => agendaViewRange(month, calendarView), [month, calendarView]);
 
   const [clientsError, setClientsError] = useState("");
@@ -2355,6 +2357,25 @@ function AgendaPage({ session, onLogout }: { session: SessionUser | null; onLogo
     catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível excluir a etiqueta."); }
   }
 
+  async function dropAgendaEvent(day: Date) {
+    const agendaEvent = draggedAgendaEvent;
+    setDraggedAgendaEvent(null); setAgendaDropDay("");
+    if (!agendaEvent || calendarView === "day") return;
+    const destination = localDateKey(day);
+    if (destination === localDateKey(new Date(agendaEvent.startsAt))) return;
+    const currentLocal = toDateTimeLocal(agendaEvent.startsAt);
+    const nextStartsAt = `${destination}T${currentLocal.slice(11, 16)}`;
+    const sourceId = agendaEvent.sourceEventId ?? agendaEvent.id;
+    setEvents((current) => current.map((item) => item.id === sourceId ? { ...item, startsAt: nextStartsAt } : item));
+    setError("");
+    try {
+      await updateAgendaEvent(sourceId, { startsAt: nextStartsAt });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível mover o compromisso.");
+      setRefresh((value) => value + 1);
+    }
+  }
+
   const visibleEvents = expandAgendaEvents(events, range.from, range.to);
   const eventsByDay = new Map<string, AgendaEvent[]>();
   visibleEvents.forEach((event) => {
@@ -2382,7 +2403,8 @@ function AgendaPage({ session, onLogout }: { session: SessionUser | null; onLogo
           {calendarView !== "day" ? <div className="agenda-weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => <strong key={day}>{day}</strong>)}</div> : null}
           <div className="agenda-month-grid">{range.days.map((day) => {
             const key = localDateKey(day); const dayEvents = eventsByDay.get(key) ?? []; const isCurrentMonth = calendarView !== "month" || day.getMonth() === month.getMonth();
-            return <article key={key} className={isCurrentMonth ? "agenda-day" : "agenda-day muted"} onClick={() => openAgendaDay(day)}><time>{day.getDate()}</time>{dayEvents.slice(0, 3).map((item) => <div className="agenda-event-pill" key={item.id} style={{ backgroundColor: item.color, color: calendarTextColor(item.color) }} onClick={(event) => { event.stopPropagation(); setSelectedEvent(item); setRescheduleAt(toDateTimeLocal(item.startsAt)); setMeetLinkEdit(item.meetLink ?? ""); setClientAccountIdEdit(item.clientAccountId ?? ""); }}><span>{formatAgendaTime(item.startsAt)}</span> {item.title}</div>)}{dayEvents.length > 3 ? <span className="agenda-more">+{dayEvents.length - 3} mais</span> : null}</article>;
+            const dropActive = agendaDropDay === key;
+            return <article key={key} className={`${isCurrentMonth ? "agenda-day" : "agenda-day muted"}${dropActive ? " agenda-day-drop-active" : ""}`} onClick={() => openAgendaDay(day)} onDragOver={(event) => { if (!draggedAgendaEvent || calendarView === "day") return; event.preventDefault(); event.dataTransfer.dropEffect = "move"; if (agendaDropDay !== key) setAgendaDropDay(key); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setAgendaDropDay(""); }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); void dropAgendaEvent(day); }}><time>{day.getDate()}</time>{dayEvents.slice(0, 3).map((item) => <div className={`agenda-event-pill${draggedAgendaEvent?.id === item.id ? " dragging" : ""}`} key={item.id} draggable={calendarView !== "day"} style={{ backgroundColor: item.color, color: calendarTextColor(item.color) }} onDragStart={(event) => { event.stopPropagation(); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", item.sourceEventId ?? item.id); setDraggedAgendaEvent(item); }} onDragEnd={() => { setDraggedAgendaEvent(null); setAgendaDropDay(""); }} onClick={(event) => { event.stopPropagation(); setSelectedEvent(item); setRescheduleAt(toDateTimeLocal(item.startsAt)); setMeetLinkEdit(item.meetLink ?? ""); setClientAccountIdEdit(item.clientAccountId ?? ""); }}><span>{formatAgendaTime(item.startsAt)}</span> {item.title}</div>)}{dayEvents.length > 3 ? <span className="agenda-more">+{dayEvents.length - 3} mais</span> : null}</article>;
           })}</div>
         </section>
         <div className="social-calendar-mobile agenda-mobile-list">

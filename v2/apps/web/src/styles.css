@@ -313,6 +313,7 @@ body h6 {
 }
 
 .agenda-day:hover { background: rgba(241, 245, 255, 0.9); box-shadow: inset 0 0 0 1px #a9baf9; }
+.agenda-day.agenda-day-drop-active { background: rgba(232, 239, 255, .98); box-shadow: inset 0 0 0 2px #7565e4, 0 8px 20px rgba(92,78,202,.12); }
 
 .agenda-day:nth-child(7n) { border-right: 0; }
 .agenda-day time { display: block; margin-bottom: 12px; font-size: 1.05rem; font-weight: 650; }
@@ -332,6 +333,11 @@ body h6 {
 }
 
 .agenda-event-pill span { margin-right: 5px; font-family: var(--v1-font); font-weight: 650; font-variant-numeric: tabular-nums; }
+.agenda-calendar-week .agenda-event-pill[draggable="true"],
+.agenda-calendar-month .agenda-event-pill[draggable="true"] { cursor: grab; user-select: none; }
+.agenda-calendar-week .agenda-event-pill[draggable="true"]:active,
+.agenda-calendar-month .agenda-event-pill[draggable="true"]:active { cursor: grabbing; }
+.agenda-event-pill.dragging { opacity: .45; transform: scale(.97); }
 .agenda-more { display: inline-block; margin-top: 5px; color: #4c52da; font-size: 0.82rem; font-weight: 650; }
 
 .agenda-calendar-week .agenda-day,
