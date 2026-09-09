@@ -9,6 +9,7 @@ import { ensureInvoiceTables } from "../modules/invoices/invoices.repository.js"
 import { ensureContractTables } from "../modules/contracts/contracts.repository.js";
 import { ensureProposalTables } from "../modules/proposals/proposals.repository.js";
 import { ensureDesignBriefTables } from "../modules/design-briefs/design-briefs.repository.js";
+import { normalizeCardCaption } from "../modules/cards/cards.text.js";
 
 type JsonRow = Record<string, unknown>;
 
@@ -968,7 +969,7 @@ async function importBundle(connection: PoolConnection, bundle: ExportBundle) {
     const mappedTags = (Array.isArray(post.tags) ? post.tags : []).map((value) => textValue(legacyTagsById.get(String(value)) ?? {}, "name", String(value)));
     await connection.query(
       "INSERT INTO kanban_cards (id, client_account_id, column_id, title, caption, media_type, primary_media_url, media_urls_json, art_type, status_json, tags_json, keep_files, deadline_at, published_at, archived, archived_at, client_label, event_color, position, legacy_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE column_id=VALUES(column_id), title=VALUES(title), caption=VALUES(caption), media_type=VALUES(media_type), primary_media_url=VALUES(primary_media_url), media_urls_json=VALUES(media_urls_json), art_type=VALUES(art_type), status_json=VALUES(status_json), tags_json=VALUES(tags_json), keep_files=VALUES(keep_files), deadline_at=VALUES(deadline_at), published_at=VALUES(published_at), archived=VALUES(archived), archived_at=VALUES(archived_at), client_label=VALUES(client_label), event_color=VALUES(event_color), position=VALUES(position)",
-      [textValue(post, "id"), clientMap.get(textValue(post, "client_id")), nullableText(post, "column_id"), textValue(post, "title", "Sem título"), nullableText(post, "caption"), textValue(post, "media_type", "image"), nullableText(post, "image_url"), jsonValue(post.media_urls), textValue(post, "art_type", "single_post"), jsonValue(post.status), jsonValue(mappedTags), boolValue(post, "retain_files"), mysqlDateTime(post.deadline), mysqlDateTime(post.published_at), boolValue(post, "archived"), mysqlDateTime(post.archived_at), textValue(post, "client_label", "pendente"), nullableText(post, "event_color"), numberValue(post, "position"), textValue(post, "id")],
+      [textValue(post, "id"), clientMap.get(textValue(post, "client_id")), nullableText(post, "column_id"), textValue(post, "title", "Sem título"), normalizeCardCaption(nullableText(post, "caption")), textValue(post, "media_type", "image"), nullableText(post, "image_url"), jsonValue(post.media_urls), textValue(post, "art_type", "single_post"), jsonValue(post.status), jsonValue(mappedTags), boolValue(post, "retain_files"), mysqlDateTime(post.deadline), mysqlDateTime(post.published_at), boolValue(post, "archived"), mysqlDateTime(post.archived_at), textValue(post, "client_label", "pendente"), nullableText(post, "event_color"), numberValue(post, "position"), textValue(post, "id")],
     );
   }
 

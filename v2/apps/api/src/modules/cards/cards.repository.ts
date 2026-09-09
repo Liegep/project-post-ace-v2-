@@ -5,6 +5,7 @@ import type {
   MoveCardInput,
   UpdateCardInput,
 } from "./cards.schemas.js";
+import { normalizeCardCaption } from "./cards.text.js";
 
 type CardRow = RowDataPacket & {
   id: string;
@@ -64,7 +65,7 @@ function mapCardRow(row: CardRow) {
     clientAccountId: row.client_account_id,
     columnId: row.column_id,
     title: row.title,
-    caption: row.caption,
+    caption: normalizeCardCaption(row.caption),
     mediaType: row.media_type,
     primaryMediaUrl: row.primary_media_url,
     mediaUrls: parseJsonArray(row.media_urls_json),
