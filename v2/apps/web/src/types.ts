@@ -125,6 +125,7 @@ export type ClientPortalPreview = {
   widgets: ClientWidgetFlags;
   permissions: ClientPermissions;
   boardColumns: BoardColumn[];
+  postCreationColumns: Array<{ id: string; name: string; color: string }>;
   withoutColumn: BoardCard[];
   calendarEvents: CalendarEvent[];
   calendarPosts: BoardCard[];

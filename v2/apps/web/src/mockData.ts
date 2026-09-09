@@ -185,6 +185,7 @@ export const clientPreview: ClientPortalPreview = {
       ...column,
       cards: column.cards,
     })),
+  postCreationColumns: adminColumns.map((column) => ({ id: column.id, name: column.name, color: column.color })),
   withoutColumn: [],
   calendarEvents: [
     {

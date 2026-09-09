@@ -69,24 +69,11 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
     const mediaType = input.mediaUrls.some((url) => /\.(mp4|webm|mov)(\?.*)?$/i.test(url)) ? "video" : "image";
     const actor = request.auth!.user;
     const columns = await listColumnsByClientAccountId(app.db, params.clientAccountId);
-    const normalizeColumnName = (value: string) => value
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^a-z0-9]+/gi, " ")
-      .trim()
-      .toLocaleLowerCase();
-    let entryColumn = columns.find((column) => normalizeColumnName(column.name) === "entrada") ?? null;
-    if (!entryColumn) {
-      entryColumn = await createColumn(app.db, params.clientAccountId, {
-        name: "Entrada",
-        color: "#3b82f6",
-        visibleToClient: false,
-        autoCreated: true,
-      });
-    }
-    if (!entryColumn) throw app.httpErrors.badRequest("Não foi possível localizar a coluna Entrada.");
+    const selectedColumn = columns.find((column) => column.id === input.columnId);
+    if (!selectedColumn) throw app.httpErrors.badRequest("Escolha uma coluna válida deste Kanban.");
+    if (!selectedColumn.visibleToClient) await updateColumn(app.db, selectedColumn.id, { visibleToClient: true });
     const card = await createKanbanCard(app, params.clientAccountId, actor.id, {
-        columnId: entryColumn.id,
+        columnId: selectedColumn.id,
         title: input.title,
         caption: input.caption ?? null,
         mediaType,

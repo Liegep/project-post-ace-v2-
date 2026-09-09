@@ -97,9 +97,10 @@ export async function getPortalHome(
     throw app.httpErrors.notFound("Permissões da conta não encontradas.");
   }
 
-  const [portalCards, legacyCalendarEvents] = await Promise.all([
+  const [portalCards, legacyCalendarEvents, postCreationColumns] = await Promise.all([
     listCardsByClientAccountId(app.db, clientAccountId, {}),
     listCalendarEvents(app.db, { clientAccountIds: [clientAccountId] }),
+    listColumnsByClientAccountId(app.db, clientAccountId),
   ]);
   const today = currentDateKey(app.appEnv.APP_TIMEZONE);
   const nativeCalendarCards = portalCards
@@ -197,6 +198,7 @@ export async function getPortalHome(
     },
     upcomingItems,
     calendarPosts,
+    postCreationColumns: permissions.allowClientCreatePost ? postCreationColumns.map((column) => ({ id: column.id, name: column.name, color: column.color })) : [],
   };
 }
 

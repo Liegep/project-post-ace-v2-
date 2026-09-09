@@ -268,6 +268,7 @@ type ApiPortalHomeResponse = {
   widgets: ClientPortalPreview["widgets"];
   upcomingItems: ClientPortalPreview["upcomingItems"];
   calendarPosts: ApiBoardCard[];
+  postCreationColumns: Array<{ id: string; name: string; color: string | null }>;
 };
 
 type ApiPortalBoardResponse = {
@@ -743,6 +744,7 @@ export async function loadClientPortalBySlug(slug: string): Promise<ClientPortal
     widgets: homeResponse.widgets,
     permissions: homeResponse.permissions,
     boardColumns: mapColumns(boardResponse.board.columns),
+    postCreationColumns: homeResponse.postCreationColumns.map((column) => ({ ...column, color: column.color ?? "#8c94a8" })),
     withoutColumn: boardResponse.board.withoutColumn.cards.map((card) => mapCard(card)),
     calendarEvents: [],
     upcomingItems: homeResponse.upcomingItems,
@@ -1333,7 +1335,7 @@ export async function uploadPortalMediaBySlug(slug: string, file: File) {
   return ((await response.json()) as { url: string }).url;
 }
 
-export async function createPortalPostBySlug(slug: string, input: { title: string; caption?: string | null; commentText?: string | null; artType: string; externalLinkUrl?: string | null; mediaUrls: string[] }) {
+export async function createPortalPostBySlug(slug: string, input: { columnId: string; title: string; caption?: string | null; commentText?: string | null; artType: string; externalLinkUrl?: string | null; mediaUrls: string[] }) {
   const account = await findPortalAccountBySlug(slug);
   return sendJson<{ ok: true; card: ApiBoardCard }>(`/api/portal/accounts/${account.clientAccountId}/cards`, {
     method: "POST",

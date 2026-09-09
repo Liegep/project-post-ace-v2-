@@ -14,6 +14,7 @@ export const portalSearchQuerySchema = z.object({
 const portalMediaUrlSchema = z.string().startsWith("/api/uploads/", "Arquivo de mídia inválido.");
 
 export const createPortalPostSchema = z.object({
+  columnId: z.string().uuid(),
   title: z.string().trim().min(1).max(255),
   caption: z.string().trim().max(5000).nullable().optional(),
   commentText: z.string().trim().max(5000).nullable().optional(),
