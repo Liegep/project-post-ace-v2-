@@ -5149,17 +5149,31 @@ function ClientPortalTrackerView({ columns, withoutColumn, onOpenCard }: { colum
   </section>;
 }
 
-function ClientPortalArchivedView({ cards, loading, error, onOpenCard }: { cards: BoardCard[]; loading: boolean; error: string; onOpenCard: (cardId: string) => void }) {
+function ClientPortalArchivedView({ cards, loading, error, allowDownload, onOpenCard }: { cards: BoardCard[]; loading: boolean; error: string; allowDownload: boolean; onOpenCard: (cardId: string) => void }) {
   const { t, localeTag } = usePortalTranslation();
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState("");
   const groups = new Map<string, BoardCard[]>();
   [...cards].sort((left, right) => getArchiveGroupDate(right).getTime() - getArchiveGroupDate(left).getTime()).forEach((card) => {
     const date = getArchiveGroupDate(card);
     const month = date.getTime() > 0 ? new Intl.DateTimeFormat(localeTag, { month: "long", year: "numeric" }).format(date) : t("Sem data");
     groups.set(month, [...(groups.get(month) ?? []), card]);
   });
+  const download = async (card: BoardCard) => {
+    setDownloadingId(card.id);
+    setDownloadError("");
+    try {
+      await downloadPortalCardAssets(card);
+    } catch (caught) {
+      setDownloadError(caught instanceof Error ? caught.message : t("Não foi possível preparar o download."));
+    } finally {
+      setDownloadingId(null);
+    }
+  };
   return <section className="portal-archive-view">
     <header className="portal-archive-head glass"><div><p className="eyebrow">{t("HISTÓRICO")}</p><h1>{t("Conteúdos arquivados")}</h1><span>{t("Consulte os mesmos conteúdos arquivados no Kanban.")}</span></div><b>{cards.length} {t(cards.length === 1 ? "conteúdo" : "conteúdos")}</b></header>
-    {loading ? <div className="portal-archive-state glass">{t("Carregando conteúdos arquivados...")}</div> : error ? <div className="portal-archive-state error glass">{error}</div> : cards.length === 0 ? <div className="portal-archive-state glass"><span><UiIcon name="layers" /></span><h2>{t("Nenhum conteúdo arquivado")}</h2><p>{t("Quando um post for arquivado no Kanban, ele aparecerá aqui.")}</p></div> : <div className="portal-archive-groups">{[...groups.entries()].map(([month, monthCards]) => <section key={month}><header><h2>{month}</h2><span>{monthCards.length}</span></header><div className="portal-archive-grid">{monthCards.map((card) => <button key={card.id} type="button" className="portal-archive-card glass" onClick={() => onOpenCard(card.id)}><div className="portal-archive-preview">{portalCardAssets(card).length ? <ClosedCardMedia card={card} /> : <span><UiIcon name="image" />{t("Sem arte")}</span>}</div><div className="portal-archive-copy"><span>{t("Arquivado")}</span><h3>{card.title}</h3><p>{getArchiveGroupDate(card).getTime() > 0 ? new Intl.DateTimeFormat(localeTag, { dateStyle: "medium" }).format(getArchiveGroupDate(card)) : t("Sem data registrada")}</p>{card.tags.length ? <div>{card.tags.slice(0, 3).map((tag) => <i key={tag}>{tag}</i>)}</div> : null}</div></button>)}</div></section>)}</div>}
+    {downloadError ? <p className="form-feedback error-text">{downloadError}</p> : null}
+    {loading ? <div className="portal-archive-state glass">{t("Carregando conteúdos arquivados...")}</div> : error ? <div className="portal-archive-state error glass">{error}</div> : cards.length === 0 ? <div className="portal-archive-state glass"><span><UiIcon name="layers" /></span><h2>{t("Nenhum conteúdo arquivado")}</h2><p>{t("Quando um post for arquivado no Kanban, ele aparecerá aqui.")}</p></div> : <div className="portal-archive-groups">{[...groups.entries()].map(([month, monthCards]) => <section key={month}><header><h2>{month}</h2><span>{monthCards.length}</span></header><div className="portal-archive-grid">{monthCards.map((card) => <article key={card.id} className="portal-archive-card glass" role="button" tabIndex={0} onClick={() => onOpenCard(card.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onOpenCard(card.id); } }}><div className="portal-archive-preview">{portalCardAssets(card).length ? <ClosedCardMedia card={card} /> : <span><UiIcon name="image" />{t("Sem arte")}</span>}</div>{allowDownload && portalCardAssets(card).length ? <button type="button" className="portal-archive-download" disabled={downloadingId === card.id} onClick={(event) => { event.stopPropagation(); void download(card); }}><UiIcon name="download" />{downloadingId === card.id ? "..." : "Download"}</button> : null}<div className="portal-archive-copy"><span>{t("Arquivado")}</span><h3>{card.title}</h3><p>{getArchiveGroupDate(card).getTime() > 0 ? new Intl.DateTimeFormat(localeTag, { dateStyle: "medium" }).format(getArchiveGroupDate(card)) : t("Sem data registrada")}</p>{card.tags.length ? <div>{card.tags.slice(0, 3).map((tag) => <i key={tag}>{tag}</i>)}</div> : null}</div></article>)}</div></section>)}</div>}
   </section>;
 }
 
@@ -5561,7 +5575,7 @@ function ClientPortalWorkspacePage({
         {postSuccess ? <div className="portal-post-success"><span>✓</span><p>{postSuccess}</p><button onClick={() => setPostSuccess("")} aria-label={tr("Fechar aviso")}>×</button></div> : null}
         {approvedTransfer ? <><span className="portal-approved-fly-to-nav" style={{ "--approved-target-x": `${approvedTransfer.targetX}px`, "--approved-target-y": `${approvedTransfer.targetY}px` } as CSSProperties} aria-hidden="true"><UiIcon name="send" /></span><div className="portal-approved-transfer" role="status" aria-live="polite"><div><strong>{tr("Enviado para Aprovados!")}</strong><small>{approvedTransfer.title}</small></div><span className="portal-approved-check">✓</span></div></> : null}
 
-        {portalView === "brand" && data.permissions.allowClientViewBrandBrain ? <ClientBrandBrainView slug={slug} clientName={data.accountName} allowEdit={canUseEnabledClientTools && data.permissions.allowClientEditBrandBrain} /> : portalView === "search" && data.permissions.allowClientSearch ? <ClientPortalSearchView slug={slug} onOpenCard={setSelectedCardId} /> : portalView === "archived" && data.showArchivedToClient ? <ClientPortalArchivedView cards={portalArchivedCards} loading={portalArchivedLoading} error={portalArchivedError} onOpenCard={setSelectedCardId} /> : portalView === "tracker" && portalTrackerEnabled ? <ClientPortalTrackerView columns={data.boardColumns} withoutColumn={data.withoutColumn} onOpenCard={setSelectedCardId} /> : portalView === "approved" ? <ClientApprovedPostsView cards={portalCardsWithLocalApprovals} texts={portalTexts} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} onOpenText={(textId) => { setSelectedPortalTextId(textId); setPortalView("texts"); }} /> : portalView === "invoices" && data.permissions.allowClientViewInvoices ? <ClientPortalInvoicesView invoices={portalInvoices} onViewInvoice={markInvoiceViewed} /> : portalView === "reports" && data.permissions.allowClientViewReports ? <PortalReports slug={slug} clientName={data.accountName} locale={portalLocale} /> : portalView === "texts" ? <section className="portal-texts-view glass"><aside>{portalTexts.map((item) => <button key={item.id} className={item.id === selectedPortalTextId ? "selected" : ""} onClick={() => { setSelectedPortalTextId(item.id); setPortalTextCommentDraft(""); setPortalTextFeedback(null); }}><small>{item.contentType}</small><strong>{item.title}</strong></button>)}</aside><article>{selectedPortalText ? <><p className="eyebrow">{selectedPortalText.contentType}</p>{selectedPortalTextBanner ? <div className="portal-text-banner" style={{ backgroundImage: `url(${selectedPortalTextBanner})` }} aria-label={tr("Banner do texto")} /> : null}<div className="portal-text-heading"><div><h1>{selectedPortalText.title}</h1><span className={`portal-text-status ${selectedPortalText.status === "Aprovado" ? "approved" : ""}`}>{tr(selectedPortalText.status)}</span></div></div><div className="portal-text-content" dangerouslySetInnerHTML={{ __html: selectedPortalText.contentHtml }} />{canRespondToClientContent ? <section className="portal-text-feedback"><h3>{tr("Seu feedback")}</h3><p>{tr("Comente sobre este texto ou escolha uma ação para enviar seu retorno à equipe.")}</p><textarea value={portalTextCommentDraft} onChange={(event) => setPortalTextCommentDraft(event.target.value)} placeholder={tr("Escreva aqui seu comentário sobre este texto")} /><div className="portal-text-actions"><button className="ghost-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("comment")}>{tr(portalTextSubmitting === "comment" ? "Enviando..." : "Adicionar comentário")}</button><button className="gradient-button" disabled={portalTextSubmitting !== null} onClick={() => void handlePortalTextAction("approve")}>{tr(portalTextSubmitting === "approve" ? "Enviando..." : "Aprovar")}</button><button className="danger-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("changes")}>{tr(portalTextSubmitting === "changes" ? "Enviando..." : "Pedir alteração")}</button></div>{portalTextFeedback ? <p className="portal-text-feedback-message">{portalTextFeedback}</p> : null}<div className="portal-text-comments"><h4>{tr("Comentários")} ({portalTextComments.length})</h4>{portalTextComments.map((comment) => <article key={comment.id}><div><strong>{comment.authorName}</strong><span>{comment.authorRole}</span></div><p>{comment.commentText}</p></article>)}</div></section> : <p className="client-access-notice">{tr("Acesso somente para visualização.")}</p>}</> : <p>{tr("Nenhum texto foi enviado para sua área ainda.")}</p>}</article></section> : <section className="portal-grid">
+        {portalView === "brand" && data.permissions.allowClientViewBrandBrain ? <ClientBrandBrainView slug={slug} clientName={data.accountName} allowEdit={canUseEnabledClientTools && data.permissions.allowClientEditBrandBrain} /> : portalView === "search" && data.permissions.allowClientSearch ? <ClientPortalSearchView slug={slug} onOpenCard={setSelectedCardId} /> : portalView === "archived" && data.showArchivedToClient ? <ClientPortalArchivedView cards={portalArchivedCards} loading={portalArchivedLoading} error={portalArchivedError} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} /> : portalView === "tracker" && portalTrackerEnabled ? <ClientPortalTrackerView columns={data.boardColumns} withoutColumn={data.withoutColumn} onOpenCard={setSelectedCardId} /> : portalView === "approved" ? <ClientApprovedPostsView cards={portalCardsWithLocalApprovals} texts={portalTexts} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} onOpenText={(textId) => { setSelectedPortalTextId(textId); setPortalView("texts"); }} /> : portalView === "invoices" && data.permissions.allowClientViewInvoices ? <ClientPortalInvoicesView invoices={portalInvoices} onViewInvoice={markInvoiceViewed} /> : portalView === "reports" && data.permissions.allowClientViewReports ? <PortalReports slug={slug} clientName={data.accountName} locale={portalLocale} /> : portalView === "texts" ? <section className="portal-texts-view glass"><aside>{portalTexts.map((item) => <button key={item.id} className={item.id === selectedPortalTextId ? "selected" : ""} onClick={() => { setSelectedPortalTextId(item.id); setPortalTextCommentDraft(""); setPortalTextFeedback(null); }}><small>{item.contentType}</small><strong>{item.title}</strong></button>)}</aside><article>{selectedPortalText ? <><p className="eyebrow">{selectedPortalText.contentType}</p>{selectedPortalTextBanner ? <div className="portal-text-banner" style={{ backgroundImage: `url(${selectedPortalTextBanner})` }} aria-label={tr("Banner do texto")} /> : null}<div className="portal-text-heading"><div><h1>{selectedPortalText.title}</h1><span className={`portal-text-status ${selectedPortalText.status === "Aprovado" ? "approved" : ""}`}>{tr(selectedPortalText.status)}</span></div></div><div className="portal-text-content" dangerouslySetInnerHTML={{ __html: selectedPortalText.contentHtml }} />{canRespondToClientContent ? <section className="portal-text-feedback"><h3>{tr("Seu feedback")}</h3><p>{tr("Comente sobre este texto ou escolha uma ação para enviar seu retorno à equipe.")}</p><textarea value={portalTextCommentDraft} onChange={(event) => setPortalTextCommentDraft(event.target.value)} placeholder={tr("Escreva aqui seu comentário sobre este texto")} /><div className="portal-text-actions"><button className="ghost-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("comment")}>{tr(portalTextSubmitting === "comment" ? "Enviando..." : "Adicionar comentário")}</button><button className="gradient-button" disabled={portalTextSubmitting !== null} onClick={() => void handlePortalTextAction("approve")}>{tr(portalTextSubmitting === "approve" ? "Enviando..." : "Aprovar")}</button><button className="danger-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("changes")}>{tr(portalTextSubmitting === "changes" ? "Enviando..." : "Pedir alteração")}</button></div>{portalTextFeedback ? <p className="portal-text-feedback-message">{portalTextFeedback}</p> : null}<div className="portal-text-comments"><h4>{tr("Comentários")} ({portalTextComments.length})</h4>{portalTextComments.map((comment) => <article key={comment.id}><div><strong>{comment.authorName}</strong><span>{comment.authorRole}</span></div><p>{comment.commentText}</p></article>)}</div></section> : <p className="client-access-notice">{tr("Acesso somente para visualização.")}</p>}</> : <p>{tr("Nenhum texto foi enviado para sua área ainda.")}</p>}</article></section> : <section className="portal-grid">
           <div className="portal-primary">
             <div className="glass board-shell">
               <div className="board-topbar">
@@ -5663,7 +5677,6 @@ function ClientPortalWorkspacePage({
           submitPortalCardDecisionBySlug(slug, cardId, { approved: false, commentText })
         }
         canRespond={canRespondToClientContent}
-        allowDownload={data.permissions.allowClientDownload}
         allowEditCaption={canUseEnabledClientTools && data.permissions.allowClientEditCaption}
         onUpdateCaption={(cardId, caption) => updatePortalCardCaptionBySlug(slug, cardId, caption)}
         allowManageTags={canUseEnabledClientTools && data.permissions.allowClientCreateTags}
@@ -5702,7 +5715,6 @@ function CardDetailModal({
   onApprove,
   onRequestChanges,
   canRespond = true,
-  allowDownload,
   allowEditCaption,
   onUpdateCaption,
   allowManageTags,
@@ -5722,7 +5734,6 @@ function CardDetailModal({
   onApprove: (cardId: string, commentText: string) => Promise<unknown>;
   onRequestChanges: (cardId: string, commentText: string) => Promise<unknown>;
   canRespond?: boolean;
-  allowDownload?: boolean;
   allowEditCaption?: boolean;
   onUpdateCaption?: (cardId: string, caption: string | null) => Promise<unknown>;
   allowManageTags?: boolean;
@@ -5746,7 +5757,6 @@ function CardDetailModal({
   const [newPortalTagName, setNewPortalTagName] = useState("");
   const [newPortalTagColor, setNewPortalTagColor] = useState("#6f63dc");
   const [portalTagWorking, setPortalTagWorking] = useState(false);
-  const [downloading, setDownloading] = useState(false);
   useEffect(() => {
     if (!detail || editingCaption) return;
     setCaptionDraft(detail.card.subtitle ?? "");
@@ -5857,18 +5867,6 @@ function CardDetailModal({
     }
   }
 
-  async function downloadCardAssets() {
-    if (!detail || !portalCardAssets(detail.card).length) return;
-    setDownloading(true);
-    setFeedback(null);
-    try {
-      await downloadPortalCardAssets(detail.card);
-    } catch (error) {
-      setFeedback(error instanceof Error ? error.message : t("Não foi possível preparar o download."));
-    } finally {
-      setDownloading(false);
-    }
-  }
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -5919,7 +5917,6 @@ function CardDetailModal({
                 {t("Abrir link externo ↗")}
               </a>
             ) : null}
-            {allowDownload && portalCardAssets(detail.card).length ? <button type="button" className="gradient-button portal-card-download" disabled={downloading} onClick={() => void downloadCardAssets()}><UiIcon name="download" />{t(downloading ? "Preparando download..." : portalCardAssets(detail.card).length > 1 ? "Baixar tudo em ZIP" : "Baixar conteúdo")}</button> : null}
           </div>
 
           <div className="modal-sidebar-copy">
