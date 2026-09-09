@@ -5523,6 +5523,17 @@ button {
   overflow: hidden;
 }
 
+/* No quadro, reproduz o enquadramento de um leve zoom-out do navegador.
+   O shell inteiro diminui proporcionalmente (abas, colunas, cards e mídias),
+   enquanto a compensação de tamanho mantém o Kanban preenchendo a viewport. */
+@media (min-width: 761px) {
+  .kanban-admin-layout .board-shell:has(> .board-layout .columns-scroll) {
+    width: 111.112%;
+    height: 111.112%;
+    zoom: .9;
+  }
+}
+
 .kanban-admin-layout .board-layout {
   position: relative;
   box-sizing: border-box;
