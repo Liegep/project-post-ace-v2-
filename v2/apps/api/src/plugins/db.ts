@@ -11,8 +11,8 @@ async function dbPlugin(app: FastifyInstance) {
     database: app.appEnv.DB_NAME,
     // Hostinger limits how many new database connections this user may open
     // per hour. Keep a small, persistent pool and reuse it across requests.
-    connectionLimit: 2,
-    maxIdle: 2,
+    connectionLimit: 1,
+    maxIdle: 1,
     idleTimeout: 600_000,
     enableKeepAlive: true,
     keepAliveInitialDelay: 10_000,
