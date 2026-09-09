@@ -3387,15 +3387,15 @@ button {
   background: rgba(239, 242, 247, .88);
 }
 
-.content-card.changed-card {
-  border-color: rgba(239, 51, 64, .56);
-  background: linear-gradient(145deg, rgba(255, 245, 246, .97), rgba(255, 255, 255, .94));
-  box-shadow: 0 12px 30px rgba(239, 51, 64, .12);
+.content-card.has-automation-color {
+  border-color: color-mix(in srgb, var(--card-automation-color) 62%, white);
+  background: linear-gradient(145deg, color-mix(in srgb, var(--card-automation-color) 11%, white), rgba(255, 255, 255, .96));
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--card-automation-color) 18%, transparent);
 }
 
-.content-card.changed-card .card-title-block {
-  background: rgba(255, 235, 237, .9);
-  border-bottom-color: rgba(239, 51, 64, .2);
+.content-card.has-automation-color .card-title-block {
+  background: color-mix(in srgb, var(--card-automation-color) 14%, white);
+  border-bottom-color: color-mix(in srgb, var(--card-automation-color) 28%, white);
 }
 
 .card-title-block h4 {

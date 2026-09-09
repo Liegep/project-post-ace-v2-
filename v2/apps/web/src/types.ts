@@ -17,6 +17,7 @@ export type BoardCard = {
   publishedAt?: string | null;
   archivedAt?: string | null;
   clientLabel: string;
+  eventColor?: string | null;
   priorityLevel?: CardPriority | null;
   hashtags?: string[];
   isBriefApproval?: boolean;

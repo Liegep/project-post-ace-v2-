@@ -4738,13 +4738,12 @@ function CardView({ card, onOpen, onContextMenu, selectionMode = false, selected
   const primaryBadge = card.statusBadges[0] ?? null;
   const isInDevelopment = /^em desenvolvimento$/i.test(primaryBadge?.trim() ?? "");
   const isApprovedBrief = card.isBriefApproval && !isInDevelopment && /aprovad/i.test(`${card.clientLabel} ${card.statusBadges.join(" ")}`);
-  const hasChangedTag = card.tags.some((tag) => ["alterado", "alteracao_solicitada", "changes_requested"].includes(tag.trim().toLocaleLowerCase("pt-BR").replace(/[_\s-]+/g, "_")));
   const visibleBadge = (badge: string) => card.isBriefApproval && /^aprovado$/i.test(badge.trim()) ? "Pauta aprovada" : cardStatusLabel(badge);
   const priorityLabel: Record<CardPriority, string> = { high: "Alta prioridade", medium: "Média prioridade", normal: "Prioridade normal" };
-  const cardClassName = ["content-card", "glass-subtle", "card-button", selected ? "selected" : "", isApprovedBrief ? "approved-brief-card" : "", hasChangedTag ? "changed-card" : "", card.priorityLevel ? "has-priority" : ""].filter(Boolean).join(" ");
+  const cardClassName = ["content-card", "glass-subtle", "card-button", selected ? "selected" : "", isApprovedBrief ? "approved-brief-card" : "", card.eventColor ? "has-automation-color" : "", card.priorityLevel ? "has-priority" : ""].filter(Boolean).join(" ");
 
   return (
-    <button className={cardClassName} onClick={onOpen} onContextMenu={onContextMenu} draggable={draggable} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", card.id); onDragStart?.(); }} onDragEnd={onDragEnd}>
+    <button className={cardClassName} style={card.eventColor ? { "--card-automation-color": card.eventColor } as CSSProperties : undefined} onClick={onOpen} onContextMenu={onContextMenu} draggable={draggable} onDragStart={(event) => { event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", card.id); onDragStart?.(); }} onDragEnd={onDragEnd}>
       {selectionMode ? <span className={selected ? "card-select-checkbox checked" : "card-select-checkbox"} onClick={(event) => { event.stopPropagation(); onToggleSelection?.(); }}>{selected ? "✓" : ""}</span> : null}
       {card.priorityLevel ? <span className={`card-priority-tab ${card.priorityLevel}`}>{priorityLabel[card.priorityLevel]}</span> : null}
       <div className="card-title-block">

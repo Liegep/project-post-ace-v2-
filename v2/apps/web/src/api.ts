@@ -226,6 +226,7 @@ type ApiBoardCard = {
   scheduledTimeZone?: string | null;
   archivedAt?: string | null;
   clientLabel: string;
+  eventColor?: string | null;
   priorityLevel?: "high" | "medium" | "normal" | null;
   calendarOnly?: boolean;
 };
@@ -525,6 +526,7 @@ function mapCard(card: ApiBoardCard, tagColors: Record<string, string> = {}): Bo
     publishedAt: card.publishedAt ?? null,
     archivedAt: card.archivedAt ?? null,
     clientLabel: card.clientLabel,
+    eventColor: card.eventColor ?? null,
     priorityLevel: card.priorityLevel ?? null,
     hashtags: card.hashtags ?? [],
     isBriefApproval: card.isBriefApproval ?? false,
