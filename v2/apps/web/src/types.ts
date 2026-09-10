@@ -36,6 +36,7 @@ export type SessionUser = {
   role: UserRole;
   assignedAdminSlugs: string[];
   assignedPortalSlugs: string[];
+  portalAccounts?: Array<{ slug: string; name: string }>;
   locale: string;
   avatarUrl?: string | null;
   source?: "demo" | "api";

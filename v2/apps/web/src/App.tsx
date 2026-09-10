@@ -1,3 +1,4 @@
+import { PortalAccountPicker } from "./PortalAccountPicker";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams } from "react-router-dom";
@@ -408,7 +409,8 @@ function roleLabel(role: SessionUser["role"]) {
 function getDefaultRoute(session: SessionUser | null) {
   if (!session) return "/login";
   if (session.role === "client") {
-    return `/portal/${session.assignedPortalSlugs[0] ?? "serena-genovese"}`;
+    if (new Set(session.assignedPortalSlugs).size !== 1) return "/contas";
+    return `/portal/${encodeURIComponent(session.assignedPortalSlugs[0])}`;
   }
   return "/dashboard";
 }
@@ -8025,6 +8027,7 @@ export function App() {
 
       <Routes>
         <Route path="/" element={<Navigate to={getDefaultRoute(session)} replace />} />
+        <Route path="/contas" element={<PortalAccountPicker session={session} onLogout={handleLogout} />} />
         <Route path="/login" element={<LoginPage session={session} onLogin={handleLogin} />} />
         <Route path="/reset-password" element={<PasswordResetPage />} />
         <Route path="/approval/:token" element={<PublicApprovalPage />} />

@@ -1,0 +1,13 @@
+.account-picker-shell { min-height: 100dvh; padding: 32px 20px; }
+.account-picker { width: min(100%, 640px); padding: clamp(24px, 5vw, 48px); border-radius: 28px; }
+.account-picker h1 { margin: 12px 0; font-size: clamp(28px, 5vw, 38px); line-height: 1.15; }
+.account-picker-list { display: grid; gap: 12px; margin: 28px 0; }
+.account-picker-choice { display: flex; align-items: center; gap: 16px; padding: 20px; color: #263250; text-decoration: none; background: #fff; border: 1px solid #dfe3ef; border-radius: 18px; transition: border-color .15s, background .15s; }
+.account-picker-choice:hover { background: #f6f4ff; border-color: #7a45df; }
+.account-picker-choice:focus-visible { outline: 3px solid #7653ce; outline-offset: 3px; }
+.account-picker-avatar { display: grid; place-items: center; flex: 0 0 44px; height: 44px; border-radius: 14px; background: #eeebff; color: #6743b4; font-weight: 700; }
+.account-picker-choice strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.account-picker-enter { color: #6743b4; font-size: 14px; white-space: nowrap; }
+.account-picker footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; color: #65718b; font-size: 13px; }
+.account-picker footer > span { overflow-wrap: anywhere; min-width: 0; }
+@media (max-width: 440px) { .account-picker-choice { gap: 12px; padding: 16px; } .account-picker-enter { font-size: 0; } .account-picker-enter span { font-size: 20px; } }

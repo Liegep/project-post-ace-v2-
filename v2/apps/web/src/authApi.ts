@@ -17,6 +17,7 @@ type ApiAuthResponse = {
     clientAccountId: string;
     membershipRole: "admin" | "colaborador" | "cliente";
     clientSlug: string;
+    clientName?: string;
   }>;
 };
 
@@ -63,6 +64,7 @@ function mapSessionFromApi(data: ApiAuthResponse) {
     assignedAdminSlugs: role === "client" ? [] : assignedAdminSlugs,
     assignedPortalSlugs:
       assignedPortalSlugs.length > 0 ? assignedPortalSlugs : data.memberships.map((m) => m.clientSlug),
+    portalAccounts: data.memberships.map((membership) => ({ slug: membership.clientSlug, name: membership.clientName || membership.clientSlug.replace(/-/g, " ") })),
     locale: data.user.locale,
     avatarUrl: data.user.avatarUrl ?? null,
     source: "api" as const,
