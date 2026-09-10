@@ -6171,6 +6171,8 @@ function AdminCardEditor({
   const [restoringCaptionVersionId, setRestoringCaptionVersionId] = useState<string | null>(null);
   const [captionCopied, setCaptionCopied] = useState(false);
   const captionCopiedTimerRef = useRef<number | null>(null);
+  const editorMainRef = useRef<HTMLDivElement>(null);
+  const editorSideRef = useRef<HTMLElement>(null);
   const saveInFlightRef = useRef(false);
   const lastSavedDraftRef = useRef(JSON.stringify(serverDraft));
   const savedColumnIdRef = useRef(serverDraft.columnId);
@@ -6181,6 +6183,11 @@ function AdminCardEditor({
   useEffect(() => () => {
     if (captionCopiedTimerRef.current !== null) window.clearTimeout(captionCopiedTimerRef.current);
   }, []);
+
+  useEffect(() => {
+    editorMainRef.current?.scrollTo({ top: 0 });
+    editorSideRef.current?.scrollTo({ top: 0 });
+  }, [card.id]);
 
   useEffect(() => {
     listAdminTagsBySlug(slug).then((result) => setTagLibrary(result.items)).catch(() => undefined);
@@ -6469,7 +6476,7 @@ ${internalMessage.trim()}`, isInternal: true });
     <div className="admin-card-backdrop" onClick={() => void requestClose()}>
       <section className="admin-card-editor" role="dialog" aria-modal="true" aria-label={`Editar card ${title || card.title}`} onClick={(event) => event.stopPropagation()}>
         <button className="admin-card-close" onClick={() => void requestClose()} aria-label="Fechar card">×</button>
-        <div className="admin-card-main">
+        <div className="admin-card-main" ref={editorMainRef}>
           <EditorField label="Título">
             <input value={title} onChange={(event) => setTitle(event.target.value)} />
           </EditorField>
@@ -6480,7 +6487,6 @@ ${internalMessage.trim()}`, isInternal: true });
                 {captionHistoryOpen ? <section className="caption-history-panel"><header><div><strong>Histórico da legenda</strong><small>As versões atuais e restauradas nunca são apagadas.</small></div><button type="button" onClick={() => setCaptionHistoryOpen(false)} aria-label="Fechar histórico">×</button></header>{captionHistoryLoading ? <p className="caption-history-empty">Carregando versões...</p> : captionVersions.length ? <div className="caption-history-list">{captionVersions.map((version) => <article key={version.id}><div><strong>{version.authorName}</strong><time>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(version.createdAt))}</time></div><p>{version.caption?.trim() || "Legenda vazia"}</p><button type="button" disabled={restoringCaptionVersionId !== null} onClick={() => void restoreCaptionVersion(version)}>{restoringCaptionVersionId === version.id ? "Restaurando..." : "Restaurar esta versão"}</button></article>)}</div> : <p className="caption-history-empty">Ainda não existem versões anteriores. A primeira será criada quando a legenda atual for alterada.</p>}</section> : null}
               </EditorField>
               <EditorField label="Mídia">
-                {mediaUrls.length > 1 ? <div className="admin-artwork-carousel"><ArtworkCarousel urls={mediaUrls} title={title || card.title} /></div> : null}
                 <div className="media-editor-stack">
                   {mediaUrls.length ? <ReorderableMediaGrid
                     items={mediaUrls.map((url, index) => ({ id: `${url}-${index}`, url, isVideo: /\.(mp4|webm|mov)(\?|$)/i.test(url) }))}
@@ -6515,7 +6521,7 @@ ${internalMessage.trim()}`, isInternal: true });
             </section>
           </div>
         </div>
-        <aside className="admin-card-side">
+        <aside className="admin-card-side" ref={editorSideRef}>
           <CardTimeTracker slug={slug} cardId={card.id} cardTitle={title || card.title} />
           <ArtTypeSelect value={artType} onChange={setArtType} />
           <EditorSelect label="Status" value={status} onChange={setStatus} options={CARD_STATUS_OPTIONS} emptyLabel="Sem status" />
