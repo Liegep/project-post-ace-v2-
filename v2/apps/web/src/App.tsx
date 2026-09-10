@@ -3910,6 +3910,23 @@ function reorderMediaItems<T>(items: T[], from: number, dropIndex: number) {
   return next;
 }
 
+async function downloadEditorMedia(url: string, index: number) {
+  const baseName = `midia-${index + 1}`;
+  try {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error("download");
+    const blob = await response.blob();
+    triggerPortalDownload(blob, `${baseName}.${portalAssetExtension(url, blob.type)}`);
+  } catch {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = baseName;
+    link.target = "_blank";
+    link.rel = "noreferrer";
+    link.click();
+  }
+}
+
 function ReorderableMediaGrid({
   items,
   onReorder,
@@ -3954,7 +3971,8 @@ function ReorderableMediaGrid({
         {item.isVideo ? <video src={item.url} muted preload="metadata" /> : <img src={item.url} alt={`Slide ${index + 1}`} loading="lazy" decoding="async" />}
         <span>{index === 0 ? "1 · Capa" : `Slide ${index + 1}`}</span>
         <i className="media-order-grip" aria-hidden="true">⠿</i>
-        <button type="button" aria-label={`Remover slide ${index + 1}`} onClick={(event) => { event.stopPropagation(); onRemove(index); }}>×</button>
+        <button className="media-download-button" type="button" title={`Baixar slide ${index + 1}`} aria-label={`Baixar slide ${index + 1}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); void downloadEditorMedia(item.url, index); }}><UiIcon name="download" /></button>
+        <button className="media-remove-button" type="button" title={`Remover slide ${index + 1}`} aria-label={`Remover slide ${index + 1}`} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onRemove(index); }}>×</button>
       </article>
     </div>)}
     {dropIndex === items.length ? <div className="media-order-indicator media-order-indicator-end"><span>Soltar aqui</span></div> : null}
