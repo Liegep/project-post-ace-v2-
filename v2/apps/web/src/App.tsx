@@ -6151,12 +6151,18 @@ function AdminCardEditor({
   const [captionVersions, setCaptionVersions] = useState<CaptionVersion[]>([]);
   const [captionHistoryLoading, setCaptionHistoryLoading] = useState(false);
   const [restoringCaptionVersionId, setRestoringCaptionVersionId] = useState<string | null>(null);
+  const [captionCopied, setCaptionCopied] = useState(false);
+  const captionCopiedTimerRef = useRef<number | null>(null);
   const saveInFlightRef = useRef(false);
   const lastSavedDraftRef = useRef(JSON.stringify(serverDraft));
   const savedColumnIdRef = useRef(serverDraft.columnId);
   const draft = useMemo<CardRecoveryDraft>(() => ({ title, caption, artType, columnId, status, clientLabel, priorityLevel, tags, hashtags, scheduledAt, externalLinkUrl, mediaUrls }), [artType, caption, clientLabel, columnId, externalLinkUrl, hashtags, mediaUrls, priorityLevel, scheduledAt, status, tags, title]);
   const latestDraftRef = useRef(draft);
   latestDraftRef.current = draft;
+
+  useEffect(() => () => {
+    if (captionCopiedTimerRef.current !== null) window.clearTimeout(captionCopiedTimerRef.current);
+  }, []);
 
   useEffect(() => {
     listAdminTagsBySlug(slug).then((result) => setTagLibrary(result.items)).catch(() => undefined);
@@ -6199,6 +6205,18 @@ ${internalMessage.trim()}`, isInternal: true });
       setFeedback(error instanceof Error ? error.message : "Não foi possível carregar o histórico da legenda.");
     } finally {
       setCaptionHistoryLoading(false);
+    }
+  }
+
+  async function copyCaption() {
+    try {
+      await navigator.clipboard.writeText(caption);
+      setCaptionCopied(true);
+      if (captionCopiedTimerRef.current !== null) window.clearTimeout(captionCopiedTimerRef.current);
+      captionCopiedTimerRef.current = window.setTimeout(() => setCaptionCopied(false), 2_000);
+    } catch {
+      setCaptionCopied(false);
+      setFeedback("Não foi possível copiar a legenda.");
     }
   }
 
@@ -6439,7 +6457,7 @@ ${internalMessage.trim()}`, isInternal: true });
           </EditorField>
           <div className="editor-main-grid">
             <div>
-              <EditorField label="Legenda" action={<span className="caption-field-actions"><button className={captionHistoryOpen ? "caption-history-button active" : "caption-history-button"} type="button" onClick={() => void toggleCaptionHistory()}>↶ Histórico</button><button className="caption-copy-button" type="button" title="Copiar legenda" aria-label="Copiar legenda" onClick={() => navigator.clipboard.writeText(caption)}><UiIcon name="copy" /></button></span>}>
+              <EditorField label="Legenda" action={<span className="caption-field-actions"><button className={captionHistoryOpen ? "caption-history-button active" : "caption-history-button"} type="button" onClick={() => void toggleCaptionHistory()}>↶ Histórico</button><button className={captionCopied ? "caption-copy-button copied" : "caption-copy-button"} type="button" title={captionCopied ? "Legenda copiada" : "Copiar legenda"} aria-label={captionCopied ? "Legenda copiada" : "Copiar legenda"} aria-live="polite" onClick={() => void copyCaption()}><UiIcon name={captionCopied ? "check" : "copy"} />{captionCopied ? <span>Copiado!</span> : null}</button></span>}>
                 <textarea className="admin-caption-editor" value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="Escreva a legenda do post" />
                 {captionHistoryOpen ? <section className="caption-history-panel"><header><div><strong>Histórico da legenda</strong><small>As versões atuais e restauradas nunca são apagadas.</small></div><button type="button" onClick={() => setCaptionHistoryOpen(false)} aria-label="Fechar histórico">×</button></header>{captionHistoryLoading ? <p className="caption-history-empty">Carregando versões...</p> : captionVersions.length ? <div className="caption-history-list">{captionVersions.map((version) => <article key={version.id}><div><strong>{version.authorName}</strong><time>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(version.createdAt))}</time></div><p>{version.caption?.trim() || "Legenda vazia"}</p><button type="button" disabled={restoringCaptionVersionId !== null} onClick={() => void restoreCaptionVersion(version)}>{restoringCaptionVersionId === version.id ? "Restaurando..." : "Restaurar esta versão"}</button></article>)}</div> : <p className="caption-history-empty">Ainda não existem versões anteriores. A primeira será criada quando a legenda atual for alterada.</p>}</section> : null}
               </EditorField>
