@@ -3308,7 +3308,8 @@ button {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, .85);
+  background: currentColor;
+  opacity: .86;
 }
 
 .tag-filter-panel {
@@ -3557,7 +3558,7 @@ button {
   gap: 6px;
   color: #fff;
   border: 0;
-  text-shadow: 0 1px 1px rgba(0,0,0,.18);
+  text-shadow: none;
 }
 
 /* Etiquetas compactas dentro dos cards deixam mais conteúdo visível sem

@@ -6528,7 +6528,8 @@ ${internalMessage.trim()}`, isInternal: true });
             <div className="tag-selected-row">
               {splitValues(tags).map((name) => {
                 const definition = tagLibrary.find((tag) => tag.name === name);
-                return <button key={name} type="button" className="tag-selected-pill" style={{ backgroundColor: cardTagColor(name, definition?.color) }} onClick={() => setTags((current) => splitValues(current).filter((item) => item !== name).join(", "))}>{cardStatusLabel(name)}<span className="editor-tag-remove">×</span></button>;
+                const tagColor = cardTagColor(name, definition?.color);
+                return <button key={name} type="button" className="tag-selected-pill" style={{ backgroundColor: tagColor, color: calendarTextColor(tagColor) }} onClick={() => setTags((current) => splitValues(current).filter((item) => item !== name).join(", "))}>{cardStatusLabel(name)}<span className="editor-tag-remove">×</span></button>;
               })}
               <button type="button" className="tag-picker-trigger" onClick={() => setTagPickerOpen((open) => !open)}>◇ Tags</button>
             </div>
@@ -7125,18 +7126,21 @@ function ClientKanbanCalendar({ slug }: { slug: string }) {
 }
 
 function calendarTextColor(color?: string) {
-  const value = color?.trim().replace("#", "");
-  if (!value || !/^[0-9a-f]{6}$/i.test(value)) return "#17213d";
-  const channels = [value.slice(0, 2), value.slice(2, 4), value.slice(4, 6)]
-    .map((part) => Number.parseInt(part, 16) / 255)
-    .map((channel) => channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4);
-  const backgroundLuminance = channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
-  const darkLuminance = 0.009;
-  const darkContrast = (backgroundLuminance + 0.05) / (darkLuminance + 0.05);
-  const lightContrast = 1.05 / (backgroundLuminance + 0.05);
-  if (darkContrast >= 4.5 && darkContrast >= lightContrast) return "#111827";
-  if (lightContrast >= 4.5) return "#ffffff";
-  return backgroundLuminance > 0.179 ? "#000000" : "#ffffff";
+  const value = color?.trim() ?? "";
+  let channels: [number, number, number] | null = null;
+  const hex = value.replace("#", "");
+  if (/^[0-9a-f]{3}$/i.test(hex)) {
+    channels = [0, 1, 2].map((index) => Number.parseInt(hex[index] + hex[index], 16)) as [number, number, number];
+  } else if (/^[0-9a-f]{6}$/i.test(hex)) {
+    channels = [hex.slice(0, 2), hex.slice(2, 4), hex.slice(4, 6)].map((part) => Number.parseInt(part, 16)) as [number, number, number];
+  } else {
+    const rgb = value.match(/^rgba?\(\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)\s*,\s*(\d+(?:\.\d+)?)/i);
+    if (rgb) channels = [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
+  }
+  if (!channels) return "#17213d";
+  const [red, green, blue] = channels.map((channel) => Math.max(0, Math.min(255, channel))) as [number, number, number];
+  const perceivedBrightness = Math.sqrt((0.299 * red ** 2) + (0.587 * green ** 2) + (0.114 * blue ** 2));
+  return perceivedBrightness >= 155 ? "#111827" : "#ffffff";
 }
 
 function KanbanActivities({ slug }: { slug: string }) {
