@@ -6465,9 +6465,9 @@ ${internalMessage.trim()}`, isInternal: true });
     }
   }
 
-  return (
+  return createPortal(
     <div className="admin-card-backdrop" onClick={() => void requestClose()}>
-      <section className="admin-card-editor" onClick={(event) => event.stopPropagation()}>
+      <section className="admin-card-editor" role="dialog" aria-modal="true" aria-label={`Editar card ${title || card.title}`} onClick={(event) => event.stopPropagation()}>
         <button className="admin-card-close" onClick={() => void requestClose()} aria-label="Fechar card">×</button>
         <div className="admin-card-main">
           <EditorField label="Título">
@@ -6560,12 +6560,15 @@ ${internalMessage.trim()}`, isInternal: true });
           <button type="button" className={`side-action approval-link-action${approvalLinkCopied ? " copied" : ""}`} onClick={() => void createApprovalLink()} disabled={creatingApprovalLink}><span className="side-action-icon">{approvalLinkCopied ? <UiIcon name="check" /> : "⌁"}</span>{creatingApprovalLink ? "Criando link..." : approvalLinkCopied ? "Link copiado" : "Enviar link para aprovação"}</button>
           <button className="side-action" onClick={() => setInternalApprovalOpen(true)}><span className="side-action-icon">♙</span>Aprovação interna</button>
           {internalApprovalOpen ? <div className="internal-approval-popover"><header><div><span>REVISÃO DA EQUIPE</span><h4>Enviar para aprovação interna</h4></div><button type="button" onClick={() => setInternalApprovalOpen(false)}>×</button></header><p>Escolha quem deve revisar este card. Clientes não aparecem nesta lista.</p><div className="internal-recipient-list">{internalUsers.length ? internalUsers.map((user) => <label key={user.id}><input type="checkbox" checked={internalRecipientIds.includes(user.id)} onChange={(event) => setInternalRecipientIds((current) => event.target.checked ? [...current, user.id] : current.filter((id) => id !== user.id))} /><span><strong>{user.fullName}</strong><small>{user.globalRole} · {user.email}</small></span></label>) : <small>Nenhum membro interno disponível.</small>}</div><textarea value={internalMessage} onChange={(event) => setInternalMessage(event.target.value)} placeholder="Escreva uma mensagem para quem vai revisar..." /><footer><button type="button" className="ghost-button" onClick={() => setInternalApprovalOpen(false)}>Cancelar</button><button type="button" className="gradient-button" disabled={internalSending || !internalRecipientIds.length || !internalMessage.trim()} onClick={() => void sendInternalApproval()}>{internalSending ? "Enviando..." : "Enviar para revisão"}</button></footer></div> : null}
-          {feedback ? <p className="editor-feedback">{feedback}</p> : null}
-          <AutosaveIndicator state={autosaveState} savedAt={autosavedAt} />
-          <button className="gradient-button editor-save" onClick={() => void persistCard(true)} disabled={saving || uploading}>{saving ? "Salvando..." : "Salvar e fechar"}</button>
         </aside>
+        <footer className="admin-card-footer">
+          <div>{feedback ? <p className="editor-feedback">{feedback}</p> : null}<AutosaveIndicator state={autosaveState} savedAt={autosavedAt} /></div>
+          <button type="button" className="ghost-button" onClick={() => void requestClose()} disabled={saving || uploading}>Cancelar</button>
+          <button className="gradient-button editor-save" onClick={() => void persistCard(true)} disabled={saving || uploading}>{saving ? "Salvando..." : "Salvar e fechar"}</button>
+        </footer>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
