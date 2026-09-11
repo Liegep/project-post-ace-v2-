@@ -1,7 +1,12 @@
 import crypto from "node:crypto";
 import type { FastifyPluginAsync } from "fastify";
-import { assertClientAccess, assertInternalAccess, getClientScope } from "../auth/auth.access.js";
-import { createAgendaEventSchema, createAgendaLabelSchema, listAgendaEventsSchema, updateAgendaEventSchema } from "./agenda.schemas.js";
+import { assertClientAccess, assertInternalAccess } from "../auth/auth.access.js";
+import {
+  createAgendaEventSchema,
+  createAgendaLabelSchema,
+  listAgendaEventsSchema,
+  updateAgendaEventSchema,
+} from "./agenda.schemas.js";
 
 export const agendaRoutes: FastifyPluginAsync = async (app) => {
   app.get("/agenda/events", async (request) => {
@@ -9,25 +14,16 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
 
     const query = listAgendaEventsSchema.parse(request.query);
     const auth = request.auth!;
-    const scope = getClientScope(auth.user.globalRole, auth.user.id, auth.memberships);
 
-    let scopeSql = "";
-    const scopeParams: unknown[] = [];
+    const isSuperAdmin = auth.user.globalRole === "super_admin";
 
-    if (scope.mode !== "global") {
-      if (scope.clientIds.length > 0) {
-        scopeSql = ` AND (
-          e.created_by_user_id = ?
-          OR e.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")})
-        )`;
-        scopeParams.push(auth.user.id, ...scope.clientIds);
-      } else {
-        scopeSql = " AND e.created_by_user_id = ?";
-        scopeParams.push(auth.user.id);
-      }
-    }
+    const scopeSql = isSuperAdmin
+      ? ""
+      : " AND e.created_by_user_id = ?";
 
-    const params = [query.to, query.from, ...scopeParams];
+    const params = isSuperAdmin
+      ? [query.to, query.from]
+      : [query.to, query.from, auth.user.id];
 
     const [rows] = await app.db.query(
       "SELECT e.id, e.title, e.task_description AS taskDescription, e.starts_at AS startsAt, e.ends_at AS endsAt, e.recurrence_type AS recurrenceType, e.repeat_until AS repeatUntil, e.color, e.is_completed AS isCompleted, e.client_account_id AS clientAccountId, e.agenda_label_id AS labelId, e.meet_link AS meetLink, a.name AS clientName, l.name AS labelName FROM agenda_events e LEFT JOIN client_accounts a ON a.id = e.client_account_id LEFT JOIN agenda_labels l ON l.id = e.agenda_label_id WHERE e.starts_at < ? AND (e.recurrence_type <> 'none' OR e.starts_at >= ?)" + scopeSql + " ORDER BY e.starts_at ASC",
@@ -39,7 +35,12 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
 
   app.get("/portal/accounts/:clientAccountId/appointments", async (request) => {
     const params = request.params as { clientAccountId: string };
-    assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
+
+    assertClientAccess(
+      request,
+      params.clientAccountId,
+      ["admin", "colaborador", "cliente"],
+    );
 
     const query = listAgendaEventsSchema.parse(request.query);
 
@@ -112,7 +113,8 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
       return { ok: true };
     }
 
-    const isSuperAdmin = request.auth!.user.globalRole === "super_admin";
+    const isSuperAdmin =
+      request.auth!.user.globalRole === "super_admin";
 
     values.push(eventId);
 
@@ -120,8 +122,14 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
       values.push(request.auth!.user.id);
     }
 
-    const [result] = await app.db.query<import("mysql2/promise").ResultSetHeader>(
-      `UPDATE agenda_events SET ${updates.join(", ")} WHERE id = ?${isSuperAdmin ? "" : " AND created_by_user_id = ?"}`,
+    const [result] = await app.db.query<
+      import("mysql2/promise").ResultSetHeader
+    >(
+      `UPDATE agenda_events SET ${updates.join(", ")} WHERE id = ?${
+        isSuperAdmin
+          ? ""
+          : " AND created_by_user_id = ?"
+      }`,
       values,
     );
 
@@ -137,11 +145,21 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
   app.delete("/agenda/events/:eventId", async (request) => {
     assertInternalAccess(request);
 
-    const { eventId } = request.params as { eventId: string };
-    const isSuperAdmin = request.auth!.user.globalRole === "super_admin";
+    const { eventId } = request.params as {
+      eventId: string;
+    };
 
-    const [result] = await app.db.query<import("mysql2/promise").ResultSetHeader>(
-      `DELETE FROM agenda_events WHERE id = ?${isSuperAdmin ? "" : " AND created_by_user_id = ?"}`,
+    const isSuperAdmin =
+      request.auth!.user.globalRole === "super_admin";
+
+    const [result] = await app.db.query<
+      import("mysql2/promise").ResultSetHeader
+    >(
+      `DELETE FROM agenda_events WHERE id = ?${
+        isSuperAdmin
+          ? ""
+          : " AND created_by_user_id = ?"
+      }`,
       isSuperAdmin
         ? [eventId]
         : [eventId, request.auth!.user.id],
@@ -170,7 +188,9 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
   app.post("/agenda/labels", async (request) => {
     assertInternalAccess(request);
 
-    const input = createAgendaLabelSchema.parse(request.body);
+    const input = createAgendaLabelSchema.parse(
+      request.body,
+    );
 
     const label = {
       id: crypto.randomUUID(),
@@ -188,21 +208,34 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
       ],
     );
 
-    return { ok: true, label };
+    return {
+      ok: true,
+      label,
+    };
   });
 
   app.delete("/agenda/labels/:labelId", async (request) => {
     assertInternalAccess(request);
 
-    const { labelId } = request.params as { labelId: string };
+    const { labelId } = request.params as {
+      labelId: string;
+    };
 
     const [owned] = await app.db.query(
       "SELECT id FROM agenda_labels WHERE id = ? AND user_id = ?",
-      [labelId, request.auth!.user.id],
+      [
+        labelId,
+        request.auth!.user.id,
+      ],
     );
 
-    if (!Array.isArray(owned) || owned.length === 0) {
-      throw app.httpErrors.notFound("Etiqueta não encontrada.");
+    if (
+      !Array.isArray(owned) ||
+      owned.length === 0
+    ) {
+      throw app.httpErrors.notFound(
+        "Etiqueta não encontrada.",
+      );
     }
 
     await app.db.query(
