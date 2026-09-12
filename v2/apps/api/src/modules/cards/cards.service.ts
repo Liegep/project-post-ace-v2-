@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import type { RowDataPacket } from "mysql2/promise";
 import { findClientAccountById } from "../clients/clients.repository.js";
-import { findColumnById, listColumnsByClientAccountId } from "../columns/columns.repository.js";
+import { createColumn, findColumnById, listColumnsByClientAccountId } from "../columns/columns.repository.js";
 import { listClientTags } from "../tags/tags.repository.js";
 import {
   createCard,
@@ -286,7 +286,14 @@ export async function updateKanbanCard(
     });
   }
 
-  const updated = await updateCard(app.db, cardId, input);
+  const isBeingScheduled = typeof input.scheduledAt === "string" && input.scheduledAt.trim().length > 0;
+  const updateInput = isBeingScheduled
+    ? {
+        ...input,
+        status: ["Agendado", ...(input.status ?? card.status).filter((status) => !/^agendados?$/i.test(status.trim()))],
+      }
+    : input;
+  const updated = await updateCard(app.db, cardId, updateInput);
   if (!updated) {
     throw app.httpErrors.badRequest("Não foi possível atualizar o card.");
   }
@@ -298,7 +305,29 @@ export async function updateKanbanCard(
       updated.tags.includes(rule.triggerValue)
     ))
     : [];
-  const result = await runAutomationActions(app, clientAccountId, updated, automations);
+  let result = await runAutomationActions(app, clientAccountId, updated, automations);
+  if (isBeingScheduled) {
+    const normalizeColumnName = (name: string) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
+    const columns = await listColumnsByClientAccountId(app.db, clientAccountId);
+    let scheduledColumn = columns.find((column) => /^agendados?$/i.test(normalizeColumnName(column.name)));
+    if (!scheduledColumn) {
+      scheduledColumn = await createColumn(app.db, clientAccountId, {
+        name: "Agendados",
+        color: "#3c8ee9",
+        visibleToClient: true,
+        autoCreated: true,
+      }) ?? undefined;
+    }
+    if (scheduledColumn && result.columnId !== scheduledColumn.id) {
+      const moved = await moveCard(app.db, cardId, result, { columnId: scheduledColumn.id });
+      if (moved) {
+        const columnAutomations = (await listActiveAutomations(app, clientAccountId)).filter((rule) => (
+          rule.triggerType === "column_moved" && rule.triggerValue === scheduledColumn?.id
+        ));
+        result = await runAutomationActions(app, clientAccountId, moved, columnAutomations);
+      }
+    }
+  }
   await upsertCalendarEventFromCard(app.db, result);
   return result;
 }
