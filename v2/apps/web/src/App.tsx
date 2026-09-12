@@ -6016,11 +6016,11 @@ function CardDetailModal({
       setPortalTagWorking(false);
     }
   }
-
+  const hasPortalVisualMedia = portalCardAssets(detail.card).length > 0;
 
   return (
     <div className={`modal-backdrop${mode === "portal" ? " portal-card-modal-backdrop" : ""}`} onClick={onClose}>
-      <div className={`modal-panel glass${mode === "portal" ? " portal-card-detail-modal" : ""}`} onClick={(event) => event.stopPropagation()}>
+      <div className={`modal-panel glass${mode === "portal" ? ` portal-card-detail-modal${hasPortalVisualMedia ? "" : " no-media"}` : ""}`} onClick={(event) => event.stopPropagation()}>
         <div className="modal-head">
           <div>
             <p className="eyebrow">{titlePrefix}</p>
