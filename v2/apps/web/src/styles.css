@@ -5571,7 +5571,11 @@ button {
 :root {
   --workspace-drawer-rail-width: 54px;
   --kanban-board-scale-compensation: 6px;
-  --kanban-floating-actions-space: 82px;
+  --kanban-floating-actions-space: 112px;
+}
+
+.kanban-bottom-dock {
+  display: none;
 }
 
 @media (min-width: 761px) {
@@ -5631,8 +5635,9 @@ button {
 .kanban-admin-layout .columns-scroll::-webkit-scrollbar-thumb:hover { background: #fff; }
 .kanban-admin-layout .column-cards-scroll::-webkit-scrollbar-thumb:hover { background: rgba(82, 96, 137, .76); }
 
-/* No desktop, a barra superior fica dedicada às abas. As ações do quadro
-   formam uma barra central inferior, fora do caminho da gaveta lateral. */
+/* No desktop, a barra superior fica dedicada às abas. A barra de ações é
+   renderizada por portal diretamente no body: assim, não herda o zoom nem o
+   recorte (overflow) do board-shell e permanece realmente presa à viewport. */
 @media (min-width: 761px) {
   .kanban-admin-layout .board-topbar {
     display: flex;
@@ -5665,16 +5670,22 @@ button {
     white-space: nowrap;
   }
 
-  .kanban-admin-layout .board-topbar .board-actions {
+  .kanban-bottom-dock {
     position: fixed;
-    z-index: 44;
-    left: 50%;
-    right: auto;
-    bottom: 20px;
-    transform: translateX(-50%);
-    min-width: max-content;
-    max-width: calc(100vw - var(--workspace-drawer-rail-width) - var(--workspace-drawer-rail-width) - 32px);
-    flex: 0 0 auto;
+    z-index: 80;
+    right: calc(var(--workspace-drawer-rail-width) + 16px);
+    bottom: 4px;
+    left: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    pointer-events: none;
+  }
+
+  .kanban-bottom-dock .board-actions {
+    width: max-content;
+    max-width: calc(100vw - var(--workspace-drawer-rail-width) - 48px);
     justify-content: center;
     gap: 8px;
     overflow-x: auto;
@@ -5686,26 +5697,71 @@ button {
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
     scrollbar-width: none;
+    pointer-events: auto;
   }
 
-  .kanban-admin-layout .board-topbar .board-actions::-webkit-scrollbar {
+  .kanban-bottom-dock .board-actions::-webkit-scrollbar {
     display: none;
   }
 
-  .kanban-admin-layout .board-topbar .board-actions > button {
+  .kanban-bottom-dock .board-actions > button {
     flex: 0 0 auto;
     min-height: 42px;
     white-space: nowrap;
   }
 
-  .kanban-admin-layout .tag-filter-panel {
-    position: fixed;
-    z-index: 46;
+  .kanban-bottom-dock .tag-filter-panel {
+    position: absolute;
+    z-index: 2;
     top: auto;
     right: auto;
-    bottom: calc(20px + var(--kanban-floating-actions-space));
+    bottom: 76px;
     left: 50%;
     transform: translateX(-50%);
+    pointer-events: auto;
+  }
+
+  .kanban-bottom-scrollbar {
+    box-sizing: border-box;
+    width: 100%;
+    height: 16px;
+    overflow-x: scroll;
+    overflow-y: hidden;
+    border-radius: 999px;
+    background: rgba(77, 89, 127, .2);
+    scrollbar-width: auto;
+    scrollbar-color: #fff rgba(77, 89, 127, .2);
+    pointer-events: auto;
+  }
+
+  .kanban-bottom-scrollbar > span {
+    display: block;
+    height: 1px;
+  }
+
+  .kanban-bottom-scrollbar::-webkit-scrollbar {
+    height: 14px;
+  }
+
+  .kanban-bottom-scrollbar::-webkit-scrollbar-track {
+    border-radius: 999px;
+    background: rgba(77, 89, 127, .2);
+  }
+
+  .kanban-bottom-scrollbar::-webkit-scrollbar-thumb {
+    min-width: 80px;
+    border: 2px solid rgba(77, 89, 127, .2);
+    border-radius: 999px;
+    background: #fff;
+    box-shadow: 0 2px 9px rgba(43, 54, 91, .25);
+  }
+
+  .kanban-admin-layout .columns-scroll {
+    scrollbar-width: none;
+  }
+
+  .kanban-admin-layout .columns-scroll::-webkit-scrollbar {
+    display: none;
   }
 }
 
