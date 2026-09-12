@@ -5271,7 +5271,6 @@ button {
 .portal-caption-hashtags span { padding: 5px 8px; border: 1px solid #deddf7; border-radius: 999px; color: #5e57bd; background: #f4f3ff; font-size: .65rem; font-weight: 650; }
 .portal-card-meta-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; padding-top: 15px; border-top: 1px solid #e9ecf4; }
 .portal-card-meta { display: grid; grid-template-columns: 31px minmax(0, 1fr); align-items: center; gap: 9px; min-height: 62px; padding: 9px 10px; border: 1px solid #e6e9f2; border-radius: 13px; background: rgba(255,255,255,.76); }
-.portal-card-meta.schedule { grid-column: 1 / -1; }
 .portal-card-meta > span { display: grid; width: 30px; height: 30px; place-items: center; border-radius: 9px; color: #6458da; background: #eeedff; }
 .portal-card-meta > span svg { width: 16px; height: 16px; }
 .portal-card-meta small, .portal-card-meta strong { display: block; overflow: hidden; text-overflow: ellipsis; }
@@ -5279,6 +5278,13 @@ button {
 .portal-card-meta strong { color: #283552; font-size: .74rem; line-height: 1.25; }
 .portal-card-meta.status.pending > span { color: #bd7815; background: #fff2da; }
 .portal-card-meta.status.approved > span { color: #16875d; background: #e4f7ed; }
+.portal-card-meta.status.scheduled > span { color: #6458da; background: #eeedff; }
+.portal-card-meta.status.published > span { color: #16875d; background: #e4f7ed; }
+.portal-card-meta.status.archived > span { color: #58647c; background: #edf0f5; }
+.portal-card-meta.status.revision > span { color: #c1495d; background: #fdecef; }
+.portal-card-meta.client-response.approved > span { color: #16875d; background: #e4f7ed; }
+.portal-card-meta.client-response.pending > span { color: #bd7815; background: #fff2da; }
+.portal-card-meta.client-response.revision > span { color: #c1495d; background: #fdecef; }
 .portal-card-meta.comments > span { color: #3976b8; background: #e9f3ff; }
 
 .comment-stack {
@@ -5391,7 +5397,6 @@ button {
 
 @media (max-width: 520px) {
   .portal-card-meta-grid { grid-template-columns: 1fr; }
-  .portal-card-meta.schedule { grid-column: auto; }
   .portal-caption-copy { max-height: none; }
 }
 
