@@ -2707,6 +2707,9 @@ button {
 
 .modal-media .artwork-carousel { margin-bottom: 12px; }
 .portal-card-detail-modal .artwork-carousel { --artwork-peek: clamp(30px, 7vw, 62px); }
+.portal-card-detail-modal .artwork-carousel.preserve-media-size .artwork-carousel-slide { aspect-ratio: var(--artwork-aspect, 1); max-height: calc(100dvh - 245px); background: #eef1f7; }
+.portal-card-detail-modal .artwork-carousel.preserve-media-size .artwork-carousel-slide img,
+.portal-card-detail-modal .artwork-carousel.preserve-media-size .artwork-carousel-slide video { object-fit: contain; }
 .admin-artwork-carousel { margin-bottom: 16px; padding: 12px 0; border-radius: 9px; background: rgba(8, 10, 14, .4); }
 .admin-artwork-carousel .artwork-carousel { --artwork-peek: clamp(34px, 7vw, 64px); }
 .admin-artwork-carousel .artwork-carousel-slide { background: #101114; border-color: rgba(255,255,255,.2); }
