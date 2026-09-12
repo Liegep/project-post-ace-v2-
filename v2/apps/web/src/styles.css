@@ -4976,6 +4976,20 @@ button {
 .editor-field em { margin-left: auto; font-style: normal; }
 .editor-field em button { padding: 5px 10px; color: #30343b; background: #fff; border: 0; border-radius: 5px; cursor: pointer; }
 .editor-field input, .editor-field select, .editor-field textarea { width: 100%; box-sizing: border-box; padding: 17px 20px; color: #111318; background: #fbfbfc; border: 1px solid rgba(255,255,255,.7); border-radius: 8px; font: inherit; font-size: 17px; font-weight: 500; letter-spacing: normal; text-transform: none; }
+.editor-external-link-preview { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 9px; align-items: stretch; padding: 8px; border: 1px solid rgba(176,184,205,.42); border-radius: 12px; background: rgba(255,255,255,.09); letter-spacing: normal; text-transform: none; }
+.editor-external-link-preview > a { display: grid; grid-template-columns: 35px minmax(0,1fr) auto; gap: 11px; align-items: center; min-width: 0; padding: 9px 11px; color: #232c46; border-radius: 8px; background: #fff; text-decoration: none; transition: background .18s ease,transform .18s ease; }
+.editor-external-link-preview > a:hover { background: #f2f0ff; transform: translateY(-1px); }
+.editor-external-link-preview > a > span:first-child { display: grid; width: 35px; height: 35px; place-items: center; color: #6755de; border-radius: 10px; background: #eeeaff; }
+.editor-external-link-preview > a svg { width: 18px; height: 18px; }
+.editor-external-link-copy { display: grid; min-width: 0; gap: 2px; }
+.editor-external-link-copy small { color: #7468d3; font-size: 10px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.editor-external-link-copy strong { overflow: hidden; color: #25304b; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.editor-external-link-arrow { color: #7e88a0; font-size: 18px; }
+.editor-external-link-preview > button { display: inline-flex; min-width: 88px; padding: 0 13px; align-items: center; justify-content: center; gap: 7px; color: #f3f5fb; border: 1px solid rgba(255,255,255,.22); border-radius: 9px; background: rgba(255,255,255,.08); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; transition: color .18s ease,background .18s ease,border-color .18s ease; }
+.editor-external-link-preview > button svg { width: 17px; height: 17px; }
+.editor-external-link-preview > button:hover { background: rgba(255,255,255,.16); border-color: rgba(255,255,255,.4); }
+.editor-external-link-preview > button.copied { color: #dfffee; border-color: rgba(103,225,171,.72); background: rgba(43,188,118,.22); }
+@media (max-width: 520px) { .editor-external-link-preview { grid-template-columns: 1fr; }.editor-external-link-preview > button { min-height: 43px; } }
 .art-type-field { position: relative; }
 .art-type-trigger { width: 100%; min-height: 58px; padding: 14px 18px; border: 1px solid rgba(255,255,255,.7); border-radius: 8px; background: #fbfbfc; color: #111318; display: flex; align-items: center; gap: 13px; font: inherit; font-size: 17px; letter-spacing: normal; text-align: left; text-transform: none; }
 .art-type-trigger strong { flex: 1; font-weight: 600; }
@@ -5550,6 +5564,11 @@ button {
 /* No desktop, a gaveta fica ancorada abaixo das ações superiores. Como ela é
    renderizada diretamente no body, esta regra não depende da hierarquia do
    Kanban e não volta a subir por conflito de especificidade. */
+:root {
+  --workspace-drawer-rail-width: 54px;
+  --kanban-board-scale-compensation: 6px;
+}
+
 @media (min-width: 761px) {
   body > .workspace-drawer-shell {
     top: auto;
@@ -5616,10 +5635,10 @@ button {
    próprio board-topbar, do mesmo jeito que já é feito em .board-layout. */
 @media (min-width: 761px) {
   .kanban-admin-layout .board-topbar {
-    min-width: 0;
-    overflow: visible;
-    padding-right: 96px;
     box-sizing: border-box;
+    min-width: 0;
+    padding-inline-end: calc(18px + var(--workspace-drawer-rail-width) + var(--kanban-board-scale-compensation));
+    overflow: visible;
   }
 
   .kanban-admin-layout .board-topbar .tab-strip {
@@ -5750,12 +5769,19 @@ button {
 }
 
 .kanban-admin-layout .columns-scroll {
+  box-sizing: border-box;
   height: 100%;
   min-height: 0;
   padding: 8px 10px 18px;
   overflow-x: auto;
   overflow-y: hidden;
   align-items: stretch;
+}
+
+.kanban-admin-layout .columns-scroll.board-panning,
+.kanban-admin-layout .columns-scroll.board-panning * {
+  cursor: grabbing !important;
+  user-select: none;
 }
 
 .kanban-admin-layout .kanban-column {
