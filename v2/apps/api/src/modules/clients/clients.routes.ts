@@ -166,7 +166,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     const auth = request.auth!;
     const scope = getClientScope(auth.user.globalRole, auth.user.id, auth.memberships);
     if (scope.mode === "scoped" && scope.clientIds.length === 0) {
-      return { dueTasks: [], upcomingPosts: [], postsToday: [], agendaToday: [], clientSubmissions: [], clientActivities: [] };
+      return { dueTasks: [], upcomingPosts: [], postsToday: [], agendaToday: [], clientSubmissions: [], clientActivities: [], approvedPautas: [] };
     }
 
     const scopeSql = scope.mode === "global"
@@ -187,6 +187,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
       [upcomingPosts],
       [postsToday],
       [agendaToday],
+      [approvedPautas],
     ] = await Promise.all([
       app.db.query<RowDataPacket[]>([
         "SELECT c.id, c.title, c.deadline_at AS deadlineAt, c.client_label AS clientLabel,",
@@ -209,15 +210,15 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         "CASE WHEN LOWER(c.client_label) LIKE '%aprovad%' THEN 'approved' ELSE 'changes_requested' END AS activityType,",
         "CASE WHEN LOWER(c.client_label) LIKE '%aprovad%' THEN 'Conteúdo aprovado pelo cliente' ELSE 'Cliente solicitou alterações' END AS detail",
         "FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id",
-        "WHERE c.archived = 0 AND c.scheduled_at IS NULL AND (LOWER(c.client_label) LIKE '%aprovad%' OR LOWER(c.client_label) LIKE '%altera%')", scopeSql,
+        "WHERE c.archived = 0 AND c.is_brief_approval = 0 AND c.scheduled_at IS NULL AND (LOWER(c.client_label) LIKE '%aprovad%' OR LOWER(c.client_label) LIKE '%altera%')", scopeSql,
         "UNION ALL",
         "SELECT CONCAT('comment-', cc.id) AS id, c.id AS cardId, c.title, cc.created_at AS occurredAt,",
-        "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl, 'comment' AS activityType, LEFT(cc.comment_text, 240) AS detail",
+        "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl, 'comment' AS activityType, LEFT(CASE WHEN cc.comment_text = 'Legenda editada pelo cliente.' THEN CONCAT('Nova legenda: ', COALESCE(NULLIF(c.caption, ''), 'sem texto')) ELSE cc.comment_text END, 240) AS detail",
         "FROM card_comments cc JOIN kanban_cards c ON c.id = cc.card_id JOIN client_accounts a ON a.id = c.client_account_id",
         // A client response remains useful feedback even if the card was later
         // scheduled or archived. The dashboard's X control is what explicitly
         // marks it as viewed; card workflow changes must not hide it first.
-        "WHERE cc.is_internal = 0 AND cc.author_role IN ('cliente', 'guest')", scopeSql,
+        "WHERE c.is_brief_approval = 0 AND cc.is_internal = 0 AND cc.author_role IN ('cliente', 'guest')", scopeSql,
         ") activity ORDER BY activity.occurredAt DESC LIMIT 24",
       ].join(" "), [...params, ...params]),
       app.db.query<RowDataPacket[]>([
@@ -248,11 +249,19 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         ["SELECT e.id, e.title, e.task_description AS taskDescription, e.starts_at AS startsAt, e.color, e.is_completed AS isCompleted, e.agenda_label_id AS labelId, l.name AS labelName, a.name AS clientName FROM agenda_events e LEFT JOIN client_accounts a ON a.id = e.client_account_id LEFT JOIN agenda_labels l ON l.id = e.agenda_label_id WHERE e.starts_at >= ? AND e.starts_at < ?", scope.mode === "global" ? "" : ` AND (e.client_account_id IS NULL OR e.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")}))`, "ORDER BY e.starts_at ASC LIMIT 6"].join(" "),
         [todayStart, tomorrowStart, ...(scope.mode === "global" ? [] : scope.clientIds)],
       ),
+      app.db.query<RowDataPacket[]>([
+        "SELECT c.id, c.title, COALESCE(MAX(al.approved_at), c.updated_at) AS approvedAt,",
+        "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl",
+        "FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id",
+        "LEFT JOIN approval_links al ON al.card_id = c.id AND al.approved_at IS NOT NULL",
+        "WHERE c.archived = 0 AND c.is_brief_approval = 1 AND (LOWER(c.client_label) LIKE '%aprovad%' OR al.approved_at IS NOT NULL)", scopeSql,
+        "GROUP BY c.id, c.title, c.updated_at, a.name, a.slug, a.logo_url ORDER BY approvedAt DESC LIMIT 12",
+      ].join(" "), params),
     ]);
     const combinedClientActivities = [...clientActivities, ...brandBrainActivities, ...documentActivities]
       .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
       .slice(0, 24);
-    return { dueTasks, upcomingPosts, postsToday, agendaToday, clientSubmissions, clientActivities: combinedClientActivities };
+    return { dueTasks, upcomingPosts, postsToday, agendaToday, clientSubmissions, clientActivities: combinedClientActivities, approvedPautas };
   });
 
   app.get("/portal/accounts", async (request) => {

@@ -126,8 +126,9 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
       await recordCaptionVersion(app.db, { cardId: card.id, caption: card.caption, authorUserId: actor.id, authorName: actor.fullName, authorRole: actor.globalRole });
     }
     const updatedCard = await updateCard(app.db, params.cardId, { caption: input.caption });
+    const captionFeedback = (input.caption ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
     await addCardComment(app, params.clientAccountId, params.cardId, {
-      commentText: "Legenda editada pelo cliente.",
+      commentText: captionFeedback ? `Nova legenda: ${captionFeedback.slice(0, 220)}` : "O cliente removeu o texto da legenda.",
       isInternal: false,
     }, {
       userId: actor.id,
