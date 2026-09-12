@@ -301,6 +301,7 @@ CREATE TABLE IF NOT EXISTS client_texts (
   content_html LONGTEXT NOT NULL,
   content_type VARCHAR(40) NOT NULL DEFAULT 'Texto',
   status VARCHAR(40) NOT NULL DEFAULT 'Rascunho',
+  tags_json JSON NULL,
   planned_at DATE NULL,
   internal_notes TEXT NULL,
   is_sent_to_client TINYINT(1) NOT NULL DEFAULT 0,
