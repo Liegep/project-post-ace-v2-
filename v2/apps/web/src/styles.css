@@ -5558,7 +5558,6 @@ button {
     transform: none;
   }
 
-  .kanban-admin-layout .board-topbar,
   .kanban-admin-layout .board-layout {
     padding-inline-end: 86px;
   }
@@ -5607,6 +5606,43 @@ button {
 .kanban-admin-layout .column-cards-scroll::-webkit-scrollbar-thumb { border: 1px solid transparent; border-radius: 999px; background: rgba(114, 128, 164, .42); }
 .kanban-admin-layout .columns-scroll::-webkit-scrollbar-thumb:hover { background: #fff; }
 .kanban-admin-layout .column-cards-scroll::-webkit-scrollbar-thumb:hover { background: rgba(82, 96, 137, .76); }
+
+/* Mantém todas as ações superiores dentro da viewport. Quando faltar espaço,
+   somente as abas à esquerda deslizam; os botões nunca ficam recortados. */
+@media (min-width: 761px) {
+  .kanban-admin-layout .board-topbar {
+    min-width: 0;
+    overflow: visible;
+  }
+
+  .kanban-admin-layout .board-topbar .tab-strip {
+    min-width: 0;
+    flex: 1 1 0;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .kanban-admin-layout .board-topbar .tab-strip::-webkit-scrollbar {
+    display: none;
+  }
+
+  .kanban-admin-layout .board-topbar .tab {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .kanban-admin-layout .board-topbar .board-actions {
+    position: relative;
+    z-index: 2;
+    min-width: max-content;
+    flex: 0 0 auto;
+    overflow: visible;
+  }
+}
 
 /* O Kanban usa a viewport como moldura: só os cards de cada coluna rolam. */
 .kanban-admin-layout {
