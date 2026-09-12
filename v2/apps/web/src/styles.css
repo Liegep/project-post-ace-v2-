@@ -6084,6 +6084,9 @@ button {
 .portal-card-modal-backdrop { z-index: 110; overflow: hidden; padding: 16px; place-items: center; }
 .portal-card-detail-modal { width: min(1120px, calc(100vw - 32px)); height: min(880px, calc(100dvh - 32px)); max-height: calc(100dvh - 32px); overflow: hidden; grid-template-rows: auto minmax(0, 1fr) auto; padding-bottom: 0; }
 .portal-card-detail-modal > .modal-grid { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 5px 18px 2px; scrollbar-gutter: stable; }
+.portal-card-detail-modal.no-media { width: min(760px, calc(100vw - 32px)); }
+.portal-card-detail-modal.no-media > .modal-grid { grid-template-columns: minmax(0, 1fr); }
+.portal-card-detail-modal.no-media > .modal-grid > .modal-media { display: none; }
 .portal-card-detail-modal .portal-feedback-card .modal-actions { display: none; }
 .portal-card-sticky-actions { position: relative; z-index: 8; display: grid; grid-template-columns: minmax(180px, 1fr) auto auto auto; align-items: center; gap: 9px; margin: 0 -22px; padding: 13px 22px; border-top: 1px solid #e2e6ef; background: rgba(255,255,255,.96); box-shadow: 0 -12px 28px rgba(44,52,87,.09); backdrop-filter: blur(14px); }
 .portal-card-sticky-actions > div { min-width: 0; display: grid; gap: 2px; }
