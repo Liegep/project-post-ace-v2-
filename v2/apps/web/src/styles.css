@@ -5635,17 +5635,22 @@ button {
    próprio board-topbar, do mesmo jeito que já é feito em .board-layout. */
 @media (min-width: 761px) {
   .kanban-admin-layout .board-topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    align-items: stretch;
     box-sizing: border-box;
+    width: 100%;
+    max-width: 100%;
     min-width: 0;
     padding-inline-end: calc(18px + var(--workspace-drawer-rail-width) + var(--kanban-board-scale-compensation));
-    overflow: visible;
+    overflow: hidden;
   }
 
   .kanban-admin-layout .board-topbar .tab-strip {
+    grid-column: 1;
     min-width: 0;
-    flex: 1 1 0;
     flex-wrap: nowrap;
-    justify-content: flex-start;
+    justify-content: center;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
@@ -5662,6 +5667,7 @@ button {
   }
 
   .kanban-admin-layout .board-topbar .board-actions {
+    grid-column: 2;
     position: relative;
     z-index: 2;
     min-width: max-content;
