@@ -5608,11 +5608,18 @@ button {
 .kanban-admin-layout .column-cards-scroll::-webkit-scrollbar-thumb:hover { background: rgba(82, 96, 137, .76); }
 
 /* Mantém todas as ações superiores dentro da viewport. Quando faltar espaço,
-   somente as abas à esquerda deslizam; os botões nunca ficam recortados. */
+   somente as abas à esquerda deslizam; os botões nunca ficam recortados.
+   A gaveta lateral (workspace-drawer-shell) é renderizada via createPortal
+   direto no <body>, então nenhum seletor ".kanban-admin-layout ..." consegue
+   alcançá-la — ela nunca é descendente real do Kanban no DOM. A única forma
+   confiável de evitar sobreposição é reservar espaço à direita aqui, no
+   próprio board-topbar, do mesmo jeito que já é feito em .board-layout. */
 @media (min-width: 761px) {
   .kanban-admin-layout .board-topbar {
     min-width: 0;
     overflow: visible;
+    padding-right: 96px;
+    box-sizing: border-box;
   }
 
   .kanban-admin-layout .board-topbar .tab-strip {
@@ -5690,11 +5697,13 @@ button {
   overflow: hidden;
 }
 
-.kanban-admin-layout .workspace-drawer-shell {
-  position: absolute;
-  right: 12px;
-  top: 50%;
-}
+/* NOTA: não recriar uma regra ".kanban-admin-layout .workspace-drawer-shell"
+   aqui. A gaveta é montada via createPortal direto em document.body (ver
+   App.tsx, componente WorkspaceDrawer), então ela nunca é descendente real
+   de .kanban-admin-layout no DOM e esse seletor nunca vai casar com nada.
+   O posicionamento dela é controlado só por "body > .workspace-drawer-shell"
+   (regra global, mais acima neste arquivo). Para não sobrepor os botões do
+   Kanban, reserve espaço à direita no próprio board-topbar/board-layout. */
 
 .workspace-drawer-modal-backdrop {
   position: fixed;
