@@ -4787,7 +4787,7 @@ function ResilientCardMedia({ url, title, video = false, controls = false, onRat
     : <img src={previewUrl} alt={title} draggable={false} loading="lazy" decoding="async" onError={tryOtherMediaKind} onLoad={(event) => { onMediaKind?.("image"); onRatio?.(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight); }} />;
 }
 
-function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen = false, compact = false, preserveMediaSize = false, mediaType }: { urls: string[]; title: string; activeIndex?: number; onIndexChange?: (index: number) => void; fullscreen?: boolean; compact?: boolean; preserveMediaSize?: boolean; mediaType?: string }) {
+function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen = false, compact = false, preserveMediaSize = false, mediaType, onOpenVideo }: { urls: string[]; title: string; activeIndex?: number; onIndexChange?: (index: number) => void; fullscreen?: boolean; compact?: boolean; preserveMediaSize?: boolean; mediaType?: string; onOpenVideo?: (url: string) => void }) {
   const [internalIndex, setInternalIndex] = useState(0);
   const [mediaRatios, setMediaRatios] = useState<Record<number, number>>({});
   const [mediaKinds, setMediaKinds] = useState<Record<number, "image" | "video">>({});
@@ -4839,12 +4839,12 @@ function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen =
               url={url}
               title={`${title} - arte ${itemIndex + 1}`}
               video={isVideo}
-              controls={itemIndex === index}
+              controls={itemIndex === index && !onOpenVideo}
               onRatio={(width, height) => rememberRatio(itemIndex, width, height)}
               onMediaKind={(kind) => setMediaKinds((current) => current[itemIndex] === kind ? current : { ...current, [itemIndex]: kind })}
               onPlay={() => setStartedVideos((current) => current[itemIndex] ? current : { ...current, [itemIndex]: true })}
             />
-            {detectedKind === "video" && !startedVideos[itemIndex] && itemIndex === index ? <button type="button" className="artwork-video-play" aria-label="Reproduzir vídeo" onClick={(event) => { event.stopPropagation(); void event.currentTarget.parentElement?.querySelector("video")?.play(); }}><span /></button> : null}
+            {detectedKind === "video" && !startedVideos[itemIndex] && itemIndex === index ? <button type="button" className="artwork-video-play" aria-label="Reproduzir vídeo" onClick={(event) => { event.stopPropagation(); if (onOpenVideo) onOpenVideo(url); else void event.currentTarget.parentElement?.querySelector("video")?.play(); }}><span /></button> : null}
           </figure>;
         })}
       </div>
@@ -5940,6 +5940,7 @@ function CardDetailModal({
   const [newPortalTagName, setNewPortalTagName] = useState("");
   const [newPortalTagColor, setNewPortalTagColor] = useState("#6f63dc");
   const [portalTagWorking, setPortalTagWorking] = useState(false);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState<string | null>(null);
   useEffect(() => {
     if (!detail || editingCaption) return;
     setCaptionDraft(detail.card.subtitle ?? "");
@@ -5955,11 +5956,13 @@ function CardDetailModal({
   useEffect(() => {
     if (!detail || mode === "admin") return;
     const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key !== "Escape") return;
+      if (videoPreviewUrl) setVideoPreviewUrl(null);
+      else onClose();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [detail, mode, onClose]);
+  }, [detail, mode, onClose, videoPreviewUrl]);
 
   if (!detail) return null;
 
@@ -6091,7 +6094,7 @@ function CardDetailModal({
         <div className="modal-grid">
           <div className="modal-media">
             {portalCardAssets(detail.card).length > 1 || (mode === "portal" && portalCardAssets(detail.card).length === 1) ? (
-              <ArtworkCarousel urls={portalCardAssets(detail.card)} title={detail.card.title} preserveMediaSize={mode === "portal"} mediaType={`${detail.card.typeLabel} ${detail.card.mediaType ?? ""}`} />
+              <ArtworkCarousel urls={portalCardAssets(detail.card)} title={detail.card.title} preserveMediaSize={mode === "portal"} mediaType={`${detail.card.typeLabel} ${detail.card.mediaType ?? ""}`} onOpenVideo={mode === "portal" ? setVideoPreviewUrl : undefined} />
             ) : portalCardAssets(detail.card)[0] ? (
               <div className={`media-frame ${detail.card.mediaAspect}`}>
                 <ResilientCardMedia url={portalCardAssets(detail.card)[0]} title={detail.card.title} />
@@ -6228,6 +6231,12 @@ function CardDetailModal({
           <button className="gradient-button" disabled={submitting !== null} onClick={() => handleAction("approve", () => onApprove(detail.card.id, commentDraft.trim()))}>{t(submitting === "approve" ? "Enviando..." : "Aprovar")}</button>
         </footer> : null}
       </div>
+      {videoPreviewUrl ? <div className="portal-video-player-backdrop" role="dialog" aria-modal="true" aria-label={t("Reproduzir vídeo")} onClick={(event) => { event.stopPropagation(); setVideoPreviewUrl(null); }}>
+        <div className="portal-video-player" onClick={(event) => event.stopPropagation()}>
+          <button type="button" className="portal-video-player-close" aria-label={t("Fechar vídeo")} onClick={() => setVideoPreviewUrl(null)}>×</button>
+          <video src={videoPreviewUrl} autoPlay controls playsInline preload="auto" />
+        </div>
+      </div> : null}
     </div>
   );
 }

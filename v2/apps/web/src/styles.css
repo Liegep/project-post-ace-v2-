@@ -2597,6 +2597,11 @@ button {
 .artwork-video-play > span { display: block; width: 68px; height: 68px; border: 1px solid rgba(255,255,255,.55); border-radius: 50%; background: rgba(255,255,255,.94); box-shadow: 0 14px 36px rgba(10,15,27,.28); transition: transform .2s ease; }
 .artwork-video-play:hover > span { transform: scale(1.06); }
 .artwork-video-play > span::after { content: ""; position: absolute; top: 50%; left: calc(50% + 3px); width: 0; height: 0; border-top: 10px solid transparent; border-bottom: 10px solid transparent; border-left: 16px solid #5e55d9; transform: translate(-50%, -50%); }
+.portal-video-player-backdrop { position: fixed; z-index: 220; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(7,10,17,.82); backdrop-filter: blur(13px); }
+.portal-video-player { position: relative; display: grid; width: min(1180px, calc(100vw - 48px)); height: calc(100dvh - 48px); place-items: center; overflow: hidden; border: 1px solid rgba(255,255,255,.16); border-radius: 22px; background: #050608; box-shadow: 0 30px 90px rgba(0,0,0,.52); }
+.portal-video-player video { display: block; width: auto; max-width: 100%; height: auto; max-height: 100%; object-fit: contain; background: #050608; }
+.portal-video-player-close { position: absolute; z-index: 2; top: 14px; right: 14px; display: grid; width: 42px; height: 42px; place-items: center; padding: 0 0 3px; border: 1px solid rgba(255,255,255,.24); border-radius: 50%; color: #fff; background: rgba(16,20,29,.72); font: 400 1.8rem/1 sans-serif; cursor: pointer; backdrop-filter: blur(9px); }
+.portal-video-player-close:hover { background: rgba(38,43,55,.92); }
 
 .artwork-carousel-nav {
   position: absolute;
