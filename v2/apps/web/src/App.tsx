@@ -2876,6 +2876,8 @@ function AdminWorkspacePage({
   const [refreshKey, setRefreshKey] = useState(0);
   const [boardView, setBoardView] = useState<"board" | "archived" | "texts" | "calendar" | "activities" | "brand" | "pautas">(() => window.location.hash.includes("view=brand") ? "brand" : "board");
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
+  const boardPanRef = useRef<{ pointerId: number; startX: number; scrollLeft: number } | null>(null);
+  const [boardPanning, setBoardPanning] = useState(false);
   const workspaceMode = boardView === "archived" ? "archived" : "board";
   const workspaceResource = usePreviewResource(
     { mode: workspaceMode, data: emptyAdminWorkspace },
@@ -3119,9 +3121,6 @@ function AdminWorkspacePage({
         : event.deltaMode === WheelEvent.DOM_DELTA_PAGE
           ? scroller.clientWidth
           : 1;
-      // Preserve the gesture axis reported by the trackpad/Magic Mouse. A
-      // vertical gesture reaching the end of a column must not unexpectedly
-      // turn into horizontal board navigation.
       const horizontalGesture = Math.abs(event.deltaX) > Math.abs(event.deltaY);
 
       if (horizontalGesture && Math.abs(event.deltaX) > 0.1) {
@@ -3130,8 +3129,17 @@ function AdminWorkspacePage({
         return;
       }
 
-      // Vertical scrolling belongs to the card column (or its ancestor). At
-      // the boundary we deliberately let it stop instead of moving the board.
+      const verticalScroller = (event.target as Element | null)?.closest<HTMLElement>(".column-cards-scroll") ?? null;
+      const hasVerticalContent = Boolean(verticalScroller && verticalScroller.scrollHeight > verticalScroller.clientHeight + 1);
+
+      // Mouse wheels report deltaY. Shift always opts into horizontal board
+      // navigation; without Shift, conversion happens only over board space or
+      // a column that has no vertical content to scroll. Trackpad deltaX keeps
+      // its native path above, and long card columns keep their vertical wheel.
+      if (Math.abs(event.deltaY) > 0.1 && (event.shiftKey || !hasVerticalContent)) {
+        event.preventDefault();
+        scroller.scrollLeft += event.deltaY * modeMultiplier;
+      }
     };
 
     scroller.addEventListener("wheel", handleWheel, { passive: false });
@@ -3261,11 +3269,33 @@ function AdminWorkspacePage({
                 ><i style={{ backgroundColor: column.color }} /><span>{column.name}</span><b>{column.cards.length}</b></button>)}
               </nav><div
                 ref={kanbanScrollRef}
-                className={draggedColumnId ? "columns-scroll columns-reordering" : "columns-scroll"}
+                className={`${draggedColumnId ? "columns-scroll columns-reordering" : "columns-scroll"}${boardPanning ? " board-panning" : ""}`}
                 tabIndex={0}
                 role="region"
                 aria-label="Colunas do Kanban. Use as setas para navegar."
                 onKeyDown={handleKanbanHorizontalKeys}
+                onPointerDown={(event) => {
+                  if (event.button !== 0 || event.target !== event.currentTarget) return;
+                  boardPanRef.current = { pointerId: event.pointerId, startX: event.clientX, scrollLeft: event.currentTarget.scrollLeft };
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  setBoardPanning(true);
+                }}
+                onPointerMove={(event) => {
+                  const pan = boardPanRef.current;
+                  if (!pan || pan.pointerId !== event.pointerId) return;
+                  event.currentTarget.scrollLeft = pan.scrollLeft - (event.clientX - pan.startX);
+                }}
+                onPointerUp={(event) => {
+                  if (boardPanRef.current?.pointerId !== event.pointerId) return;
+                  boardPanRef.current = null;
+                  if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+                  setBoardPanning(false);
+                }}
+                onPointerCancel={(event) => {
+                  if (boardPanRef.current?.pointerId !== event.pointerId) return;
+                  boardPanRef.current = null;
+                  setBoardPanning(false);
+                }}
                 onDragOver={(event) => {
                   if (!draggedColumnId) return;
                   event.preventDefault();
@@ -6319,7 +6349,9 @@ function AdminCardEditor({
   const [captionHistoryLoading, setCaptionHistoryLoading] = useState(false);
   const [restoringCaptionVersionId, setRestoringCaptionVersionId] = useState<string | null>(null);
   const [captionCopied, setCaptionCopied] = useState(false);
+  const [externalLinkCopied, setExternalLinkCopied] = useState(false);
   const captionCopiedTimerRef = useRef<number | null>(null);
+  const externalLinkCopiedTimerRef = useRef<number | null>(null);
   const editorMainRef = useRef<HTMLDivElement>(null);
   const editorSideRef = useRef<HTMLElement>(null);
   const saveInFlightRef = useRef(false);
@@ -6331,6 +6363,7 @@ function AdminCardEditor({
 
   useEffect(() => () => {
     if (captionCopiedTimerRef.current !== null) window.clearTimeout(captionCopiedTimerRef.current);
+    if (externalLinkCopiedTimerRef.current !== null) window.clearTimeout(externalLinkCopiedTimerRef.current);
   }, []);
 
   useEffect(() => {
@@ -6391,6 +6424,20 @@ ${internalMessage.trim()}`, isInternal: true });
     } catch {
       setCaptionCopied(false);
       setFeedback("Não foi possível copiar a legenda.");
+    }
+  }
+
+  async function copyExternalLink() {
+    const link = externalLinkUrl.trim();
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      setExternalLinkCopied(true);
+      if (externalLinkCopiedTimerRef.current !== null) window.clearTimeout(externalLinkCopiedTimerRef.current);
+      externalLinkCopiedTimerRef.current = window.setTimeout(() => setExternalLinkCopied(false), 2_000);
+    } catch {
+      setExternalLinkCopied(false);
+      setFeedback("Não foi possível copiar o link.");
     }
   }
 
@@ -6651,6 +6698,17 @@ ${internalMessage.trim()}`, isInternal: true });
               </EditorField>
               <EditorField label="Ou usar link externo">
                 <input type="url" value={externalLinkUrl} onChange={(event) => setExternalLinkUrl(event.target.value)} placeholder="https://drive.google.com/..." />
+                {externalLinkUrl.trim() ? <div className="editor-external-link-preview">
+                  <a href={/^https?:\/\//i.test(externalLinkUrl.trim()) ? externalLinkUrl.trim() : `https://${externalLinkUrl.trim()}`} target="_blank" rel="noreferrer" title={externalLinkUrl.trim()}>
+                    <span><UiIcon name="link" /></span>
+                    <span className="editor-external-link-copy"><small>Abrir link</small><strong>{externalLinkUrl.trim()}</strong></span>
+                    <span className="editor-external-link-arrow" aria-hidden="true">↗</span>
+                  </a>
+                  <button type="button" className={externalLinkCopied ? "copied" : ""} onClick={() => void copyExternalLink()} title={externalLinkCopied ? "Link copiado" : "Copiar link"} aria-label={externalLinkCopied ? "Link copiado" : "Copiar link"} aria-live="polite">
+                    <UiIcon name={externalLinkCopied ? "check" : "copy"} />
+                    <span>{externalLinkCopied ? "Copiado!" : "Copiar"}</span>
+                  </button>
+                </div> : null}
               </EditorField>
             </div>
             <section className="editor-comments">
