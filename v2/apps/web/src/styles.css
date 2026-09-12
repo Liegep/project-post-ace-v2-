@@ -5571,6 +5571,7 @@ button {
 :root {
   --workspace-drawer-rail-width: 54px;
   --kanban-board-scale-compensation: 6px;
+  --kanban-floating-actions-space: 82px;
 }
 
 @media (min-width: 761px) {
@@ -5630,17 +5631,11 @@ button {
 .kanban-admin-layout .columns-scroll::-webkit-scrollbar-thumb:hover { background: #fff; }
 .kanban-admin-layout .column-cards-scroll::-webkit-scrollbar-thumb:hover { background: rgba(82, 96, 137, .76); }
 
-/* Mantém todas as ações superiores dentro da viewport. Quando faltar espaço,
-   somente as abas à esquerda deslizam; os botões nunca ficam recortados.
-   A gaveta lateral (workspace-drawer-shell) é renderizada via createPortal
-   direto no <body>, então nenhum seletor ".kanban-admin-layout ..." consegue
-   alcançá-la — ela nunca é descendente real do Kanban no DOM. A única forma
-   confiável de evitar sobreposição é reservar espaço à direita aqui, no
-   próprio board-topbar, do mesmo jeito que já é feito em .board-layout. */
+/* No desktop, a barra superior fica dedicada às abas. As ações do quadro
+   formam uma barra central inferior, fora do caminho da gaveta lateral. */
 @media (min-width: 761px) {
   .kanban-admin-layout .board-topbar {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) max-content;
+    display: flex;
     align-items: stretch;
     box-sizing: border-box;
     width: 100%;
@@ -5651,8 +5646,8 @@ button {
   }
 
   .kanban-admin-layout .board-topbar .tab-strip {
-    grid-column: 1;
     min-width: 0;
+    flex: 1 1 auto;
     flex-wrap: nowrap;
     justify-content: center;
     overflow-x: auto;
@@ -5671,12 +5666,46 @@ button {
   }
 
   .kanban-admin-layout .board-topbar .board-actions {
-    grid-column: 2;
-    position: relative;
-    z-index: 2;
+    position: fixed;
+    z-index: 44;
+    left: 50%;
+    right: auto;
+    bottom: 20px;
+    transform: translateX(-50%);
     min-width: max-content;
+    max-width: calc(100vw - var(--workspace-drawer-rail-width) - var(--workspace-drawer-rail-width) - 32px);
     flex: 0 0 auto;
-    overflow: visible;
+    justify-content: center;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 8px;
+    border: 1px solid rgba(210, 216, 230, .86);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, .94);
+    box-shadow: 0 14px 34px rgba(41, 52, 87, .2);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    scrollbar-width: none;
+  }
+
+  .kanban-admin-layout .board-topbar .board-actions::-webkit-scrollbar {
+    display: none;
+  }
+
+  .kanban-admin-layout .board-topbar .board-actions > button {
+    flex: 0 0 auto;
+    min-height: 42px;
+    white-space: nowrap;
+  }
+
+  .kanban-admin-layout .tag-filter-panel {
+    position: fixed;
+    z-index: 46;
+    top: auto;
+    right: auto;
+    bottom: calc(20px + var(--kanban-floating-actions-space));
+    left: 50%;
+    transform: translateX(-50%);
   }
 }
 
@@ -5722,7 +5751,7 @@ button {
   box-sizing: border-box;
   height: 100%;
   min-height: 0;
-  padding: 12px 94px 22px 24px;
+  padding: 12px 94px var(--kanban-floating-actions-space) 24px;
   overflow: hidden;
 }
 
