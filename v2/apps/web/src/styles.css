@@ -3727,6 +3727,10 @@ button {
   font-size: 0.82rem;
   line-height: 1.35;
 }
+.card-timeline-lines { display: grid; gap: 5px; margin-top: 12px; color: #7a86a0; font-size: .76rem; line-height: 1.35; }
+.card-timeline-lines span { display: flex; align-items: center; gap: 5px; }
+.card-timeline-lines svg { width: 13px; height: 13px; flex: 0 0 auto; }
+.card-timeline-lines .published { color: #21835e; font-weight: 650; }
 
 .card-menu-backdrop {
   position: fixed;
@@ -5274,6 +5278,10 @@ button {
 .portal-archive-download:hover { color: #4f55ba; background: #fff; }.portal-archive-download svg { width: 14px; height: 14px; }
 .portal-archive-preview { display: grid; min-height: 0; place-items: center; overflow: hidden; background: #f1f2f7; }.portal-archive-preview > span { display: grid; min-height: 165px; gap: 6px; place-items: center; align-content: center; color: #9aa1b0; font-size: .64rem; }.portal-archive-preview > span svg { width: 22px; height: 22px; }.portal-archive-preview .closed-card-carousel { border-radius: 0; }.portal-archive-preview .media-frame { width: 100%; aspect-ratio: auto; }.portal-archive-preview .media-frame img,.portal-archive-preview .media-frame video { display: block; width: 100%; height: auto; object-fit: contain; }
 .portal-archive-copy { padding: 13px 14px 15px; }.portal-archive-copy > span { color: #8a91a0; font-size: .54rem; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; }.portal-archive-copy h3 { margin: 4px 0 4px; overflow: hidden; color: #2e3b59; font-size: .78rem; text-overflow: ellipsis; white-space: nowrap; }.portal-archive-copy p { margin: 0; color: #8790a3; font-size: .61rem; }.portal-archive-copy > div { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 9px; }.portal-archive-copy i { padding: 3px 6px; border-radius: 999px; color: #665db8; background: #f0eeff; font-size: .52rem; font-style: normal; font-weight: 650; }
+.portal-archive-copy .portal-archive-dates { display: grid; gap: 4px; margin-top: 7px; }
+.portal-archive-dates p { display: flex; align-items: center; gap: 5px; }
+.portal-archive-dates svg { width: 12px; height: 12px; flex: 0 0 auto; }
+.portal-archive-dates p.published { color: #21835e; font-weight: 650; }
 @media (max-width: 650px) { .portal-archive-head { align-items: flex-start; padding: 19px; }.portal-archive-grid { grid-template-columns: 1fr; } }
 .portal-caption-content { display: grid; gap: 14px; padding: 17px 2px 18px; }
 .portal-caption-copy { display: grid; gap: 11px; max-height: min(42vh, 430px); overflow-y: auto; padding-right: 8px; scrollbar-width: thin; scrollbar-color: #c9cde0 transparent; }
