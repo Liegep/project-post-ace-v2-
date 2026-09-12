@@ -35,12 +35,15 @@ import {
   updateAdminClient,
   deleteAdminClient,
   createManagedClientUser,
+  createManagedUser,
   loadClientAccesses,
   loadClientAccessesBySlug,
   createClientPortalAccessBySlug,
   updateClientPortalAccessBySlug,
   removeClientAccessBySlug,
   listManagedUsers,
+  updateManagedUser,
+  deactivateManagedUser,
   resetManagedUserPassword,
   shareClientWithMember,
   loadPublicApproval,
@@ -7768,34 +7771,29 @@ function TeamManagementWorkspace({ session, newMemberSignal = 0 }: { session: Se
   const [modal, setModal] = useState<"new" | "role" | "clients" | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState({ fullName: "", email: "", password: "", role: "colaborador" as TeamRole, clientIds: [] as string[] });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const refreshTeam = useCallback(async () => {
+    const [users, clientResult] = await Promise.all([listManagedUsers(), listAdminClients()]);
+    const nextClients = clientResult.items.map((client) => ({ id: client.id, name: client.name, slug: client.slug }));
+    const accessLists = await Promise.all(nextClients.map((client) => loadClientAccesses(client.id)));
+    const nextAssignments: Record<string, string[]> = {};
+    accessLists.forEach((result) => result.accesses.forEach((access) => {
+      nextAssignments[access.userId] = [...(nextAssignments[access.userId] ?? []), result.client.slug];
+    }));
+    setMembers(users.items.filter((user) => user.isActive));
+    setClients(nextClients);
+    setAssignments(nextAssignments);
+  }, []);
 
   useEffect(() => {
-    let active = true;
-    Promise.all([listManagedUsers(), listAdminClients()])
-      .then(async ([users, clientResult]) => {
-        if (!active) return;
-        const nextClients = clientResult.items.map((client) => ({ id: client.id, name: client.name, slug: client.slug }));
-        setMembers(users.items);
-        setClients(nextClients);
-        const accessLists = await Promise.all(nextClients.map((client) => loadClientAccesses(client.id)));
-        if (!active) return;
-        const nextAssignments: Record<string, string[]> = {};
-        accessLists.forEach((result) => result.accesses.forEach((access) => {
-          nextAssignments[access.userId] = [...(nextAssignments[access.userId] ?? []), result.client.slug];
-        }));
-        setAssignments(nextAssignments);
-      })
-      .catch(() => {
-        // Never present demo records as real accounts in an authenticated
-        // production session when the API is temporarily unavailable.
-        if (session.source === "api" && active) {
-          setMembers([]);
-          setClients([]);
-          setAssignments({});
-        }
-      });
-    return () => { active = false; };
-  }, []);
+    if (session.source !== "api") return;
+    void refreshTeam().catch((cause) => {
+      setMembers([]); setClients([]); setAssignments({});
+      setError(cause instanceof Error ? cause.message : "Não foi possível carregar a equipe.");
+    });
+  }, [refreshTeam, session.source]);
 
   const selected = members.find((member) => member.id === selectedId) ?? null;
   const visibleMembers = filter === "all" ? members : members.filter((member) => member.globalRole === filter);
@@ -7803,6 +7801,7 @@ function TeamManagementWorkspace({ session, newMemberSignal = 0 }: { session: Se
   const assignedClients = (memberId: string) => (assignments[memberId] ?? []).map((slug) => clients.find((client) => client.slug === slug)).filter(Boolean) as TeamClient[];
 
   const openModal = (next: "new" | "role" | "clients", member?: ManagedUser) => {
+    setError("");
     setSelectedId(member?.id ?? null);
     setForm(member ? { fullName: member.fullName, email: member.email, password: "", role: member.globalRole, clientIds: assignments[member.id] ?? [] } : { fullName: "", email: "", password: "", role: "colaborador", clientIds: [] });
     setModal(next);
@@ -7812,25 +7811,39 @@ function TeamManagementWorkspace({ session, newMemberSignal = 0 }: { session: Se
 
   const toggleClient = (slug: string) => setForm((current) => {
     const selectedIds = current.clientIds.includes(slug) ? current.clientIds.filter((item) => item !== slug) : [...current.clientIds, slug];
-    return { ...current, clientIds: current.role === "cliente" ? selectedIds.slice(-1) : selectedIds };
+    return { ...current, clientIds: selectedIds };
   });
 
-  const save = () => {
-    if (modal === "new") {
-      if (!form.fullName.trim() || !form.email.trim() || !form.password.trim()) return;
-      const id = `local-${Date.now()}`;
-      setMembers((current) => [{ id, fullName: form.fullName.trim(), email: form.email.trim(), globalRole: form.role, locale: "Português", isActive: true, createdAt: new Date().toISOString() }, ...current]);
-      setAssignments((current) => ({ ...current, [id]: form.role === "super_admin" ? [] : form.clientIds }));
+  const selectedClientDatabaseIds = () => form.clientIds.map((slug) => clients.find((client) => client.slug === slug)?.id).filter(Boolean) as string[];
+
+  const save = async () => {
+    if (!modal || saving) return;
+    if (modal === "new" && (!form.fullName.trim() || !form.email.trim() || form.password.length < 8)) {
+      setError("Preencha nome e e-mail e use uma senha com pelo menos 8 caracteres.");
+      return;
     }
-    if (modal === "role" && selected) setMembers((current) => current.map((member) => member.id === selected.id ? { ...member, globalRole: form.role } : member));
-    if (modal === "clients" && selected) setAssignments((current) => ({ ...current, [selected.id]: form.role === "super_admin" ? [] : form.clientIds }));
-    setModal(null);
+    setSaving(true); setError("");
+    try {
+      const clientAccountIds = form.role === "super_admin" ? [] : selectedClientDatabaseIds();
+      if (modal === "new") {
+        await createManagedUser({ fullName: form.fullName.trim(), email: form.email.trim(), password: form.password, globalRole: form.role, locale: "pt", clientAccountIds });
+      } else if (selected) {
+        await updateManagedUser(selected.id, { fullName: selected.fullName, globalRole: form.role, clientAccountIds });
+      }
+      await refreshTeam();
+      setModal(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível salvar as alterações.");
+    } finally { setSaving(false); }
   };
 
-  const remove = (member: ManagedUser) => {
+  const remove = async (member: ManagedUser) => {
     if (!window.confirm(`Remover ${member.fullName} da equipe?`)) return;
-    setMembers((current) => current.filter((item) => item.id !== member.id));
-    setAssignments((current) => { const next = { ...current }; delete next[member.id]; return next; });
+    setError("");
+    try {
+      await deactivateManagedUser(member.id);
+      await refreshTeam();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível remover este acesso."); }
   };
 
   return <section className="team-management">
@@ -7842,13 +7855,15 @@ function TeamManagementWorkspace({ session, newMemberSignal = 0 }: { session: Se
       })}
     </nav>
 
+    {error && !modal ? <p className="team-feedback error-text">{error}</p> : null}
+
     <div className="team-member-list">
       {visibleMembers.map((member) => {
         const role = TEAM_ROLE_COPY[member.globalRole];
         const memberClients = assignedClients(member.id);
         return <article key={member.id} className="team-member-card glass">
           <div className="team-member-summary"><div className="team-member-avatar">{member.fullName.split(" ").slice(0, 2).map((part) => part[0]).join("")}</div><div><div className="team-member-name"><h2>{member.fullName}</h2><span className={`team-role-badge ${role.tone}`}>{role.label}</span></div><p>{member.email}</p><div className="team-client-chips">{member.globalRole === "super_admin" ? <span className="team-all-clients">Acesso a todos os clientes</span> : memberClients.length ? memberClients.map((client) => <span key={client.id}>{client.name}</span>) : <span className="team-no-clients">Nenhum cliente atribuído</span>}</div></div></div>
-          {canManage && member.id !== session.id ? <div className="team-member-actions"><button onClick={() => openModal("role", member)}><UiIcon name="users" /> Papel</button><button onClick={() => openModal("clients", member)}><UiIcon name="pencil" /> Atribuir clientes</button><button className="danger" onClick={() => remove(member)} aria-label={`Remover ${member.fullName}`}><UiIcon name="trash" /></button></div> : null}
+          {canManage && member.id !== session.id ? <div className="team-member-actions"><button onClick={() => openModal("role", member)}><UiIcon name="users" /> Papel</button><button onClick={() => openModal("clients", member)}><UiIcon name="pencil" /> Atribuir clientes</button><button className="danger" onClick={() => void remove(member)} aria-label={`Remover ${member.fullName}`}><UiIcon name="trash" /></button></div> : null}
         </article>;
       })}
     </div>
@@ -7857,8 +7872,9 @@ function TeamManagementWorkspace({ session, newMemberSignal = 0 }: { session: Se
       <header><div><p className="eyebrow">{modal === "new" ? "Novo acesso" : modal === "role" ? "Nível de acesso" : "Clientes atribuídos"}</p><h2>{modal === "new" ? "Adicionar membro" : selected?.fullName}</h2></div><button onClick={() => setModal(null)} aria-label="Fechar">×</button></header>
       {modal === "new" ? <div className="team-form-fields"><label>Nome completo<input value={form.fullName} onChange={(event) => setForm({ ...form, fullName: event.target.value })} /></label><label>E-mail<input type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label><label>Senha inicial<input type="password" value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} /></label></div> : null}
       {modal !== "clients" ? <fieldset className="team-role-options"><legend>Papel</legend>{(Object.keys(TEAM_ROLE_COPY) as TeamRole[]).map((role) => <label key={role} className={form.role === role ? "selected" : ""}><input type="radio" checked={form.role === role} onChange={() => setForm((current) => ({ ...current, role, clientIds: role === "super_admin" ? [] : current.clientIds }))} /><span><b>{TEAM_ROLE_COPY[role].label}</b><small>{role === "super_admin" ? "Acesso total à operação" : role === "admin" ? "Gerencia clientes atribuídos" : role === "colaborador" ? "Trabalha nos clientes atribuídos" : "Acessa o próprio portal"}</small></span></label>)}</fieldset> : null}
-      {(modal === "clients" || modal === "new") && form.role !== "super_admin" ? <fieldset className="team-client-options"><legend>{form.role === "cliente" ? "Cliente do portal" : "Clientes atribuídos"}</legend>{clients.map((client) => <label key={client.id}><input type={form.role === "cliente" ? "radio" : "checkbox"} checked={form.clientIds.includes(client.slug)} onChange={() => toggleClient(client.slug)} /><span>{client.name}</span></label>)}</fieldset> : null}
-      <footer><button className="team-cancel" onClick={() => setModal(null)}>Cancelar</button><button className="gradient-button" onClick={save}>{modal === "new" ? "Criar membro" : "Salvar alterações"}</button></footer>
+      {form.role !== "super_admin" ? <fieldset className="team-client-options"><legend>Clientes atribuídos</legend>{clients.map((client) => <label key={client.id}><input type="checkbox" checked={form.clientIds.includes(client.slug)} onChange={() => toggleClient(client.slug)} /><span>{client.name}</span></label>)}</fieldset> : null}
+      {error ? <p className="team-feedback error-text">{error}</p> : null}
+      <footer><button className="team-cancel" disabled={saving} onClick={() => setModal(null)}>Cancelar</button><button className="gradient-button" disabled={saving} onClick={() => void save()}>{saving ? "Salvando..." : modal === "new" ? "Criar membro" : "Salvar alterações"}</button></footer>
     </section></div>, document.body) : null}
   </section>;
 }

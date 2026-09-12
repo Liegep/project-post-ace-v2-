@@ -1067,22 +1067,43 @@ export async function createAdminClient(input: CreateAdminClientInput) {
 }
 
 export async function createManagedClientUser(input: CreateManagedClientUserInput) {
-  return sendJson<{ ok: true }>("/api/auth/users", {
+  return createManagedUser({
+    fullName: input.fullName,
+    email: input.email,
+    password: input.password,
+    globalRole: "cliente",
+    locale: input.locale,
+    clientAccountIds: [input.clientAccountId],
+    portalAccessLevel: input.portalAccessLevel,
+  });
+}
+
+export async function createManagedUser(input: { fullName: string; email: string; password: string; globalRole: ManagedUser["globalRole"]; locale: string; clientAccountIds: string[]; portalAccessLevel?: PortalAccessLevel }) {
+  const membershipRole = input.globalRole === "super_admin" ? null : input.globalRole;
+  return sendJson<{ ok: true; user: ManagedUser }>("/api/auth/users", {
     method: "POST",
     body: JSON.stringify({
       fullName: input.fullName,
       email: input.email,
       password: input.password,
-      globalRole: "cliente",
+      globalRole: input.globalRole,
       locale: input.locale,
-      memberships: [{
-        clientAccountId: input.clientAccountId,
-        membershipRole: "cliente",
-        portalAccessLevel: input.portalAccessLevel ?? "approver",
-        isPrimary: true,
-      }],
+      memberships: membershipRole ? input.clientAccountIds.map((clientAccountId, index) => ({
+        clientAccountId,
+        membershipRole,
+        portalAccessLevel: input.globalRole === "cliente" ? input.portalAccessLevel ?? "approver" : "admin",
+        isPrimary: index === 0,
+      })) : [],
     }),
   });
+}
+
+export async function updateManagedUser(userId: string, input: { fullName: string; globalRole: ManagedUser["globalRole"]; clientAccountIds: string[] }) {
+  return sendJson<{ ok: true; user: ManagedUser }>(`/api/auth/users/${userId}`, { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export async function deactivateManagedUser(userId: string) {
+  return sendJson<{ ok: true }>(`/api/auth/users/${userId}`, { method: "DELETE" });
 }
 
 export async function updateAdminClient(clientId: string, input: { name: string; slug: string; locale: string; portalTitle: string; logoUrl?: string | null }) {

@@ -193,3 +193,60 @@ export async function createUserWithMemberships(
 
   return findAuthContextByUserId(db, input.id);
 }
+
+export async function updateManagedUserWithMemberships(
+  db: Pool,
+  userId: string,
+  input: { fullName: string; globalRole: AppRole; clientAccountIds: string[]; assignedByUserId: string },
+) {
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [result] = await connection.query<import("mysql2/promise").ResultSetHeader>(
+      "UPDATE users SET full_name = ?, global_role = ?, is_active = 1 WHERE id = ?",
+      [input.fullName, input.globalRole, userId],
+    );
+    if (result.affectedRows === 0) throw new Error("Usuário não encontrado.");
+
+    await connection.query("DELETE FROM client_memberships WHERE user_id = ?", [userId]);
+    if (input.globalRole !== "super_admin") {
+      const membershipRole = input.globalRole;
+      for (const [index, clientAccountId] of [...new Set(input.clientAccountIds)].entries()) {
+        await connection.query(
+          [
+            "INSERT INTO client_memberships",
+            "(id, user_id, client_account_id, membership_role, portal_access_level, assigned_by_user_id, is_primary)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+          ].join(" "),
+          [crypto.randomUUID(), userId, clientAccountId, membershipRole, input.globalRole === "cliente" ? "approver" : "admin", input.assignedByUserId, index === 0 ? 1 : 0],
+        );
+      }
+    }
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+  return findAuthContextByUserId(db, userId);
+}
+
+export async function deactivateManagedUser(db: Pool, userId: string) {
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [result] = await connection.query<import("mysql2/promise").ResultSetHeader>(
+      "UPDATE users SET is_active = 0 WHERE id = ?",
+      [userId],
+    );
+    if (result.affectedRows === 0) throw new Error("Usuário não encontrado.");
+    await connection.query("DELETE FROM client_memberships WHERE user_id = ?", [userId]);
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
