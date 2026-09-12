@@ -1968,6 +1968,26 @@ button {
   border-radius: var(--topbar-radius);
 }
 
+/* Botões de ação compactos (só ícone) no topo do Kanban: usados para
+   "Selecionar" e "Criar coluna", que precisam de muito menos espaço do que
+   o texto por extenso. "Etiquetas" continua com o rótulo visível de
+   propósito — é a ação mais usada ali. Isso libera espaço horizontal para
+   as ações realmente caberem em telas menores, sem depender só de padding. */
+.board-actions .icon-only-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--topbar-control-height);
+  height: var(--topbar-control-height);
+  padding: 0;
+  flex: 0 0 auto;
+}
+
+.board-actions .icon-only-button svg {
+  width: 18px;
+  height: 18px;
+}
+
 .automation-banner {
   display: flex;
   align-items: center;
@@ -5626,7 +5646,11 @@ button {
     min-width: 0;
     flex: 1 1 0;
     flex-wrap: nowrap;
-    justify-content: flex-start;
+    /* "safe center": centraliza as abas quando cabem (visual de antes),
+       mas se não couber tudo, cai para o início em vez de cortar o começo
+       de forma inacessível — sem isso, "justify-content: center" sozinho
+       pode empurrar as primeiras abas pra fora da área rolável. */
+    justify-content: safe center;
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
@@ -5645,9 +5669,26 @@ button {
   .kanban-admin-layout .board-topbar .board-actions {
     position: relative;
     z-index: 2;
-    min-width: max-content;
     flex: 0 0 auto;
-    overflow: visible;
+    /* Rede de segurança: em vez de min-width: max-content (que forçava a
+       largura total e deixava os últimos botões cortados sem nenhuma forma
+       de alcançá-los em telas menores), os botões agora podem, na pior das
+       hipóteses, ser alcançados com um scroll lateral discreto em vez de
+       simplesmente sumir de forma invisível. */
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .kanban-admin-layout .board-topbar .board-actions::-webkit-scrollbar {
+    height: 4px;
+  }
+
+  .kanban-admin-layout .board-topbar .board-actions > * {
+    flex: 0 0 auto;
   }
 }
 

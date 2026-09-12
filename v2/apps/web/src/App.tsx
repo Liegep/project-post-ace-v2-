@@ -3236,14 +3236,24 @@ function AdminWorkspacePage({
                 <button className={boardView === "pautas" ? "tab active" : "tab"} onClick={() => setBoardView("pautas")}>Pautas <span className="tab-count">{sectionCounts.pautas}</span></button>
               </div>
               {boardView === "board" ? <div className="board-actions">
-                <button className={selectionMode ? "ghost-button active" : "ghost-button"} onClick={() => {
-                  setSelectionMode((active) => !active);
-                  setSelectedCardIds([]);
-                }}>Selecionar</button>
+                <button
+                  type="button"
+                  className={selectionMode ? "ghost-button icon-only-button active" : "ghost-button icon-only-button"}
+                  title="Selecionar cards"
+                  aria-label="Selecionar cards"
+                  onClick={() => {
+                    setSelectionMode((active) => !active);
+                    setSelectedCardIds([]);
+                  }}
+                ><UiIcon name="check" /></button>
                 <button ref={tagFilterButtonRef} className={tagFilterOpen || selectedTagFilters.length ? "ghost-button active" : "ghost-button"} onClick={() => setTagFilterOpen((open) => !open)}>Etiquetas{selectedTagFilters.length ? ` (${selectedTagFilters.length})` : ""}</button>
-                <button className="ghost-button" onClick={() => setEditingColumn("new")}>
-                  Criar coluna
-                </button>
+                <button
+                  type="button"
+                  className="ghost-button icon-only-button"
+                  title="Criar coluna"
+                  aria-label="Criar coluna"
+                  onClick={() => setEditingColumn("new")}
+                ><UiIcon name="plus" /></button>
                 <button
                   className="gradient-button"
                   onClick={() => setNewCardTarget({ columnId: data.columns[0]?.id ?? null })}
