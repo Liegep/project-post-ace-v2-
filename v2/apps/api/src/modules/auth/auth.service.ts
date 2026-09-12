@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
-import { createUserWithMemberships, findAuthContextByUserId, findUserByEmail, updateUserAvatar, updateUserPasswordHash } from "./auth.repository.js";
+import { createUserWithMemberships, findAuthContextByUserId, findUserByEmail, updateManagedUserWithMemberships, updateUserAvatar, updateUserPasswordHash } from "./auth.repository.js";
 import { hashPassword, verifyPassword } from "./auth.crypto.js";
 import type { ChangeMyPasswordInput, CreateUserInput, LoginInput, UpdateMyProfileInput } from "./auth.schemas.js";
 import { signAccessToken } from "./auth.tokens.js";
@@ -50,7 +50,17 @@ export async function createManagedUser(
 ) {
   const existing = await findUserByEmail(app.db, input.email);
   if (existing) {
-    throw app.httpErrors.conflict("Já existe um usuário com esse email.");
+    if (existing.is_active) throw app.httpErrors.conflict("Já existe um usuário ativo com esse email.");
+    await updateUserPasswordHash(app.db, existing.id, await hashPassword(input.password), true);
+    const reactivated = await updateManagedUserWithMemberships(app.db, existing.id, {
+      fullName: input.fullName,
+      globalRole: input.globalRole,
+      clientAccountIds: input.memberships.map((membership) => membership.clientAccountId),
+      assignedByUserId: createdByUserId ?? existing.id,
+      portalAccessLevel: input.memberships[0]?.portalAccessLevel,
+    });
+    if (!reactivated) throw app.httpErrors.badRequest("Não foi possível reativar o usuário.");
+    return reactivated;
   }
 
   const passwordHash = await hashPassword(input.password);
