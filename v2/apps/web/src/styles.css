@@ -6081,6 +6081,16 @@ button {
   color: #c24f67;
   background: #fff7f8;
 }
+.portal-card-modal-backdrop { z-index: 110; overflow: hidden; padding: 16px; place-items: center; }
+.portal-card-detail-modal { width: min(1120px, calc(100vw - 32px)); height: min(880px, calc(100dvh - 32px)); max-height: calc(100dvh - 32px); overflow: hidden; grid-template-rows: auto minmax(0, 1fr) auto; padding-bottom: 0; }
+.portal-card-detail-modal > .modal-grid { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 5px 18px 2px; scrollbar-gutter: stable; }
+.portal-card-detail-modal .portal-feedback-card .modal-actions { display: none; }
+.portal-card-sticky-actions { position: relative; z-index: 8; display: grid; grid-template-columns: minmax(180px, 1fr) auto auto auto; align-items: center; gap: 9px; margin: 0 -22px; padding: 13px 22px; border-top: 1px solid #e2e6ef; background: rgba(255,255,255,.96); box-shadow: 0 -12px 28px rgba(44,52,87,.09); backdrop-filter: blur(14px); }
+.portal-card-sticky-actions > div { min-width: 0; display: grid; gap: 2px; }
+.portal-card-sticky-actions strong { color: #273451; font-size: .78rem; }.portal-card-sticky-actions small { overflow: hidden; color: #8490a7; font-size: .62rem; text-overflow: ellipsis; white-space: nowrap; }
+.portal-card-sticky-actions > button { min-height: 39px; padding: 0 14px; white-space: nowrap; }
+.portal-card-sticky-actions > .gradient-button { background: linear-gradient(135deg, #1bb985, #28a96e); box-shadow: 0 8px 18px rgba(34,174,117,.2); }
+.portal-card-sticky-actions > .danger-button { border: 1px solid #f0cfd6; color: #c24f67; background: #fff7f8; }
 
 .portal-text-heading {
   display: flex;
@@ -8091,8 +8101,10 @@ button {
   .portal-card-detail-modal {
     width: 100%;
     min-height: 100dvh;
+    height: 100dvh;
     max-height: 100dvh;
     padding: 16px;
+    padding-bottom: 0;
     border-radius: 0;
   }
 
@@ -8100,6 +8112,11 @@ button {
     align-items: stretch;
     padding: 0;
   }
+
+  .portal-card-sticky-actions { grid-template-columns: 1fr 1fr; margin-inline: -16px; padding: 10px 16px; }
+  .portal-card-sticky-actions > div { display: none; }
+  .portal-card-sticky-actions > .ghost-button { display: none; }
+  .portal-card-sticky-actions > button { min-width: 0; padding-inline: 8px; }
 
   .portal-card-detail-modal .modal-grid,
   .portal-card-detail-modal .modal-actions,
