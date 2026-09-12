@@ -5558,9 +5558,26 @@ button {
     transform: none;
   }
 
-  .kanban-admin-layout .board-topbar,
   .kanban-admin-layout .board-layout {
     padding-inline-end: 86px;
+  }
+
+  .kanban-admin-layout .board-topbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    align-content: center;
+    gap: 0;
+    padding: 0 18px 10px;
+  }
+
+  .kanban-admin-layout .board-topbar .tab-strip {
+    width: 100%;
+  }
+
+  .kanban-admin-layout .board-topbar .board-actions {
+    width: 100%;
+    max-width: none;
+    justify-content: flex-end;
   }
 }
 
@@ -5713,7 +5730,7 @@ button {
   align-items: stretch;
 }
 
-.kanban-admin-layout .board-actions { min-width: 0; max-width: min(52vw, 620px); flex: 0 1 auto; overflow-x: scroll; overscroll-behavior-x: contain; padding: 8px 3px 10px; scrollbar-width: auto; scrollbar-color: #fff rgba(83,95,132,.18); }
+.kanban-admin-layout .board-actions { min-width: 0; max-width: 100%; flex: 1 1 auto; overflow-x: scroll; overscroll-behavior-x: contain; padding: 8px 3px 10px; scrollbar-width: auto; scrollbar-color: #fff rgba(83,95,132,.18); }
 .kanban-admin-layout .board-actions > button { flex: 0 0 auto; white-space: nowrap; }
 .kanban-admin-layout .board-actions::-webkit-scrollbar { height: 10px; }
 .kanban-admin-layout .board-actions::-webkit-scrollbar-track { border-radius: 999px; background: rgba(83,95,132,.14); }
