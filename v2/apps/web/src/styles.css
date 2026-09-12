@@ -2207,6 +2207,15 @@ button {
 .portal-user-trigger .session-copy { flex: 1; min-width: 0; }
 .portal-user-trigger .session-caret { flex-shrink: 0; color: #8a93ab; }
 .profile-popover.profile-popover-up { top: auto; bottom: calc(100% + 10px); }
+@media (min-width: 1121px) {
+  .portal-user-card .portal-profile-popover.profile-popover-up {
+    top: auto;
+    right: auto;
+    bottom: 0;
+    left: calc(100% + 16px);
+    transform-origin: left bottom;
+  }
+}
 .session-note { border: 0; cursor: pointer; font: inherit; text-align: left; }
 .session-avatar { overflow: hidden; }
 .session-avatar img, .profile-photo-large img { width: 100%; height: 100%; object-fit: cover; }
