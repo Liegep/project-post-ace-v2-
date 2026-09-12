@@ -3130,8 +3130,29 @@ function AdminWorkspacePage({
         return;
       }
 
-      // Vertical scrolling belongs to the card column (or its ancestor). At
-      // the boundary we deliberately let it stop instead of moving the board.
+      // Vertical-dominant gesture. A plain Windows mouse wheel only ever
+      // reports deltaY (it never has a deltaX component), so without this
+      // branch the board is completely unreachable for anyone without a
+      // trackpad or a horizontal scroll wheel.
+      if (Math.abs(event.deltaY) < 0.1) return;
+
+      // If the cursor is over a column's card list and that list still has
+      // room to scroll in this direction, let it scroll normally — this
+      // keeps vertical scrolling inside a column working exactly as before,
+      // for both mouse and trackpad.
+      const cardList = (event.target as Element | null)?.closest<HTMLElement>(".column-cards-scroll");
+      if (cardList && cardList.scrollHeight > cardList.clientHeight) {
+        const atTop = event.deltaY < 0 && cardList.scrollTop <= 0;
+        const atBottom = event.deltaY > 0 && cardList.scrollTop + cardList.clientHeight >= cardList.scrollHeight - 1;
+        if (!atTop && !atBottom) return;
+      }
+
+      // Otherwise (hovering a column header, the gutter between columns, a
+      // short column with nothing to scroll, or a list that already hit its
+      // top/bottom edge) redirect the vertical gesture into horizontal board
+      // navigation, so the whole board is reachable with just a mouse wheel.
+      event.preventDefault();
+      scroller.scrollLeft += event.deltaY * modeMultiplier * 2.15;
     };
 
     scroller.addEventListener("wheel", handleWheel, { passive: false });
