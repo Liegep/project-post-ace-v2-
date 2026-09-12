@@ -5,9 +5,9 @@ import {
   hasGlobalRole,
   getClientScope,
 } from "./auth.access.js";
-import { changeMyPasswordSchema, completePasswordResetSchema, createUserSchema, loginSchema, requestPasswordResetSchema, resetManagedUserPasswordSchema, updateMyProfileSchema } from "./auth.schemas.js";
+import { changeMyPasswordSchema, completePasswordResetSchema, createUserSchema, loginSchema, requestPasswordResetSchema, resetManagedUserPasswordSchema, updateManagedUserSchema, updateMyProfileSchema } from "./auth.schemas.js";
 import { changeMyPassword, createManagedUser, loginWithPassword, resetManagedUserPassword, updateMyProfile } from "./auth.service.js";
-import { listUsers } from "./auth.repository.js";
+import { deactivateManagedUser, listUsers, updateManagedUserWithMemberships } from "./auth.repository.js";
 import { completePasswordReset, requestPasswordReset } from "./password-reset.service.js";
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
@@ -112,6 +112,26 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     const { userId } = request.params as { userId: string };
     const input = resetManagedUserPasswordSchema.parse(request.body);
     await resetManagedUserPassword(app, userId, input.newPassword);
+    return { ok: true };
+  });
+
+  app.patch("/auth/users/:userId", async (request) => {
+    if (!request.auth) throw app.httpErrors.unauthorized("Sessão obrigatória.");
+    if (!hasGlobalRole(request.auth.user.globalRole, "super_admin")) throw app.httpErrors.forbidden("Apenas o super admin pode alterar acessos.");
+    const { userId } = request.params as { userId: string };
+    if (userId === request.auth.user.id) throw app.httpErrors.badRequest("Altere o seu próprio perfil pelas configurações da conta.");
+    const input = updateManagedUserSchema.parse(request.body);
+    const user = await updateManagedUserWithMemberships(app.db, userId, { ...input, assignedByUserId: request.auth.user.id });
+    if (!user) throw app.httpErrors.notFound("Usuário não encontrado.");
+    return { ok: true, user: user.user, memberships: user.memberships };
+  });
+
+  app.delete("/auth/users/:userId", async (request) => {
+    if (!request.auth) throw app.httpErrors.unauthorized("Sessão obrigatória.");
+    if (!hasGlobalRole(request.auth.user.globalRole, "super_admin")) throw app.httpErrors.forbidden("Apenas o super admin pode remover acessos.");
+    const { userId } = request.params as { userId: string };
+    if (userId === request.auth.user.id) throw app.httpErrors.badRequest("Você não pode remover o próprio acesso.");
+    await deactivateManagedUser(app.db, userId);
     return { ok: true };
   });
 };
