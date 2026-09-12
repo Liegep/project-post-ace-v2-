@@ -6,6 +6,7 @@ export type BoardCard = {
   subtitle?: string;
   mediaUrl?: string;
   mediaUrls?: string[];
+  mediaType?: string;
   externalLinkUrl?: string;
   mediaAspect: "portrait" | "square" | "landscape" | "wide";
   typeLabel: string;

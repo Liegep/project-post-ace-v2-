@@ -520,6 +520,7 @@ function mapCard(card: ApiBoardCard, tagColors: Record<string, string> = {}): Bo
       card.primaryMediaUrl ??
       card.mediaUrls[0],
     mediaUrls: card.mediaUrls,
+    mediaType: card.mediaType,
     externalLinkUrl: card.externalLinkUrl ?? undefined,
     mediaAspect: inferMediaAspect(card),
     typeLabel: card.artType,

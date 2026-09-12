@@ -2571,6 +2571,7 @@ button {
 }
 
 .artwork-carousel-slide {
+  position: relative;
   flex: 0 0 100%;
   display: grid;
   place-items: center;
@@ -2591,6 +2592,8 @@ button {
 .artwork-carousel-slide video { display: block; width: 100%; height: 100%; object-fit: cover; user-select: none; background: inherit; }
 .artwork-carousel-slide.active img,
 .artwork-carousel-slide.active video { object-fit: contain; }
+.artwork-video-label { position: absolute; z-index: 2; top: 12px; left: 12px; display: inline-flex; min-height: 30px; align-items: center; gap: 6px; padding: 0 10px; border: 1px solid rgba(255,255,255,.26); border-radius: 999px; color: #fff; background: rgba(20,25,38,.76); font-size: .67rem; font-weight: 700; letter-spacing: .015em; box-shadow: 0 7px 18px rgba(15,20,31,.18); pointer-events: none; backdrop-filter: blur(9px); }
+.artwork-video-label svg { width: 14px; height: 14px; }
 
 .artwork-carousel-nav {
   position: absolute;
@@ -2707,7 +2710,7 @@ button {
 
 .modal-media .artwork-carousel { margin-bottom: 12px; }
 .portal-card-detail-modal .artwork-carousel { --artwork-peek: clamp(30px, 7vw, 62px); }
-.portal-card-detail-modal .artwork-carousel.preserve-media-size .artwork-carousel-slide { aspect-ratio: var(--artwork-aspect, 1); max-height: calc(100dvh - 245px); background: #eef1f7; }
+.portal-card-detail-modal .artwork-carousel.preserve-media-size .artwork-carousel-slide { aspect-ratio: var(--artwork-aspect, 1); height: min(calc(100dvh - 245px), calc((100vw - 560px) / var(--artwork-aspect, 1))); max-height: calc(100dvh - 245px); background: #eef1f7; }
 .portal-card-detail-modal .artwork-carousel.preserve-media-size .artwork-carousel-slide img,
 .portal-card-detail-modal .artwork-carousel.preserve-media-size .artwork-carousel-slide video { object-fit: contain; }
 .admin-artwork-carousel { margin-bottom: 16px; padding: 12px 0; border-radius: 9px; background: rgba(8, 10, 14, .4); }

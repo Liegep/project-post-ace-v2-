@@ -4761,21 +4761,36 @@ function CardMediaFallback({ title, linked = false }: { title: string; linked?: 
   </div>;
 }
 
-function ResilientCardMedia({ url, title, video = false, controls = false, onRatio }: { url: string; title: string; video?: boolean; controls?: boolean; onRatio?: (width: number, height: number) => void }) {
+function ResilientCardMedia({ url, title, video = false, controls = false, onRatio, onMediaKind }: { url: string; title: string; video?: boolean; controls?: boolean; onRatio?: (width: number, height: number) => void; onMediaKind?: (kind: "image" | "video") => void }) {
   const [failed, setFailed] = useState(false);
-  useEffect(() => setFailed(false), [url]);
+  const [fallbackTried, setFallbackTried] = useState(false);
+  const [mediaKind, setMediaKind] = useState<"image" | "video">(video ? "video" : "image");
+  useEffect(() => {
+    setFailed(false);
+    setFallbackTried(false);
+    setMediaKind(video ? "video" : "image");
+  }, [url, video]);
   const linked = /(?:drive|docs)\.google\.com/i.test(url);
   const driveFileId = url.match(/drive\.google\.com\/file\/d\/([^/?]+)/i)?.[1];
   const previewUrl = driveFileId ? `https://drive.google.com/thumbnail?id=${encodeURIComponent(driveFileId)}&sz=w1200` : url;
+  const tryOtherMediaKind = () => {
+    if (!fallbackTried && !driveFileId) {
+      setFallbackTried(true);
+      setMediaKind((current) => current === "video" ? "image" : "video");
+      return;
+    }
+    setFailed(true);
+  };
   if (failed || (linked && !driveFileId)) return <CardMediaFallback title={title} linked={linked} />;
-  return video && !driveFileId
-    ? <video src={previewUrl} controls={controls} preload="metadata" onError={() => setFailed(true)} onLoadedMetadata={(event) => onRatio?.(event.currentTarget.videoWidth, event.currentTarget.videoHeight)} />
-    : <img src={previewUrl} alt={title} draggable={false} loading="lazy" decoding="async" onError={() => setFailed(true)} onLoad={(event) => onRatio?.(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />;
+  return mediaKind === "video" && !driveFileId
+    ? <video src={previewUrl} controls={controls} playsInline preload="metadata" onError={tryOtherMediaKind} onLoadedMetadata={(event) => { onMediaKind?.("video"); onRatio?.(event.currentTarget.videoWidth, event.currentTarget.videoHeight); }} />
+    : <img src={previewUrl} alt={title} draggable={false} loading="lazy" decoding="async" onError={tryOtherMediaKind} onLoad={(event) => { onMediaKind?.("image"); onRatio?.(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight); }} />;
 }
 
-function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen = false, compact = false, preserveMediaSize = false }: { urls: string[]; title: string; activeIndex?: number; onIndexChange?: (index: number) => void; fullscreen?: boolean; compact?: boolean; preserveMediaSize?: boolean }) {
+function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen = false, compact = false, preserveMediaSize = false, mediaType }: { urls: string[]; title: string; activeIndex?: number; onIndexChange?: (index: number) => void; fullscreen?: boolean; compact?: boolean; preserveMediaSize?: boolean; mediaType?: string }) {
   const [internalIndex, setInternalIndex] = useState(0);
   const [mediaRatios, setMediaRatios] = useState<Record<number, number>>({});
+  const [mediaKinds, setMediaKinds] = useState<Record<number, "image" | "video">>({});
   const pointerStart = useRef<number | null>(null);
   const swiped = useRef(false);
   const index = Math.max(0, Math.min(activeIndex ?? internalIndex, urls.length - 1));
@@ -4813,15 +4828,18 @@ function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen =
     >
       <div className="artwork-carousel-track" style={{ "--artwork-index": index } as CSSProperties}>
         {urls.map((url, itemIndex) => {
-          const isVideo = /\.(mp4|webm|mov)(\?.*)?$/i.test(url);
-          return <figure className={itemIndex === index ? "artwork-carousel-slide active" : "artwork-carousel-slide"} key={`${url}-${itemIndex}`} aria-hidden={itemIndex !== index}>
+          const isVideo = /\.(mp4|webm|mov)(\?.*)?$/i.test(url) || (urls.length === 1 && /video|reels?/i.test(mediaType ?? ""));
+          const detectedKind = mediaKinds[itemIndex] ?? (isVideo ? "video" : undefined);
+          return <figure className={`${itemIndex === index ? "artwork-carousel-slide active" : "artwork-carousel-slide"}${detectedKind === "video" ? " video" : ""}`} key={`${url}-${itemIndex}`} aria-hidden={itemIndex !== index}>
             <ResilientCardMedia
               url={url}
               title={`${title} - arte ${itemIndex + 1}`}
               video={isVideo}
               controls={itemIndex === index}
               onRatio={(width, height) => rememberRatio(itemIndex, width, height)}
+              onMediaKind={(kind) => setMediaKinds((current) => current[itemIndex] === kind ? current : { ...current, [itemIndex]: kind })}
             />
+            {detectedKind === "video" ? <span className="artwork-video-label"><UiIcon name="eye" /> Vídeo · assistir</span> : null}
           </figure>;
         })}
       </div>
@@ -6067,8 +6085,8 @@ function CardDetailModal({
 
         <div className="modal-grid">
           <div className="modal-media">
-            {portalCardAssets(detail.card).length > 1 ? (
-              <ArtworkCarousel urls={portalCardAssets(detail.card)} title={detail.card.title} preserveMediaSize={mode === "portal"} />
+            {portalCardAssets(detail.card).length > 1 || (mode === "portal" && portalCardAssets(detail.card).length === 1) ? (
+              <ArtworkCarousel urls={portalCardAssets(detail.card)} title={detail.card.title} preserveMediaSize={mode === "portal"} mediaType={`${detail.card.typeLabel} ${detail.card.mediaType ?? ""}`} />
             ) : portalCardAssets(detail.card)[0] ? (
               <div className={`media-frame ${detail.card.mediaAspect}`}>
                 <ResilientCardMedia url={portalCardAssets(detail.card)[0]} title={detail.card.title} />
