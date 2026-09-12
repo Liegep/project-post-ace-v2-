@@ -6696,19 +6696,22 @@ ${internalMessage.trim()}`, isInternal: true });
                   {mediaUrls.length > 1 ? <small className="media-order-help">Arraste os slides para mudar a ordem. O primeiro será usado como capa.</small> : null}
                 </div>
               </EditorField>
-              <EditorField label="Ou usar link externo">
-                <input type="url" value={externalLinkUrl} onChange={(event) => setExternalLinkUrl(event.target.value)} placeholder="https://drive.google.com/..." />
-                {externalLinkUrl.trim() ? <div className="editor-external-link-preview">
-                  <a href={/^https?:\/\//i.test(externalLinkUrl.trim()) ? externalLinkUrl.trim() : `https://${externalLinkUrl.trim()}`} target="_blank" rel="noreferrer" title={externalLinkUrl.trim()}>
-                    <span><UiIcon name="link" /></span>
-                    <span className="editor-external-link-copy"><small>Abrir link</small><strong>{externalLinkUrl.trim()}</strong></span>
-                    <span className="editor-external-link-arrow" aria-hidden="true">↗</span>
-                  </a>
-                  <button type="button" className={externalLinkCopied ? "copied" : ""} onClick={() => void copyExternalLink()} title={externalLinkCopied ? "Link copiado" : "Copiar link"} aria-label={externalLinkCopied ? "Link copiado" : "Copiar link"} aria-live="polite">
+              <EditorField label="Link externo">
+                <div className={`editor-external-link-preview${externalLinkUrl.trim() ? " has-link" : ""}`}>
+                  <span className="editor-external-link-icon"><UiIcon name="link" /></span>
+                  <label className="editor-external-link-copy">
+                    <small>{externalLinkUrl.trim() ? "Editar link" : "Adicionar link"}</small>
+                    <input type="url" value={externalLinkUrl} onChange={(event) => { setExternalLinkUrl(event.target.value); setExternalLinkCopied(false); }} placeholder="https://drive.google.com/..." aria-label="Link externo" />
+                  </label>
+                  {externalLinkUrl.trim() ? <a className="editor-external-link-open" href={/^https?:\/\//i.test(externalLinkUrl.trim()) ? externalLinkUrl.trim() : `https://${externalLinkUrl.trim()}`} target="_blank" rel="noreferrer" title="Abrir link" aria-label="Abrir link em uma nova aba">↗</a> : null}
+                  <button type="button" className={`editor-external-link-action${externalLinkCopied ? " copied" : ""}`} onClick={() => void copyExternalLink()} disabled={!externalLinkUrl.trim()} title={externalLinkCopied ? "Link copiado" : "Copiar link"} aria-label={externalLinkCopied ? "Link copiado" : "Copiar link"} aria-live="polite">
                     <UiIcon name={externalLinkCopied ? "check" : "copy"} />
                     <span>{externalLinkCopied ? "Copiado!" : "Copiar"}</span>
                   </button>
-                </div> : null}
+                  <button type="button" className="editor-external-link-action delete" onClick={() => { setExternalLinkUrl(""); setExternalLinkCopied(false); }} disabled={!externalLinkUrl.trim()} title="Apagar link" aria-label="Apagar link">
+                    <UiIcon name="trash" />
+                  </button>
+                </div>
               </EditorField>
             </div>
             <section className="editor-comments">
