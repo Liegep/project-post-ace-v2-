@@ -4761,7 +4761,7 @@ function CardMediaFallback({ title, linked = false }: { title: string; linked?: 
   </div>;
 }
 
-function ResilientCardMedia({ url, title, video = false, controls = false, onRatio, onMediaKind }: { url: string; title: string; video?: boolean; controls?: boolean; onRatio?: (width: number, height: number) => void; onMediaKind?: (kind: "image" | "video") => void }) {
+function ResilientCardMedia({ url, title, video = false, controls = false, onRatio, onMediaKind, onPlay }: { url: string; title: string; video?: boolean; controls?: boolean; onRatio?: (width: number, height: number) => void; onMediaKind?: (kind: "image" | "video") => void; onPlay?: () => void }) {
   const [failed, setFailed] = useState(false);
   const [fallbackTried, setFallbackTried] = useState(false);
   const [mediaKind, setMediaKind] = useState<"image" | "video">(video ? "video" : "image");
@@ -4783,7 +4783,7 @@ function ResilientCardMedia({ url, title, video = false, controls = false, onRat
   };
   if (failed || (linked && !driveFileId)) return <CardMediaFallback title={title} linked={linked} />;
   return mediaKind === "video" && !driveFileId
-    ? <video src={previewUrl} controls={controls} playsInline preload="metadata" onError={tryOtherMediaKind} onLoadedMetadata={(event) => { onMediaKind?.("video"); onRatio?.(event.currentTarget.videoWidth, event.currentTarget.videoHeight); }} />
+    ? <video src={previewUrl} controls={controls} playsInline preload="metadata" onPlay={onPlay} onError={tryOtherMediaKind} onLoadedMetadata={(event) => { onMediaKind?.("video"); onRatio?.(event.currentTarget.videoWidth, event.currentTarget.videoHeight); }} />
     : <img src={previewUrl} alt={title} draggable={false} loading="lazy" decoding="async" onError={tryOtherMediaKind} onLoad={(event) => { onMediaKind?.("image"); onRatio?.(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight); }} />;
 }
 
@@ -4791,6 +4791,7 @@ function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen =
   const [internalIndex, setInternalIndex] = useState(0);
   const [mediaRatios, setMediaRatios] = useState<Record<number, number>>({});
   const [mediaKinds, setMediaKinds] = useState<Record<number, "image" | "video">>({});
+  const [startedVideos, setStartedVideos] = useState<Record<number, boolean>>({});
   const pointerStart = useRef<number | null>(null);
   const swiped = useRef(false);
   const index = Math.max(0, Math.min(activeIndex ?? internalIndex, urls.length - 1));
@@ -4811,7 +4812,10 @@ function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen =
 
   if (urls.length === 0) return null;
   const multiple = urls.length > 1;
-  return <div className={`artwork-carousel${multiple ? " has-multiple" : " single"}${fullscreen ? " fullscreen" : ""}${compact ? " compact" : ""}${preserveMediaSize ? " preserve-media-size" : ""}`} style={compact || preserveMediaSize ? { "--artwork-aspect": mediaRatios[index] ?? 1 } as CSSProperties : undefined} aria-label={`${title}: ${urls.length} ${urls.length === 1 ? "arte" : "artes"}`}>
+  const activeUrlLooksLikeVideo = /\.(mp4|webm|mov)(\?.*)?$/i.test(urls[index] ?? "");
+  const activeIsVideo = mediaKinds[index] === "video" || activeUrlLooksLikeVideo;
+  const activeAspect = activeIsVideo && /reels?/i.test(mediaType ?? "") ? 9 / 16 : mediaRatios[index] ?? 1;
+  return <div className={`artwork-carousel${multiple ? " has-multiple" : " single"}${fullscreen ? " fullscreen" : ""}${compact ? " compact" : ""}${preserveMediaSize ? " preserve-media-size" : ""}${/reels?/i.test(mediaType ?? "") ? " reel-media" : ""}`} style={compact || preserveMediaSize ? { "--artwork-aspect": activeAspect } as CSSProperties : undefined} aria-label={`${title}: ${urls.length} ${urls.length === 1 ? "arte" : "artes"}`}>
     <div
       className="artwork-carousel-viewport"
       onPointerDown={(event) => { pointerStart.current = event.clientX; swiped.current = false; }}
@@ -4838,8 +4842,9 @@ function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen =
               controls={itemIndex === index}
               onRatio={(width, height) => rememberRatio(itemIndex, width, height)}
               onMediaKind={(kind) => setMediaKinds((current) => current[itemIndex] === kind ? current : { ...current, [itemIndex]: kind })}
+              onPlay={() => setStartedVideos((current) => current[itemIndex] ? current : { ...current, [itemIndex]: true })}
             />
-            {detectedKind === "video" ? <span className="artwork-video-label"><UiIcon name="eye" /> Vídeo · assistir</span> : null}
+            {detectedKind === "video" && !startedVideos[itemIndex] && itemIndex === index ? <button type="button" className="artwork-video-play" aria-label="Reproduzir vídeo" onClick={(event) => { event.stopPropagation(); void event.currentTarget.parentElement?.querySelector("video")?.play(); }}><span /></button> : null}
           </figure>;
         })}
       </div>
