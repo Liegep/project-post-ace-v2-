@@ -4773,7 +4773,7 @@ function ResilientCardMedia({ url, title, video = false, controls = false, onRat
     : <img src={previewUrl} alt={title} draggable={false} loading="lazy" decoding="async" onError={() => setFailed(true)} onLoad={(event) => onRatio?.(event.currentTarget.naturalWidth, event.currentTarget.naturalHeight)} />;
 }
 
-function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen = false, compact = false }: { urls: string[]; title: string; activeIndex?: number; onIndexChange?: (index: number) => void; fullscreen?: boolean; compact?: boolean }) {
+function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen = false, compact = false, preserveMediaSize = false }: { urls: string[]; title: string; activeIndex?: number; onIndexChange?: (index: number) => void; fullscreen?: boolean; compact?: boolean; preserveMediaSize?: boolean }) {
   const [internalIndex, setInternalIndex] = useState(0);
   const [mediaRatios, setMediaRatios] = useState<Record<number, number>>({});
   const pointerStart = useRef<number | null>(null);
@@ -4796,7 +4796,7 @@ function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen =
 
   if (urls.length === 0) return null;
   const multiple = urls.length > 1;
-  return <div className={`artwork-carousel${multiple ? " has-multiple" : " single"}${fullscreen ? " fullscreen" : ""}${compact ? " compact" : ""}`} style={compact ? { "--artwork-aspect": mediaRatios[index] ?? 1 } as CSSProperties : undefined} aria-label={`${title}: ${urls.length} ${urls.length === 1 ? "arte" : "artes"}`}>
+  return <div className={`artwork-carousel${multiple ? " has-multiple" : " single"}${fullscreen ? " fullscreen" : ""}${compact ? " compact" : ""}${preserveMediaSize ? " preserve-media-size" : ""}`} style={compact || preserveMediaSize ? { "--artwork-aspect": mediaRatios[index] ?? 1 } as CSSProperties : undefined} aria-label={`${title}: ${urls.length} ${urls.length === 1 ? "arte" : "artes"}`}>
     <div
       className="artwork-carousel-viewport"
       onPointerDown={(event) => { pointerStart.current = event.clientX; swiped.current = false; }}
@@ -6044,7 +6044,7 @@ function CardDetailModal({
         <div className="modal-grid">
           <div className="modal-media">
             {portalCardAssets(detail.card).length > 1 ? (
-              <ArtworkCarousel urls={portalCardAssets(detail.card)} title={detail.card.title} />
+              <ArtworkCarousel urls={portalCardAssets(detail.card)} title={detail.card.title} preserveMediaSize={mode === "portal"} />
             ) : portalCardAssets(detail.card)[0] ? (
               <div className={`media-frame ${detail.card.mediaAspect}`}>
                 <ResilientCardMedia url={portalCardAssets(detail.card)[0]} title={detail.card.title} />
