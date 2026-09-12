@@ -174,6 +174,8 @@ export type ManagedUser = {
   createdAt: string;
 };
 
+export type TextTag = { name: string; color: string };
+
 export type TextDocument = {
   id: string;
   clientAccountId: string;
@@ -181,7 +183,7 @@ export type TextDocument = {
   contentHtml: string;
   contentType: "Blog" | "Artigo" | "Texto" | "Copy" | "Documento";
   status: "Rascunho" | "Em revisão" | "Aprovado";
-  tags: string[];
+  tags: TextTag[];
   plannedAt: string | null;
   internalNotes: string | null;
   isSentToClient: boolean;
@@ -620,7 +622,7 @@ export async function listAdminTextsBySlug(slug: string) {
   return fetchJson<{ items: TextDocument[] }>(`/api/clients/${client.id}/texts`);
 }
 
-export async function createAdminTextBySlug(slug: string, input: { title?: string; contentHtml?: string; contentType?: TextDocument["contentType"]; tags?: string[] }) {
+export async function createAdminTextBySlug(slug: string, input: { title?: string; contentHtml?: string; contentType?: TextDocument["contentType"]; tags?: TextTag[] }) {
   const client = await findAdminClientBySlug(slug);
   return sendJson<{ text: TextDocument }>(`/api/clients/${client.id}/texts`, { method: "POST", body: JSON.stringify(input) });
 }
@@ -655,7 +657,7 @@ export async function listPortalTextsBySlug(slug: string) {
   return fetchJson<{ items: TextDocument[] }>(`/api/portal/accounts/${account.clientAccountId}/texts`);
 }
 
-export async function updatePortalTextBySlug(slug: string, textId: string, input: { title?: string; contentHtml?: string }) {
+export async function updatePortalTextBySlug(slug: string, textId: string, input: { title?: string; contentHtml?: string; tags?: TextTag[] }) {
   const account = await findPortalAccountBySlug(slug);
   return sendJson<{ text: TextDocument }>(`/api/portal/accounts/${account.clientAccountId}/texts/${textId}`, {
     method: "PATCH",
