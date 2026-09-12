@@ -6019,7 +6019,7 @@ function CardDetailModal({
 
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
+    <div className={`modal-backdrop${mode === "portal" ? " portal-card-modal-backdrop" : ""}`} onClick={onClose}>
       <div className={`modal-panel glass${mode === "portal" ? " portal-card-detail-modal" : ""}`} onClick={(event) => event.stopPropagation()}>
         <div className="modal-head">
           <div>
@@ -6170,6 +6170,12 @@ function CardDetailModal({
             ) : null}
           </div>
         </div>
+        {mode === "portal" && canRespond ? <footer className="portal-card-sticky-actions">
+          <div><strong>{t("Seu feedback")}</strong><small>{commentDraft.trim() ? t("Seu comentário será enviado junto com a decisão.") : t("Você pode aprovar agora ou escrever um comentário acima.")}</small></div>
+          <button className="ghost-button" disabled={submitting !== null || !commentDraft.trim()} onClick={() => handleAction("comment", () => onAddComment(detail.card.id, commentDraft.trim()))}>{t(submitting === "comment" ? "Salvando..." : "Comentar")}</button>
+          <button className="danger-button" disabled={submitting !== null} onClick={() => handleAction("changes", () => onRequestChanges(detail.card.id, commentDraft.trim()))}>{t(submitting === "changes" ? "Enviando..." : "Pedir alteração")}</button>
+          <button className="gradient-button" disabled={submitting !== null} onClick={() => handleAction("approve", () => onApprove(detail.card.id, commentDraft.trim()))}>{t(submitting === "approve" ? "Enviando..." : "Aprovar")}</button>
+        </footer> : null}
       </div>
     </div>
   );
