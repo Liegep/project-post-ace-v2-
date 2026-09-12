@@ -5918,10 +5918,17 @@ button {
   font-size: 0.88rem;
 }
 .client-showcase-social { display: flex; align-items: center; gap: 14px; }
-.client-showcase-social .client-social-link { display: inline-grid; width: 28px; height: 28px; place-items: center; color: #687894; text-decoration: none; font-size: 1.18rem; font-weight: 650; line-height: 1; transition: color .18s ease, transform .18s ease; }
+.client-showcase-social .client-social-link { display: inline-grid; width: 28px; height: 28px; place-items: center; color: #687894; text-decoration: none; line-height: 1; transition: color .18s ease, transform .18s ease; }
+.client-showcase-social .client-social-link svg { width: 22px; height: 22px; overflow: visible; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.client-showcase-social .client-social-link svg .social-icon-fill { fill: currentColor; stroke: none; }
 .client-showcase-social .client-social-link:hover { color: #574ddd; transform: translateY(-2px); }
-.client-showcase-social .client-social-link.linkedin { font-size: .92rem; }
-.client-showcase-social .client-social-link.youtube { font-size: .9rem; }
+.client-showcase-social .client-social-link.instagram:hover { color: #d9468f; }
+.client-showcase-social .client-social-link.facebook:hover { color: #1877f2; }
+.client-showcase-social .client-social-link.tiktok:hover,
+.client-showcase-social .client-social-link.x:hover { color: #111827; }
+.client-showcase-social .client-social-link.youtube:hover { color: #f5222d; }
+.client-showcase-social .client-social-link.linkedin:hover { color: #0a66c2; }
+.client-showcase-social .client-social-link.website:hover { color: #635bdb; }
 
 @media (max-width: 1320px) {
   .dashboard-clients-full .dashboard-clients {

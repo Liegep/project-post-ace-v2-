@@ -2696,7 +2696,7 @@ function DashboardClientCard({ client, socialRevision, onEdit, onDelete, onShare
       <div className="client-showcase-logo">{client.logo_url ? <img src={client.logo_url} alt={`Logo ${client.name}`} /> : client.name.slice(0, 2).toUpperCase()}</div>
       <div><div className="client-showcase-title"><h3>{client.name}</h3><button className="client-copy-button" type="button" title={copied ? "Endereço copiado" : "Copiar endereço do portal"} aria-label={copied ? "Endereço copiado" : "Copiar endereço do portal"} onClick={() => void copyPortalLink()}>{copied ? <UiIcon name="check" /> : <UiIcon name="copy" />}</button></div><p>{localeFlag} {localeLabel} <span>♙ {Number(client.access_count ?? 0)}</span></p></div>
     </div>
-    <div className="client-showcase-social">{(["instagram", "facebook", "tiktok", "youtube", "linkedin", "x", "website"] as const).filter((network) => socialLinks[network]).map((network) => <a key={network} className={`client-social-link ${network}`} href={socialLinks[network]} target="_blank" rel="noreferrer" title={`Abrir ${network === "website" ? "site" : network}`} aria-label={`Abrir ${network === "website" ? "site" : network}`}>{network === "instagram" ? "◎" : network === "facebook" ? "f" : network === "tiktok" ? "♪" : network === "youtube" ? "▶" : network === "linkedin" ? "in" : network === "x" ? "𝕏" : "↗"}</a>)}</div>
+    <div className="client-showcase-social">{(["instagram", "facebook", "tiktok", "youtube", "linkedin", "x", "website"] as const).filter((network) => socialLinks[network]).map((network) => <a key={network} className={`client-social-link ${network}`} href={socialLinks[network]} target="_blank" rel="noreferrer" title={`Abrir ${network === "website" ? "site" : network}`} aria-label={`Abrir ${network === "website" ? "site" : network}`}><SocialNetworkIcon network={network} /></a>)}</div>
     <div className="client-showcase-actions">
       <NavLink to={`/admin/${client.slug}`} className="gradient-button">Gerenciar</NavLink>
       <NavLink to={`/portal/${client.slug}`} className="client-icon-action" title="Ver portal"><UiIcon name="eye" /></NavLink>
@@ -2705,6 +2705,16 @@ function DashboardClientCard({ client, socialRevision, onEdit, onDelete, onShare
       <button type="button" className="client-icon-action" title="Compartilhar cliente com a equipe" onClick={onShare}><UiIcon name="send" /></button>
     </div>
   </article>;
+}
+
+function SocialNetworkIcon({ network }: { network: "instagram" | "facebook" | "tiktok" | "youtube" | "linkedin" | "x" | "website" }) {
+  if (network === "instagram") return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5" /><circle cx="12" cy="12" r="4.25" /><circle className="social-icon-fill" cx="17.4" cy="6.7" r="1" /></svg>;
+  if (network === "facebook") return <svg viewBox="0 0 24 24" aria-hidden="true"><path className="social-icon-fill" d="M13.7 21v-8h2.8l.5-3.2h-3.3V7.7c0-.9.3-1.6 1.7-1.6h1.8V3.2c-.3 0-1.4-.2-2.6-.2-2.6 0-4.4 1.6-4.4 4.5v2.3H7.3V13h2.9v8h3.5Z" /></svg>;
+  if (network === "tiktok") return <svg viewBox="0 0 24 24" aria-hidden="true"><path className="social-icon-fill" d="M15.1 3c.3 2.4 1.7 3.9 4 4.1v3.1a8.4 8.4 0 0 1-4-1.2v6.1a6.1 6.1 0 1 1-5.3-6v3.2a3 3 0 1 0 2.2 2.9V3h3.1Z" /></svg>;
+  if (network === "youtube") return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 8.1a3 3 0 0 0-2.1-2.2C17 5.4 12 5.4 12 5.4s-5 0-6.9.5A3 3 0 0 0 3 8.1a31 31 0 0 0 0 7.8 3 3 0 0 0 2.1 2.2c1.9.5 6.9.5 6.9.5s5 0 6.9-.5a3 3 0 0 0 2.1-2.2 31 31 0 0 0 0-7.8Z" /><path className="social-icon-fill" d="m10 15.2 5.2-3.2L10 8.8v6.4Z" /></svg>;
+  if (network === "linkedin") return <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2.5" /><circle className="social-icon-fill" cx="7.6" cy="8" r="1.35" /><path className="social-icon-fill" d="M6.4 10.2h2.4v7.4H6.4v-7.4Zm4 0h2.3v1c.8-.9 1.7-1.3 2.8-1.3 2.1 0 3.1 1.4 3.1 3.8v3.9h-2.4v-3.7c0-1.2-.4-1.9-1.5-1.9-1.2 0-1.8.8-1.8 2.2v3.4h-2.5v-7.4Z" /></svg>;
+  if (network === "x") return <svg viewBox="0 0 24 24" aria-hidden="true"><path className="social-icon-fill" d="M4.2 4h4.5l4.1 5.5L17.6 4h2.1l-5.9 6.9L20.6 20h-4.5l-4.7-6.3L6 20H3.9l6.5-7.7L4.2 4Zm3.5 1.7 9.2 12.6h1.9L9.6 5.7H7.7Z" /></svg>;
+  return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3.5 12h17M12 3c2.4 2.5 3.7 5.5 3.7 9s-1.3 6.5-3.7 9c-2.4-2.5-3.7-5.5-3.7-9S9.6 5.5 12 3Z" /></svg>;
 }
 
 function EditClientModal({ client, form, logoFile, accesses, saving, error, onChange, onLogoChange, onClose, onSubmit }: { client: AdminClientOption; form: EditClientForm; logoFile: File | null; accesses: ClientAccess[]; saving: boolean; error: string; onChange: (key: keyof EditClientForm, value: string) => void; onLogoChange: (file: File | null) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
