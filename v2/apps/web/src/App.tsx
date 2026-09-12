@@ -3459,7 +3459,7 @@ function AdminWorkspacePage({
                     + Criar nova coluna
                   </button>
                 </section>
-              </div>{kanbanScrollMetrics.max > 0 ? <div className="kanban-horizontal-control"><UiIcon name="chevron-left" /><input type="range" min="0" max={kanbanScrollMetrics.max} step="1" value={Math.min(kanbanScrollMetrics.left, kanbanScrollMetrics.max)} aria-label="Rolagem horizontal do Kanban" onChange={(event) => { const left = Number(event.target.value); kanbanScrollRef.current?.scrollTo({ left, behavior: "auto" }); }} /><UiIcon name="chevron-right" /></div> : null}</>}
+              </div>{kanbanScrollMetrics.max > 0 ? <div className="kanban-horizontal-control"><UiIcon name="chevron-left" /><input type="range" min="0" max={kanbanScrollMetrics.max} step="1" value={Math.min(kanbanScrollMetrics.left, kanbanScrollMetrics.max)} aria-label="Rolagem horizontal do Kanban" onInput={(event) => { const left = Number(event.currentTarget.value); if (kanbanScrollRef.current) kanbanScrollRef.current.scrollLeft = left; setKanbanScrollMetrics((current) => ({ ...current, left })); }} /><UiIcon name="chevron-right" /></div> : null}</>}
 
               <WorkspaceDrawer slug={slug} userId={session.id} initialQuickLinks={data.quickLinks} columns={data.columns} tags={data.tagDefinitions} canManageAccess={session.role === "super_admin"} onPautaCountChange={updatePautasCount} />
               {/*
