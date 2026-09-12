@@ -2208,7 +2208,17 @@ button {
 .portal-user-trigger .session-caret { flex-shrink: 0; color: #8a93ab; }
 .profile-popover.profile-popover-up { top: auto; bottom: calc(100% + 10px); }
 @media (min-width: 1121px) {
+  .portal-page > .portal-sidebar {
+    z-index: 70;
+    overflow: visible;
+  }
+
+  .portal-user-card.profile-menu {
+    z-index: 71;
+  }
+
   .portal-user-card .portal-profile-popover.profile-popover-up {
+    z-index: 72;
     top: auto;
     right: auto;
     bottom: 0;
