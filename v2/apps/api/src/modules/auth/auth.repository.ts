@@ -197,7 +197,7 @@ export async function createUserWithMemberships(
 export async function updateManagedUserWithMemberships(
   db: Pool,
   userId: string,
-  input: { fullName: string; globalRole: AppRole; clientAccountIds: string[]; assignedByUserId: string },
+  input: { fullName: string; globalRole: AppRole; clientAccountIds: string[]; assignedByUserId: string; portalAccessLevel?: ClientMembership["portalAccessLevel"] },
 ) {
   const connection = await db.getConnection();
   try {
@@ -218,7 +218,7 @@ export async function updateManagedUserWithMemberships(
             "(id, user_id, client_account_id, membership_role, portal_access_level, assigned_by_user_id, is_primary)",
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
           ].join(" "),
-          [crypto.randomUUID(), userId, clientAccountId, membershipRole, input.globalRole === "cliente" ? "approver" : "admin", input.assignedByUserId, index === 0 ? 1 : 0],
+          [crypto.randomUUID(), userId, clientAccountId, membershipRole, input.globalRole === "cliente" ? input.portalAccessLevel ?? "approver" : "admin", input.assignedByUserId, index === 0 ? 1 : 0],
         );
       }
     }
