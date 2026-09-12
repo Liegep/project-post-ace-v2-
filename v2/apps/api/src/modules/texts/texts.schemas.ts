@@ -6,6 +6,7 @@ export const createTextSchema = z.object({
   title: z.string().min(1).max(255).default("Novo texto"),
   contentHtml: z.string().max(500_000).default("<p>Comece a escrever aqui.</p>"),
   contentType: z.enum(["Blog", "Artigo", "Texto", "Copy", "Documento"]).default("Texto"),
+  tags: z.array(z.string().trim().min(1).max(40)).max(12).default([]),
 });
 
 export const updateTextSchema = z.object({
@@ -15,6 +16,7 @@ export const updateTextSchema = z.object({
   plannedAt: z.string().date().nullable().optional(),
   internalNotes: nullableText,
   status: z.enum(["Rascunho", "Em revisão", "Aprovado"]).optional(),
+  tags: z.array(z.string().trim().min(1).max(40)).max(12).optional(),
 });
 
 export const createTextCommentSchema = z.object({

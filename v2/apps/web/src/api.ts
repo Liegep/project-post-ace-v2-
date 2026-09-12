@@ -181,6 +181,7 @@ export type TextDocument = {
   contentHtml: string;
   contentType: "Blog" | "Artigo" | "Texto" | "Copy" | "Documento";
   status: "Rascunho" | "Em revisão" | "Aprovado";
+  tags: string[];
   plannedAt: string | null;
   internalNotes: string | null;
   isSentToClient: boolean;
@@ -619,12 +620,12 @@ export async function listAdminTextsBySlug(slug: string) {
   return fetchJson<{ items: TextDocument[] }>(`/api/clients/${client.id}/texts`);
 }
 
-export async function createAdminTextBySlug(slug: string, input: { title?: string; contentHtml?: string; contentType?: TextDocument["contentType"] }) {
+export async function createAdminTextBySlug(slug: string, input: { title?: string; contentHtml?: string; contentType?: TextDocument["contentType"]; tags?: string[] }) {
   const client = await findAdminClientBySlug(slug);
   return sendJson<{ text: TextDocument }>(`/api/clients/${client.id}/texts`, { method: "POST", body: JSON.stringify(input) });
 }
 
-export async function updateAdminTextBySlug(slug: string, textId: string, input: Partial<Pick<TextDocument, "title" | "contentHtml" | "contentType" | "status" | "plannedAt" | "internalNotes">>) {
+export async function updateAdminTextBySlug(slug: string, textId: string, input: Partial<Pick<TextDocument, "title" | "contentHtml" | "contentType" | "status" | "plannedAt" | "internalNotes" | "tags">>) {
   const client = await findAdminClientBySlug(slug);
   return sendJson<{ text: TextDocument }>(`/api/clients/${client.id}/texts/${textId}`, { method: "PATCH", body: JSON.stringify(input) });
 }

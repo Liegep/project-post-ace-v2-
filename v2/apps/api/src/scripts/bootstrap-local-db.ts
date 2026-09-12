@@ -176,7 +176,7 @@ async function main() {
   await db.query(
     [
       "CREATE TABLE IF NOT EXISTS client_texts (",
-      "id CHAR(36) NOT NULL PRIMARY KEY, client_account_id CHAR(36) NOT NULL, title VARCHAR(255) NOT NULL, content_html LONGTEXT NOT NULL, content_type VARCHAR(40) NOT NULL DEFAULT 'Texto', status VARCHAR(40) NOT NULL DEFAULT 'Rascunho', planned_at DATE NULL, internal_notes TEXT NULL, is_sent_to_client TINYINT(1) NOT NULL DEFAULT 0, sent_at DATETIME NULL, created_by_user_id CHAR(36) NULL,",
+      "id CHAR(36) NOT NULL PRIMARY KEY, client_account_id CHAR(36) NOT NULL, title VARCHAR(255) NOT NULL, content_html LONGTEXT NOT NULL, content_type VARCHAR(40) NOT NULL DEFAULT 'Texto', status VARCHAR(40) NOT NULL DEFAULT 'Rascunho', tags_json JSON NULL, planned_at DATE NULL, internal_notes TEXT NULL, is_sent_to_client TINYINT(1) NOT NULL DEFAULT 0, sent_at DATETIME NULL, created_by_user_id CHAR(36) NULL,",
       "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,",
       "KEY idx_client_texts_account_updated (client_account_id, updated_at), KEY idx_client_texts_account_sent (client_account_id, is_sent_to_client),",
       "CONSTRAINT fk_client_texts_account FOREIGN KEY (client_account_id) REFERENCES client_accounts (id) ON DELETE CASCADE ON UPDATE CASCADE,",
@@ -184,6 +184,8 @@ async function main() {
       ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
     ].join(" "),
   );
+  const [textTagColumns] = await db.query<RowDataPacket[]>("SHOW COLUMNS FROM client_texts LIKE 'tags_json'");
+  if (textTagColumns.length === 0) await db.query("ALTER TABLE client_texts ADD COLUMN tags_json JSON NULL AFTER status");
   await db.query(
     [
       "CREATE TABLE IF NOT EXISTS text_comments (",
