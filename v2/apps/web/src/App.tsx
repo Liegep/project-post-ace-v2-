@@ -5233,6 +5233,16 @@ function getPortalSearchStatuses(card: BoardCard, t: (source: string) => string)
   return statuses;
 }
 
+function getPortalCardLifecycle(card: BoardCard, t: (source: string) => string) {
+  const combined = `${card.clientLabel} ${card.statusBadges.join(" ")}`;
+  if (card.archivedAt) return { label: t("Arquivado"), tone: "archived", icon: "layers" as const };
+  if (card.publishedAt) return { label: t("Publicado"), tone: "published", icon: "check" as const };
+  if (card.scheduledAt) return { label: t("Agendado"), tone: "scheduled", icon: "calendar" as const };
+  if (isPortalApproved(card)) return { label: t("Aprovado"), tone: "approved", icon: "check" as const };
+  if (/(alteração|alteracao|revis)/i.test(combined)) return { label: t("Alteração solicitada"), tone: "revision", icon: "comment" as const };
+  return { label: t("Aguardando aprovação"), tone: "pending", icon: "clock" as const };
+}
+
 function ClientPortalSearchView({ slug, onOpenCard }: { slug: string; onOpenCard: (cardId: string) => void }) {
   const { t, localeTag } = usePortalTranslation();
   const [query, setQuery] = useState("");
@@ -6017,6 +6027,20 @@ function CardDetailModal({
     }
   }
   const hasPortalVisualMedia = portalCardAssets(detail.card).length > 0;
+  const lifecycle = getPortalCardLifecycle(detail.card, t);
+  const clientResponseTone = /aprovad/i.test(detail.card.clientLabel)
+    ? "approved"
+    : /(alteração|alteracao|revis)/i.test(detail.card.clientLabel)
+      ? "revision"
+      : "pending";
+  const relevantDate = detail.card.publishedAt ?? detail.card.scheduledAt ?? detail.card.archivedAt;
+  const relevantDateLabel = detail.card.publishedAt
+    ? t("Publicado em")
+    : detail.card.scheduledAt
+      ? t("Agendamento")
+      : detail.card.archivedAt
+        ? t("Arquivado em")
+        : t("Agendamento");
 
   return (
     <div className={`modal-backdrop${mode === "portal" ? " portal-card-modal-backdrop" : ""}`} onClick={onClose}>
@@ -6075,13 +6099,17 @@ function CardDetailModal({
               {editingCaption ? <div className="portal-caption-editor"><label htmlFor={`portal-caption-${detail.card.id}`}>{t("Edite o texto abaixo")}</label><textarea id={`portal-caption-${detail.card.id}`} autoFocus value={captionDraft} onChange={(event) => setCaptionDraft(event.target.value)} maxLength={5000} placeholder={t("Escreva a legenda do post...")} /><div className="portal-caption-editor-footer"><small>{captionDraft.length}/5000 {t("caracteres")}</small><div><button type="button" className="ghost-button" disabled={captionSaving} onClick={() => { setCaptionDraft(detail.card.subtitle ?? ""); setEditingCaption(false); }}>{t("Cancelar")}</button><button type="button" className="gradient-button" disabled={captionSaving} onClick={() => void savePortalCaption()}>{t(captionSaving ? "Salvando..." : "Salvar legenda")}</button></div></div></div> : <PortalFormattedCaption text={captionDraft} />}
               {allowManageTags ? <section className="portal-tag-manager"><header><div><small>{t("ETIQUETAS DO POST")}</small><strong>{selectedPortalTags.length ? `${selectedPortalTags.length} ${t(selectedPortalTags.length === 1 ? "etiqueta selecionada" : "etiquetas selecionadas")}` : t("Nenhuma etiqueta")}</strong></div><button type="button" onClick={() => setTagEditorOpen((open) => !open)}>{t(tagEditorOpen ? "Fechar" : "Gerenciar tags")}</button></header>{selectedPortalTags.length ? <div className="portal-tag-pills">{selectedPortalTags.map((name) => { const tag = portalTagLibrary.find((item) => item.name === name); return <span key={name} style={{ "--portal-tag-color": tag?.color ?? "#7568dc" } as CSSProperties}>{name}</span>; })}</div> : null}{tagEditorOpen ? <div className="portal-tag-editor"><div className="portal-tag-options">{portalTagLibrary.map((tag) => { const selected = selectedPortalTags.includes(tag.name); return <button key={tag.id} type="button" className={selected ? "selected" : ""} onClick={() => setSelectedPortalTags((current) => selected ? current.filter((name) => name !== tag.name) : [...current, tag.name])}><i style={{ backgroundColor: tag.color }} />{tag.name}<span>{selected ? "✓" : "+"}</span></button>; })}{portalTagLibrary.length === 0 ? <p>{t("Nenhuma tag criada. Crie a primeira abaixo.")}</p> : null}</div><div className="portal-tag-create"><input value={newPortalTagName} onChange={(event) => setNewPortalTagName(event.target.value)} maxLength={100} placeholder={t("Nome da nova tag")} /><input type="color" value={newPortalTagColor} onChange={(event) => setNewPortalTagColor(event.target.value)} aria-label={t("Cor da nova tag")} /><button type="button" disabled={portalTagWorking || !newPortalTagName.trim()} onClick={() => void createPortalTag()}>{t("+ Criar")}</button></div><div className="portal-tag-actions"><button type="button" className="ghost-button" disabled={portalTagWorking} onClick={() => { setSelectedPortalTags(detail.card.tags); setTagEditorOpen(false); }}>{t("Cancelar")}</button><button type="button" className="gradient-button" disabled={portalTagWorking} onClick={() => void savePortalTags()}>{t(portalTagWorking ? "Salvando..." : "Salvar etiquetas")}</button></div></div> : null}</section> : null}
               <div className="portal-card-meta-grid">
-                <article className={`portal-card-meta status ${isPortalApproved(detail.card) ? "approved" : "pending"}`}>
-                  <span><UiIcon name={isPortalApproved(detail.card) ? "check" : "clock"} /></span>
-                  <div><small>{t("Status do cliente")}</small><strong>{portalText(localeTag, detail.card.clientLabel)}</strong></div>
+                <article className={`portal-card-meta status ${lifecycle.tone}`}>
+                  <span><UiIcon name={lifecycle.icon} /></span>
+                  <div><small>{t("Status atual")}</small><strong>{lifecycle.label}</strong></div>
+                </article>
+                <article className={`portal-card-meta client-response ${clientResponseTone}`}>
+                  <span><UiIcon name={clientResponseTone === "approved" ? "check" : clientResponseTone === "revision" ? "comment" : "clock"} /></span>
+                  <div><small>{t("Retorno do cliente")}</small><strong>{portalText(localeTag, detail.card.clientLabel)}</strong></div>
                 </article>
                 <article className="portal-card-meta schedule">
                   <span><UiIcon name="calendar" /></span>
-                  <div><small>{t("Agendamento")}</small><strong>{detail.card.scheduledAt ? new Intl.DateTimeFormat(localeTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(detail.card.scheduledAt)) : t("Não agendado")}</strong></div>
+                  <div><small>{relevantDateLabel}</small><strong>{relevantDate ? new Intl.DateTimeFormat(localeTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(relevantDate)) : t("Não agendado")}</strong></div>
                 </article>
                 <article className="portal-card-meta comments">
                   <span><UiIcon name="comment" /></span>
