@@ -2876,6 +2876,7 @@ function AdminWorkspacePage({
   const [refreshKey, setRefreshKey] = useState(0);
   const [boardView, setBoardView] = useState<"board" | "archived" | "texts" | "calendar" | "activities" | "brand" | "pautas">(() => window.location.hash.includes("view=brand") ? "brand" : "board");
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
+  const [kanbanScrollMetrics, setKanbanScrollMetrics] = useState({ left: 0, max: 0 });
   const workspaceMode = boardView === "archived" ? "archived" : "board";
   const workspaceResource = usePreviewResource(
     { mode: workspaceMode, data: emptyAdminWorkspace },
@@ -2914,6 +2915,19 @@ function AdminWorkspacePage({
     document.addEventListener("visibilitychange", refreshOnVisibility);
     return () => { window.clearInterval(interval); window.removeEventListener("focus", refreshScheduledCards); document.removeEventListener("visibilitychange", refreshOnVisibility); };
   }, [boardView]);
+  useEffect(() => {
+    if (boardView !== "board") return;
+    const scroller = kanbanScrollRef.current;
+    if (!scroller) return;
+    const updateMetrics = () => setKanbanScrollMetrics({ left: scroller.scrollLeft, max: Math.max(0, scroller.scrollWidth - scroller.clientWidth) });
+    updateMetrics();
+    const observer = new ResizeObserver(updateMetrics);
+    observer.observe(scroller);
+    const content = scroller.firstElementChild;
+    if (content) observer.observe(content);
+    window.addEventListener("resize", updateMetrics);
+    return () => { observer.disconnect(); window.removeEventListener("resize", updateMetrics); };
+  }, [boardView, data.columns.length, resource.loading]);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(() => new URLSearchParams(location.search).get("card"));
   const [editingColumn, setEditingColumn] = useState<BoardColumn | "new" | null>(null);
   const [invoiceLineDialog, setInvoiceLineDialog] = useState<BillingLineRequest | null>(null);
@@ -3266,6 +3280,7 @@ function AdminWorkspacePage({
                 role="region"
                 aria-label="Colunas do Kanban. Use as setas para navegar."
                 onKeyDown={handleKanbanHorizontalKeys}
+                onScroll={(event) => setKanbanScrollMetrics({ left: event.currentTarget.scrollLeft, max: Math.max(0, event.currentTarget.scrollWidth - event.currentTarget.clientWidth) })}
                 onDragOver={(event) => {
                   if (!draggedColumnId) return;
                   event.preventDefault();
@@ -3444,7 +3459,7 @@ function AdminWorkspacePage({
                     + Criar nova coluna
                   </button>
                 </section>
-              </div></>}
+              </div>{kanbanScrollMetrics.max > 0 ? <div className="kanban-horizontal-control"><UiIcon name="chevron-left" /><input type="range" min="0" max={kanbanScrollMetrics.max} step="1" value={Math.min(kanbanScrollMetrics.left, kanbanScrollMetrics.max)} aria-label="Rolagem horizontal do Kanban" onChange={(event) => { const left = Number(event.target.value); kanbanScrollRef.current?.scrollTo({ left, behavior: "auto" }); }} /><UiIcon name="chevron-right" /></div> : null}</>}
 
               <WorkspaceDrawer slug={slug} userId={session.id} initialQuickLinks={data.quickLinks} columns={data.columns} tags={data.tagDefinitions} canManageAccess={session.role === "super_admin"} onPautaCountChange={updatePautasCount} />
               {/*
