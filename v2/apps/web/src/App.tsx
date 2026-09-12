@@ -83,6 +83,7 @@ import {
   type DashboardClientActivity,
   type DashboardUpcomingPost,
   type DashboardTodayPost,
+  type DashboardApprovedPauta,
   type AgendaEvent,
   type AgendaLabel,
   type AgendaRecurrence,
@@ -1670,6 +1671,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
   const [agendaToday, setAgendaToday] = useState<AgendaEvent[]>([]);
   const [clientSubmissions, setClientSubmissions] = useState<DashboardSubmission[]>([]);
   const [clientActivities, setClientActivities] = useState<DashboardClientActivity[]>([]);
+  const [approvedPautas, setApprovedPautas] = useState<DashboardApprovedPauta[]>([]);
   const [internalMessages, setInternalMessages] = useState<InternalApprovalRecord[]>(() => loadInternalApprovalMessages(session.id));
   const [scheduleActivity, setScheduleActivity] = useState<DashboardClientActivity | null>(null);
   const [scheduledNotice, setScheduledNotice] = useState<{ title: string; clientName: string } | null>(null);
@@ -1761,6 +1763,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
         setAgendaToday(overview.agendaToday);
         setClientSubmissions(overview.clientSubmissions);
         setClientActivities(overview.clientActivities ?? []);
+        setApprovedPautas(overview.approvedPautas ?? []);
         setInternalMessages(loadInternalApprovalMessages(session.id));
       })
       .catch(() => undefined);
@@ -1956,6 +1959,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
             /> : null}
             <DashboardCommemorativeWidget clients={clients} />
             {postsToday.length > 0 ? <DashboardTodayPostsWidget items={postsToday} /> : null}
+            {approvedPautas.length > 0 ? <DashboardApprovedPautasWidget items={approvedPautas} /> : null}
             {clientActivities.length > 0 ? <DashboardClientActivitiesWidget items={clientActivities} userId={session.id} onSchedule={setScheduleActivity} /> : null}
             {internalMessages.length > 0 ? <DashboardInternalMessagesWidget items={internalMessages} onOpen={(item) => { if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; }} /> : null}
             {clientSubmissions.length > 0 ? <DashboardClientSubmissionsWidget items={clientSubmissions} userId={session.id} /> : null}
@@ -2527,6 +2531,24 @@ function DashboardClientSubmissionsWidget({ items, userId }: { items: DashboardS
   </section>;
 }
 
+function DashboardApprovedPautasWidget({ items }: { items: DashboardApprovedPauta[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const displayedItems = expanded ? items : items.slice(0, 4);
+  const formatDate = (value: string) => {
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? "Aprovada" : new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(date).replace(".", "");
+  };
+  return <section className="dashboard-list dashboard-approved-pautas compact">
+    <header className="dashboard-submissions-head"><div><h3>Pautas aprovadas</h3><small>Ideias aprovadas pelos clientes, separadas dos feedbacks de posts</small></div><span>{items.length}</span></header>
+    <div className="dashboard-approved-pautas-list">{displayedItems.map((item) => <button type="button" key={item.id} onClick={() => { window.location.hash = `/admin/${encodeURIComponent(item.clientSlug)}`; }}>
+      <span className="dashboard-approved-pauta-icon">✓</span>
+      <span><strong>{item.title}</strong><small>{item.clientName}</small></span>
+      <time>{formatDate(item.approvedAt)}</time>
+    </button>)}</div>
+    {items.length > 4 ? <button type="button" className="dashboard-link" onClick={() => setExpanded((current) => !current)}>{expanded ? "Ver menos" : "Ver todas"}</button> : null}
+  </section>;
+}
+
 function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items: DashboardClientActivity[]; userId: string; onSchedule: (item: DashboardClientActivity) => void }) {
   const storageKey = `designhub-v2-dismissed-client-feedback:${userId}`;
   const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
@@ -2584,7 +2606,7 @@ function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items:
       return <article key={item.id} className={`dashboard-activity-row ${tone}`}>
         <span className="dashboard-item-bullet" aria-hidden="true" />
         <span className="dashboard-submission-avatar">{item.clientLogoUrl ? <img src={item.clientLogoUrl} alt={`Logo de ${item.clientName}`} /> : item.clientName.slice(0, 2).toUpperCase()}</span>
-        <div className="dashboard-activity-copy"><span className="dashboard-activity-kind">{tone === "approved" ? "✓" : tone === "changes_requested" ? "↻" : tone === "not_approved" ? "×" : item.activityType === "brand_brain" ? "✦" : "💬"} {activityLabel(item)}</span><strong>{item.title}</strong><small>{item.clientName}{item.detail ? ` · “${item.detail}”` : ""}</small></div>
+        <div className="dashboard-activity-copy"><span className="dashboard-activity-kind">{tone === "approved" ? "✓" : tone === "changes_requested" ? "↻" : tone === "not_approved" ? "×" : item.activityType === "brand_brain" ? "✦" : "💬"} {activityLabel(item)}</span><strong>{item.title}</strong><small>{item.clientName}</small>{item.detail ? <p>“{item.detail}”</p> : <p className="dashboard-feedback-empty">Sem comentário adicional.</p>}</div>
         <div className="dashboard-activity-actions"><time title="Data do retorno do cliente">{activityTime(item.occurredAt)}</time>{item.activityType === "brand_brain" ? <button type="button" onClick={() => { window.location.hash = `/admin/${item.clientSlug}?view=brand`; }}><UiIcon name="spark" />Revisar</button> : item.activityType === "contract_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/contratos"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "proposal_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/propostas"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "changes_requested" || tone === "not_approved" ? <button type="button" onClick={() => openCard(item)}><UiIcon name="eye" />Ver</button> : <button type="button" onClick={() => onSchedule(item)}><UiIcon name="calendar" />Agendar</button>}</div>
         <button className="dashboard-activity-dismiss" type="button" onClick={() => dismissFeedback(item.id)} aria-label={`Remover feedback de ${item.clientName}`} title="Marcar como visualizado">×</button>
       </article>;
