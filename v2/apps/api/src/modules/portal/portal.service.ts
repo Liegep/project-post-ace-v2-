@@ -8,6 +8,7 @@ import { listCardsByClientAccountId } from "../cards/cards.repository.js";
 import { listCalendarEvents } from "../calendar/calendar.repository.js";
 import type { PortalBoardQueryInput } from "./portal.schemas.js";
 import type { PortalAccessLevel } from "../auth/auth.types.js";
+import { instantToWallClock, zonedWallClockToIso } from "../../lib/zoned-date-time.js";
 
 function parseArchivedValue(value: PortalBoardQueryInput["archived"]) {
   if (!value) return undefined;
@@ -37,8 +38,9 @@ function calendarDateTime(publishDate: string | Date, publishTime: string | null
   return `${date}T${time}:00`;
 }
 
-function calendarPostSignature(title: string, value: string | Date | null | undefined) {
-  return `${title.trim().toLocaleLowerCase()}|${calendarDateKey(value)}`;
+function calendarPostSignature(title: string, value: string | Date | null | undefined, timeZone?: string | null) {
+  const localValue = value && timeZone ? instantToWallClock(value, timeZone) : value;
+  return `${title.trim().toLocaleLowerCase()}|${calendarDateKey(localValue)}`;
 }
 
 function groupPortalCards(
@@ -103,21 +105,24 @@ export async function getPortalHome(
     listColumnsByClientAccountId(app.db, clientAccountId),
   ]);
   const today = currentDateKey(app.appEnv.APP_TIMEZONE);
+  const now = Date.now();
   const nativeCalendarCards = portalCards
     .filter((card) => Boolean(card.scheduledAt || card.publishedAt))
     .map((card) => {
       const calendarDate = card.scheduledAt || card.publishedAt;
-      const isPast = String(calendarDate ?? "").slice(0, 10) < today;
+      const instant = calendarDate ? new Date(calendarDate).getTime() : Number.NaN;
+      const isPast = !Number.isNaN(instant) && instant < now;
       return isPast && !card.publishedAt ? { ...card, publishedAt: card.scheduledAt } : card;
     });
   const nativeCalendarSignatures = new Set(nativeCalendarCards.map((card) =>
-    calendarPostSignature(card.title, card.scheduledAt || card.publishedAt),
+    calendarPostSignature(card.title, card.scheduledAt || card.publishedAt, card.scheduledTimeZone),
   ));
   const importedCalendarCards = legacyCalendarEvents
     .filter((event) => !event.cardId)
     .filter((event) => !nativeCalendarSignatures.has(calendarPostSignature(event.title, event.publishDate)))
     .map((event) => {
-      const scheduledAt = calendarDateTime(event.publishDate, event.publishTime);
+      const wallClock = calendarDateTime(event.publishDate, event.publishTime);
+      const scheduledAt = event.scheduledAt ?? zonedWallClockToIso(wallClock, event.scheduledTimeZone ?? app.appEnv.APP_TIMEZONE);
       return {
         id: `calendar:${event.id}`,
         title: event.title,
@@ -134,7 +139,7 @@ export async function getPortalHome(
         keepFiles: false,
         deadlineAt: null,
         scheduledAt,
-        scheduledTimeZone: app.appEnv.APP_TIMEZONE,
+        scheduledTimeZone: event.scheduledTimeZone ?? app.appEnv.APP_TIMEZONE,
         publishedAt: event.status === "published" || calendarDateKey(event.publishDate) < today ? scheduledAt : null,
         archived: false,
         archivedAt: null,
@@ -154,8 +159,8 @@ export async function getPortalHome(
     .filter((card) => !card.archived && !card.publishedAt)
     .filter((card) => Boolean(card.scheduledAt))
     .filter((card) => {
-      const scheduledDate = String(card.scheduledAt).slice(0, 10);
-      return /^\d{4}-\d{2}-\d{2}$/.test(scheduledDate) && scheduledDate >= today;
+      const instant = new Date(card.scheduledAt as string | Date).getTime();
+      return !Number.isNaN(instant) && instant >= now;
     })
     .sort((a, b) => {
       const left = new Date(a.scheduledAt as string | Date).getTime();

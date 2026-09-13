@@ -15,6 +15,7 @@ export type BoardCard = {
   tagColors?: Record<string, string>;
   commentsCount: number;
   scheduledAt?: string;
+  scheduledTimeZone?: string | null;
   publishedAt?: string | null;
   archivedAt?: string | null;
   clientLabel: string;
@@ -77,6 +78,7 @@ export type CalendarEvent = {
   mediaUrls?: string[];
   publishDate: string;
   publishTime?: string | null;
+  scheduledAt?: string;
   status: string;
   color?: string;
   columnName?: string;

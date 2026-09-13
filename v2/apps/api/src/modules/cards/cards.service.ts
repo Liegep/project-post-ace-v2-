@@ -22,6 +22,17 @@ import type {
   UpdateCardInput,
 } from "./cards.schemas.js";
 import { findCaptionVersion, listCaptionVersions, recordCaptionVersion } from "./caption-history.repository.js";
+import { instantToWallClock } from "../../lib/zoned-date-time.js";
+
+function normalizeScheduleInput<T extends CreateCardInput | UpdateCardInput>(input: T, fallbackTimeZone: string): T {
+  if (typeof input.scheduledAt !== "string" || !input.scheduledAt.trim()) return input;
+  const timeZone = input.scheduledTimeZone || fallbackTimeZone;
+  const hasExplicitOffset = /[zZ]$|[+-]\d{2}:?\d{2}$/.test(input.scheduledAt);
+  const scheduledAt = hasExplicitOffset
+    ? instantToWallClock(input.scheduledAt, timeZone)
+    : input.scheduledAt.replace("T", " ").slice(0, 19);
+  return { ...input, scheduledAt, scheduledTimeZone: timeZone };
+}
 
 function currentWallClock(timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-CA", {
@@ -255,7 +266,7 @@ export async function createKanbanCard(
 
   await assertColumnBelongsToClient(app, clientAccountId, input.columnId);
 
-  const created = await createCard(app.db, clientAccountId, createdByUserId, input);
+  const created = await createCard(app.db, clientAccountId, createdByUserId, normalizeScheduleInput(input, app.appEnv.APP_TIMEZONE));
   if (!created) {
     throw app.httpErrors.badRequest("Não foi possível criar o card.");
   }
@@ -286,13 +297,14 @@ export async function updateKanbanCard(
     });
   }
 
-  const isBeingScheduled = typeof input.scheduledAt === "string" && input.scheduledAt.trim().length > 0;
+  const normalizedInput = normalizeScheduleInput(input, app.appEnv.APP_TIMEZONE);
+  const isBeingScheduled = typeof normalizedInput.scheduledAt === "string" && normalizedInput.scheduledAt.trim().length > 0;
   const updateInput = isBeingScheduled
     ? {
-        ...input,
-        status: ["Agendado", ...(input.status ?? card.status).filter((status) => !/^agendados?$/i.test(status.trim()))],
+        ...normalizedInput,
+        status: ["Agendado", ...(normalizedInput.status ?? card.status).filter((status) => !/^agendados?$/i.test(status.trim()))],
       }
-    : input;
+    : normalizedInput;
   const updated = await updateCard(app.db, cardId, updateInput);
   if (!updated) {
     throw app.httpErrors.badRequest("Não foi possível atualizar o card.");

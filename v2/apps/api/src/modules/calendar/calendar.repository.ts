@@ -1,4 +1,5 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
+import { zonedWallClockToIso } from "../../lib/zoned-date-time.js";
 
 type CalendarEventRow = RowDataPacket & {
   id: string;
@@ -13,6 +14,7 @@ type CalendarEventRow = RowDataPacket & {
   primary_media_url: string | null;
   publish_date: string;
   publish_time: string | null;
+  scheduled_timezone: string | null;
   status: "draft" | "in_review" | "approved" | "scheduled" | "published";
   event_color: string | null;
   column_name: string | null;
@@ -34,6 +36,8 @@ function parseJsonArray(value: unknown) {
 
 function mapCalendarEventRow(row: CalendarEventRow) {
   const mediaUrls = parseJsonArray(row.media_urls_json);
+  const date = String(row.publish_date).slice(0, 10);
+  const time = String(row.publish_time ?? "12:00:00").slice(0, 8);
   return {
     id: row.id,
     clientAccountId: row.client_account_id,
@@ -46,6 +50,8 @@ function mapCalendarEventRow(row: CalendarEventRow) {
     mediaUrls: mediaUrls.length ? mediaUrls : row.primary_media_url ? [row.primary_media_url] : [],
     publishDate: row.publish_date,
     publishTime: row.publish_time,
+    scheduledAt: zonedWallClockToIso(`${date} ${time}`, row.scheduled_timezone),
+    scheduledTimeZone: row.scheduled_timezone,
     status: row.status,
     eventColor: row.event_color,
     columnName: row.column_name,
@@ -80,6 +86,7 @@ export async function listCalendarEvents(
     "kc.primary_media_url,",
     "e.publish_date,",
     "e.publish_time,",
+    "COALESCE(e.scheduled_timezone, kc.scheduled_timezone) AS scheduled_timezone,",
     "e.status,",
     "COALESCE(col.color, e.event_color) AS event_color,",
     "col.name AS column_name,",

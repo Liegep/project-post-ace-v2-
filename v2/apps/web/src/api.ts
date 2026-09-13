@@ -290,6 +290,7 @@ type ApiCalendarEvent = {
   mediaUrls?: string[];
   publishDate: string;
   publishTime: string | null;
+  scheduledAt?: string | null;
   status: string;
   eventColor?: string | null;
   columnName?: string | null;
@@ -529,6 +530,7 @@ function mapCard(card: ApiBoardCard, tagColors: Record<string, string> = {}): Bo
     tagColors,
     commentsCount: card.commentsCount,
     scheduledAt: card.scheduledAt ?? undefined,
+    scheduledTimeZone: card.scheduledTimeZone ?? null,
     publishedAt: card.publishedAt ?? null,
     archivedAt: card.archivedAt ?? null,
     clientLabel: card.clientLabel,
@@ -553,13 +555,16 @@ function mapColumns(columns: ApiBoardColumn[], tagColors: Record<string, string>
 }
 
 function mapCalendarEvent(event: ApiCalendarEvent): CalendarEvent {
+  const scheduled = event.scheduledAt ? new Date(event.scheduledAt) : null;
+  const hasInstant = scheduled && !Number.isNaN(scheduled.getTime());
   return {
     id: event.id,
     title: event.title,
     mediaType: event.mediaType,
     mediaUrls: event.mediaUrls ?? [],
-    publishDate: event.publishDate,
-    publishTime: event.publishTime,
+    publishDate: hasInstant ? `${scheduled!.getFullYear()}-${String(scheduled!.getMonth() + 1).padStart(2, "0")}-${String(scheduled!.getDate()).padStart(2, "0")}` : event.publishDate,
+    publishTime: hasInstant ? `${String(scheduled!.getHours()).padStart(2, "0")}:${String(scheduled!.getMinutes()).padStart(2, "0")}:00` : event.publishTime,
+    scheduledAt: event.scheduledAt ?? undefined,
     status: event.status,
     color: event.eventColor ?? undefined,
     columnName: event.columnName ?? undefined,
@@ -1279,8 +1284,8 @@ export async function addBrandBrainCommentBySlug(slug: string, input: { commentT
 export async function loadPortalBrandBrainBySlug(slug: string) { const account = await findPortalAccountBySlug(slug); return fetchJson<BrandBrainSnapshot>(`/api/clients/${account.clientAccountId}/brand-brain`); }
 export async function savePortalBrandBrainBySlug(slug: string, data: BrandBrain, summary?: string) { const account = await findPortalAccountBySlug(slug); return sendJson<{ ok: true; pending: boolean; revision?: BrandBrainRevision }>(`/api/clients/${account.clientAccountId}/brand-brain`, { method: "PUT", body: JSON.stringify({ data, summary }) }); }
 export async function addPortalBrandBrainCommentBySlug(slug: string, input: { commentText: string; revisionId?: string | null; sectionKey?: string }) { const account = await findPortalAccountBySlug(slug); return sendJson<{ ok: true }>(`/api/clients/${account.clientAccountId}/brand-brain/comments`, { method: "POST", body: JSON.stringify(input) }); }
-export async function createAgendaEvent(input: { title: string; taskDescription?: string | null; startsAt: string; endsAt?: string | null; color: string; clientAccountId?: string | null; labelId?: string | null; recurrenceType?: AgendaRecurrence; repeatUntil?: string | null; meetLink?: string | null }) { return sendJson<{ ok: true; id: string }>("/api/agenda/events", { method: "POST", body: JSON.stringify(input) }); }
-export async function updateAgendaEvent(eventId: string, input: Partial<{ title: string; taskDescription: string | null; startsAt: string; color: string; clientAccountId: string | null; labelId: string | null; recurrenceType: AgendaRecurrence; repeatUntil: string | null; meetLink: string | null; isCompleted: boolean }>) { return sendJson<{ ok: true }>(`/api/agenda/events/${eventId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+export async function createAgendaEvent(input: { title: string; taskDescription?: string | null; startsAt: string; endsAt?: string | null; color: string; clientAccountId?: string | null; labelId?: string | null; recurrenceType?: AgendaRecurrence; repeatUntil?: string | null; meetLink?: string | null }) { return sendJson<{ ok: true; id: string }>("/api/agenda/events", { method: "POST", body: JSON.stringify({ ...input, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }) }); }
+export async function updateAgendaEvent(eventId: string, input: Partial<{ title: string; taskDescription: string | null; startsAt: string; color: string; clientAccountId: string | null; labelId: string | null; recurrenceType: AgendaRecurrence; repeatUntil: string | null; meetLink: string | null; isCompleted: boolean }>) { const body = (input.startsAt ? { ...input, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone } : input); return sendJson<{ ok: true }>(`/api/agenda/events/${eventId}`, { method: "PATCH", body: JSON.stringify(body) }); }
 export async function listPortalAppointmentsBySlug(slug: string, from: string, to: string) {
   const account = await findPortalAccountBySlug(slug);
   return fetchJson<{ items: AgendaEvent[] }>(`/api/portal/accounts/${account.clientAccountId}/appointments?from=${from}&to=${to}`);
