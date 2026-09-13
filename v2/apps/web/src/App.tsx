@@ -3334,7 +3334,7 @@ function AdminWorkspacePage({
               {!isDesktopKanban ? tagFilterPanel : null}
             </div>
 
-            <div className="board-layout" style={{ "--kanban-floating-actions-space": `${kanbanDockSpace}px` } as CSSProperties}>
+            <div className="board-layout" style={{ "--kanban-floating-actions-space": `${boardView === "board" ? kanbanDockSpace : 12}px` } as CSSProperties}>
               {boardView === "texts" ? <AdminTextsView clientName={data.clientName} slug={slug} onCountChange={updateTextsCount} /> : boardView === "calendar" ? <ClientKanbanCalendar slug={slug} /> : boardView === "activities" ? <KanbanActivities slug={slug} /> : boardView === "brand" ? <BrandBrainWorkspaceV2 slug={slug} clientName={data.clientName} /> : boardView === "pautas" ? <PautasWorkspace slug={slug} clientName={data.clientName} columns={data.columns} onSent={() => setRefreshKey((value) => value + 1)} onCountChange={updatePautasCount} /> : boardView === "archived" && (workspaceViewChanging || resource.loading) ? <div className="archived-empty">Carregando cards arquivados...</div> : boardView === "archived" ? <ArchivedCardsView
                 cards={archivedCards}
                 onOpenCard={setSelectedCardId}

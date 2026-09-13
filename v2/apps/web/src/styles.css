@@ -5842,13 +5842,6 @@ button {
   overflow: hidden;
 }
 
-/* A reserva inferior acima existe para o dock de acoes do Quadro. A aba de
-   Textos nao renderiza esse dock, portanto usa o mesmo respiro da borda
-   superior e entrega toda a altura restante para a folha. */
-.kanban-admin-layout .board-layout:has(.texts-studio) {
-  padding-block-end: 12px;
-}
-
 /* NOTA: não recriar uma regra ".kanban-admin-layout .workspace-drawer-shell"
    aqui. A gaveta é montada via createPortal direto em document.body (ver
    App.tsx, componente WorkspaceDrawer), então ela nunca é descendente real
