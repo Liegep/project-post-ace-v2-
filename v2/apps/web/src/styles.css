@@ -5715,10 +5715,29 @@ button {
     z-index: 2;
     top: auto;
     right: auto;
-    bottom: 76px;
+    bottom: calc(100% + 8px);
     left: 50%;
     transform: translateX(-50%);
     pointer-events: auto;
+  }
+
+  .kanban-bottom-dock .bulk-action-bar {
+    position: static;
+    z-index: auto;
+    left: auto;
+    bottom: auto;
+    transform: none;
+    box-sizing: border-box;
+    width: max-content;
+    max-width: calc(100vw - var(--workspace-drawer-rail-width) - 48px);
+    overflow-x: auto;
+    padding: 8px 10px;
+    border-radius: 16px;
+    pointer-events: auto;
+  }
+
+  .kanban-bottom-dock .bulk-action-bar > * {
+    flex: 0 0 auto;
   }
 
   .kanban-bottom-scrollbar {
