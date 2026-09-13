@@ -276,10 +276,6 @@ function cardTagColor(value: string, color?: string) {
 }
 
 function formatScheduledCardDate(value: string) {
-  // Preserve the stored wall-clock time while presenting a concise, localized label.
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/);
-  if (match) return `Agendado: ${match[3]}/${match[2]} às ${match[4]}:${match[5]}`;
-
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Agendado";
   return `Agendado: ${new Intl.DateTimeFormat("pt-BR", {
@@ -292,7 +288,7 @@ function formatScheduledCardDate(value: string) {
 }
 
 function formatCalendarSchedule(date: string, time?: string | null) {
-  const parsed = new Date(date);
+  const parsed = new Date(`${date.slice(0, 10)}T12:00:00`);
   const formattedDate = Number.isNaN(parsed.getTime())
     ? date.slice(0, 10).split("-").reverse().join("/")
     : new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit" }).format(parsed);
@@ -3745,7 +3741,7 @@ function AdminWorkspacePage({
           onDelete={() => deleteAdminCardBySlug(slug, cardMenu.card.id).then(() => setRefreshKey((value) => value + 1))}
         />
       ) : null}
-      {cardClientDialog ? <CardClientDialog card={cardClientDialog} clients={clientOptions.filter((client) => client.slug !== slug)} onClose={() => setCardClientDialog(null)} onConfirm={async (targetSlug, mode, columnId) => { await createAdminCardBySlug(targetSlug, { columnId, title: `${cardClientDialog.title}${mode === "copy" ? " (copia)" : ""}`, caption: cardClientDialog.subtitle ?? null, primaryMediaUrl: cardClientDialog.mediaUrl ?? null, externalLinkUrl: cardClientDialog.externalLinkUrl ?? null, artType: cardClientDialog.typeLabel, status: cardClientDialog.statusBadges, tags: cardClientDialog.tags, mediaUrls: cardClientDialog.mediaUrls, hashtags: cardClientDialog.hashtags, deadlineAt: cardClientDialog.deadlineAt, scheduledAt: cardClientDialog.scheduledAt, clientLabel: cardClientDialog.clientLabel }); if (mode === "move") await deleteAdminCardBySlug(slug, cardClientDialog.id); setRefreshKey((value) => value + 1); }} /> : null}
+      {cardClientDialog ? <CardClientDialog card={cardClientDialog} clients={clientOptions.filter((client) => client.slug !== slug)} onClose={() => setCardClientDialog(null)} onConfirm={async (targetSlug, mode, columnId) => { await createAdminCardBySlug(targetSlug, { columnId, title: `${cardClientDialog.title}${mode === "copy" ? " (copia)" : ""}`, caption: cardClientDialog.subtitle ?? null, primaryMediaUrl: cardClientDialog.mediaUrl ?? null, externalLinkUrl: cardClientDialog.externalLinkUrl ?? null, artType: cardClientDialog.typeLabel, status: cardClientDialog.statusBadges, tags: cardClientDialog.tags, mediaUrls: cardClientDialog.mediaUrls, hashtags: cardClientDialog.hashtags, deadlineAt: cardClientDialog.deadlineAt, scheduledAt: cardClientDialog.scheduledAt, scheduledTimeZone: cardClientDialog.scheduledTimeZone, clientLabel: cardClientDialog.clientLabel }); if (mode === "move") await deleteAdminCardBySlug(slug, cardClientDialog.id); setRefreshKey((value) => value + 1); }} /> : null}
 
       {!isDesktopKanban ? bulkActionBar : null}
 
@@ -3756,7 +3752,7 @@ function AdminWorkspacePage({
           await Promise.all(selectedCards.map((card) => createAdminCardBySlug(slug, {
             columnId, title: `${card.title} (copia)`, caption: card.subtitle ?? null, primaryMediaUrl: card.mediaUrl ?? null,
             externalLinkUrl: card.externalLinkUrl ?? null, artType: card.typeLabel, status: card.statusBadges, tags: card.tags,
-            mediaUrls: card.mediaUrls, hashtags: card.hashtags, deadlineAt: card.deadlineAt, scheduledAt: card.scheduledAt, clientLabel: card.clientLabel,
+            mediaUrls: card.mediaUrls, hashtags: card.hashtags, deadlineAt: card.deadlineAt, scheduledAt: card.scheduledAt, scheduledTimeZone: card.scheduledTimeZone, clientLabel: card.clientLabel,
           })));
         }
         setBulkColumnDialog(null);
@@ -3786,6 +3782,7 @@ function AdminWorkspacePage({
                   hashtags: card.hashtags,
                   deadlineAt: card.deadlineAt,
                   scheduledAt: card.scheduledAt,
+                  scheduledTimeZone: card.scheduledTimeZone,
                   clientLabel: card.clientLabel,
                 });
             return action.then(() => setRefreshKey((value) => value + 1));

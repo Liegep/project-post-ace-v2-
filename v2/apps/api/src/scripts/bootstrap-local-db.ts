@@ -170,8 +170,21 @@ async function main() {
     const [rows] = await db.query<RowDataPacket[]>(`SHOW COLUMNS FROM agenda_events LIKE '${column}'`);
     if (rows.length === 0) await db.query(statement);
   }
+  const [agendaTimeZoneColumn] = await db.query<RowDataPacket[]>("SHOW COLUMNS FROM agenda_events LIKE 'event_timezone'");
+  if (agendaTimeZoneColumn.length === 0) {
+    await db.query("ALTER TABLE agenda_events ADD COLUMN event_timezone VARCHAR(64) NULL AFTER ends_at");
+  }
+  await db.query("UPDATE agenda_events SET event_timezone = ? WHERE event_timezone IS NULL OR TRIM(event_timezone) = ''", [env.APP_TIMEZONE]);
   await db.query(
     "CREATE TABLE IF NOT EXISTS agenda_labels (id CHAR(36) NOT NULL PRIMARY KEY, user_id CHAR(36) NOT NULL, name VARCHAR(120) NOT NULL, color VARCHAR(20) NOT NULL DEFAULT '#4285f4', created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP, UNIQUE KEY uq_agenda_labels_user_name (user_id, name), KEY idx_agenda_labels_user (user_id), CONSTRAINT fk_agenda_labels_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+  );
+  const [calendarTimeZoneColumn] = await db.query<RowDataPacket[]>("SHOW COLUMNS FROM card_calendar_events LIKE 'scheduled_timezone'");
+  if (calendarTimeZoneColumn.length === 0) {
+    await db.query("ALTER TABLE card_calendar_events ADD COLUMN scheduled_timezone VARCHAR(64) NULL AFTER publish_time");
+  }
+  await db.query(
+    "UPDATE card_calendar_events e LEFT JOIN kanban_cards c ON c.id = e.card_id SET e.scheduled_timezone = COALESCE(c.scheduled_timezone, ?) WHERE e.scheduled_timezone IS NULL OR TRIM(e.scheduled_timezone) = ''",
+    [env.APP_TIMEZONE],
   );
   await db.query(
     [

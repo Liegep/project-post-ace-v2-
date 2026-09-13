@@ -6,6 +6,7 @@ import type {
   UpdateCardInput,
 } from "./cards.schemas.js";
 import { normalizeCardCaption } from "./cards.text.js";
+import { instantToWallClock, zonedWallClockToIso } from "../../lib/zoned-date-time.js";
 
 type CardRow = RowDataPacket & {
   id: string;
@@ -77,7 +78,7 @@ function mapCardRow(row: CardRow) {
     isBriefApproval: Boolean(row.is_brief_approval),
     keepFiles: Boolean(row.keep_files),
     deadlineAt: row.deadline_at,
-    scheduledAt: row.scheduled_at,
+    scheduledAt: zonedWallClockToIso(row.scheduled_at, row.scheduled_timezone),
     scheduledTimeZone: row.scheduled_timezone,
     publishedAt: row.published_at,
     archived: Boolean(row.archived),
@@ -437,6 +438,7 @@ export async function upsertCalendarEventFromCard(
     mediaType: string;
     mediaUrls: string[];
     scheduledAt: Date | string | null;
+    scheduledTimeZone: string | null;
     eventColor: string | null;
     createdByUserId: string | null;
     archived: boolean;
@@ -447,7 +449,7 @@ export async function upsertCalendarEventFromCard(
     return;
   }
 
-  const scheduled = normalizeDateTime(card.scheduledAt);
+  const scheduled = instantToWallClock(card.scheduledAt, card.scheduledTimeZone);
   const publishDate = scheduled.slice(0, 10);
   const publishTime = scheduled.slice(11, 19);
 
@@ -468,7 +470,7 @@ export async function upsertCalendarEventFromCard(
     await db.query(
       [
         "UPDATE card_calendar_events",
-        "SET title = ?, caption = ?, media_type = ?, media_urls_json = ?, publish_date = ?, publish_time = ?, status = 'scheduled', event_color = ?",
+        "SET title = ?, caption = ?, media_type = ?, media_urls_json = ?, publish_date = ?, publish_time = ?, scheduled_timezone = ?, status = 'scheduled', event_color = ?",
         "WHERE id = ?",
       ].join(" "),
       [
@@ -478,6 +480,7 @@ export async function upsertCalendarEventFromCard(
         mediaJson,
         publishDate,
         publishTime,
+        card.scheduledTimeZone,
         card.eventColor,
         existing.id,
       ],
@@ -488,8 +491,8 @@ export async function upsertCalendarEventFromCard(
   await db.query(
     [
       "INSERT INTO card_calendar_events",
-      "(id, client_account_id, card_id, title, caption, media_type, media_urls_json, publish_date, publish_time, status, event_color, created_by_user_id)",
-      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)",
+      "(id, client_account_id, card_id, title, caption, media_type, media_urls_json, publish_date, publish_time, scheduled_timezone, status, event_color, created_by_user_id)",
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)",
     ].join(" "),
     [
       crypto.randomUUID(),
@@ -501,16 +504,9 @@ export async function upsertCalendarEventFromCard(
       mediaJson,
       publishDate,
       publishTime,
+      card.scheduledTimeZone,
       card.eventColor,
       card.createdByUserId,
     ],
   );
-}
-
-function normalizeDateTime(value: Date | string) {
-  const raw = typeof value === "string" ? value : value.toISOString();
-  const base = raw.replace("T", " ").replace("Z", "");
-  if (base.length === 16) return `${base}:00`;
-  if (base.length >= 19) return base.slice(0, 19);
-  return base;
 }
