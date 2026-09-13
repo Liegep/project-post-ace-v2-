@@ -2876,6 +2876,9 @@ function AdminWorkspacePage({
   const [refreshKey, setRefreshKey] = useState(0);
   const [boardView, setBoardView] = useState<"board" | "archived" | "texts" | "calendar" | "activities" | "brand" | "pautas">(() => window.location.hash.includes("view=brand") ? "brand" : "board");
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
+  const kanbanBottomScrollRef = useRef<HTMLDivElement>(null);
+  const [kanbanScrollContentWidth, setKanbanScrollContentWidth] = useState(0);
+  const [isDesktopKanban, setIsDesktopKanban] = useState(() => window.matchMedia("(min-width: 761px)").matches);
   const boardPanRef = useRef<{ pointerId: number; startX: number; scrollLeft: number } | null>(null);
   const [boardPanning, setBoardPanning] = useState(false);
   const workspaceMode = boardView === "archived" ? "archived" : "board";
@@ -3110,6 +3113,14 @@ function AdminWorkspacePage({
   };
 
   useEffect(() => {
+    const media = window.matchMedia("(min-width: 761px)");
+    const update = () => setIsDesktopKanban(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
     const scroller = kanbanScrollRef.current;
     if (!scroller || boardView !== "board") return;
 
@@ -3145,6 +3156,31 @@ function AdminWorkspacePage({
     scroller.addEventListener("wheel", handleWheel, { passive: false });
     return () => scroller.removeEventListener("wheel", handleWheel);
   }, [boardView, data.columns.length]);
+
+  useEffect(() => {
+    const boardScroller = kanbanScrollRef.current;
+    if (!boardScroller || boardView !== "board" || !isDesktopKanban) return;
+
+    const syncMetrics = () => {
+      setKanbanScrollContentWidth(boardScroller.scrollWidth);
+      const bottomScroller = kanbanBottomScrollRef.current;
+      if (!bottomScroller) return;
+      const boardRange = Math.max(1, boardScroller.scrollWidth - boardScroller.clientWidth);
+      const bottomRange = Math.max(0, bottomScroller.scrollWidth - bottomScroller.clientWidth);
+      bottomScroller.scrollLeft = (boardScroller.scrollLeft / boardRange) * bottomRange;
+    };
+
+    const observer = new ResizeObserver(syncMetrics);
+    observer.observe(boardScroller);
+    Array.from(boardScroller.children).forEach((child) => observer.observe(child));
+    window.addEventListener("resize", syncMetrics);
+    syncMetrics();
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", syncMetrics);
+    };
+  }, [boardView, data.columns.length, isDesktopKanban]);
 
   const handleKanbanHorizontalKeys = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -3203,6 +3239,29 @@ function AdminWorkspacePage({
     return /(pend|rascunho|aguard|alterac)/.test(statusText);
   }).length;
 
+  const boardActions = boardView === "board" ? <div className="board-actions">
+    <button className={selectionMode ? "ghost-button active" : "ghost-button"} onClick={() => {
+      setSelectionMode((active) => !active);
+      setSelectedCardIds([]);
+    }}>Selecionar</button>
+    <button ref={tagFilterButtonRef} className={tagFilterOpen || selectedTagFilters.length ? "ghost-button active" : "ghost-button"} onClick={() => setTagFilterOpen((open) => !open)}>Etiquetas{selectedTagFilters.length ? ` (${selectedTagFilters.length})` : ""}</button>
+    <button className="ghost-button" onClick={() => setEditingColumn("new")}>
+      Criar coluna
+    </button>
+    <button
+      className="gradient-button"
+      onClick={() => setNewCardTarget({ columnId: data.columns[0]?.id ?? null })}
+    >
+      Novo post
+    </button>
+  </div> : null;
+
+  const tagFilterPanel = boardView === "board" && tagFilterOpen ? <section ref={tagFilterPanelRef} className="tag-filter-panel">
+    <div className="tag-filter-search"><span>⌕</span><input autoFocus value={tagQuery} onChange={(event) => setTagQuery(event.target.value)} placeholder="Buscar..." /><button type="button" className="tag-filter-close" onClick={() => setTagFilterOpen(false)} aria-label="Fechar etiquetas">×</button></div>
+    <div className="tag-filter-tabs"><button className="active">Todas</button><button onClick={() => setSelectedTagFilters([])}>Limpar seleção</button></div>
+    <div className="tag-filter-list">{filteredTagDefinitions.map((tag) => { const selected = selectedTagFilters.includes(tag.name); return <button key={tag.id} className={selected ? "selected" : ""} onClick={() => setSelectedTagFilters((current) => selected ? current.filter((item) => item !== tag.name) : [...current, tag.name])}><span className="tag-filter-check">{selected ? "✓" : ""}</span><span className="tag-filter-dot" style={{ backgroundColor: tag.color }} /><strong>{tag.name}</strong></button>; })}{filteredTagDefinitions.length === 0 ? <p>Nenhuma etiqueta encontrada.</p> : null}</div>
+  </section> : null;
+
   return (
     <div className="page-grid admin-layout kanban-admin-layout">
       <AdminRail session={session} />
@@ -3222,27 +3281,8 @@ function AdminWorkspacePage({
                 <button className={boardView === "brand" ? "tab active" : "tab"} onClick={() => setBoardView("brand")}>Brand Brain</button>
                 <button className={boardView === "pautas" ? "tab active" : "tab"} onClick={() => setBoardView("pautas")}>Pautas <span className="tab-count">{sectionCounts.pautas}</span></button>
               </div>
-              {boardView === "board" ? <div className="board-actions">
-                <button className={selectionMode ? "ghost-button active" : "ghost-button"} onClick={() => {
-                  setSelectionMode((active) => !active);
-                  setSelectedCardIds([]);
-                }}>Selecionar</button>
-                <button ref={tagFilterButtonRef} className={tagFilterOpen || selectedTagFilters.length ? "ghost-button active" : "ghost-button"} onClick={() => setTagFilterOpen((open) => !open)}>Etiquetas{selectedTagFilters.length ? ` (${selectedTagFilters.length})` : ""}</button>
-                <button className="ghost-button" onClick={() => setEditingColumn("new")}>
-                  Criar coluna
-                </button>
-                <button
-                  className="gradient-button"
-                  onClick={() => setNewCardTarget({ columnId: data.columns[0]?.id ?? null })}
-                >
-                  Novo post
-                </button>
-              </div> : null}
-              {boardView === "board" && tagFilterOpen ? <section ref={tagFilterPanelRef} className="tag-filter-panel">
-                <div className="tag-filter-search"><span>⌕</span><input autoFocus value={tagQuery} onChange={(event) => setTagQuery(event.target.value)} placeholder="Buscar..." /><button type="button" className="tag-filter-close" onClick={() => setTagFilterOpen(false)} aria-label="Fechar etiquetas">×</button></div>
-                <div className="tag-filter-tabs"><button className="active">Todas</button><button onClick={() => setSelectedTagFilters([])}>Limpar seleção</button></div>
-                <div className="tag-filter-list">{filteredTagDefinitions.map((tag) => { const selected = selectedTagFilters.includes(tag.name); return <button key={tag.id} className={selected ? "selected" : ""} onClick={() => setSelectedTagFilters((current) => selected ? current.filter((item) => item !== tag.name) : [...current, tag.name])}><span className="tag-filter-check">{selected ? "✓" : ""}</span><span className="tag-filter-dot" style={{ backgroundColor: tag.color }} /><strong>{tag.name}</strong></button>; })}{filteredTagDefinitions.length === 0 ? <p>Nenhuma etiqueta encontrada.</p> : null}</div>
-              </section> : null}
+              {!isDesktopKanban ? boardActions : null}
+              {!isDesktopKanban ? tagFilterPanel : null}
             </div>
 
             <div className="board-layout">
@@ -3273,6 +3313,14 @@ function AdminWorkspacePage({
                 tabIndex={0}
                 role="region"
                 aria-label="Colunas do Kanban. Use as setas para navegar."
+                onScroll={(event) => {
+                  const bottomScroller = kanbanBottomScrollRef.current;
+                  if (!bottomScroller) return;
+                  const boardRange = Math.max(1, event.currentTarget.scrollWidth - event.currentTarget.clientWidth);
+                  const bottomRange = Math.max(0, bottomScroller.scrollWidth - bottomScroller.clientWidth);
+                  const nextScrollLeft = (event.currentTarget.scrollLeft / boardRange) * bottomRange;
+                  if (Math.abs(bottomScroller.scrollLeft - nextScrollLeft) > 1) bottomScroller.scrollLeft = nextScrollLeft;
+                }}
                 onKeyDown={handleKanbanHorizontalKeys}
                 onPointerDown={(event) => {
                   if (event.button !== 0 || event.target !== event.currentTarget) return;
@@ -3554,6 +3602,28 @@ function AdminWorkspacePage({
           </div>
         </section>
       </main>
+
+      {isDesktopKanban && boardView === "board" ? createPortal(<div className="kanban-bottom-dock">
+        {tagFilterPanel}
+        {boardActions}
+        <div
+          ref={kanbanBottomScrollRef}
+          className="kanban-bottom-scrollbar"
+          role="scrollbar"
+          aria-label="Navegar horizontalmente pelas colunas"
+          aria-orientation="horizontal"
+          onScroll={(event) => {
+            const boardScroller = kanbanScrollRef.current;
+            if (!boardScroller) return;
+            const bottomRange = Math.max(1, event.currentTarget.scrollWidth - event.currentTarget.clientWidth);
+            const boardRange = Math.max(0, boardScroller.scrollWidth - boardScroller.clientWidth);
+            const nextScrollLeft = (event.currentTarget.scrollLeft / bottomRange) * boardRange;
+            if (Math.abs(boardScroller.scrollLeft - nextScrollLeft) > 1) boardScroller.scrollLeft = nextScrollLeft;
+          }}
+        >
+          <span style={{ width: `${Math.max(kanbanScrollContentWidth, 1)}px` }} />
+        </div>
+      </div>, document.body) : null}
 
       <CardDetailModal
         mode="admin"
