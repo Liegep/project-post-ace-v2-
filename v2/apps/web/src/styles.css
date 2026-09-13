@@ -2964,6 +2964,15 @@ button {
 
 @media (max-width: 1120px) { .texts-studio { grid-template-columns: 225px minmax(440px, 1fr); }.texts-side-panel { grid-column: 2; grid-template-columns: repeat(3, minmax(0, 1fr)); padding-top: 0; }.texts-actions { align-content: start; }.texts-info p { margin-top: 8px; } }
 
+/* No portal desktop, a folha acompanha a altura util do viewport. Os 28px
+   correspondem exatamente aos 14px de padding superior e inferior do
+   app-shell; assim nao sobra uma faixa vazia abaixo de documentos curtos. */
+@media (min-width: 761px) {
+  .portal-texts-view {
+    min-height: max(560px, calc(100dvh - 28px));
+  }
+}
+
 .portal-text-banner { width: 100%; height: 190px; margin: 1.25rem 0 1.5rem; border-radius: 16px; background-position: center; background-size: cover; box-shadow: 0 14px 30px rgba(33, 53, 88, .14); }
 .client-showcase-card, .dashboard-list { border: 2px solid transparent; background: linear-gradient(145deg, rgba(255,255,255,.94), rgba(250,251,255,.88)) padding-box, linear-gradient(135deg, rgba(178,215,255,.95), rgba(208,194,255,.9), rgba(255,211,230,.9)) border-box; box-shadow: 0 14px 34px rgba(74, 91, 139, .09), 0 0 0 1px rgba(255,255,255,.55); }
 .dashboard-clients-full .client-showcase-card { border-color: rgba(255, 255, 255, .92); }
@@ -5831,6 +5840,13 @@ button {
   min-height: 0;
   padding: 12px 94px var(--kanban-floating-actions-space) 24px;
   overflow: hidden;
+}
+
+/* A reserva inferior acima existe para o dock de acoes do Quadro. A aba de
+   Textos nao renderiza esse dock, portanto usa o mesmo respiro da borda
+   superior e entrega toda a altura restante para a folha. */
+.kanban-admin-layout .board-layout:has(.texts-studio) {
+  padding-block-end: 12px;
 }
 
 /* NOTA: não recriar uma regra ".kanban-admin-layout .workspace-drawer-shell"
