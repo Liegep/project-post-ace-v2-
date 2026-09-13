@@ -2877,7 +2877,9 @@ function AdminWorkspacePage({
   const [boardView, setBoardView] = useState<"board" | "archived" | "texts" | "calendar" | "activities" | "brand" | "pautas">(() => window.location.hash.includes("view=brand") ? "brand" : "board");
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
   const kanbanBottomScrollRef = useRef<HTMLDivElement>(null);
+  const kanbanBottomDockRef = useRef<HTMLDivElement>(null);
   const [kanbanScrollContentWidth, setKanbanScrollContentWidth] = useState(0);
+  const [kanbanDockSpace, setKanbanDockSpace] = useState(112);
   const [isDesktopKanban, setIsDesktopKanban] = useState(() => window.matchMedia("(min-width: 761px)").matches);
   const boardPanRef = useRef<{ pointerId: number; startX: number; scrollLeft: number } | null>(null);
   const [boardPanning, setBoardPanning] = useState(false);
@@ -3182,6 +3184,31 @@ function AdminWorkspacePage({
     };
   }, [boardView, data.columns.length, isDesktopKanban]);
 
+  useEffect(() => {
+    const dock = kanbanBottomDockRef.current;
+    if (!dock || boardView !== "board" || !isDesktopKanban) return;
+
+    const updateDockSpace = () => {
+      const boardShell = kanbanScrollRef.current?.closest<HTMLElement>(".board-shell");
+      const shellScale = boardShell?.offsetHeight
+        ? boardShell.getBoundingClientRect().height / boardShell.offsetHeight
+        : 1;
+      const safeScale = Number.isFinite(shellScale) && shellScale > 0 ? shellScale : 1;
+      const dockTop = dock.getBoundingClientRect().top;
+      const visualSpace = Math.max(0, window.innerHeight - dockTop) + 12;
+      setKanbanDockSpace(Math.ceil(visualSpace / safeScale));
+    };
+
+    const observer = new ResizeObserver(updateDockSpace);
+    observer.observe(dock);
+    window.addEventListener("resize", updateDockSpace);
+    updateDockSpace();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateDockSpace);
+    };
+  }, [boardView, isDesktopKanban, selectionMode]);
+
   const handleKanbanHorizontalKeys = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
     if ((event.target as Element).closest("input, textarea, select, [contenteditable='true']")) return;
@@ -3262,6 +3289,21 @@ function AdminWorkspacePage({
     <div className="tag-filter-list">{filteredTagDefinitions.map((tag) => { const selected = selectedTagFilters.includes(tag.name); return <button key={tag.id} className={selected ? "selected" : ""} onClick={() => setSelectedTagFilters((current) => selected ? current.filter((item) => item !== tag.name) : [...current, tag.name])}><span className="tag-filter-check">{selected ? "✓" : ""}</span><span className="tag-filter-dot" style={{ backgroundColor: tag.color }} /><strong>{tag.name}</strong></button>; })}{filteredTagDefinitions.length === 0 ? <p>Nenhuma etiqueta encontrada.</p> : null}</div>
   </section> : null;
 
+  const bulkActionBar = selectionMode ? <BulkActionBar
+    selectedCount={selectedCards.length}
+    onCancel={() => { setSelectionMode(false); setSelectedCardIds([]); }}
+    onDelete={async () => {
+      if (!window.confirm(`Excluir ${selectedCards.length} cards? Esta ação não pode ser desfeita.`)) return;
+      await Promise.all(selectedCards.map((card) => deleteAdminCardBySlug(slug, card.id)));
+      finishBulkAction();
+    }}
+    onArchive={async () => { await Promise.all(selectedCards.map((card) => archiveAdminCardBySlug(slug, card.id))); finishBulkAction(); }}
+    onSendToClient={async () => { await Promise.all(selectedCards.map((card) => updateAdminCardBySlug(slug, card.id, { status: ["Enviar para Cliente", ...card.statusBadges.slice(1)] }))); finishBulkAction(); }}
+    onStatus={async (status) => { await Promise.all(selectedCards.map((card) => updateAdminCardBySlug(slug, card.id, { status: status ? [status, ...card.statusBadges.slice(1)] : [] }))); finishBulkAction(); }}
+    onCopy={() => setBulkColumnDialog("copy")}
+    onMove={() => setBulkColumnDialog("move")}
+  /> : null;
+
   return (
     <div className="page-grid admin-layout kanban-admin-layout">
       <AdminRail session={session} />
@@ -3285,7 +3327,7 @@ function AdminWorkspacePage({
               {!isDesktopKanban ? tagFilterPanel : null}
             </div>
 
-            <div className="board-layout">
+            <div className="board-layout" style={{ "--kanban-floating-actions-space": `${kanbanDockSpace}px` } as CSSProperties}>
               {boardView === "texts" ? <AdminTextsView clientName={data.clientName} slug={slug} onCountChange={updateTextsCount} /> : boardView === "calendar" ? <ClientKanbanCalendar slug={slug} /> : boardView === "activities" ? <KanbanActivities slug={slug} /> : boardView === "brand" ? <BrandBrainWorkspaceV2 slug={slug} clientName={data.clientName} /> : boardView === "pautas" ? <PautasWorkspace slug={slug} clientName={data.clientName} columns={data.columns} onSent={() => setRefreshKey((value) => value + 1)} onCountChange={updatePautasCount} /> : boardView === "archived" && (workspaceViewChanging || resource.loading) ? <div className="archived-empty">Carregando cards arquivados...</div> : boardView === "archived" ? <ArchivedCardsView
                 cards={archivedCards}
                 onOpenCard={setSelectedCardId}
@@ -3603,8 +3645,9 @@ function AdminWorkspacePage({
         </section>
       </main>
 
-      {isDesktopKanban && boardView === "board" ? createPortal(<div className="kanban-bottom-dock">
+      {isDesktopKanban && boardView === "board" ? createPortal(<div ref={kanbanBottomDockRef} className="kanban-bottom-dock">
         {tagFilterPanel}
+        {bulkActionBar}
         {boardActions}
         <div
           ref={kanbanBottomScrollRef}
@@ -3693,20 +3736,7 @@ function AdminWorkspacePage({
       ) : null}
       {cardClientDialog ? <CardClientDialog card={cardClientDialog} clients={clientOptions.filter((client) => client.slug !== slug)} onClose={() => setCardClientDialog(null)} onConfirm={async (targetSlug, mode, columnId) => { await createAdminCardBySlug(targetSlug, { columnId, title: `${cardClientDialog.title}${mode === "copy" ? " (copia)" : ""}`, caption: cardClientDialog.subtitle ?? null, primaryMediaUrl: cardClientDialog.mediaUrl ?? null, externalLinkUrl: cardClientDialog.externalLinkUrl ?? null, artType: cardClientDialog.typeLabel, status: cardClientDialog.statusBadges, tags: cardClientDialog.tags, mediaUrls: cardClientDialog.mediaUrls, hashtags: cardClientDialog.hashtags, deadlineAt: cardClientDialog.deadlineAt, scheduledAt: cardClientDialog.scheduledAt, clientLabel: cardClientDialog.clientLabel }); if (mode === "move") await deleteAdminCardBySlug(slug, cardClientDialog.id); setRefreshKey((value) => value + 1); }} /> : null}
 
-      {selectionMode ? <BulkActionBar
-        selectedCount={selectedCards.length}
-        onCancel={() => { setSelectionMode(false); setSelectedCardIds([]); }}
-        onDelete={async () => {
-          if (!window.confirm(`Excluir ${selectedCards.length} cards? Esta ação não pode ser desfeita.`)) return;
-          await Promise.all(selectedCards.map((card) => deleteAdminCardBySlug(slug, card.id)));
-          finishBulkAction();
-        }}
-        onArchive={async () => { await Promise.all(selectedCards.map((card) => archiveAdminCardBySlug(slug, card.id))); finishBulkAction(); }}
-        onSendToClient={async () => { await Promise.all(selectedCards.map((card) => updateAdminCardBySlug(slug, card.id, { status: ["Enviar para Cliente", ...card.statusBadges.slice(1)] }))); finishBulkAction(); }}
-        onStatus={async (status) => { await Promise.all(selectedCards.map((card) => updateAdminCardBySlug(slug, card.id, { status: status ? [status, ...card.statusBadges.slice(1)] : [] }))); finishBulkAction(); }}
-        onCopy={() => setBulkColumnDialog("copy")}
-        onMove={() => setBulkColumnDialog("move")}
-      /> : null}
+      {!isDesktopKanban ? bulkActionBar : null}
 
       {bulkColumnDialog ? <BulkColumnDialog mode={bulkColumnDialog} columns={data.columns} selectedCount={selectedCards.length} onClose={() => setBulkColumnDialog(null)} onConfirm={async (columnId) => {
         if (bulkColumnDialog === "move") {
