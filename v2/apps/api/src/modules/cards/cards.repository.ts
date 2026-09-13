@@ -414,7 +414,7 @@ export async function archiveDueScheduledCards(
   try {
     await connection.beginTransaction();
     await connection.query(
-      `UPDATE kanban_cards SET archived = 1, archived_at = NOW(), published_at = COALESCE(published_at, NOW()) WHERE id IN (${placeholders})`,
+      `UPDATE kanban_cards SET archived = 1, archived_at = NOW(), published_at = COALESCE(published_at, scheduled_at) WHERE id IN (${placeholders})`,
       cardIds,
     );
     await connection.query(`DELETE FROM card_calendar_events WHERE card_id IN (${placeholders})`, cardIds);
