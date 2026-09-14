@@ -1955,7 +1955,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
             /> : null}
             <DashboardCommemorativeWidget clients={clients} />
             {postsToday.length > 0 ? <DashboardTodayPostsWidget items={postsToday} /> : null}
-            {approvedPautas.length > 0 ? <DashboardApprovedPautasWidget items={approvedPautas} /> : null}
+            {approvedPautas.length > 0 ? <DashboardApprovedPautasWidget items={approvedPautas} userId={session.id} /> : null}
             {clientActivities.length > 0 ? <DashboardClientActivitiesWidget items={clientActivities} userId={session.id} onSchedule={setScheduleActivity} /> : null}
             {internalMessages.length > 0 ? <DashboardInternalMessagesWidget items={internalMessages} onOpen={(item) => { if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; }} /> : null}
             {clientSubmissions.length > 0 ? <DashboardClientSubmissionsWidget items={clientSubmissions} userId={session.id} /> : null}
@@ -2538,21 +2538,36 @@ function DashboardClientSubmissionsWidget({ items, userId }: { items: DashboardS
   </section>;
 }
 
-function DashboardApprovedPautasWidget({ items }: { items: DashboardApprovedPauta[] }) {
+function DashboardApprovedPautasWidget({ items, userId }: { items: DashboardApprovedPauta[]; userId: string }) {
+  const storageKey = `designhub-v2-dismissed-approved-pautas:${userId}`;
+  const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
+    try { return JSON.parse(window.localStorage.getItem(storageKey) ?? "[]") as string[]; }
+    catch { return []; }
+  });
   const [expanded, setExpanded] = useState(false);
-  const displayedItems = expanded ? items : items.slice(0, 4);
+  const visibleItems = items.filter((item) => !dismissedIds.includes(item.id));
+  const displayedItems = expanded ? visibleItems : visibleItems.slice(0, 4);
+  const dismiss = (id: string) => setDismissedIds((current) => {
+    const next = current.includes(id) ? current : [...current, id];
+    window.localStorage.setItem(storageKey, JSON.stringify(next));
+    return next;
+  });
   const formatDate = (value: string) => {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? "Aprovada" : new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(date).replace(".", "");
   };
+  if (!visibleItems.length) return null;
   return <section className="dashboard-list dashboard-approved-pautas compact">
-    <header className="dashboard-submissions-head"><div><h3>Pautas aprovadas</h3><small>Ideias aprovadas pelos clientes, separadas dos feedbacks de posts</small></div><span>{items.length}</span></header>
-    <div className="dashboard-approved-pautas-list">{displayedItems.map((item) => <button type="button" key={item.id} onClick={() => { window.location.hash = `/admin/${encodeURIComponent(item.clientSlug)}`; }}>
-      <span className="dashboard-approved-pauta-icon">✓</span>
-      <span><strong>{item.title}</strong><small>{item.clientName}</small></span>
-      <time>{formatDate(item.approvedAt)}</time>
-    </button>)}</div>
-    {items.length > 4 ? <button type="button" className="dashboard-link" onClick={() => setExpanded((current) => !current)}>{expanded ? "Ver menos" : "Ver todas"}</button> : null}
+    <header className="dashboard-submissions-head"><div><h3>Pautas aprovadas</h3><small>Ideias aprovadas pelos clientes, separadas dos feedbacks de posts</small></div><span>{visibleItems.length}</span></header>
+    <div className="dashboard-approved-pautas-list">{displayedItems.map((item) => <div className="dashboard-approved-pauta-row" key={item.id}>
+      <button type="button" className="dashboard-approved-pauta-open" onClick={() => { window.location.hash = `/admin/${encodeURIComponent(item.clientSlug)}`; }}>
+        <span className="dashboard-approved-pauta-icon">✓</span>
+        <span><strong>{item.title}</strong><small>{item.clientName}</small></span>
+        <time>{formatDate(item.approvedAt)}</time>
+      </button>
+      <button type="button" className="dashboard-approved-pauta-dismiss" onClick={() => dismiss(item.id)} aria-label={`Marcar ${item.title} como visualizada`} title="Já vi esta pauta">×</button>
+    </div>)}</div>
+    {visibleItems.length > 4 ? <button type="button" className="dashboard-link" onClick={() => setExpanded((current) => !current)}>{expanded ? "Ver menos" : "Ver todas"}</button> : null}
   </section>;
 }
 
