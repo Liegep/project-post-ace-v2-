@@ -2287,13 +2287,13 @@ function useCalendarArtworkHover() {
 }
 
 const AGENDA_NEUTRAL_COLOR = "#d8dde7";
+const AGENDA_DEFAULT_COLOR = "#c9f7df";
 
 function agendaEventVisualState(event: AgendaEvent) {
   const isPast = new Date(event.startsAt).getTime() < Date.now();
-  const isUnlabeled = !event.labelId && !event.labelName;
   return {
-    color: isPast || isUnlabeled ? AGENDA_NEUTRAL_COLOR : event.color,
-    className: `${isPast ? " is-past" : ""}${isUnlabeled ? " is-unlabeled" : ""}`,
+    color: isPast ? AGENDA_NEUTRAL_COLOR : event.color || AGENDA_DEFAULT_COLOR,
+    className: isPast ? " is-past" : "",
   };
 }
 
