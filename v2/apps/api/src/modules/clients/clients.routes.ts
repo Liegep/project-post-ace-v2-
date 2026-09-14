@@ -238,11 +238,11 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         "ORDER BY e.occurred_at DESC LIMIT 8",
       ].join(" "), params),
       app.db.query<RowDataPacket[]>(
-        ["SELECT c.id, c.title, c.deadline_at AS scheduledAt, c.client_label AS clientLabel, a.name AS clientName, a.logo_url AS clientLogoUrl FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id WHERE c.archived = 0 AND c.deadline_at >= ? AND c.deadline_at < ?", scopeSql, "ORDER BY c.deadline_at ASC LIMIT 20"].join(" "),
+        ["SELECT c.id, c.title, c.scheduled_at AS scheduledAt, a.name AS clientName, a.logo_url AS clientLogoUrl FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id WHERE c.archived = 0 AND c.scheduled_at >= ? AND c.scheduled_at < ?", scopeSql, "ORDER BY c.scheduled_at ASC LIMIT 20"].join(" "),
         [tomorrowStart, upcomingEnd, ...params],
       ),
       app.db.query<RowDataPacket[]>(
-        ["SELECT c.id, c.title, c.deadline_at AS scheduledAt, c.primary_media_url AS mediaUrl, a.name AS clientName, a.logo_url AS clientLogoUrl FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id WHERE c.archived = 0 AND c.deadline_at >= ? AND c.deadline_at < ?", scopeSql, "ORDER BY c.deadline_at ASC, c.title ASC LIMIT 50"].join(" "),
+        ["SELECT c.id, c.title, c.scheduled_at AS scheduledAt, c.primary_media_url AS mediaUrl, a.name AS clientName, a.logo_url AS clientLogoUrl FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id WHERE c.archived = 0 AND c.scheduled_at >= ? AND c.scheduled_at < ?", scopeSql, "ORDER BY c.scheduled_at ASC, c.title ASC LIMIT 50"].join(" "),
         [todayStart, tomorrowStart, ...params],
       ),
       app.db.query<RowDataPacket[]>(
