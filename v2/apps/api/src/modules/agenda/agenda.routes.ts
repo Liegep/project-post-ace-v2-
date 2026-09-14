@@ -16,6 +16,12 @@ type AgendaRow = RowDataPacket & {
   eventTimeZone: string | null;
 };
 
+function toSqlDateTimeBoundary(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value.slice(0, 19).replace("T", " ");
+  return parsed.toISOString().slice(0, 19).replace("T", " ");
+}
+
 function serializeAgendaRows(rows: AgendaRow[], fallbackTimeZone: string) {
   return rows.map((row) => ({
     ...row,
@@ -39,9 +45,11 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
       ? ""
       : " AND e.created_by_user_id = ?";
 
+    const to = toSqlDateTimeBoundary(query.to);
+    const from = toSqlDateTimeBoundary(query.from);
     const params = isSuperAdmin
-      ? [query.to, query.from]
-      : [query.to, query.from, auth.user.id];
+      ? [to, from]
+      : [to, from, auth.user.id];
 
     const [rows] = await app.db.query<AgendaRow[]>(
       "SELECT e.id, e.title, e.task_description AS taskDescription, DATE_FORMAT(e.starts_at, '%Y-%m-%d %H:%i:%s') AS startsAt, DATE_FORMAT(e.ends_at, '%Y-%m-%d %H:%i:%s') AS endsAt, e.event_timezone AS eventTimeZone, e.recurrence_type AS recurrenceType, e.repeat_until AS repeatUntil, e.color, e.is_completed AS isCompleted, e.client_account_id AS clientAccountId, e.agenda_label_id AS labelId, e.meet_link AS meetLink, a.name AS clientName, l.name AS labelName FROM agenda_events e LEFT JOIN client_accounts a ON a.id = e.client_account_id LEFT JOIN agenda_labels l ON l.id = e.agenda_label_id WHERE e.starts_at < DATE_ADD(?, INTERVAL 1 DAY) AND (e.recurrence_type <> 'none' OR e.starts_at >= DATE_SUB(?, INTERVAL 1 DAY))" + scopeSql + " ORDER BY e.starts_at ASC",
@@ -64,7 +72,7 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
 
     const [rows] = await app.db.query<AgendaRow[]>(
       "SELECT e.id, e.title, e.task_description AS taskDescription, DATE_FORMAT(e.starts_at, '%Y-%m-%d %H:%i:%s') AS startsAt, DATE_FORMAT(e.ends_at, '%Y-%m-%d %H:%i:%s') AS endsAt, e.event_timezone AS eventTimeZone, e.recurrence_type AS recurrenceType, e.repeat_until AS repeatUntil, e.color, e.is_completed AS isCompleted, e.client_account_id AS clientAccountId, e.meet_link AS meetLink, a.name AS clientName FROM agenda_events e LEFT JOIN client_accounts a ON a.id = e.client_account_id WHERE e.client_account_id = ? AND e.meet_link IS NOT NULL AND TRIM(e.meet_link) <> '' AND e.starts_at < DATE_ADD(?, INTERVAL 1 DAY) AND (e.recurrence_type <> 'none' OR e.starts_at >= DATE_SUB(?, INTERVAL 1 DAY)) ORDER BY e.starts_at ASC",
-      [params.clientAccountId, query.to, query.from],
+      [params.clientAccountId, toSqlDateTimeBoundary(query.to), toSqlDateTimeBoundary(query.from)],
     );
 
     return { items: serializeAgendaRows(rows, app.appEnv.APP_TIMEZONE) };
