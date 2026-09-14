@@ -5986,8 +5986,14 @@ button {
   position: relative;
   z-index: 4;
   min-width: 320px;
-  max-width: 430px;
-  flex: 1 1 380px;
+  max-width: none;
+  flex: 1 1 auto;
+}
+
+.client-kanban-navbar .page-context-middle .board-actions {
+  width: max-content;
+  max-width: 100%;
+  margin-left: auto;
 }
 
 .client-context-logo {

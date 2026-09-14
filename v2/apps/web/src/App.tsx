@@ -516,7 +516,7 @@ function PageContextBanner({ eyebrow, title, description, metrics, action, middl
   return <section className="page-context-banner">
     <div className="page-context-copy"><p className="eyebrow">{eyebrow}</p><div className={`page-context-title${titleClassName ? ` ${titleClassName}` : ""}`}>{titleIcon}{title}</div><p>{description}</p></div>
     {middle ? <div className="page-context-middle">{middle}</div> : null}
-    <div className="page-context-aside"><div className="dashboard-orbs page-context-orbs" aria-hidden="true"><i /><i /><i /></div><div className="dashboard-metrics dashboard-metrics-inline">{metrics.map((metric) => <article className={metric.tone ?? ""} key={metric.label}>{metric.icon}<div><span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.note}</small></div></article>)}</div>{action}</div>
+    {metrics.length || action ? <div className="page-context-aside"><div className="dashboard-orbs page-context-orbs" aria-hidden="true"><i /><i /><i /></div>{metrics.length ? <div className="dashboard-metrics dashboard-metrics-inline">{metrics.map((metric) => <article className={metric.tone ?? ""} key={metric.label}>{metric.icon}<div><span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.note}</small></div></article>)}</div> : null}{action}</div> : null}
   </section>;
 }
 
@@ -3280,14 +3280,7 @@ function AdminWorkspacePage({
     setRefreshKey((value) => value + 1);
   };
 
-  const kanbanCards = [...data.columns.flatMap((column) => column.cards), ...data.withoutColumn];
   const unassignedCards = filterCardsByTags(data.withoutColumn);
-  const pendingPosts = kanbanCards.filter((card) => {
-    const statusText = [card.clientLabel, ...card.statusBadges]
-      .join(" ")
-      .toLocaleLowerCase("pt-BR");
-    return /(pend|rascunho|aguard|alterac)/.test(statusText);
-  }).length;
 
   const boardActions = boardView === "board" ? <div className="board-actions">
     <button className={selectionMode ? "ghost-button active" : "ghost-button"} onClick={() => {
@@ -3338,7 +3331,7 @@ function AdminWorkspacePage({
       <AdminRail session={session} />
 
       <main className="main-column">
-        <WorkspaceNavbar session={session} onLogout={onLogout} clientKanban workspaceContext={<PageContextBanner eyebrow="Social" title={<><span className="client-context-logo"><img src={designHubV2Logo} alt="Design Hub" /></span><WorkspaceSelector clientName={data.clientName} slug={slug} options={clientOptions} /></>} middle={desktopKanbanActions} description="" metrics={[{ label: "Colunas", value: data.columns.length, note: "Etapas do fluxo", icon: <UiIcon name="layers" />, tone: "posts" }, { label: "Posts", value: data.columns.reduce((total, column) => total + column.cards.length, 0), note: "No quadro atual", icon: <UiIcon name="file" />, tone: "clients" }, { label: "Pendentes", value: pendingPosts, note: "Aguardando ação", icon: <UiIcon name="clock" />, tone: "pending" }]} />} />
+        <WorkspaceNavbar session={session} onLogout={onLogout} clientKanban workspaceContext={<PageContextBanner eyebrow="Social" title={<><span className="client-context-logo"><img src={designHubV2Logo} alt="Design Hub" /></span><WorkspaceSelector clientName={data.clientName} slug={slug} options={clientOptions} /></>} middle={desktopKanbanActions} description="" metrics={[]} />} />
 
         <section className="workspace">
           <div className="board-shell glass">
