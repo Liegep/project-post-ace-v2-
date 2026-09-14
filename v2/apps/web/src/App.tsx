@@ -3326,12 +3326,18 @@ function AdminWorkspacePage({
     onMove={() => setBulkColumnDialog("move")}
   /> : null;
 
+  const desktopKanbanActions = isDesktopKanban && boardView === "board" ? <div className="kanban-header-actions">
+    {boardActions}
+    {tagFilterPanel}
+    {bulkActionBar}
+  </div> : null;
+
   return (
     <div className="page-grid admin-layout kanban-admin-layout">
       <AdminRail session={session} />
 
       <main className="main-column">
-        <WorkspaceNavbar session={session} onLogout={onLogout} clientKanban workspaceContext={<PageContextBanner eyebrow="Social" title={<><span className="client-context-logo"><img src={designHubV2Logo} alt="Design Hub" /></span><WorkspaceSelector clientName={data.clientName} slug={slug} options={clientOptions} /></>} description="" metrics={[{ label: "Colunas", value: data.columns.length, note: "Etapas do fluxo", icon: <UiIcon name="layers" />, tone: "posts" }, { label: "Posts", value: data.columns.reduce((total, column) => total + column.cards.length, 0), note: "No quadro atual", icon: <UiIcon name="file" />, tone: "clients" }, { label: "Pendentes", value: pendingPosts, note: "Aguardando ação", icon: <UiIcon name="clock" />, tone: "pending" }]} />} />
+        <WorkspaceNavbar session={session} onLogout={onLogout} clientKanban workspaceContext={<PageContextBanner eyebrow="Social" title={<><span className="client-context-logo"><img src={designHubV2Logo} alt="Design Hub" /></span><WorkspaceSelector clientName={data.clientName} slug={slug} options={clientOptions} />{desktopKanbanActions}</>} description="" metrics={[{ label: "Colunas", value: data.columns.length, note: "Etapas do fluxo", icon: <UiIcon name="layers" />, tone: "posts" }, { label: "Posts", value: data.columns.reduce((total, column) => total + column.cards.length, 0), note: "No quadro atual", icon: <UiIcon name="file" />, tone: "clients" }, { label: "Pendentes", value: pendingPosts, note: "Aguardando ação", icon: <UiIcon name="clock" />, tone: "pending" }]} />} />
 
         <section className="workspace">
           <div className="board-shell glass">
@@ -3667,10 +3673,7 @@ function AdminWorkspacePage({
         </section>
       </main>
 
-      {isDesktopKanban && boardView === "board" ? createPortal(<div ref={kanbanBottomDockRef} className="kanban-bottom-dock">
-        {tagFilterPanel}
-        {bulkActionBar}
-        {boardActions}
+      {isDesktopKanban && boardView === "board" ? createPortal(<div ref={kanbanBottomDockRef} className="kanban-bottom-dock kanban-scroll-dock">
         <div
           ref={kanbanBottomScrollRef}
           className="kanban-bottom-scrollbar"
