@@ -512,9 +512,10 @@ function WorkspaceNavbar({ session, onLogout, clientKanban = false, workspaceCon
   </div>;
 }
 
-function PageContextBanner({ eyebrow, title, description, metrics, action, titleClassName, titleIcon }: { eyebrow: string; title: ReactNode; description: string; metrics: PageMetric[]; action?: ReactNode; titleClassName?: string; titleIcon?: ReactNode }) {
+function PageContextBanner({ eyebrow, title, description, metrics, action, middle, titleClassName, titleIcon }: { eyebrow: string; title: ReactNode; description: string; metrics: PageMetric[]; action?: ReactNode; middle?: ReactNode; titleClassName?: string; titleIcon?: ReactNode }) {
   return <section className="page-context-banner">
     <div className="page-context-copy"><p className="eyebrow">{eyebrow}</p><div className={`page-context-title${titleClassName ? ` ${titleClassName}` : ""}`}>{titleIcon}{title}</div><p>{description}</p></div>
+    {middle ? <div className="page-context-middle">{middle}</div> : null}
     <div className="page-context-aside"><div className="dashboard-orbs page-context-orbs" aria-hidden="true"><i /><i /><i /></div><div className="dashboard-metrics dashboard-metrics-inline">{metrics.map((metric) => <article className={metric.tone ?? ""} key={metric.label}>{metric.icon}<div><span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.note}</small></div></article>)}</div>{action}</div>
   </section>;
 }
@@ -3337,7 +3338,7 @@ function AdminWorkspacePage({
       <AdminRail session={session} />
 
       <main className="main-column">
-        <WorkspaceNavbar session={session} onLogout={onLogout} clientKanban workspaceContext={<PageContextBanner eyebrow="Social" title={<><span className="client-context-logo"><img src={designHubV2Logo} alt="Design Hub" /></span><WorkspaceSelector clientName={data.clientName} slug={slug} options={clientOptions} />{desktopKanbanActions}</>} description="" metrics={[{ label: "Colunas", value: data.columns.length, note: "Etapas do fluxo", icon: <UiIcon name="layers" />, tone: "posts" }, { label: "Posts", value: data.columns.reduce((total, column) => total + column.cards.length, 0), note: "No quadro atual", icon: <UiIcon name="file" />, tone: "clients" }, { label: "Pendentes", value: pendingPosts, note: "Aguardando ação", icon: <UiIcon name="clock" />, tone: "pending" }]} />} />
+        <WorkspaceNavbar session={session} onLogout={onLogout} clientKanban workspaceContext={<PageContextBanner eyebrow="Social" title={<><span className="client-context-logo"><img src={designHubV2Logo} alt="Design Hub" /></span><WorkspaceSelector clientName={data.clientName} slug={slug} options={clientOptions} /></>} middle={desktopKanbanActions} description="" metrics={[{ label: "Colunas", value: data.columns.length, note: "Etapas do fluxo", icon: <UiIcon name="layers" />, tone: "posts" }, { label: "Posts", value: data.columns.reduce((total, column) => total + column.cards.length, 0), note: "No quadro atual", icon: <UiIcon name="file" />, tone: "clients" }, { label: "Pendentes", value: pendingPosts, note: "Aguardando ação", icon: <UiIcon name="clock" />, tone: "pending" }]} />} />
 
         <section className="workspace">
           <div className="board-shell glass">

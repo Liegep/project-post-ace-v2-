@@ -5977,10 +5977,17 @@ button {
 }
 
 .client-kanban-navbar .page-context-title {
-  flex-wrap: wrap;
   margin: 0 0 3px;
   font-size: 1rem;
   letter-spacing: 0;
+}
+
+.client-kanban-navbar .page-context-middle {
+  position: relative;
+  z-index: 4;
+  min-width: 320px;
+  max-width: 430px;
+  flex: 1 1 380px;
 }
 
 .client-context-logo {
