@@ -2159,7 +2159,7 @@ function DashboardTasksWidget({ posts }: { posts: DashboardUpcomingPost[] }) {
         <span className="dashboard-task-dot" />
         <span className="dashboard-task-avatar">{post.clientLogoUrl ? <img src={post.clientLogoUrl} alt="" /> : post.clientName.slice(0, 2).toUpperCase()}</span>
         <div><strong>{post.title}</strong><small>{post.clientName}</small></div>
-        <span className="dashboard-task-status">⌁ {post.clientLabel || "Agendado"}</span>
+        <span className="dashboard-task-status">⌁ Agendado</span>
         <span className="dashboard-task-date">◷ {formatDashboardDate(post.scheduledAt)}</span>
       </article>)}
       {displayedPosts.length === 0 ? <p className="dashboard-upcoming-empty">Nenhum post previsto para os próximos 3 dias.</p> : null}

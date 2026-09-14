@@ -35,6 +35,7 @@ import { proposalRoutes } from "./modules/proposals/proposals.routes.js";
 import { designBriefRoutes } from "./modules/design-briefs/design-briefs.routes.js";
 import { dashboardNotesRoutes } from "./modules/dashboard-notes/dashboard-notes.routes.js";
 import { scheduledCardArchiverPluginRegistered } from "./plugins/scheduled-card-archiver.js";
+import { ensureCardTimeZoneStorage } from "./modules/cards/cards.storage.js";
 
 export async function buildApp() {
   const appEnv = loadEnv();
@@ -64,6 +65,7 @@ export async function buildApp() {
     let databaseAvailableAtStartup = true;
     try {
       await ensureMcpStorage(app.db);
+      await ensureCardTimeZoneStorage(app.db, appEnv.APP_TIMEZONE);
     } catch (error) {
       databaseAvailableAtStartup = false;
       app.log.error(error, "Database unavailable during startup; continuing with degraded API");
