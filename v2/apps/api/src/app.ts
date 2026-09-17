@@ -9,6 +9,7 @@ import { authPluginRegistered } from "./plugins/auth.js";
 import { httpErrorsPluginRegistered } from "./plugins/http-errors.js";
 import { healthRoutes } from "./routes/health.js";
 import { authRoutes } from "./modules/auth/auth.routes.js";
+import { getClientScope } from "./modules/auth/auth.access.js";
 import { clientRoutes } from "./modules/clients/clients.routes.js";
 import { columnRoutes } from "./modules/columns/columns.routes.js";
 import { cardRoutes } from "./modules/cards/cards.routes.js";
@@ -62,6 +63,53 @@ export async function buildApp() {
   } else {
     await app.register(dbPluginRegistered);
     await app.register(authPluginRegistered);
+
+    // Role boundaries that apply across more than one module live here so
+    // they cannot be bypassed by navigating directly to a hidden frontend URL.
+    app.addHook("preHandler", async (request) => {
+      const auth = request.auth;
+      if (!auth) return;
+      const pathname = request.url.split("?", 1)[0];
+
+      if (
+        auth.user.globalRole !== "super_admin" &&
+        (pathname.startsWith("/api/agenda/events") || pathname.startsWith("/api/agenda/labels"))
+      ) {
+        throw app.httpErrors.forbidden("A agenda pessoal é exclusiva do super admin.");
+      }
+
+      // Admins may assign people only inside client accounts that are already
+      // in their scope. The legacy client route still checks for super_admin,
+      // so elevate this single request after verifying the client boundary.
+      if (auth.user.globalRole === "admin" && request.method === "POST") {
+        const match = pathname.match(/^\/api\/clients\/([^/]+)\/accesses$/);
+        if (match) {
+          const clientAccountId = decodeURIComponent(match[1]);
+          const scope = getClientScope(auth.user.globalRole, auth.user.id, auth.memberships);
+          if (scope.mode !== "scoped" || !scope.clientIds.includes(clientAccountId)) {
+            throw app.httpErrors.forbidden("Você só pode atribuir pessoas aos seus próprios clientes.");
+          }
+          request.auth = {
+            ...auth,
+            user: { ...auth.user, globalRole: "super_admin" },
+          };
+        }
+      }
+    });
+
+    // The dashboard must not leak the super admin's personal agenda to lower
+    // roles, even when an event has no client or references an assigned client.
+    app.addHook("preSerialization", async (request, _reply, payload) => {
+      if (
+        request.url.split("?", 1)[0] === "/api/dashboard/overview" &&
+        request.auth?.user.globalRole !== "super_admin" &&
+        payload && typeof payload === "object" && !Array.isArray(payload)
+      ) {
+        return { ...(payload as Record<string, unknown>), agendaToday: [] };
+      }
+      return payload;
+    });
+
     let databaseAvailableAtStartup = true;
     try {
       await ensureMcpStorage(app.db);
