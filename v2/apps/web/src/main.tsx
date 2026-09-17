@@ -5,6 +5,7 @@ import { App } from "./App";
 import { AdminKanbanSearch } from "./AdminKanbanSearch";
 import { AgendaOverflowViewer } from "./AgendaOverflowViewer";
 import { RoleAccessGuard } from "./RoleAccessGuard";
+import { TeamPasswordReset } from "./TeamPasswordReset";
 import "./styles.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -14,6 +15,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <AdminKanbanSearch />
       <AgendaOverflowViewer />
       <RoleAccessGuard />
+      <TeamPasswordReset />
     </HashRouter>
   </React.StrictMode>,
 );
