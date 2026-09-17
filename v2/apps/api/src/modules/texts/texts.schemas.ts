@@ -1,6 +1,15 @@
 import { z } from "zod";
 
 const nullableText = z.string().max(20_000).nullable().optional();
+const coverImageUrlSchema = z
+  .string()
+  .max(2048)
+  .refine(
+    (value) => z.string().url().safeParse(value).success || value.startsWith("/api/uploads/"),
+    "URL de banner inválida.",
+  )
+  .nullable()
+  .optional();
 const textTagSchema = z.union([
   z.string().trim().min(1).max(40).transform((name) => ({ name, color: "#7568dc" })),
   z.object({
@@ -13,6 +22,7 @@ export const createTextSchema = z.object({
   title: z.string().min(1).max(255).default("Novo texto"),
   contentHtml: z.string().max(500_000).default("<p>Comece a escrever aqui.</p>"),
   contentType: z.enum(["Blog", "Artigo", "Texto", "Copy", "Documento"]).default("Texto"),
+  coverImageUrl: coverImageUrlSchema,
   tags: z.array(textTagSchema).max(12).default([]),
 });
 
@@ -20,6 +30,7 @@ export const updateTextSchema = z.object({
   title: z.string().min(1).max(255).optional(),
   contentHtml: z.string().max(500_000).optional(),
   contentType: z.enum(["Blog", "Artigo", "Texto", "Copy", "Documento"]).optional(),
+  coverImageUrl: coverImageUrlSchema,
   plannedAt: z.string().date().nullable().optional(),
   internalNotes: nullableText,
   status: z.enum(["Rascunho", "Em revisão", "Aprovado"]).optional(),
