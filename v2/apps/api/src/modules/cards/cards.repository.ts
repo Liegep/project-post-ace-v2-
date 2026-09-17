@@ -350,12 +350,23 @@ export async function moveCard(
         : [card.clientAccountId, card.archived ? 1 : 0],
     );
 
-    for (const [position, id] of orderedCardIds.entries()) {
-      await connection.query(
-        "UPDATE kanban_cards SET column_id = ?, position = ? WHERE id = ?",
-        [input.columnId ?? null, position, id],
-      );
-    }
+    const positionCases = orderedCardIds.map(() => "WHEN ? THEN ?").join(" ");
+    const idPlaceholders = orderedCardIds.map(() => "?").join(", ");
+    const reorderParams: Array<string | number | null> = [];
+    orderedCardIds.forEach((id, position) => {
+      reorderParams.push(id, position);
+    });
+    reorderParams.push(input.columnId ?? null, ...orderedCardIds);
+
+    await connection.query(
+      [
+        "UPDATE kanban_cards",
+        `SET position = CASE id ${positionCases} ELSE position END,`,
+        "column_id = ?",
+        `WHERE id IN (${idPlaceholders})`,
+      ].join(" "),
+      reorderParams,
+    );
 
     await connection.commit();
   } catch (error) {
