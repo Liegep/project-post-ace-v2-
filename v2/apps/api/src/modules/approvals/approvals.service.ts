@@ -63,6 +63,7 @@ export async function reconcileApprovedCardColumns(app: FastifyInstance) {
       "FROM kanban_cards c",
       "WHERE c.archived = 0 AND c.is_brief_approval = 0 AND (LOWER(c.client_label) LIKE '%aprovad%' OR EXISTS (",
       "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL",
+      "AND (c.approval_reset_at IS NULL OR al.created_at >= c.approval_reset_at)",
       "))",
     ].join(" "),
   );
@@ -76,6 +77,7 @@ export async function reconcileApprovedCardColumns(app: FastifyInstance) {
         "UPDATE kanban_cards c SET c.column_id = ?, c.client_label = 'Aprovado pelo cliente'",
         "WHERE c.client_account_id = ? AND c.archived = 0 AND (LOWER(c.client_label) LIKE '%aprovad%' OR EXISTS (",
         "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL",
+        "AND (c.approval_reset_at IS NULL OR al.created_at >= c.approval_reset_at)",
         ")) AND c.is_brief_approval = 0 AND (c.column_id IS NULL OR c.column_id <> ?)",
       ].join(" "),
       [approvedColumn.id, row.clientAccountId, approvedColumn.id],
@@ -89,6 +91,7 @@ export async function reconcileApprovedCardColumns(app: FastifyInstance) {
       "WHERE c.archived = 0 AND c.is_brief_approval = 1",
       "AND (LOWER(c.client_label) LIKE '%aprovad%' OR EXISTS (",
       "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL",
+      "AND (c.approval_reset_at IS NULL OR al.created_at >= c.approval_reset_at)",
       "))",
     ].join(" "),
   );
@@ -101,6 +104,7 @@ export async function reconcileApprovedCardColumns(app: FastifyInstance) {
         "WHERE c.client_account_id = ? AND c.archived = 0 AND c.is_brief_approval = 1",
         "AND (LOWER(c.client_label) LIKE '%aprovad%' OR EXISTS (",
         "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL",
+        "AND (c.approval_reset_at IS NULL OR al.created_at >= c.approval_reset_at)",
         ")) AND (c.column_id IS NULL OR c.column_id <> ?)",
       ].join(" "),
       [approvedBriefsColumn.id, row.clientAccountId, approvedBriefsColumn.id],
