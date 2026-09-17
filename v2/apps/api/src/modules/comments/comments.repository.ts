@@ -45,7 +45,10 @@ export async function listCommentsByCardId(
   const params: Array<string | number> = [cardId];
 
   if (!options.includeInternal) {
-    sql += " AND cc.is_internal = 0";
+    // The client portal only exposes comments authored by clients/guests.
+    // This also protects historical admin comments that may have been stored
+    // with is_internal = 0 before administrative comments became internal by default.
+    sql += " AND cc.is_internal = 0 AND cc.author_role IN ('cliente', 'guest')";
   }
 
   sql += " ORDER BY cc.created_at ASC";
