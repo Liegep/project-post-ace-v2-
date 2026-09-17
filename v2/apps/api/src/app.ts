@@ -71,8 +71,11 @@ export async function buildApp() {
       if (!auth) return;
       const pathname = request.url.split("?", 1)[0];
 
+      // Lower roles may read their client-scoped agenda data for the Social
+      // Calendar, but writes to the private agenda remain super-admin only.
       if (
         auth.user.globalRole !== "super_admin" &&
+        request.method !== "GET" &&
         (pathname.startsWith("/api/agenda/events") || pathname.startsWith("/api/agenda/labels"))
       ) {
         throw app.httpErrors.forbidden("A agenda pessoal é exclusiva do super admin.");
