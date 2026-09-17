@@ -16,9 +16,8 @@ async function ensureColumn(
 }
 
 /**
- * Production deployments do not run the local bootstrap script. Keep the two
- * scheduling tables compatible with the running API before any card route or
- * background archiver can query them.
+ * Production deployments do not run the local bootstrap script. Keep card
+ * storage compatible with the running API before routes/background jobs query it.
  */
 export async function ensureCardTimeZoneStorage(db: Pool, fallbackTimeZone: string) {
   await ensureColumn(
@@ -32,6 +31,12 @@ export async function ensureCardTimeZoneStorage(db: Pool, fallbackTimeZone: stri
     "card_calendar_events",
     "scheduled_timezone",
     "VARCHAR(64) NULL AFTER publish_time",
+  );
+  await ensureColumn(
+    db,
+    "kanban_cards",
+    "approval_reset_at",
+    "DATETIME NULL AFTER is_brief_approval",
   );
 
   await db.query(
