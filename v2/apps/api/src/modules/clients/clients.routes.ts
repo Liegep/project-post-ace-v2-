@@ -21,6 +21,7 @@ import {
 } from "./clients.service.js";
 import { ensureClientMembershipAccessLevels, findClientAccountById, findClientPermissionsByAccountId, removeClientMembership } from "./clients.repository.js";
 import { listColumnsByClientAccountId } from "../columns/columns.repository.js";
+import { ensureCardActivityEventsTable } from "../cards/card-activity.service.js";
 import {
   addBrandBrainComment,
   createBrandBrainRevision,
@@ -47,6 +48,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
   await ensureClientMembershipAccessLevels(app.db);
   await ensureBrandBrainTables(app.db);
   await ensureClientFeedbackEventsTable(app.db);
+  await ensureCardActivityEventsTable(app.db);
 
   app.post("/portal/accounts/:clientAccountId/feedback-events", async (request) => {
     const { clientAccountId } = request.params as { clientAccountId: string };
@@ -122,9 +124,10 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         "SELECT id, title, 'Card criado' AS detail, 'card' AS type, created_at AS occurred_at FROM kanban_cards WHERE client_account_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 15 DAY)",
         "UNION ALL SELECT id, title, 'Card atualizado' AS detail, 'card' AS type, updated_at AS occurred_at FROM kanban_cards WHERE client_account_id = ? AND updated_at > created_at AND updated_at >= DATE_SUB(NOW(), INTERVAL 15 DAY)",
         "UNION ALL SELECT al.id, kc.title, CASE WHEN al.approved_at IS NOT NULL THEN 'Aprovado pelo cliente' WHEN al.viewed_at IS NOT NULL THEN 'Aprovação visualizada' ELSE 'Pedido de aprovação enviado' END, 'approval', COALESCE(al.approved_at, al.viewed_at, al.created_at) FROM approval_links al INNER JOIN kanban_cards kc ON kc.id = al.card_id WHERE al.client_account_id = ? AND COALESCE(al.approved_at, al.viewed_at, al.created_at) >= DATE_SUB(NOW(), INTERVAL 15 DAY)",
+        "UNION ALL SELECT cae.id, kc.title, CONCAT(cae.actor_name, CASE WHEN cae.activity_type = 'client_approved' THEN ' aprovou o conteúdo' ELSE ' solicitou alterações' END) AS detail, 'approval' AS type, cae.occurred_at FROM card_activity_events cae INNER JOIN kanban_cards kc ON kc.id = cae.card_id WHERE cae.client_account_id = ? AND cae.occurred_at >= DATE_SUB(NOW(), INTERVAL 15 DAY)",
         "ORDER BY occurred_at DESC LIMIT 120",
       ].join(" "),
-      [clientAccountId, clientAccountId, clientAccountId],
+      [clientAccountId, clientAccountId, clientAccountId, clientAccountId],
     );
     return { items: rows.map((row) => ({ id: `${row.type}-${row.id}-${row.occurred_at}`, title: row.title, detail: row.detail, type: row.type, occurredAt: row.occurred_at })) };
   });
