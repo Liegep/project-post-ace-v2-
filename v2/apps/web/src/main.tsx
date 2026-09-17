@@ -9,6 +9,7 @@ import { TeamPasswordReset } from "./TeamPasswordReset";
 import { SessionMembershipSync } from "./SessionMembershipSync";
 import { TextCoverPersistence } from "./TextCoverPersistence";
 import { ApprovedContentTypeLabels } from "./ApprovedContentTypeLabels";
+import { InitialDataLoadingShield } from "./InitialDataLoadingShield";
 import "./styles.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -22,6 +23,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <SessionMembershipSync />
       <TextCoverPersistence />
       <ApprovedContentTypeLabels />
+      <InitialDataLoadingShield />
     </HashRouter>
   </React.StrictMode>,
 );
