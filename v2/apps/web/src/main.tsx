@@ -10,6 +10,7 @@ import { SessionMembershipSync } from "./SessionMembershipSync";
 import { TextCoverPersistence } from "./TextCoverPersistence";
 import { ApprovedContentTypeLabels } from "./ApprovedContentTypeLabels";
 import { InitialDataLoadingShield } from "./InitialDataLoadingShield";
+import { PortalTextTagHider } from "./PortalTextTagHider";
 import "./styles.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -24,6 +25,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <TextCoverPersistence />
       <ApprovedContentTypeLabels />
       <InitialDataLoadingShield />
+      <PortalTextTagHider />
     </HashRouter>
   </React.StrictMode>,
 );
