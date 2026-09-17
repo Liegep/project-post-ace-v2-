@@ -22,23 +22,49 @@ type ApiBoardResponse = {
 
 const shellStyle: CSSProperties = {
   position: "relative",
-  minWidth: 240,
-  maxWidth: 320,
-  flex: "1 1 260px",
+  minWidth: 260,
+  maxWidth: 360,
+  flex: "1 1 320px",
+  marginLeft: 2,
 };
 
 const inputStyle: CSSProperties = {
   width: "100%",
-  minHeight: 38,
-  borderRadius: 12,
-  border: "1px solid rgba(125, 112, 180, 0.24)",
+  height: 44,
+  minHeight: 44,
+  borderRadius: 14,
+  border: "1px solid rgba(125, 112, 180, 0.22)",
   background: "rgba(255, 255, 255, 0.92)",
   color: "#2c2740",
-  padding: "0 38px 0 36px",
+  padding: "0 40px 0 38px",
   font: "inherit",
+  fontSize: 14,
   outline: "none",
   boxSizing: "border-box",
+  boxShadow: "0 2px 8px rgba(67, 73, 111, 0.03)",
 };
+
+const toolbarPolish = `
+  .kanban-header-actions {
+    gap: 10px !important;
+  }
+  .kanban-header-actions .board-actions {
+    gap: 8px !important;
+  }
+  .kanban-header-actions .board-actions > button {
+    box-sizing: border-box !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    padding: 0 16px !important;
+    border-radius: 14px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    white-space: nowrap !important;
+    font-size: .78rem !important;
+    line-height: 1 !important;
+  }
+`;
 
 const resultsStyle: CSSProperties = {
   position: "absolute",
@@ -164,48 +190,51 @@ export function AdminKanbanSearch() {
   };
 
   return createPortal(
-    <div style={shellStyle} onFocus={() => { if (trimmedQuery.length >= 2) setOpen(true); }}>
-      <span aria-hidden="true" style={{ position: "absolute", left: 12, top: 9, zIndex: 2, opacity: 0.65 }}>⌕</span>
-      <input
-        type="search"
-        value={query}
-        onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
-        onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}
-        placeholder="Buscar card no Kanban..."
-        aria-label="Buscar card no Kanban administrativo"
-        style={inputStyle}
-      />
-      {query ? <button type="button" onClick={() => { setQuery(""); setResults([]); setOpen(false); }} aria-label="Limpar busca" style={{ position: "absolute", right: 10, top: 7, zIndex: 2, border: 0, background: "transparent", fontSize: 20, cursor: "pointer", color: "#6d6488" }}>×</button> : null}
-      {open && trimmedQuery.length >= 2 ? <div style={resultsStyle}>
-        {loading ? <p style={{ margin: 8, color: "#6d6488" }}>Pesquisando...</p> : null}
-        {!loading && error ? <p style={{ margin: 8, color: "#b42318" }}>{error}</p> : null}
-        {!loading && !error && results.length === 0 ? <p style={{ margin: 8, color: "#6d6488" }}>Nenhum card encontrado.</p> : null}
-        {!loading && !error ? results.map((result) => (
-          <button
-            type="button"
-            key={`${result.archived ? "archived" : "active"}-${result.id}`}
-            onClick={() => openCard(result)}
-            disabled={result.archived}
-            title={result.archived ? "Este card está em Arquivados." : "Abrir card"}
-            style={{
-              width: "100%",
-              textAlign: "left",
-              border: 0,
-              borderRadius: 10,
-              padding: "10px 12px",
-              marginBottom: 4,
-              background: result.archived ? "rgba(243, 240, 249, 0.72)" : "transparent",
-              color: "#2c2740",
-              cursor: result.archived ? "default" : "pointer",
-              opacity: result.archived ? 0.78 : 1,
-            }}
-          >
-            <strong style={{ display: "block", fontSize: 14 }}>{result.title}</strong>
-            <small style={{ display: "block", marginTop: 3, color: "#756b8e" }}>{result.archived ? `Arquivado • ${result.columnName}` : result.columnName}</small>
-          </button>
-        )) : null}
-      </div> : null}
-    </div>,
+    <>
+      <style>{toolbarPolish}</style>
+      <div style={shellStyle} onFocus={() => { if (trimmedQuery.length >= 2) setOpen(true); }}>
+        <span aria-hidden="true" style={{ position: "absolute", left: 13, top: 12, zIndex: 2, opacity: 0.62 }}>⌕</span>
+        <input
+          type="search"
+          value={query}
+          onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
+          onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}
+          placeholder="Buscar card no Kanban..."
+          aria-label="Buscar card no Kanban administrativo"
+          style={inputStyle}
+        />
+        {query ? <button type="button" onClick={() => { setQuery(""); setResults([]); setOpen(false); }} aria-label="Limpar busca" style={{ position: "absolute", right: 11, top: 9, zIndex: 2, border: 0, background: "transparent", fontSize: 20, cursor: "pointer", color: "#6d6488" }}>×</button> : null}
+        {open && trimmedQuery.length >= 2 ? <div style={resultsStyle}>
+          {loading ? <p style={{ margin: 8, color: "#6d6488" }}>Pesquisando...</p> : null}
+          {!loading && error ? <p style={{ margin: 8, color: "#b42318" }}>{error}</p> : null}
+          {!loading && !error && results.length === 0 ? <p style={{ margin: 8, color: "#6d6488" }}>Nenhum card encontrado.</p> : null}
+          {!loading && !error ? results.map((result) => (
+            <button
+              type="button"
+              key={`${result.archived ? "archived" : "active"}-${result.id}`}
+              onClick={() => openCard(result)}
+              disabled={result.archived}
+              title={result.archived ? "Este card está em Arquivados." : "Abrir card"}
+              style={{
+                width: "100%",
+                textAlign: "left",
+                border: 0,
+                borderRadius: 10,
+                padding: "10px 12px",
+                marginBottom: 4,
+                background: result.archived ? "rgba(243, 240, 249, 0.72)" : "transparent",
+                color: "#2c2740",
+                cursor: result.archived ? "default" : "pointer",
+                opacity: result.archived ? 0.78 : 1,
+              }}
+            >
+              <strong style={{ display: "block", fontSize: 14 }}>{result.title}</strong>
+              <small style={{ display: "block", marginTop: 3, color: "#756b8e" }}>{result.archived ? `Arquivado • ${result.columnName}` : result.columnName}</small>
+            </button>
+          )) : null}
+        </div> : null}
+      </div>
+    </>,
     target,
   );
 }
