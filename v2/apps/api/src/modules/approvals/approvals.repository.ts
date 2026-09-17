@@ -71,10 +71,12 @@ export async function findApprovalLinkByToken(db: Pool, token: string) {
 export async function listApprovalLinksByCardId(db: Pool, cardId: string) {
   const [rows] = await db.query<ApprovalLinkRow[]>(
     [
-      "SELECT id, client_account_id, card_id, token, expires_at, is_active, viewed_at, approved_at, created_by_user_id, created_at",
-      "FROM approval_links",
-      "WHERE card_id = ?",
-      "ORDER BY created_at DESC",
+      "SELECT al.id, al.client_account_id, al.card_id, al.token, al.expires_at, al.is_active, al.viewed_at, al.approved_at, al.created_by_user_id, al.created_at",
+      "FROM approval_links al",
+      "INNER JOIN kanban_cards c ON c.id = al.card_id",
+      "WHERE al.card_id = ?",
+      "AND (c.approval_reset_at IS NULL OR al.created_at >= c.approval_reset_at)",
+      "ORDER BY al.created_at DESC",
     ].join(" "),
     [cardId],
   );
