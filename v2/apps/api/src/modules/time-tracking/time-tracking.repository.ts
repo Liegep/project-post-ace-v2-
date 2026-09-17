@@ -156,7 +156,7 @@ export async function clearCompletedTimeEntries(db: Pool, input: { from: Date; t
   return result.affectedRows;
 }
 
-export async function listTimeEntries(db: Pool, input: { from: Date; to: Date; clientIds: string[] | null; clientAccountId?: string }) {
+export async function listTimeEntries(db: Pool, input: { from: Date; to: Date; clientIds: string[] | null; clientAccountId?: string; userId?: string }) {
   if (input.clientIds && input.clientIds.length === 0) return [];
   const where = ["t.cleared_at IS NULL", "t.started_at < FROM_UNIXTIME(?)", "COALESCE(t.ended_at, CURRENT_TIMESTAMP(3)) >= FROM_UNIXTIME(?)"];
   const values: unknown[] = [input.to.getTime() / 1000, input.from.getTime() / 1000];
@@ -167,6 +167,10 @@ export async function listTimeEntries(db: Pool, input: { from: Date; to: Date; c
   if (input.clientAccountId) {
     where.push("t.client_account_id = ?");
     values.push(input.clientAccountId);
+  }
+  if (input.userId) {
+    where.push("t.user_id = ?");
+    values.push(input.userId);
   }
   const [rows] = await db.query<TimeEntryRow[]>(`${selection} WHERE ${where.join(" AND ")} ORDER BY t.started_at DESC`, values);
   return rows.map(mapEntry);
