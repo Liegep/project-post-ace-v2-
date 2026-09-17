@@ -1,15 +1,15 @@
 import type { FastifyPluginAsync } from "fastify";
-import { assertInternalAccess } from "../auth/auth.access.js";
+import { assertSuperAdmin } from "../auth/auth.access.js";
 import { recordClientFeedbackEvent } from "../clients/client-feedback.service.js";
 import { createProposal, decideProposal, deleteProposal, ensureProposalTables, findProposal, findProposalByToken, listProposals, markProposalViewed, updateProposal } from "./proposals.repository.js";
 import { createProposalSchema, decideProposalSchema, updateProposalSchema } from "./proposals.schemas.js";
 
 export const proposalRoutes: FastifyPluginAsync = async (app) => {
   await ensureProposalTables(app.db);
-  app.get("/proposals", async (request) => { assertInternalAccess(request); return { items: await listProposals(app.db) }; });
-  app.post("/proposals", async (request) => { assertInternalAccess(request); return { proposal: await createProposal(app.db, request.auth!.user.id, createProposalSchema.parse(request.body)) }; });
-  app.patch("/proposals/:proposalId", async (request) => { assertInternalAccess(request); const {proposalId}=request.params as {proposalId:string}; if(!await findProposal(app.db,proposalId)) throw app.httpErrors.notFound("Proposta não encontrada."); return {proposal:await updateProposal(app.db,proposalId,updateProposalSchema.parse(request.body))}; });
-  app.delete("/proposals/:proposalId", async (request) => { assertInternalAccess(request); const {proposalId}=request.params as {proposalId:string}; return {ok:await deleteProposal(app.db,proposalId)}; });
+  app.get("/proposals", async (request) => { assertSuperAdmin(request); return { items: await listProposals(app.db) }; });
+  app.post("/proposals", async (request) => { assertSuperAdmin(request); return { proposal: await createProposal(app.db, request.auth!.user.id, createProposalSchema.parse(request.body)) }; });
+  app.patch("/proposals/:proposalId", async (request) => { assertSuperAdmin(request); const {proposalId}=request.params as {proposalId:string}; if(!await findProposal(app.db,proposalId)) throw app.httpErrors.notFound("Proposta não encontrada."); return {proposal:await updateProposal(app.db,proposalId,updateProposalSchema.parse(request.body))}; });
+  app.delete("/proposals/:proposalId", async (request) => { assertSuperAdmin(request); const {proposalId}=request.params as {proposalId:string}; return {ok:await deleteProposal(app.db,proposalId)}; });
   app.get("/public/proposals/:token", async (request) => { const {token}=request.params as {token:string}; const proposal=await findProposalByToken(app.db,token); if(!proposal) throw app.httpErrors.notFound("Proposta não encontrada."); if(new Date(proposal.expiresAt).getTime()<Date.now()&&proposal.status!=="accepted") await updateProposal(app.db,proposal.id,{status:"expired"}); else if(["sent","viewed"].includes(proposal.status)) await markProposalViewed(app.db,token); return {proposal:await findProposalByToken(app.db,token)}; });
   app.post("/public/proposals/:token/decision", async (request) => { const {token}=request.params as {token:string}; const current=await findProposalByToken(app.db,token); if(!current) throw app.httpErrors.notFound("Proposta não encontrada."); if(new Date(current.expiresAt).getTime()<Date.now()&&current.status!=="accepted") throw app.httpErrors.badRequest("Esta proposta expirou."); const {status}=decideProposalSchema.parse(request.body); const proposal=await decideProposal(app.db,token,status); if(status==="accepted") { const [accounts]=await app.db.query<Array<{id:string;name:string} & import("mysql2/promise").RowDataPacket>>("SELECT id,name FROM client_accounts WHERE LOWER(name)=LOWER(?) LIMIT 1",[current.clientName]); await recordClientFeedbackEvent(app.db,{clientAccountId:accounts[0]?.id??null,clientName:accounts[0]?.name??current.clientName,sourceType:"proposal",sourceId:current.id,activityType:"proposal_accepted",title:current.proposalType||"Proposta comercial",detail:current.plan||"Proposta aceita pelo cliente"}); } return {proposal}; });
 };
