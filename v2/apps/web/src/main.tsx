@@ -6,6 +6,7 @@ import { AdminKanbanSearch } from "./AdminKanbanSearch";
 import { AgendaOverflowViewer } from "./AgendaOverflowViewer";
 import { RoleAccessGuard } from "./RoleAccessGuard";
 import { TeamPasswordReset } from "./TeamPasswordReset";
+import { SessionMembershipSync } from "./SessionMembershipSync";
 import "./styles.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
@@ -16,6 +17,7 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <AgendaOverflowViewer />
       <RoleAccessGuard />
       <TeamPasswordReset />
+      <SessionMembershipSync />
     </HashRouter>
   </React.StrictMode>,
 );
