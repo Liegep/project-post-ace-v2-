@@ -23,6 +23,7 @@ export const timeTrackingRoutes: FastifyPluginAsync = async (app) => {
       to: new Date(query.to),
       clientIds: scope.mode === "global" ? null : scope.clientIds,
       clientAccountId: query.clientAccountId,
+      userId: auth.user.globalRole === "super_admin" ? undefined : auth.user.id,
     }) };
   });
 
@@ -77,7 +78,7 @@ export const timeTrackingRoutes: FastifyPluginAsync = async (app) => {
       from: new Date(query.from), to: new Date(query.to),
       clientIds: scope.mode === "global" ? null : scope.clientIds,
       clientAccountId: query.clientAccountId,
-      userId: auth.user.globalRole === "colaborador" ? auth.user.id : undefined,
+      userId: auth.user.globalRole === "super_admin" ? undefined : auth.user.id,
     });
     return { ok: true, removed };
   });
