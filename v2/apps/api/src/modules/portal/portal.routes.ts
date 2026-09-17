@@ -5,6 +5,7 @@ import { getPortalCardDetail } from "../cards/card-detail.service.js";
 import { createKanbanCard } from "../cards/cards.service.js";
 import { findCardById, listCardsByClientAccountId, moveCard, updateCard } from "../cards/cards.repository.js";
 import { recordCaptionVersion } from "../cards/caption-history.repository.js";
+import { ensureCardActivityEventsTable, recordCardActivityEvent } from "../cards/card-activity.service.js";
 import { createColumn, listColumnsByClientAccountId, updateColumn } from "../columns/columns.repository.js";
 import { findClientPermissionsByAccountId } from "../clients/clients.repository.js";
 import { createClientTag, listClientTags } from "../tags/tags.repository.js";
@@ -13,6 +14,8 @@ import { createPortalPostSchema, portalBoardQuerySchema, portalCardDecisionSchem
 import { getPortalBoard, getPortalHome } from "./portal.service.js";
 
 export const portalRoutes: FastifyPluginAsync = async (app) => {
+  await ensureCardActivityEventsTable(app.db);
+
   app.get("/portal/accounts/:clientAccountId/home", async (request) => {
     const params = request.params as { clientAccountId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
@@ -246,6 +249,18 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
       if (destinationColumn) {
         updatedCard = await moveCard(app.db, params.cardId, updatedCard, { columnId: destinationColumn.id }) ?? updatedCard;
       }
+    }
+
+    if (actor.globalRole === "cliente") {
+      await recordCardActivityEvent(app.db, {
+        clientAccountId: params.clientAccountId,
+        cardId: params.cardId,
+        actorUserId: actor.id,
+        actorName: actor.fullName,
+        actorRole: actor.globalRole,
+        activityType: input.approved ? "client_approved" : "client_changes_requested",
+        detail: input.approved ? "Aprovou o conteúdo" : "Solicitou alterações",
+      });
     }
 
     return { ok: true, card: updatedCard };
