@@ -22,9 +22,17 @@ import {
 import { findCardById } from "./cards.repository.js";
 import { getInternalCardDetail } from "./card-detail.service.js";
 
+function normalizeApprovalText(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+}
+
 function isInheritedApprovalStatus(value: string) {
-  const normalized = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  const normalized = normalizeApprovalText(value);
   return normalized === "aprovado" || normalized === "aprovada" || normalized === "aprovado pelo cliente" || normalized === "pauta aprovada" || normalized === "pautas aprovadas";
+}
+
+function isSendToClientStatus(value: string) {
+  return normalizeApprovalText(value) === "enviar para cliente";
 }
 
 export const cardRoutes: FastifyPluginAsync = async (app) => {
@@ -100,12 +108,19 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
       throw app.httpErrors.notFound("Card não encontrado nesta conta.");
     }
 
-    const convertingApprovedBriefToPost = current.isBriefApproval && input.isBriefApproval === false;
+    const currentHasApproval = current.status.some(isInheritedApprovalStatus)
+      || /aprovad/i.test(normalizeApprovalText(current.clientLabel));
+    const sendingApprovedBriefAsPost = current.isBriefApproval
+      && currentHasApproval
+      && (input.status ?? []).some(isSendToClientStatus);
+    const convertingApprovedBriefToPost = current.isBriefApproval
+      && (input.isBriefApproval === false || sendingApprovedBriefAsPost);
+
     const effectiveInput = convertingApprovedBriefToPost
       ? {
           ...input,
           isBriefApproval: false,
-          clientLabel: input.clientLabel && !/aprovad/i.test(input.clientLabel.normalize("NFD").replace(/[\u0300-\u036f]/g, ""))
+          clientLabel: input.clientLabel && !/aprovad/i.test(normalizeApprovalText(input.clientLabel))
             ? input.clientLabel
             : "Pendente",
           status: (input.status ?? current.status).filter((status) => !isInheritedApprovalStatus(status)),
