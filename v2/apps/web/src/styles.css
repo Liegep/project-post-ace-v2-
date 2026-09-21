@@ -10362,3 +10362,18 @@ button {
     font-size: .64rem;
   }
 }
+
+
+/* Admin card editor: make client feedback state easier to scan. */
+.client-feedback-status {
+  font-weight: 800;
+}
+.client-feedback-status.approved {
+  color: #5fd59b;
+}
+.client-feedback-status.changes {
+  color: #f0c75e;
+}
+.client-feedback-status.pending {
+  color: inherit;
+}
