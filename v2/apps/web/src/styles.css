@@ -10377,3 +10377,67 @@ button {
 .client-feedback-status.pending {
   color: #c6b8ff;
 }
+
+
+/* Admin card editor: compact visual client-return badge. */
+.client-feedback-field {
+  gap: 8px;
+}
+.client-feedback-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  gap: 8px;
+  min-height: 30px;
+  padding: 6px 11px;
+  border-radius: 999px;
+  font-size: .78rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: .01em;
+  border: 1px solid transparent;
+}
+.client-feedback-badge i {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: currentColor;
+  box-shadow: 0 0 0 3px rgba(255,255,255,.06);
+}
+.client-feedback-badge.approved {
+  color: #72dba7;
+  background: rgba(73, 186, 127, .12);
+  border-color: rgba(114, 219, 167, .24);
+}
+.client-feedback-badge.changes {
+  color: #f0c75e;
+  background: rgba(240, 199, 94, .10);
+  border-color: rgba(240, 199, 94, .24);
+}
+.client-feedback-badge.pending {
+  color: #c6b8ff;
+  background: rgba(157, 132, 255, .11);
+  border-color: rgba(198, 184, 255, .22);
+}
+
+/* Admin card editor: quick operational send-to-client action. */
+.send-client-button {
+  min-height: 42px;
+  padding: 0 18px;
+  border: 1px solid rgba(86, 207, 137, .30);
+  border-radius: 12px;
+  color: #f7fff9;
+  background: linear-gradient(135deg, #2dbb73, #249d61);
+  box-shadow: 0 8px 20px rgba(35, 151, 92, .16);
+  font-weight: 800;
+  cursor: pointer;
+}
+.send-client-button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(35, 151, 92, .22);
+}
+.send-client-button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
