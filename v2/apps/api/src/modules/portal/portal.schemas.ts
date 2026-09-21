@@ -24,6 +24,7 @@ export const createPortalPostSchema = z.object({
 });
 
 export const portalCardDecisionSchema = z.object({
+  expectedApprovalRevision: z.number().int().nonnegative().optional(),
   approved: z.boolean(),
   commentText: z.string().trim().max(5000).optional(),
 });

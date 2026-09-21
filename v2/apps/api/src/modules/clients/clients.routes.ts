@@ -125,9 +125,10 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         "UNION ALL SELECT id, title, 'Card atualizado' AS detail, 'card' AS type, updated_at AS occurred_at FROM kanban_cards WHERE client_account_id = ? AND updated_at > created_at AND updated_at >= DATE_SUB(NOW(), INTERVAL 15 DAY)",
         "UNION ALL SELECT al.id, kc.title, CASE WHEN al.approved_at IS NOT NULL THEN 'Aprovado pelo cliente' WHEN al.viewed_at IS NOT NULL THEN 'Aprovação visualizada' ELSE 'Pedido de aprovação enviado' END, 'approval', COALESCE(al.approved_at, al.viewed_at, al.created_at) FROM approval_links al INNER JOIN kanban_cards kc ON kc.id = al.card_id WHERE al.client_account_id = ? AND COALESCE(al.approved_at, al.viewed_at, al.created_at) >= DATE_SUB(NOW(), INTERVAL 15 DAY)",
         "UNION ALL SELECT cae.id, kc.title, CONCAT(cae.actor_name, CASE WHEN cae.activity_type = 'client_approved' THEN ' aprovou o conteúdo' ELSE ' solicitou alterações' END) AS detail, 'approval' AS type, cae.occurred_at FROM card_activity_events cae INNER JOIN kanban_cards kc ON kc.id = cae.card_id WHERE cae.client_account_id = ? AND cae.occurred_at >= DATE_SUB(NOW(), INTERVAL 15 DAY)",
+        "UNION ALL SELECT ae.id, kc.title, CONCAT(ae.actor_name, CASE WHEN ae.action = 'resubmitted' THEN ' reenviou para aprovação' ELSE ' iniciou a aprovação do post após a pauta' END), 'approval', ae.created_at FROM card_approval_events ae INNER JOIN kanban_cards kc ON kc.id = ae.card_id WHERE kc.client_account_id = ? AND ae.action IN ('resubmitted', 'converted_to_post') AND ae.created_at >= DATE_SUB(NOW(), INTERVAL 15 DAY)",
         "ORDER BY occurred_at DESC LIMIT 120",
       ].join(" "),
-      [clientAccountId, clientAccountId, clientAccountId, clientAccountId],
+      [clientAccountId, clientAccountId, clientAccountId, clientAccountId, clientAccountId],
     );
     return { items: rows.map((row) => ({ id: `${row.type}-${row.id}-${row.occurred_at}`, title: row.title, detail: row.detail, type: row.type, occurredAt: row.occurred_at })) };
   });
@@ -208,22 +209,29 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
       ].join(" "), params),
       app.db.query<RowDataPacket[]>([
         "SELECT activity.* FROM (",
+        "SELECT CONCAT('approval-event-', e.id) AS id, c.id AS cardId, c.title, e.created_at AS occurredAt,",
+        "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl, e.decision AS activityType,",
+        "CASE WHEN e.source = 'legacy' THEN CONCAT('Estado anterior preservado: ', COALESCE(e.comment_text, '')) ELSE COALESCE(e.comment_text, '') END AS detail,",
+        "1 AS recordedDecision, CASE WHEN e.revision = c.approval_revision AND c.approval_state = 'approved' AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL THEN 1 ELSE 0 END AS canSchedule",
+        "FROM card_approval_events e JOIN kanban_cards c ON c.id = e.card_id JOIN client_accounts a ON a.id = c.client_account_id",
+        "WHERE c.is_brief_approval = 0 AND e.decision IN ('approved', 'changes_requested')", scopeSql,
+        "UNION ALL",
         "SELECT CONCAT('decision-', c.id, '-', UNIX_TIMESTAMP(c.updated_at)) AS id, c.id AS cardId, c.title, c.updated_at AS occurredAt,",
         "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl,",
         "CASE WHEN LOWER(c.client_label) LIKE '%aprovad%' THEN 'approved' ELSE 'changes_requested' END AS activityType,",
-        "CASE WHEN LOWER(c.client_label) LIKE '%aprovad%' THEN 'Conteúdo aprovado pelo cliente' ELSE 'Cliente solicitou alterações' END AS detail",
+        "CASE WHEN LOWER(c.client_label) LIKE '%aprovad%' THEN 'Conteúdo aprovado pelo cliente' ELSE 'Cliente solicitou alterações' END AS detail, 0 AS recordedDecision, 1 AS canSchedule",
         "FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id",
-        "WHERE c.archived = 0 AND c.is_brief_approval = 0 AND c.scheduled_at IS NULL AND (LOWER(c.client_label) LIKE '%aprovad%' OR LOWER(c.client_label) LIKE '%altera%')", scopeSql,
+        "WHERE c.approval_revision = 0 AND c.archived = 0 AND c.is_brief_approval = 0 AND c.scheduled_at IS NULL AND (LOWER(c.client_label) LIKE '%aprovad%' OR LOWER(c.client_label) LIKE '%altera%')", scopeSql,
         "UNION ALL",
         "SELECT CONCAT('comment-', cc.id) AS id, c.id AS cardId, c.title, cc.created_at AS occurredAt,",
-        "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl, 'comment' AS activityType, LEFT(CASE WHEN cc.comment_text = 'Legenda editada pelo cliente.' THEN CONCAT('Nova legenda: ', COALESCE(NULLIF(c.caption, ''), 'sem texto')) ELSE cc.comment_text END, 240) AS detail",
+        "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl, 'comment' AS activityType, LEFT(CASE WHEN cc.comment_text = 'Legenda editada pelo cliente.' THEN CONCAT('Nova legenda: ', COALESCE(NULLIF(c.caption, ''), 'sem texto')) ELSE cc.comment_text END, 240) AS detail, 0 AS recordedDecision, 0 AS canSchedule",
         "FROM card_comments cc JOIN kanban_cards c ON c.id = cc.card_id JOIN client_accounts a ON a.id = c.client_account_id",
         // A client response remains useful feedback even if the card was later
         // scheduled or archived. The dashboard's X control is what explicitly
         // marks it as viewed; card workflow changes must not hide it first.
-        "WHERE c.is_brief_approval = 0 AND cc.is_internal = 0 AND cc.author_role IN ('cliente', 'guest')", scopeSql,
+        "WHERE c.is_brief_approval = 0 AND cc.is_internal = 0 AND cc.author_role IN ('cliente', 'guest') AND NOT EXISTS (SELECT 1 FROM card_approval_events ce WHERE ce.comment_id = cc.id)", scopeSql,
         ") activity ORDER BY activity.occurredAt DESC LIMIT 24",
-      ].join(" "), [...params, ...params]),
+      ].join(" "), [...params, ...params, ...params]),
       app.db.query<RowDataPacket[]>([
         "SELECT CONCAT('brand-revision-', r.id) AS id, NULL AS cardId, 'Sugestão para o Brand Brain' AS title, r.created_at AS occurredAt,",
         "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl, 'brand_brain' AS activityType,",
@@ -253,11 +261,12 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         [todayStart, tomorrowStart, ...(scope.mode === "global" ? [] : scope.clientIds)],
       ),
       app.db.query<RowDataPacket[]>([
-        "SELECT c.id, c.title, COALESCE(MAX(al.approved_at), c.updated_at) AS approvedAt,",
+        "SELECT c.id, c.title, COALESCE(MAX(ae.created_at), MAX(al.approved_at), c.updated_at) AS approvedAt,",
         "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl",
         "FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id",
         "LEFT JOIN approval_links al ON al.card_id = c.id AND al.approved_at IS NOT NULL",
-        "WHERE c.archived = 0 AND c.is_brief_approval = 1 AND (LOWER(c.client_label) LIKE '%aprovad%' OR al.approved_at IS NOT NULL)", scopeSql,
+        "LEFT JOIN card_approval_events ae ON ae.card_id = c.id AND ae.revision = c.approval_revision AND ae.action = 'approved'",
+        "WHERE c.archived = 0 AND c.is_brief_approval = 1 AND (c.approval_state = 'approved' OR (c.approval_revision = 0 AND LOWER(c.client_label) NOT LIKE '%altera%' AND (LOWER(c.client_label) LIKE '%aprovad%' OR al.approved_at IS NOT NULL)))", scopeSql,
         "GROUP BY c.id, c.title, c.updated_at, a.name, a.slug, a.logo_url ORDER BY approvedAt DESC LIMIT 12",
       ].join(" "), params),
     ]);

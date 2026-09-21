@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const createApprovalLinkSchema = z.object({
+  expectedApprovalRevision: z.number().int().nonnegative().optional(),
   expiresInDays: z.number().int().min(1).max(30).optional(),
 });
 
@@ -12,3 +13,5 @@ export const submitApprovalDecisionSchema = z.object({
 
 export type CreateApprovalLinkInput = z.infer<typeof createApprovalLinkSchema>;
 export type SubmitApprovalDecisionInput = z.infer<typeof submitApprovalDecisionSchema>;
+
+export const resubmitApprovalSchema = z.object({ expectedApprovalRevision: z.number().int().nonnegative() });

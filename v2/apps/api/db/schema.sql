@@ -134,6 +134,9 @@ CREATE TABLE IF NOT EXISTS kanban_cards (
   archived TINYINT(1) NOT NULL DEFAULT 0,
   archived_at DATETIME NULL,
   client_label VARCHAR(100) NOT NULL DEFAULT 'pendente',
+  approval_reset_at DATETIME NULL,
+  approval_revision INT UNSIGNED NOT NULL DEFAULT 0,
+  approval_state VARCHAR(32) NULL,
   priority_level VARCHAR(20) NULL,
   event_color VARCHAR(20) NULL,
   comments_count_cache INT NOT NULL DEFAULT 0,
@@ -666,4 +669,26 @@ CREATE TABLE IF NOT EXISTS dashboard_notes (
   updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
   KEY idx_dashboard_notes_user_updated (user_id, updated_at),
   CONSTRAINT fk_dashboard_notes_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Approval audit trail (existing installations are upgraded by ensureApprovalStorage).
+CREATE TABLE IF NOT EXISTS card_approval_events (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  card_id CHAR(36) NOT NULL,
+  revision INT UNSIGNED NOT NULL,
+  action VARCHAR(32) NOT NULL,
+  decision VARCHAR(32) NULL,
+  source VARCHAR(32) NOT NULL,
+  actor_user_id CHAR(36) NULL,
+  actor_name VARCHAR(255) NOT NULL,
+  actor_role VARCHAR(50) NOT NULL,
+  comment_id CHAR(36) NULL,
+  comment_text TEXT NULL,
+  approval_link_id CHAR(36) NULL,
+  before_json JSON NOT NULL,
+  after_json JSON NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uq_card_approval_revision (card_id, revision),
+  KEY idx_card_approval_created (card_id, created_at),
+  CONSTRAINT fk_card_approval_event_card FOREIGN KEY (card_id) REFERENCES kanban_cards(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

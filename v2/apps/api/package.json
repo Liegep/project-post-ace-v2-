@@ -8,7 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/server.js",
     "check": "tsc --noEmit -p tsconfig.json",
-    "test": "tsx --test src/modules/mcp/mcp.security.test.ts src/plugins/scheduled-card-archiver.test.ts",
+    "test": "tsx --test src/modules/mcp/mcp.security.test.ts src/plugins/scheduled-card-archiver.test.ts src/modules/approvals/approval-workflow.test.ts",
     "db:bootstrap": "tsx src/scripts/bootstrap-local-db.ts",
     "db:prepare:staging": "tsx src/scripts/bootstrap-local-db.ts --schema-only --existing-database",
     "import:legacy": "tsx src/scripts/import-legacy-export.ts",

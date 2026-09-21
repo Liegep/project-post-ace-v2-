@@ -1,3 +1,4 @@
+import { ensureApprovalStorage } from "../modules/approvals/approval-history.repository.js";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -86,6 +87,8 @@ async function main() {
     password: env.DB_PASSWORD,
     database: env.DB_NAME,
   });
+
+  await ensureApprovalStorage(db);
 
   const [externalLinkColumn] = await db.query<RowDataPacket[]>(
     "SHOW COLUMNS FROM kanban_cards LIKE 'external_link_url'",

@@ -1,3 +1,4 @@
+import { decideCardApproval } from "../approvals/approval-workflow.service.js";
 import type { FastifyPluginAsync } from "fastify";
 import { assertClientAccess, assertPortalAccessLevel } from "../auth/auth.access.js";
 import { addCardComment } from "../comments/comments.service.js";
@@ -5,7 +6,7 @@ import { getPortalCardDetail } from "../cards/card-detail.service.js";
 import { createKanbanCard } from "../cards/cards.service.js";
 import { findCardById, listCardsByClientAccountId, moveCard, updateCard } from "../cards/cards.repository.js";
 import { recordCaptionVersion } from "../cards/caption-history.repository.js";
-import { ensureCardActivityEventsTable, recordCardActivityEvent } from "../cards/card-activity.service.js";
+import { ensureCardActivityEventsTable } from "../cards/card-activity.service.js";
 import { createColumn, listColumnsByClientAccountId, updateColumn } from "../columns/columns.repository.js";
 import { findClientPermissionsByAccountId } from "../clients/clients.repository.js";
 import { createClientTag, listClientTags } from "../tags/tags.repository.js";
@@ -206,63 +207,10 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
     assertPortalAccessLevel(request, params.clientAccountId, ["admin", "approver"]);
     const input = portalCardDecisionSchema.parse(request.body);
-    const card = await findCardById(app.db, params.cardId);
-    if (!card || card.clientAccountId !== params.clientAccountId) {
-      throw app.httpErrors.notFound("Card não encontrado nesta conta.");
-    }
-
     const actor = request.auth!.user;
-    if (input.commentText) {
-      await addCardComment(app, params.clientAccountId, params.cardId, {
-        commentText: input.commentText,
-        isInternal: false,
-      }, {
-        userId: actor.id,
-        authorName: actor.fullName,
-        authorRole: actor.globalRole,
-        canCreateInternal: false,
-      });
-    }
-
-    const decisionStatuses = card.status.filter((status) => !/(aprovad|revis[aã]o solicitada)/i.test(status));
-    let updatedCard = await updateCard(app.db, params.cardId, {
-      clientLabel: input.approved ? "Aprovado pelo cliente" : "Alteração solicitada",
-      status: [...decisionStatuses, input.approved ? "Aprovado" : "Revisão solicitada"],
-      isBriefApproval: card.isBriefApproval,
-    });
-
-    if (input.approved && updatedCard) {
-      const columns = await listColumnsByClientAccountId(app.db, params.clientAccountId);
-      const normalizedColumnName = (name: string) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-      let destinationColumn = card.isBriefApproval
-        ? columns.find((column) => /^pautas? aprovad[ao]s?$/i.test(normalizedColumnName(column.name)))
-        : columns.find((column) => /aprovados(?: pelo cliente)?/i.test(normalizedColumnName(column.name)));
-      if (!destinationColumn) {
-        destinationColumn = card.isBriefApproval
-          ? await createColumn(app.db, params.clientAccountId, { name: "Pauta aprovada", color: "#8b5cf6", visibleToClient: false, autoCreated: true }) ?? undefined
-          : await createColumn(app.db, params.clientAccountId, { name: "Aprovados", color: "#28b77d", visibleToClient: true, autoCreated: true }) ?? undefined;
-      } else if (card.isBriefApproval && destinationColumn.name !== "Pauta aprovada") {
-        destinationColumn = await updateColumn(app.db, destinationColumn.id, { name: "Pauta aprovada" }) ?? destinationColumn;
-      } else if (!card.isBriefApproval && !destinationColumn.visibleToClient) {
-        destinationColumn = await updateColumn(app.db, destinationColumn.id, { visibleToClient: true }) ?? destinationColumn;
-      }
-      if (destinationColumn) {
-        updatedCard = await moveCard(app.db, params.cardId, updatedCard, { columnId: destinationColumn.id }) ?? updatedCard;
-      }
-    }
-
-    if (actor.globalRole === "cliente") {
-      await recordCardActivityEvent(app.db, {
-        clientAccountId: params.clientAccountId,
-        cardId: params.cardId,
-        actorUserId: actor.id,
-        actorName: actor.fullName,
-        actorRole: actor.globalRole,
-        activityType: input.approved ? "client_approved" : "client_changes_requested",
-        detail: input.approved ? "Aprovou o conteúdo" : "Solicitou alterações",
-      });
-    }
-
-    return { ok: true, card: updatedCard };
+    const result = await decideCardApproval(app, params.clientAccountId, params.cardId, {
+      userId: actor.id, name: actor.fullName, role: actor.globalRole,
+    }, input);
+    return { ok: true, card: result.card };
   });
 };

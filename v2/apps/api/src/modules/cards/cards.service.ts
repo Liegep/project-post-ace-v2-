@@ -1,3 +1,5 @@
+import { convertBriefApprovalToPost, isBriefApprovalConversion } from "../approvals/approval-workflow.service.js";
+import { approvalStatuses } from "../approvals/approval-state.js";
 import type { FastifyInstance } from "fastify";
 import type { RowDataPacket } from "mysql2/promise";
 import { findClientAccountById } from "../clients/clients.repository.js";
@@ -287,6 +289,24 @@ export async function updateKanbanCard(
     throw app.httpErrors.notFound("Card não encontrado nesta conta.");
   }
 
+  if (input.expectedApprovalRevision !== undefined && input.expectedApprovalRevision !== card.approvalRevision) {
+    throw app.httpErrors.conflict("A aprovação deste post mudou. Reabra o card antes de salvar novamente; seu rascunho foi preservado.");
+  }
+  const convertingBrief = isBriefApprovalConversion(card, input);
+  if (card.approvalState && !convertingBrief) {
+    if (input.clientLabel !== undefined && input.clientLabel !== card.clientLabel) {
+      throw app.httpErrors.conflict("Use Enviar novamente para aprovação para reabrir o retorno do cliente.");
+    }
+    if (input.status) {
+      const statuses = approvalStatuses(input.status, card.approvalState);
+      // Only the explicit resend action forces visibility. Preserve the existing
+      // admin visibility checkbox when a user intentionally hides a card.
+      input = { ...input, status: card.approvalState === "pending" && !input.status.includes("Enviar para Cliente")
+        ? statuses.filter((status) => status !== "Enviar para Cliente") : statuses };
+    }
+  }
+  input = { ...input, expectedApprovalRevision: card.approvalRevision };
+
   if (input.caption !== undefined && (input.caption ?? null) !== (card.caption ?? null)) {
     await recordCaptionVersion(app.db, {
       cardId,
@@ -305,7 +325,9 @@ export async function updateKanbanCard(
         status: ["Agendado", ...(normalizedInput.status ?? card.status).filter((status) => !/^agendados?$/i.test(status.trim()))],
       }
     : normalizedInput;
-  const updated = await updateCard(app.db, cardId, updateInput);
+  const updated = convertingBrief
+    ? await convertBriefApprovalToPost(app, clientAccountId, cardId, actor, updateInput)
+    : await updateCard(app.db, cardId, updateInput);
   if (!updated) {
     throw app.httpErrors.badRequest("Não foi possível atualizar o card.");
   }

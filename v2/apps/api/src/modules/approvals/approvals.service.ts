@@ -1,15 +1,14 @@
 import type { FastifyInstance } from "fastify";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
-import { addCardComment } from "../comments/comments.service.js";
+import { decideCardApproval } from "./approval-workflow.service.js";
 import { findClientAccountById } from "../clients/clients.repository.js";
 import { createColumn, findColumnByClientAndName, listColumnsByClientAccountId, updateColumn } from "../columns/columns.repository.js";
-import { findCardById, moveCard, updateCard } from "../cards/cards.repository.js";
+import { findCardById } from "../cards/cards.repository.js";
 import {
   createApprovalLink,
   findApprovalLinkByToken,
   listApprovalLinksByCardId,
   markApprovalLinkViewed,
-  submitApprovalDecision,
 } from "./approvals.repository.js";
 import type {
   CreateApprovalLinkInput,
@@ -51,7 +50,7 @@ export async function reconcileApprovedCardColumns(app: FastifyInstance) {
     [
       "UPDATE kanban_cards c INNER JOIN client_accounts ca ON ca.id = c.client_account_id",
       "SET c.is_brief_approval = 1",
-      "WHERE c.archived = 0 AND c.is_brief_approval = 0",
+      "WHERE c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.is_brief_approval = 0 AND c.approval_revision = 0 AND c.approval_reset_at IS NULL",
       "AND LOWER(c.client_label) LIKE '%aprovad%'",
       "AND CAST(ca.workspace_drawer_json AS CHAR) LIKE CONCAT('%', c.id, '%')",
     ].join(" "),
@@ -61,8 +60,8 @@ export async function reconcileApprovedCardColumns(app: FastifyInstance) {
     [
       "SELECT DISTINCT c.client_account_id AS clientAccountId",
       "FROM kanban_cards c",
-      "WHERE c.archived = 0 AND c.is_brief_approval = 0 AND (LOWER(c.client_label) LIKE '%aprovad%' OR EXISTS (",
-      "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL",
+      "WHERE c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.is_brief_approval = 0 AND (c.approval_state = 'approved' OR (c.approval_revision = 0 AND LOWER(c.client_label) LIKE '%aprovad%') OR EXISTS (",
+      "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL AND c.approval_revision = 0 AND LOWER(c.client_label) NOT LIKE '%altera%' AND LOWER(COALESCE(c.status_json, '')) NOT LIKE '%solicitad%'",
       "AND (c.approval_reset_at IS NULL OR al.created_at >= c.approval_reset_at)",
       "))",
     ].join(" "),
@@ -75,8 +74,8 @@ export async function reconcileApprovedCardColumns(app: FastifyInstance) {
     const [result] = await app.db.query<ResultSetHeader>(
       [
         "UPDATE kanban_cards c SET c.column_id = ?, c.client_label = 'Aprovado pelo cliente'",
-        "WHERE c.client_account_id = ? AND c.archived = 0 AND (LOWER(c.client_label) LIKE '%aprovad%' OR EXISTS (",
-        "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL",
+        "WHERE c.client_account_id = ? AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND (c.approval_state = 'approved' OR (c.approval_revision = 0 AND LOWER(c.client_label) LIKE '%aprovad%') OR EXISTS (",
+        "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL AND c.approval_revision = 0 AND LOWER(c.client_label) NOT LIKE '%altera%' AND LOWER(COALESCE(c.status_json, '')) NOT LIKE '%solicitad%'",
         "AND (c.approval_reset_at IS NULL OR al.created_at >= c.approval_reset_at)",
         ")) AND c.is_brief_approval = 0 AND (c.column_id IS NULL OR c.column_id <> ?)",
       ].join(" "),
@@ -88,9 +87,9 @@ export async function reconcileApprovedCardColumns(app: FastifyInstance) {
   const [briefRows] = await app.db.query<Array<RowDataPacket & { clientAccountId: string }>>(
     [
       "SELECT DISTINCT c.client_account_id AS clientAccountId FROM kanban_cards c",
-      "WHERE c.archived = 0 AND c.is_brief_approval = 1",
-      "AND (LOWER(c.client_label) LIKE '%aprovad%' OR EXISTS (",
-      "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL",
+      "WHERE c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.is_brief_approval = 1",
+      "AND (c.approval_state = 'approved' OR (c.approval_revision = 0 AND LOWER(c.client_label) LIKE '%aprovad%') OR EXISTS (",
+      "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL AND c.approval_revision = 0 AND LOWER(c.client_label) NOT LIKE '%altera%' AND LOWER(COALESCE(c.status_json, '')) NOT LIKE '%solicitad%'",
       "AND (c.approval_reset_at IS NULL OR al.created_at >= c.approval_reset_at)",
       "))",
     ].join(" "),
@@ -101,9 +100,9 @@ export async function reconcileApprovedCardColumns(app: FastifyInstance) {
     const [result] = await app.db.query<ResultSetHeader>(
       [
         "UPDATE kanban_cards c SET c.column_id = ?, c.client_label = 'Aprovado pelo cliente'",
-        "WHERE c.client_account_id = ? AND c.archived = 0 AND c.is_brief_approval = 1",
-        "AND (LOWER(c.client_label) LIKE '%aprovad%' OR EXISTS (",
-        "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL",
+        "WHERE c.client_account_id = ? AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.is_brief_approval = 1",
+        "AND (c.approval_state = 'approved' OR (c.approval_revision = 0 AND LOWER(c.client_label) LIKE '%aprovad%') OR EXISTS (",
+        "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL AND c.approval_revision = 0 AND LOWER(c.client_label) NOT LIKE '%altera%' AND LOWER(COALESCE(c.status_json, '')) NOT LIKE '%solicitad%'",
         "AND (c.approval_reset_at IS NULL OR al.created_at >= c.approval_reset_at)",
         ")) AND (c.column_id IS NULL OR c.column_id <> ?)",
       ].join(" "),
@@ -131,21 +130,24 @@ export async function createCardApprovalLink(
     throw app.httpErrors.notFound("Card não encontrado nesta conta.");
   }
 
-  const days = input.expiresInDays ?? 7;
-  const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
-
-  const created = await createApprovalLink(app.db, {
-    clientAccountId,
-    cardId,
-    expiresAt,
-    createdByUserId,
-  });
-
-  if (!created) {
-    throw app.httpErrors.badRequest("Não foi possível criar o link de aprovação.");
-  }
-
-  return created;
+  const db = await app.db.getConnection();
+  try {
+    await db.beginTransaction();
+    // Serialize link creation with resubmissions and decisions.
+    await db.query("SELECT id FROM kanban_cards WHERE id = ? FOR UPDATE", [cardId]);
+    const current = await findCardById(db, cardId);
+    if (!current || current.approvalRevision !== (input.expectedApprovalRevision ?? 0)) {
+      throw app.httpErrors.conflict("A aprovação mudou. Reabra o card antes de criar um link.");
+    }
+    const created = await createApprovalLink(db, {
+      clientAccountId, cardId, createdByUserId,
+      expiresAt: new Date(Date.now() + (input.expiresInDays ?? 7) * 86400_000),
+    });
+    if (!created) throw app.httpErrors.badRequest("Não foi possível criar o link de aprovação.");
+    await db.commit();
+    return created;
+  } catch (error) { await db.rollback(); throw error; }
+  finally { db.release(); }
 }
 
 export async function getCardApprovalHistory(
@@ -216,41 +218,7 @@ export async function submitPublicApprovalDecision(
     throw app.httpErrors.forbidden("Esse link de aprovação expirou ou foi encerrado.");
   }
 
-  const card = await findCardById(app.db, link.cardId);
-  if (!card) {
-    throw app.httpErrors.notFound("Card não encontrado.");
-  }
-
-  if (input.commentText) {
-    await addCardComment(app, link.clientAccountId, link.cardId, {
-      commentText: input.commentText,
-      isInternal: false,
-    }, {
-      userId: null,
-      authorName: input.requesterName ?? "Cliente",
-      authorRole: "guest",
-      canCreateInternal: false,
-    });
-  }
-
-  const decision = await submitApprovalDecision(app.db, token, {
-    approved: input.approved,
-  });
-
-  if (input.approved) {
-    const approvedColumn = card.isBriefApproval
-      ? await ensureApprovedBriefsColumn(app, link.clientAccountId)
-      : await ensureApprovedColumn(app, link.clientAccountId);
-    await moveCard(app.db, link.cardId, card, {
-      columnId: approvedColumn?.id ?? null,
-    });
-    await updateCard(app.db, link.cardId, { isBriefApproval: card.isBriefApproval, clientLabel: "Aprovado pelo cliente", status: Array.from(new Set([...card.status, "Aprovado"])) });
-  } else {
-    await updateCard(app.db, link.cardId, { clientLabel: "Alteração solicitada", status: Array.from(new Set([...card.status, "Revisão solicitada"])) });
-  }
-
-  return {
-    approvalLink: decision,
-    approved: input.approved,
-  };
+  return decideCardApproval(app, link.clientAccountId, link.cardId, {
+    userId: null, name: input.requesterName ?? "Cliente", role: "guest",
+  }, input, token);
 }

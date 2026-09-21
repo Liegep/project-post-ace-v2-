@@ -1,6 +1,10 @@
 export type CardPriority = "high" | "medium" | "normal";
 
 export type BoardCard = {
+  approvalRevision?: number;
+  approvalState?: "pending" | "approved" | "changes_requested" | null;
+  columnId?: string | null;
+  archived?: boolean;
   id: string;
   title: string;
   subtitle?: string;
@@ -65,7 +69,14 @@ export type ApprovalLink = {
   createdAt: string;
 };
 
+export type ApprovalEvent = {
+  id: string; revision: number; action: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "legacy_snapshot";
+  decision: string | null; actorName: string; actorRole: string; source: string;
+  commentText: string | null; createdAt: string;
+};
+
 export type CardDetail = {
+  approvalEvents?: ApprovalEvent[];
   card: BoardCard;
   comments: CardComment[];
   approvalLinks: ApprovalLink[];
@@ -119,6 +130,7 @@ export type ClientPermissions = {
 };
 
 export type ClientPortalPreview = {
+  boardRefreshFailed?: boolean;
   accountName: string;
   clientGreetingName?: string;
   clientLogoUrl?: string | null;

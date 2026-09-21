@@ -26,6 +26,7 @@ import {
   restoreAdminCaptionVersionBySlug,
   type CaptionVersion,
   createAdminApprovalLinkBySlug,
+  resubmitAdminApprovalBySlug,
   moveAdminCardBySlug,
   reorderAdminColumnsBySlug,
   archiveAdminCardBySlug,
@@ -2590,7 +2591,7 @@ function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items:
     if (Number.isNaN(date.getTime())) return "Agora";
     return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date).replace(",", " ·");
   };
-  const decisionCardIds = new Set(items.filter((item) => item.cardId && (item.activityType === "approved" || item.activityType === "changes_requested")).map((item) => item.cardId));
+  const decisionCardIds = new Set(items.filter((item) => !item.recordedDecision && item.cardId && (item.activityType === "approved" || item.activityType === "changes_requested")).map((item) => item.cardId));
   const latestCommentByCard = new Map<string, DashboardClientActivity>();
   items.forEach((item) => {
     if (item.cardId && item.activityType === "comment" && !latestCommentByCard.has(item.cardId)) latestCommentByCard.set(item.cardId, item);
@@ -2598,7 +2599,7 @@ function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items:
   const mergedItems = items
     .filter((item) => !(item.activityType === "comment" && item.cardId && decisionCardIds.has(item.cardId)))
     .map((item) => {
-      if (!item.cardId || (item.activityType !== "approved" && item.activityType !== "changes_requested")) return item;
+      if (item.recordedDecision || !item.cardId || (item.activityType !== "approved" && item.activityType !== "changes_requested")) return item;
       return { ...item, detail: latestCommentByCard.get(item.cardId)?.detail ?? "" };
     });
   const visibleItems = mergedItems.filter((item) => !dismissedIds.includes(item.id));
@@ -2630,7 +2631,7 @@ function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items:
         <span className="dashboard-item-bullet" aria-hidden="true" />
         <span className="dashboard-submission-avatar">{item.clientLogoUrl ? <img src={item.clientLogoUrl} alt={`Logo de ${item.clientName}`} /> : item.clientName.slice(0, 2).toUpperCase()}</span>
         <div className="dashboard-activity-copy"><span className="dashboard-activity-kind">{tone === "approved" ? "✓" : tone === "changes_requested" ? "↻" : tone === "not_approved" ? "×" : item.activityType === "brand_brain" ? "✦" : "💬"} {activityLabel(item)}</span><strong>{item.title}</strong><small>{item.clientName}</small>{item.detail ? <p>“{item.detail}”</p> : <p className="dashboard-feedback-empty">Sem comentário adicional.</p>}</div>
-        <div className="dashboard-activity-actions"><time title="Data do retorno do cliente">{activityTime(item.occurredAt)}</time>{item.activityType === "brand_brain" ? <button type="button" onClick={() => { window.location.hash = `/admin/${item.clientSlug}?view=brand`; }}><UiIcon name="spark" />Revisar</button> : item.activityType === "contract_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/contratos"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "proposal_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/propostas"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "changes_requested" || tone === "not_approved" ? <button type="button" onClick={() => openCard(item)}><UiIcon name="eye" />Ver</button> : <button type="button" onClick={() => onSchedule(item)}><UiIcon name="calendar" />Agendar</button>}</div>
+        <div className="dashboard-activity-actions"><time title="Data do retorno do cliente">{activityTime(item.occurredAt)}</time>{item.activityType === "brand_brain" ? <button type="button" onClick={() => { window.location.hash = `/admin/${item.clientSlug}?view=brand`; }}><UiIcon name="spark" />Revisar</button> : item.activityType === "contract_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/contratos"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "proposal_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/propostas"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "changes_requested" || tone === "not_approved" || item.canSchedule === 0 || item.canSchedule === false ? <button type="button" onClick={() => openCard(item)}><UiIcon name="eye" />Ver</button> : <button type="button" onClick={() => onSchedule(item)}><UiIcon name="calendar" />Agendar</button>}</div>
         <button className="dashboard-activity-dismiss" type="button" onClick={() => dismissFeedback(item.id)} aria-label={`Remover feedback de ${item.clientName}`} title="Marcar como visualizado">×</button>
       </article>;
     })}</div>
@@ -3718,7 +3719,11 @@ function AdminWorkspacePage({
         }
         onRefresh={() => setRefreshKey((value) => value + 1)}
         onClose={() => { setSelectedCardId(null); if (location.search) navigate(`/admin/${slug}`, { replace: true }); }}
-        adminContext={{ slug, columns: data.columns }}
+        adminContext={{ slug, columns: data.columns, onCardUpdated: (updated) => resource.setData((current) => ({
+          ...current,
+          columns: current.columns.map((column) => ({ ...column, cards: column.cards.map((item) => item.id === updated.id ? { ...item, ...updated } : item) })),
+          withoutColumn: current.withoutColumn.map((item) => item.id === updated.id ? { ...item, ...updated } : item),
+        })) }}
       />
 
       <MediaPreviewModal media={previewMedia} onClose={() => setPreviewMedia(null)} onNavigate={(direction) => setPreviewMedia((current) => current ? { ...current, index: Math.max(0, Math.min(current.index + direction, current.urls.length - 1)) } : null)} />
@@ -5251,6 +5256,7 @@ function awaitingApprovalLabel(locale: string) {
 }
 
 function isPortalApproved(card: BoardCard) {
+  if (card.approvalState) return card.approvalState === "approved";
   const statusText = [card.clientLabel, ...card.statusBadges].join(" ").toLocaleLowerCase("pt-BR");
   return /(aprovad|finalizad|publicad)/.test(statusText);
 }
@@ -5433,7 +5439,7 @@ function getPortalSearchStatuses(card: BoardCard, t: (source: string) => string)
   const statuses: Array<{ label: string; tone: string }> = [];
   if (card.scheduledAt) statuses.push({ label: t("Agendado"), tone: "scheduled" });
   if (isPortalApproved(card)) statuses.push({ label: t("Aprovado"), tone: "approved" });
-  else if (/(alteração|alteracao|revis)/i.test(combined)) statuses.push({ label: t("Alteração solicitada"), tone: "revision" });
+  else if (card.approvalState === "changes_requested" || (!card.approvalState && /(alteração|alteracao|revis)/i.test(combined))) statuses.push({ label: t("Alteração solicitada"), tone: "revision" });
   else statuses.push({ label: t("Aguardando aprovação"), tone: "pending" });
   return statuses;
 }
@@ -5444,7 +5450,7 @@ function getPortalCardLifecycle(card: BoardCard, t: (source: string) => string) 
   if (card.publishedAt) return { label: t("Publicado"), tone: "published", icon: "check" as const };
   if (card.scheduledAt) return { label: t("Agendado"), tone: "scheduled", icon: "calendar" as const };
   if (isPortalApproved(card)) return { label: t("Aprovado"), tone: "approved", icon: "check" as const };
-  if (/(alteração|alteracao|revis)/i.test(combined)) return { label: t("Alteração solicitada"), tone: "revision", icon: "comment" as const };
+  if (card.approvalState === "changes_requested" || (!card.approvalState && /(alteração|alteracao|revis)/i.test(combined))) return { label: t("Alteração solicitada"), tone: "revision", icon: "comment" as const };
   return { label: t("Aguardando aprovação"), tone: "pending", icon: "clock" as const };
 }
 
@@ -5626,7 +5632,12 @@ function ClientPortalWorkspacePage({
   onLogout: () => void;
 }) {
   const [refreshKey, setRefreshKey] = useState(0);
-  const resource = usePreviewResource(emptyClientPortal, () => loadClientPortalBySlug(slug), [
+  const lastPortalSnapshot = useRef<{ slug: string; data: ClientPortalPreview } | null>(null);
+  const resource = usePreviewResource(emptyClientPortal, async () => {
+    const result = await loadClientPortalBySlug(slug, lastPortalSnapshot.current?.slug === slug ? lastPortalSnapshot.current.data : undefined);
+    lastPortalSnapshot.current = { slug, data: result };
+    return result;
+  }, [
     slug,
     refreshKey,
   ]);
@@ -5639,9 +5650,11 @@ function ClientPortalWorkspacePage({
         setRefreshKey((value) => value + 1);
       }
     };
+    const refreshTimer = window.setInterval(refreshWhenVisible, 60_000);
     window.addEventListener("focus", refreshWhenVisible);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
+      window.clearInterval(refreshTimer);
       window.removeEventListener("focus", refreshWhenVisible);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
@@ -5676,7 +5689,6 @@ function ClientPortalWorkspacePage({
   const [postError, setPostError] = useState("");
   const [postSuccess, setPostSuccess] = useState("");
   const [approvedTransfer, setApprovedTransfer] = useState<{ title: string; targetX: number; targetY: number } | null>(null);
-  const [locallyApprovedCardIds, setLocallyApprovedCardIds] = useState<string[]>([]);
   const [portalArchivedCards, setPortalArchivedCards] = useState<BoardCard[]>([]);
   const [portalArchivedLoading, setPortalArchivedLoading] = useState(false);
   const [portalArchivedError, setPortalArchivedError] = useState("");
@@ -5765,13 +5777,13 @@ function ClientPortalWorkspacePage({
   const filteredPortalTexts = portalTextTagFilters.length ? portalTexts.filter((item) => portalTextTagFilters.every((name) => item.tags?.some((tag) => tag.name === name))) : portalTexts;
   const selectedPortalTextBanner = selectedPortalText ? window.localStorage.getItem(`designhub-text-cover:${slug}:${selectedPortalText.id}`) : null;
   const portalCards = [...data.boardColumns.flatMap((column) => column.cards), ...data.withoutColumn];
-  const portalCardsWithLocalApprovals = portalCards.map((card) => locallyApprovedCardIds.includes(card.id) ? { ...card, clientLabel: "Aprovado pelo cliente", statusBadges: Array.from(new Set([...card.statusBadges, "Aprovado"])) } : card);
+  const portalCardsWithLocalApprovals = portalCards;
   const approvedPortalCards = portalCardsWithLocalApprovals.filter(isPortalApproved);
   const approvedPortalTexts = portalTexts.filter((text) => text.status === "Aprovado");
   const approvalPortalCards = portalCardsWithLocalApprovals.filter((card) => !isPortalApproved(card));
   const pautaApprovalCards = approvalPortalCards.filter((card) => card.isBriefApproval);
   const contentApprovalCardIds = new Set(approvalPortalCards.filter((card) => !card.isBriefApproval).map((card) => card.id));
-  const visiblePortalColumns = data.boardColumns.filter((column) => !isPortalApprovedColumn(column.name));
+  const visiblePortalColumns = data.boardColumns.filter((column) => !isPortalApprovedColumn(column.name) || column.cards.some((card) => contentApprovalCardIds.has(card.id)));
   const portalTrackerEnabled = data.widgets.tracking && data.permissions.allowClientViewTracking;
   const upcomingPortalAppointments = useMemo(() => {
     const now = new Date();
@@ -5873,12 +5885,21 @@ function ClientPortalWorkspacePage({
     }
   }
 
+  function applyPortalDecision(cardId: string, result: Awaited<ReturnType<typeof submitPortalCardDecisionBySlug>>) {
+    resource.setData((current) => {
+      const update = (card: BoardCard) => card.id === cardId ? { ...card, clientLabel: result.card.clientLabel, statusBadges: result.card.status, approvalState: result.card.approvalState, approvalRevision: result.card.approvalRevision } : card;
+      const next = { ...current, boardColumns: current.boardColumns.map((column) => ({ ...column, cards: column.cards.map(update) })), withoutColumn: current.withoutColumn.map(update) };
+      lastPortalSnapshot.current = { slug, data: next };
+      return next;
+    });
+  }
+
   async function approvePortalCard(cardId: string, commentText: string) {
     const cardTitle = portalCards.find((card) => card.id === cardId)?.title ?? "Post";
-    await submitPortalCardDecisionBySlug(slug, cardId, { approved: true, commentText });
+    const result = await submitPortalCardDecisionBySlug(slug, cardId, { approved: true, commentText, expectedApprovalRevision: detail.data?.card.approvalRevision ?? 0 });
+    applyPortalDecision(cardId, result);
     const approvedButton = document.querySelector<HTMLElement>('[data-portal-view="approved"]');
     const target = approvedButton?.getBoundingClientRect();
-    setLocallyApprovedCardIds((current) => current.includes(cardId) ? current : [...current, cardId]);
     setSelectedCardId(null);
     setApprovedTransfer({
       title: cardTitle,
@@ -5938,6 +5959,7 @@ function ClientPortalWorkspacePage({
           <span className="portal-welcome-spark" aria-hidden="true">✦</span>
         </section> : null}
         {postSuccess ? <div className="portal-post-success"><span>✓</span><p>{postSuccess}</p><button onClick={() => setPostSuccess("")} aria-label={tr("Fechar aviso")}>×</button></div> : null}
+        {data.boardRefreshFailed ? <p className="client-access-notice" role="status">{tr("Não foi possível atualizar o quadro. Os últimos conteúdos carregados foram mantidos.")}</p> : null}
         {approvedTransfer ? <><span className="portal-approved-fly-to-nav" style={{ "--approved-target-x": `${approvedTransfer.targetX}px`, "--approved-target-y": `${approvedTransfer.targetY}px` } as CSSProperties} aria-hidden="true"><UiIcon name="send" /></span><div className="portal-approved-transfer" role="status" aria-live="polite"><div><strong>{tr("Enviado para Aprovados!")}</strong><small>{approvedTransfer.title}</small></div><span className="portal-approved-check">✓</span></div></> : null}
 
         {portalView === "brand" && data.permissions.allowClientViewBrandBrain ? <ClientBrandBrainView slug={slug} clientName={data.accountName} allowEdit={canUseEnabledClientTools && data.permissions.allowClientEditBrandBrain} /> : portalView === "search" && data.permissions.allowClientSearch ? <ClientPortalSearchView slug={slug} onOpenCard={setSelectedCardId} /> : portalView === "archived" && data.showArchivedToClient ? <ClientPortalArchivedView cards={portalArchivedCards} loading={portalArchivedLoading} error={portalArchivedError} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} /> : portalView === "tracker" && portalTrackerEnabled ? <ClientPortalTrackerView columns={data.boardColumns} withoutColumn={data.withoutColumn} onOpenCard={setSelectedCardId} /> : portalView === "approved" ? <ClientApprovedPostsView cards={portalCardsWithLocalApprovals} texts={portalTexts} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} onOpenText={(textId) => { setSelectedPortalTextId(textId); setPortalView("texts"); }} /> : portalView === "invoices" && data.permissions.allowClientViewInvoices ? <ClientPortalInvoicesView invoices={portalInvoices} onViewInvoice={markInvoiceViewed} /> : portalView === "reports" && data.permissions.allowClientViewReports ? <PortalReports slug={slug} clientName={data.accountName} locale={portalLocale} /> : portalView === "texts" ? <section className="portal-texts-view glass"><aside>{portalTextTagLibrary.length ? <div className="text-tag-filters portal-text-tag-filters"><header><span>{tr("Filtrar por etiquetas")}</span>{portalTextTagFilters.length ? <button type="button" onClick={() => setPortalTextTagFilters([])}>{tr("Limpar")}</button> : null}</header><div>{portalTextTagLibrary.map((tag) => { const active = portalTextTagFilters.includes(tag.name); return <button type="button" key={tag.name} className={active ? "active" : ""} style={{ backgroundColor: active ? tag.color : undefined, color: active ? calendarTextColor(tag.color) : undefined, borderColor: tag.color }} onClick={() => setPortalTextTagFilters((items) => active ? items.filter((name) => name !== tag.name) : [...items, tag.name])}><i style={{ backgroundColor: tag.color }} />{tag.name}{active ? " ✓" : ""}</button>; })}</div></div> : null}{filteredPortalTexts.map((item) => <button key={item.id} className={item.id === selectedPortalTextId ? "selected" : ""} onClick={() => { setSelectedPortalTextId(item.id); setPortalTextCommentDraft(""); setPortalTextFeedback(null); }}><small>{item.contentType}</small><strong>{item.tags?.length ? <em className="text-title-tags">{item.tags.map((tag) => <i key={tag.name} style={{ backgroundColor: tag.color, color: calendarTextColor(tag.color) }}>{tag.name}</i>)}</em> : null}{item.title}</strong></button>)}</aside><article>{selectedPortalText ? <><p className="eyebrow">{selectedPortalText.contentType}</p>{selectedPortalTextBanner ? <div className="portal-text-banner" style={{ backgroundImage: `url(${selectedPortalTextBanner})` }} aria-label={tr("Banner do texto")} /> : null}<div className="portal-text-heading"><div>{selectedPortalText.tags?.length ? <div className="text-heading-tags">{selectedPortalText.tags.map((tag) => <span key={tag.name} style={{ backgroundColor: tag.color, color: calendarTextColor(tag.color) }}>{tag.name}</span>)}</div> : null}<h1>{selectedPortalText.title}</h1><span className={`portal-text-status ${selectedPortalText.status === "Aprovado" ? "approved" : ""}`}>{tr(selectedPortalText.status)}</span></div></div>{canUseEnabledClientTools && data.permissions.allowClientEditCaption ? <ClientPortalRichTextEditor slug={slug} text={selectedPortalText} availableTags={portalTextTagLibrary} onSaved={(savedText) => setPortalTexts((items) => items.map((item) => item.id === savedText.id ? savedText : item))} /> : <div className="portal-text-content" dangerouslySetInnerHTML={{ __html: selectedPortalText.contentHtml }} />}{canRespondToClientContent ? <section className="portal-text-feedback"><h3>{tr("Seu feedback")}</h3><p>{tr("Comente sobre este texto ou escolha uma ação para enviar seu retorno à equipe.")}</p><textarea value={portalTextCommentDraft} onChange={(event) => setPortalTextCommentDraft(event.target.value)} placeholder={tr("Escreva aqui seu comentário sobre este texto")} /><div className="portal-text-actions"><button className="ghost-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("comment")}>{tr(portalTextSubmitting === "comment" ? "Enviando..." : "Adicionar comentário")}</button><button className="gradient-button" disabled={portalTextSubmitting !== null} onClick={() => void handlePortalTextAction("approve")}>{tr(portalTextSubmitting === "approve" ? "Enviando..." : "Aprovar")}</button><button className="danger-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("changes")}>{tr(portalTextSubmitting === "changes" ? "Enviando..." : "Pedir alteração")}</button></div>{portalTextFeedback ? <p className="portal-text-feedback-message">{portalTextFeedback}</p> : null}<div className="portal-text-comments"><h4>{tr("Comentários")} ({portalTextComments.length})</h4>{portalTextComments.map((comment) => <article key={comment.id}><div><strong>{comment.authorName}</strong><span>{comment.authorRole}</span></div><p>{comment.commentText}</p></article>)}</div></section> : <p className="client-access-notice">{tr("Acesso somente para visualização.")}</p>}</> : <p>{tr("Nenhum texto foi enviado para sua área ainda.")}</p>}</article></section> : <section className="portal-grid">
@@ -6038,9 +6060,10 @@ function ClientPortalWorkspacePage({
           addPortalCardCommentBySlug(slug, cardId, { commentText })
         }
         onApprove={approvePortalCard}
-        onRequestChanges={(cardId, commentText) =>
-          submitPortalCardDecisionBySlug(slug, cardId, { approved: false, commentText })
-        }
+        onRequestChanges={async (cardId, commentText) => {
+          const result = await submitPortalCardDecisionBySlug(slug, cardId, { approved: false, commentText, expectedApprovalRevision: detail.data?.card.approvalRevision ?? 0 });
+          applyPortalDecision(cardId, result);
+        }}
         canRespond={canRespondToClientContent}
         allowEditCaption={canUseEnabledClientTools && data.permissions.allowClientEditCaption}
         onUpdateCaption={(cardId, caption) => updatePortalCardCaptionBySlug(slug, cardId, caption)}
@@ -6107,7 +6130,7 @@ function CardDetailModal({
   onUpdateTags?: (cardId: string, tags: string[]) => Promise<unknown>;
   onRefresh: () => void;
   onClose: () => void;
-  adminContext?: { slug: string; columns: BoardColumn[] };
+  adminContext?: { slug: string; columns: BoardColumn[]; onCardUpdated?: (card: BoardCard) => void };
 }) {
   const { t, localeTag } = usePortalTranslation();
   const [commentDraft, setCommentDraft] = useState("");
@@ -6154,6 +6177,7 @@ function CardDetailModal({
         detail={detail}
         columns={adminContext.columns}
         slug={adminContext.slug}
+        onCardUpdated={adminContext.onCardUpdated}
         onAddComment={onAddComment}
         onRefresh={onRefresh}
         onClose={onClose}
@@ -6425,6 +6449,7 @@ function CardDetailModal({
 }
 
 type CardRecoveryDraft = {
+  approvalRevision?: number;
   title: string; caption: string; artType: string; columnId: string; status: string; clientLabel: string;
   priorityLevel: CardPriority | ""; tags: string; hashtags: string; scheduledAt: string; externalLinkUrl: string; mediaUrls: string[];
 };
@@ -6434,6 +6459,7 @@ function AdminCardEditor({
   columns,
   slug,
   onAddComment,
+  onCardUpdated,
   onRefresh,
   onClose,
 }: {
@@ -6441,16 +6467,18 @@ function AdminCardEditor({
   columns: BoardColumn[];
   slug: string;
   onAddComment: (cardId: string, commentText: string) => Promise<unknown>;
+  onCardUpdated?: (card: BoardCard) => void;
   onRefresh: () => void;
   onClose: () => void;
 }) {
   const card = detail.card;
   const recoveryKey = `designhub-v2-card-draft:${slug}:${card.id}`;
   const serverDraft = useMemo<CardRecoveryDraft>(() => ({
+    approvalRevision: card.approvalRevision ?? 0,
     title: card.title,
     caption: card.subtitle ?? "",
     artType: normalizeArtType(card.typeLabel),
-    columnId: columns.find((column) => column.cards.some((item) => item.id === card.id))?.id ?? "",
+    columnId: card.columnId ?? columns.find((column) => column.cards.some((item) => item.id === card.id))?.id ?? "",
     status: card.statusBadges[0] ?? "",
     clientLabel: card.clientLabel,
     priorityLevel: card.priorityLevel ?? "",
@@ -6461,7 +6489,12 @@ function AdminCardEditor({
     mediaUrls: card.mediaUrls ?? (card.mediaUrl ? [card.mediaUrl] : []),
   }), [card, columns]);
   const recoveredDraft = useMemo(() => readRecoveryDraft<CardRecoveryDraft>(recoveryKey), [recoveryKey]);
-  const initialDraft = recoveredDraft ?? serverDraft;
+  const initialDraft = recoveredDraft ? { ...recoveredDraft, approvalRevision: recoveredDraft.approvalRevision ?? 0 } : serverDraft;
+  const [approvalRevision, setApprovalRevision] = useState(initialDraft.approvalRevision ?? 0);
+  const [resubmitting, setResubmitting] = useState(false);
+  const resubmittingRef = useRef(false);
+  const statusBadgesRef = useRef(card.statusBadges);
+  const [newApprovalUrl, setNewApprovalUrl] = useState("");
   const [title, setTitle] = useState(initialDraft.title);
   const [caption, setCaption] = useState(initialDraft.caption);
   const [artType, setArtType] = useState(initialDraft.artType);
@@ -6508,9 +6541,10 @@ function AdminCardEditor({
   const editorMainRef = useRef<HTMLDivElement>(null);
   const editorSideRef = useRef<HTMLElement>(null);
   const saveInFlightRef = useRef(false);
+  const isBriefApprovalRef = useRef(card.isBriefApproval ?? false);
   const lastSavedDraftRef = useRef(JSON.stringify(serverDraft));
   const savedColumnIdRef = useRef(serverDraft.columnId);
-  const draft = useMemo<CardRecoveryDraft>(() => ({ title, caption, artType, columnId, status, clientLabel, priorityLevel, tags, hashtags, scheduledAt, externalLinkUrl, mediaUrls }), [artType, caption, clientLabel, columnId, externalLinkUrl, hashtags, mediaUrls, priorityLevel, scheduledAt, status, tags, title]);
+  const draft = useMemo<CardRecoveryDraft>(() => ({ approvalRevision, title, caption, artType, columnId, status, clientLabel, priorityLevel, tags, hashtags, scheduledAt, externalLinkUrl, mediaUrls }), [approvalRevision, artType, caption, clientLabel, columnId, externalLinkUrl, hashtags, mediaUrls, priorityLevel, scheduledAt, status, tags, title]);
   const latestDraftRef = useRef(draft);
   latestDraftRef.current = draft;
 
@@ -6650,9 +6684,10 @@ ${internalMessage.trim()}`, isInternal: true });
     }
   }
 
-  async function persistCard(closeAfterSave: boolean) {
-    const currentDraft = latestDraftRef.current;
-    const draftJson = JSON.stringify(currentDraft);
+  async function persistCard(closeAfterSave: boolean, forResubmission = false) {
+    if (resubmittingRef.current && !forResubmission) return false;
+    let currentDraft = latestDraftRef.current;
+    let draftJson = JSON.stringify(currentDraft);
     if (!currentDraft.title.trim()) {
       setFeedback("Informe um título para salvar o card.");
       setAutosaveState("error");
@@ -6668,7 +6703,8 @@ ${internalMessage.trim()}`, isInternal: true });
     setAutosaveState("saving");
     if (closeAfterSave) setFeedback(null);
     try {
-      await updateAdminCardBySlug(slug, card.id, {
+      const saved = await updateAdminCardBySlug(slug, card.id, {
+        expectedApprovalRevision: currentDraft.approvalRevision ?? 0,
         title: currentDraft.title.trim(),
         caption: currentDraft.caption.trim() || null,
         artType: currentDraft.artType,
@@ -6676,15 +6712,26 @@ ${internalMessage.trim()}`, isInternal: true });
         primaryMediaUrl: currentDraft.mediaUrls[0] ?? null,
         mediaUrls: currentDraft.mediaUrls,
         externalLinkUrl: currentDraft.externalLinkUrl.trim() || null,
-        status: currentDraft.status ? [currentDraft.status, ...card.statusBadges.slice(1)] : [],
+        status: currentDraft.status ? [currentDraft.status, ...statusBadgesRef.current.slice(1)] : [],
         tags: splitValues(currentDraft.tags),
         hashtags: splitValues(currentDraft.hashtags).map((item) => item.startsWith("#") ? item : `#${item}`),
-        isBriefApproval: card.isBriefApproval ?? false,
+        isBriefApproval: isBriefApprovalRef.current,
         scheduledAt: currentDraft.scheduledAt || null,
         scheduledTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         clientLabel: currentDraft.clientLabel.trim() || "Pendente",
         priorityLevel: currentDraft.priorityLevel || null,
       });
+      isBriefApprovalRef.current = saved.card.isBriefApproval ?? false;
+      if (saved.card.approvalRevision !== currentDraft.approvalRevision) {
+        const workflow = { approvalRevision: saved.card.approvalRevision ?? 0,
+          status: saved.card.status[0] ?? "", clientLabel: saved.card.clientLabel };
+        statusBadgesRef.current = saved.card.status;
+        currentDraft = { ...currentDraft, ...workflow };
+        latestDraftRef.current = { ...latestDraftRef.current, ...workflow };
+        draftJson = JSON.stringify(currentDraft);
+        setApprovalRevision(workflow.approvalRevision); setStatus(workflow.status); setClientLabel(workflow.clientLabel);
+        onRefresh();
+      }
       if (currentDraft.columnId !== savedColumnIdRef.current) {
         await moveAdminCardBySlug(slug, card.id, currentDraft.columnId || null);
         savedColumnIdRef.current = currentDraft.columnId;
@@ -6707,6 +6754,7 @@ ${internalMessage.trim()}`, isInternal: true });
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "Não foi possível salvar as alterações.");
       setAutosaveState("error");
+      onRefresh();
       return false;
     } finally {
       saveInFlightRef.current = false;
@@ -6715,7 +6763,7 @@ ${internalMessage.trim()}`, isInternal: true });
   }
 
   async function requestClose() {
-    if (saving || uploading) return;
+    if (saving || uploading || resubmittingRef.current) return;
     if (JSON.stringify(latestDraftRef.current) !== lastSavedDraftRef.current) {
       await persistCard(true);
       return;
@@ -6747,12 +6795,69 @@ ${internalMessage.trim()}`, isInternal: true });
     }
   }
 
+  const approvalConflict = approvalRevision < (card.approvalRevision ?? 0);
+  function adoptCurrentApproval() {
+    const nextDraft = { ...latestDraftRef.current, approvalRevision: card.approvalRevision ?? 0,
+      status: card.statusBadges[0] ?? "", clientLabel: card.clientLabel, columnId: card.columnId ?? "" };
+    statusBadgesRef.current = card.statusBadges;
+    savedColumnIdRef.current = nextDraft.columnId;
+    lastSavedDraftRef.current = JSON.stringify(serverDraft);
+    latestDraftRef.current = nextDraft;
+    setApprovalRevision(nextDraft.approvalRevision); setStatus(nextDraft.status);
+    setClientLabel(nextDraft.clientLabel); setColumnId(nextDraft.columnId);
+    setFeedback("Estado da aprovação atualizado. Sua legenda e seus arquivos em edição foram mantidos; confira antes de salvar.");
+  }
+
+  const hasClientDecision = approvalRevision > (card.approvalRevision ?? 0) ? false : card.approvalState ? card.approvalState !== "pending" : /^(aprovado(?: pelo cliente)?|altera[çc][ãa]o solicitada|revis[ãa]o solicitada)$/i.test(card.clientLabel) || card.statusBadges.some((value) => /^(aprovado|revis[ãa]o solicitada|altera[çc][ãa]o solicitada)$/i.test(value));
+  const resendBlocked = card.archived || card.archivedAt ? "Restaure o post antes de reenviar."
+    : card.publishedAt || /^publicado$/i.test(status) ? "Este post já foi publicado. Crie uma nova versão para aprovação."
+    : scheduledAt || /^agendados?$/i.test(status) ? "Remova o agendamento e o status Agendado antes de reenviar." : null;
+
+  async function resendApproval() {
+    if (resubmittingRef.current || saveInFlightRef.current || uploading || resendBlocked || approvalConflict) return;
+    resubmittingRef.current = true;
+    setResubmitting(true);
+    setFeedback("Salvando a correção e preparando a nova revisão...");
+    editorMainRef.current?.setAttribute("inert", "");
+    editorSideRef.current?.setAttribute("inert", "");
+    try {
+      if (!(await persistCard(false, true))) return;
+      if (JSON.stringify(latestDraftRef.current) !== lastSavedDraftRef.current) {
+        setFeedback("Conclua o salvamento da correção antes de reenviar.");
+        return;
+      }
+      const result = await resubmitAdminApprovalBySlug(slug, card.id, latestDraftRef.current.approvalRevision ?? 0);
+      const nextDraft = { ...latestDraftRef.current, approvalRevision: result.card.approvalRevision ?? 0,
+        status: result.card.statusBadges[0] ?? "", clientLabel: result.card.clientLabel, columnId: result.card.columnId ?? "" };
+      statusBadgesRef.current = result.card.statusBadges;
+      savedColumnIdRef.current = nextDraft.columnId;
+      latestDraftRef.current = nextDraft;
+      lastSavedDraftRef.current = JSON.stringify(nextDraft);
+      setApprovalRevision(nextDraft.approvalRevision);
+      setStatus(nextDraft.status); setClientLabel(nextDraft.clientLabel); setColumnId(nextDraft.columnId);
+      try { window.localStorage.removeItem(recoveryKey); } catch { /* Recovery is optional. */ }
+      onCardUpdated?.(result.card);
+      setNewApprovalUrl(`${window.location.origin}/#/approval/${result.approvalLink.token}`);
+      setApprovalLinkCopied(false);
+      setAutosaveState("saved"); setAutosavedAt(new Date());
+      setFeedback("Enviado novamente para aprovação. O conteúdo já está disponível no portal; comentários e histórico foram mantidos.");
+      onRefresh();
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Não foi possível reenviar. Confira o estado atualizado antes de tentar novamente.");
+      onRefresh();
+    } finally {
+      resubmittingRef.current = false; setResubmitting(false);
+      editorMainRef.current?.removeAttribute("inert"); editorSideRef.current?.removeAttribute("inert");
+    }
+  }
+
   async function createApprovalLink() {
     if (creatingApprovalLink) return;
     setCreatingApprovalLink(true);
     setApprovalLinkCopied(false);
     try {
-      const result = await createAdminApprovalLinkBySlug(slug, card.id);
+      if (!(await persistCard(false))) return;
+      const result = await createAdminApprovalLinkBySlug(slug, card.id, latestDraftRef.current.approvalRevision ?? 0);
       const origin = window.location.origin;
       const link = `${origin}/#/approval/${result.approvalLink.token}`;
       await navigator.clipboard.writeText(link);
@@ -6867,6 +6972,7 @@ ${internalMessage.trim()}`, isInternal: true });
                 </div>
               </EditorField>
             </div>
+            {detail.approvalEvents?.length ? <section className="approval-history-panel"><h4>Histórico de aprovação</h4>{detail.approvalEvents.map((event) => <article key={event.id}><strong>{event.action === "converted_to_post" ? "Pauta convertida em post — nova aprovação" : event.action === "resubmitted" ? "Enviado novamente para aprovação" : event.action === "approved" ? "Aprovado pelo cliente" : event.action === "changes_requested" ? "Alteração solicitada" : "Estado anterior preservado"}</strong><small>{event.actorName} · {event.source === "public_link" ? "Link público" : event.source === "portal" ? "Portal" : event.source === "legacy" ? "Registro anterior" : "Equipe"} · {new Date(event.createdAt).toLocaleString("pt-BR")}</small>{event.commentText ? <p>{event.commentText}</p> : null}</article>)}</section> : null}
             <section className="editor-comments">
             <h4>Comentários ({detail.comments.length})</h4>
             {detail.comments.map((comment) => (
@@ -6885,11 +6991,17 @@ ${internalMessage.trim()}`, isInternal: true });
           </div>
         </div>
         <aside className="admin-card-side" ref={editorSideRef}>
+          {approvalConflict && !resubmitting ? <section className="approval-resubmit-panel" role="alert"><strong>A aprovação foi atualizada</strong><small>Seu rascunho foi preservado. Atualize o estado da aprovação antes de salvar.</small><button type="button" className="ghost-button" onClick={adoptCurrentApproval}>Atualizar estado da aprovação</button><button type="button" className="ghost-button" onClick={onClose}>Fechar mantendo rascunho</button></section> : null}
           <CardTimeTracker slug={slug} cardId={card.id} cardTitle={title || card.title} />
           <ArtTypeSelect value={artType} onChange={setArtType} />
           <EditorSelect label="Status" value={status} onChange={setStatus} options={CARD_STATUS_OPTIONS} emptyLabel="Sem status" />
           <label className="editor-field"><span>Prioridade</span><select value={priorityLevel} onChange={(event) => setPriorityLevel(event.target.value as CardPriority | "")}><option value="">Sem prioridade</option><option value="high">Alta prioridade</option><option value="medium">Média prioridade</option><option value="normal">Prioridade normal</option></select></label>
-          <EditorSelect label="Feedback do cliente" value={clientLabel} onChange={setClientLabel} options={["Pendente", "Aprovado", "Alteração solicitada"]} />
+          {approvalRevision > 0 ? <div className="editor-field"><span>Feedback do cliente</span><strong>{clientLabel === "Pendente" ? "Aguardando aprovação" : clientLabel}</strong></div> : <EditorSelect label="Feedback do cliente" value={clientLabel} onChange={setClientLabel} options={["Pendente", "Aprovado", "Alteração solicitada"]} />}
+          {hasClientDecision ? <section className="approval-resubmit-panel">
+            <button type="button" className="gradient-button" disabled={resubmitting || saving || uploading || creatingApprovalLink || restoringCaptionVersionId !== null || Boolean(resendBlocked) || approvalConflict} onClick={() => void resendApproval()}>{resubmitting ? "Enviando..." : "Enviar novamente para aprovação"}</button>
+            <small>{resendBlocked || "O conteúdo voltará para revisão. Os comentários e o histórico serão mantidos."}</small>
+          </section> : null}
+          {newApprovalUrl ? <section className="approval-resubmit-panel" aria-label="Novo link de aprovação"><small>O novo link é válido por 7 dias. Os links anteriores foram encerrados.</small><input aria-label="Novo link de aprovação" readOnly value={newApprovalUrl} onFocus={(event) => event.target.select()} /><button type="button" className="ghost-button" onClick={() => { void navigator.clipboard.writeText(newApprovalUrl).then(() => setApprovalLinkCopied(true)).catch(() => setFeedback("O reenvio foi concluído. Selecione o link acima para copiá-lo manualmente.")); }}>{approvalLinkCopied ? "Link copiado" : "Copiar novo link"}</button></section> : null}
           <EditorField label="Agendamento"><input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /><small className="editor-field-hint">Na data e hora informadas, o card será movido para Arquivados.</small></EditorField>
           <label className="editor-field"><span>Coluna</span><select value={columnId} onChange={(event) => setColumnId(event.target.value)}><option value="">Sem coluna</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select></label>
           <section className="tag-library">
@@ -6932,9 +7044,9 @@ ${internalMessage.trim()}`, isInternal: true });
           {internalApprovalOpen ? <div className="internal-approval-popover"><header><div><span>REVISÃO DA EQUIPE</span><h4>Enviar para aprovação interna</h4></div><button type="button" onClick={() => setInternalApprovalOpen(false)}>×</button></header><p>Escolha quem deve revisar este card. Clientes não aparecem nesta lista.</p><div className="internal-recipient-list">{internalUsers.length ? internalUsers.map((user) => <label key={user.id}><input type="checkbox" checked={internalRecipientIds.includes(user.id)} onChange={(event) => setInternalRecipientIds((current) => event.target.checked ? [...current, user.id] : current.filter((id) => id !== user.id))} /><span><strong>{user.fullName}</strong><small>{user.globalRole} · {user.email}</small></span></label>) : <small>Nenhum membro interno disponível.</small>}</div><textarea value={internalMessage} onChange={(event) => setInternalMessage(event.target.value)} placeholder="Escreva uma mensagem para quem vai revisar..." /><footer><button type="button" className="ghost-button" onClick={() => setInternalApprovalOpen(false)}>Cancelar</button><button type="button" className="gradient-button" disabled={internalSending || !internalRecipientIds.length || !internalMessage.trim()} onClick={() => void sendInternalApproval()}>{internalSending ? "Enviando..." : "Enviar para revisão"}</button></footer></div> : null}
         </aside>
         <footer className="admin-card-footer">
-          <div>{feedback ? <p className="editor-feedback">{feedback}</p> : null}<AutosaveIndicator state={autosaveState} savedAt={autosavedAt} /></div>
-          <button type="button" className="ghost-button" onClick={() => void requestClose()} disabled={saving || uploading}>Cancelar</button>
-          <button className="gradient-button editor-save" onClick={() => void persistCard(true)} disabled={saving || uploading}>{saving ? "Salvando..." : "Salvar e fechar"}</button>
+          <div>{feedback ? <p className={`editor-feedback${newApprovalUrl && feedback.startsWith("Enviado novamente") ? " approval-success" : ""}`}>{feedback}</p> : null}<AutosaveIndicator state={autosaveState} savedAt={autosavedAt} /></div>
+          <button type="button" className="ghost-button" onClick={() => void requestClose()} disabled={saving || uploading || resubmitting}>Cancelar</button>
+          <button className="gradient-button editor-save" onClick={() => void persistCard(true)} disabled={saving || uploading || resubmitting}>{saving ? "Salvando..." : "Salvar e fechar"}</button>
         </footer>
       </section>
     </div>,

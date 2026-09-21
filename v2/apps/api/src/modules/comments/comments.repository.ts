@@ -30,7 +30,7 @@ function mapCommentRow(row: CommentRow) {
 }
 
 export async function listCommentsByCardId(
-  db: Pool,
+  db: Pick<Pool, "query">,
   cardId: string,
   options: { includeInternal: boolean },
 ) {
@@ -58,7 +58,7 @@ export async function listCommentsByCardId(
 }
 
 export async function createComment(
-  db: Pool,
+  db: Pick<Pool, "query">,
   input: {
     cardId: string;
     userId: string | null;
@@ -97,5 +97,5 @@ export async function createComment(
   );
 
   const comments = await listCommentsByCardId(db, input.cardId, { includeInternal: true });
-  return comments[comments.length - 1] ?? null;
+  return comments.find((comment) => comment.id === id) ?? null;
 }

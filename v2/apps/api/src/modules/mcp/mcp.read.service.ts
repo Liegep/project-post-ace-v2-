@@ -167,7 +167,7 @@ export async function mcpListPendingApprovals(db: Pool, auth: AuthContext, input
     "MAX(al.viewed_at) AS lastViewedAt, MAX(al.created_at) AS approvalRequestedAt",
     "FROM kanban_cards c INNER JOIN client_accounts a ON a.id = c.client_account_id",
     "LEFT JOIN approval_links al ON al.card_id = c.id AND al.approved_at IS NULL",
-    "WHERE c.archived = 0 AND c.is_brief_approval = 1 AND NOT EXISTS (SELECT 1 FROM approval_links approved WHERE approved.card_id = c.id AND approved.approved_at IS NOT NULL)",
+    "WHERE c.archived = 0 AND c.is_brief_approval = 1 AND (c.approval_state IN ('pending', 'changes_requested') OR (c.approval_revision = 0 AND NOT EXISTS (SELECT 1 FROM approval_links approved WHERE approved.card_id = c.id AND approved.approved_at IS NOT NULL)))",
     scope.sql, clientFilter,
     "GROUP BY c.id, a.name, c.title, c.client_label, c.status_json, c.priority_level, c.deadline_at, c.scheduled_at",
     "ORDER BY COALESCE(c.deadline_at, c.scheduled_at, c.created_at) ASC LIMIT ?",

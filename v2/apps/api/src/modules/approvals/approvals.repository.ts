@@ -30,7 +30,7 @@ function mapApprovalLinkRow(row: ApprovalLinkRow) {
 }
 
 export async function createApprovalLink(
-  db: Pool,
+  db: Pick<Pool, "query">,
   input: {
     clientAccountId: string;
     cardId: string;
@@ -53,7 +53,7 @@ export async function createApprovalLink(
   return findApprovalLinkByToken(db, token);
 }
 
-export async function findApprovalLinkByToken(db: Pool, token: string) {
+export async function findApprovalLinkByToken(db: Pick<Pool, "query">, token: string) {
   const [rows] = await db.query<ApprovalLinkRow[]>(
     [
       "SELECT id, client_account_id, card_id, token, expires_at, is_active, viewed_at, approved_at, created_by_user_id, created_at",
@@ -68,7 +68,7 @@ export async function findApprovalLinkByToken(db: Pool, token: string) {
   return row ? mapApprovalLinkRow(row) : null;
 }
 
-export async function listApprovalLinksByCardId(db: Pool, cardId: string) {
+export async function listApprovalLinksByCardId(db: Pick<Pool, "query">, cardId: string) {
   const [rows] = await db.query<ApprovalLinkRow[]>(
     [
       "SELECT al.id, al.client_account_id, al.card_id, al.token, al.expires_at, al.is_active, al.viewed_at, al.approved_at, al.created_by_user_id, al.created_at",
@@ -84,7 +84,7 @@ export async function listApprovalLinksByCardId(db: Pool, cardId: string) {
   return rows.map(mapApprovalLinkRow);
 }
 
-export async function markApprovalLinkViewed(db: Pool, token: string) {
+export async function markApprovalLinkViewed(db: Pick<Pool, "query">, token: string) {
   await db.query(
     [
       "UPDATE approval_links",
@@ -98,7 +98,7 @@ export async function markApprovalLinkViewed(db: Pool, token: string) {
 }
 
 export async function submitApprovalDecision(
-  db: Pool,
+  db: Pick<Pool, "query">,
   token: string,
   input: { approved: boolean },
 ) {

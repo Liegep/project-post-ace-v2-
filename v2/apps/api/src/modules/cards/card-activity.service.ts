@@ -21,7 +21,7 @@ export async function ensureCardActivityEventsTable(db: Pool) {
   ].join(" "));
 }
 
-export async function recordCardActivityEvent(db: Pool, input: {
+export async function recordCardActivityEvent(db: Pick<Pool, "query">, input: {
   clientAccountId: string;
   cardId: string;
   actorUserId?: string | null;
@@ -30,7 +30,6 @@ export async function recordCardActivityEvent(db: Pool, input: {
   activityType: CardActivityType;
   detail?: string | null;
 }) {
-  await ensureCardActivityEventsTable(db);
   await db.query(
     "INSERT INTO card_activity_events (id, client_account_id, card_id, actor_user_id, actor_name, actor_role, activity_type, detail) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
     [

@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import { ensureApprovalStorage } from "./modules/approvals/approval-history.repository.js";
 import fastifyStatic from "@fastify/static";
 import fastifyFormbody from "@fastify/formbody";
 import path from "node:path";
@@ -117,6 +118,7 @@ export async function buildApp() {
     try {
       await ensureMcpStorage(app.db);
       await ensureCardTimeZoneStorage(app.db, appEnv.APP_TIMEZONE);
+      await ensureApprovalStorage(app.db);
     } catch (error) {
       databaseAvailableAtStartup = false;
       app.log.error(error, "Database unavailable during startup; continuing with degraded API");

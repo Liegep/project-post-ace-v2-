@@ -2,6 +2,7 @@ import { ACCESS_TOKEN_KEY } from "./authApi";
 import type {
   AdminWorkspacePreview,
   ApprovalLink,
+  ApprovalEvent,
   BoardCard,
   BoardColumn,
   CalendarEvent,
@@ -209,6 +210,10 @@ type ApiPortalAccountItem = {
 };
 
 type ApiBoardCard = {
+  approvalRevision?: number;
+  approvalState?: "pending" | "approved" | "changes_requested" | null;
+  columnId?: string | null;
+  archived?: boolean;
   id: string;
   title: string;
   caption: string | null;
@@ -326,7 +331,7 @@ export type ClientTagDefinition = { id: string; name: string; color: string };
 export type HashtagGroup = { id: string; name: string; hashtags: string[] };
 export type DashboardTask = { id: string; title: string; deadlineAt: string; clientLabel: string; clientName: string; clientLogoUrl?: string | null };
 export type DashboardSubmission = { id: string; title: string; createdAt: string; clientName: string; clientLogoUrl?: string | null };
-export type DashboardClientActivity = { id: string; cardId: string | null; title: string; occurredAt: string; clientName: string; clientSlug: string; clientLogoUrl?: string | null; activityType: "approved" | "changes_requested" | "comment" | "brand_brain" | "contract_accepted" | "proposal_accepted"; detail: string };
+export type DashboardClientActivity = { recordedDecision?: boolean | number; canSchedule?: boolean | number; id: string; cardId: string | null; title: string; occurredAt: string; clientName: string; clientSlug: string; clientLogoUrl?: string | null; activityType: "approved" | "changes_requested" | "comment" | "brand_brain" | "contract_accepted" | "proposal_accepted"; detail: string };
 export type DashboardUpcomingPost = { id: string; title: string; scheduledAt: string; clientName: string; clientLogoUrl?: string | null };
 export type DashboardTodayPost = { id: string; title: string; scheduledAt: string; clientName: string; clientLogoUrl?: string | null; mediaUrl?: string | null };
 export type DashboardApprovedPauta = { id: string; title: string; approvedAt: string; clientName: string; clientSlug: string; clientLogoUrl?: string | null };
@@ -338,6 +343,7 @@ type ApiCardDetailResponse = {
   card: ApiBoardCard;
   comments: ApiComment[];
   approvalLinks?: ApiApprovalLink[];
+  approvalEvents?: ApprovalEvent[];
 };
 
 const adminDrawerNotes = [
@@ -514,6 +520,10 @@ function inferMediaAspect(card: ApiBoardCard): BoardCard["mediaAspect"] {
 
 function mapCard(card: ApiBoardCard, tagColors: Record<string, string> = {}): BoardCard {
   return {
+    approvalRevision: card.approvalRevision ?? 0,
+    approvalState: card.approvalState ?? null,
+    columnId: card.columnId,
+    archived: card.archived ?? false,
     id: card.id,
     title: card.title,
     subtitle: card.caption ?? undefined,
@@ -728,7 +738,7 @@ export async function listAdminDesignBriefTemplates() { return fetchJson<{ items
 export async function createAdminDesignBriefTemplate(input: { name: string; introduction: string; fields: DesignBriefFieldRecord[] }) { return sendJson<{ template: DesignBriefTemplateRecord }>("/api/design-brief-templates", { method: "POST", body: JSON.stringify(input) }); }
 export async function deleteAdminDesignBriefTemplate(templateId: string) { return sendJson<{ ok: boolean }>(`/api/design-brief-templates/${templateId}`, { method: "DELETE" }); }
 
-export async function loadClientPortalBySlug(slug: string): Promise<ClientPortalPreview> {
+export async function loadClientPortalBySlug(slug: string, previous?: ClientPortalPreview): Promise<ClientPortalPreview> {
   const matchedAccount = await findPortalAccountBySlug(slug);
 
   // The portal navigation is controlled by the home response. A temporary
@@ -739,9 +749,7 @@ export async function loadClientPortalBySlug(slug: string): Promise<ClientPortal
   );
   const boardResponse = await fetchJson<ApiPortalBoardResponse>(
     `/api/portal/accounts/${matchedAccount.clientAccountId}/board`,
-  ).catch((): ApiPortalBoardResponse => ({
-    board: { columns: [], withoutColumn: { cards: [] } },
-  }));
+  ).catch(() => null);
 
   return {
     accountName: homeResponse.account.name,
@@ -753,9 +761,10 @@ export async function loadClientPortalBySlug(slug: string): Promise<ClientPortal
     showArchivedToClient: homeResponse.account.showArchivedToClient,
     widgets: homeResponse.widgets,
     permissions: homeResponse.permissions,
-    boardColumns: mapColumns(boardResponse.board.columns),
+    boardRefreshFailed: boardResponse === null,
+    boardColumns: boardResponse ? mapColumns(boardResponse.board.columns) : previous?.boardColumns ?? [],
     postCreationColumns: homeResponse.postCreationColumns.map((column) => ({ ...column, color: column.color ?? "#8c94a8" })),
-    withoutColumn: boardResponse.board.withoutColumn.cards.map((card) => mapCard(card)),
+    withoutColumn: boardResponse ? boardResponse.board.withoutColumn.cards.map((card) => mapCard(card)) : previous?.withoutColumn ?? [],
     calendarEvents: [],
     upcomingItems: homeResponse.upcomingItems,
     calendarPosts: homeResponse.calendarPosts.map((card) => mapCard(card)),
@@ -791,6 +800,7 @@ export async function loadAdminCardDetailBySlug(
     card: mapCard(response.card),
     comments: response.comments.map(mapComment),
     approvalLinks: (response.approvalLinks ?? []).map(mapApprovalLink),
+    approvalEvents: response.approvalEvents ?? [],
   };
 }
 
@@ -872,10 +882,10 @@ export async function addPortalCardCommentBySlug(
 export async function submitPortalCardDecisionBySlug(
   slug: string,
   cardId: string,
-  input: { approved: boolean; commentText?: string },
+  input: { approved: boolean; commentText?: string; expectedApprovalRevision?: number },
 ) {
   const matchedAccount = await findPortalAccountBySlug(slug);
-  return sendJson(
+  return sendJson<{ ok: true; card: ApiBoardCard }>(
     `/api/portal/accounts/${matchedAccount.clientAccountId}/cards/${cardId}/decision`,
     {
       method: "POST",
@@ -962,6 +972,7 @@ export async function updateAdminCardBySlug(
   slug: string,
   cardId: string,
   input: Partial<{
+    expectedApprovalRevision: number;
     title: string;
     caption: string | null;
     mediaType: string;
@@ -982,7 +993,7 @@ export async function updateAdminCardBySlug(
   }>,
 ) {
   const matchedClient = await findAdminClientBySlug(slug);
-  return sendJson(`/api/clients/${matchedClient.id}/cards/${cardId}`, {
+  return sendJson<{ ok: true; card: ApiBoardCard }>(`/api/clients/${matchedClient.id}/cards/${cardId}`, {
     method: "PATCH",
     body: JSON.stringify(input),
   });
@@ -1218,11 +1229,11 @@ export async function saveAdminKanbanAutomationsBySlug(slug: string, items: unkn
   return sendJson(`/api/clients/${matchedClient.id}/kanban-automations`, { method: "PUT", body: JSON.stringify({ items }) });
 }
 
-export async function createAdminApprovalLinkBySlug(slug: string, cardId: string) {
+export async function createAdminApprovalLinkBySlug(slug: string, cardId: string, expectedApprovalRevision = 0) {
   const matchedClient = await findAdminClientBySlug(slug);
   return sendJson<{ ok: true; approvalLink: ApiApprovalLink }>(
     `/api/clients/${matchedClient.id}/cards/${cardId}/approval-links`,
-    { method: "POST", body: JSON.stringify({ expiresInDays: 7 }) },
+    { method: "POST", body: JSON.stringify({ expiresInDays: 7, expectedApprovalRevision }) },
   );
 }
 
@@ -1415,4 +1426,13 @@ export async function changeMyPassword(input: { currentPassword: string; newPass
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export async function resubmitAdminApprovalBySlug(slug: string, cardId: string, expectedApprovalRevision: number) {
+  const client = await findAdminClientBySlug(slug);
+  const result = await sendJson<{ ok: true; card: ApiBoardCard; approvalLink: ApiApprovalLink }>(
+    `/api/clients/${client.id}/cards/${cardId}/resubmit-approval`,
+    { method: "POST", body: JSON.stringify({ expectedApprovalRevision }) },
+  );
+  return { card: mapCard(result.card), approvalLink: result.approvalLink };
 }

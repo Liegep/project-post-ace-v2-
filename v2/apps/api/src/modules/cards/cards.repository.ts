@@ -31,6 +31,8 @@ type CardRow = RowDataPacket & {
   archived: number;
   archived_at: Date | string | null;
   client_label: string;
+  approval_revision: number;
+  approval_state: "pending" | "approved" | "changes_requested" | null;
   priority_level: "high" | "medium" | "normal" | null;
   event_color: string | null;
   comments_count_cache: number;
@@ -84,6 +86,8 @@ function mapCardRow(row: CardRow) {
     archived: Boolean(row.archived),
     archivedAt: row.archived_at,
     clientLabel: row.client_label,
+    approvalRevision: Number(row.approval_revision ?? 0),
+    approvalState: row.approval_state ?? null,
     priorityLevel: row.priority_level,
     eventColor: row.event_color,
     commentsCount: row.comments_count_cache,
@@ -95,11 +99,11 @@ function mapCardRow(row: CardRow) {
   };
 }
 
-export async function findCardById(db: Pool, cardId: string) {
+export async function findCardById(db: Pick<Pool, "query">, cardId: string) {
   const [rows] = await db.query<CardRow[]>(
     [
       "SELECT id, client_account_id, column_id, title, caption, media_type, primary_media_url, media_urls_json, external_link_url, art_type,",
-      "status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, DATE_FORMAT(scheduled_at, '%Y-%m-%d %H:%i:%s') AS scheduled_at, scheduled_timezone, published_at, archived, archived_at, client_label, priority_level, event_color,",
+      "status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, DATE_FORMAT(scheduled_at, '%Y-%m-%d %H:%i:%s') AS scheduled_at, scheduled_timezone, published_at, archived, archived_at, client_label, approval_revision, approval_state, priority_level, event_color,",
       "comments_count_cache, created_by_user_id, position, legacy_id, created_at, updated_at",
       "FROM kanban_cards",
       "WHERE id = ?",
@@ -123,7 +127,7 @@ export async function listCardsByClientAccountId(
 ) {
   let sql = [
     "SELECT id, client_account_id, column_id, title, caption, media_type, primary_media_url, media_urls_json, external_link_url, art_type,",
-    "status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, DATE_FORMAT(scheduled_at, '%Y-%m-%d %H:%i:%s') AS scheduled_at, scheduled_timezone, published_at, archived, archived_at, client_label, priority_level, event_color,",
+    "status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, DATE_FORMAT(scheduled_at, '%Y-%m-%d %H:%i:%s') AS scheduled_at, scheduled_timezone, published_at, archived, archived_at, client_label, approval_revision, approval_state, priority_level, event_color,",
     "comments_count_cache, created_by_user_id, position, legacy_id, created_at, updated_at",
     "FROM kanban_cards",
     "WHERE client_account_id = ?",
@@ -214,7 +218,7 @@ export async function deleteCard(db: Pool, cardId: string) {
 }
 
 export async function updateCard(
-  db: Pool,
+  db: Pick<Pool, "query">,
   cardId: string,
   input: UpdateCardInput,
 ) {
@@ -298,10 +302,14 @@ export async function updateCard(
     return findCardById(db, cardId);
   }
 
-  await db.query(
-    `UPDATE kanban_cards SET ${fields.join(", ")} WHERE id = ?`,
-    [...params, cardId],
+  const guarded = input.expectedApprovalRevision !== undefined;
+  const [result] = await db.query<ResultSetHeader>(
+    `UPDATE kanban_cards SET ${fields.join(", ")} WHERE id = ?${guarded ? " AND approval_revision = ?" : ""}`,
+    [...params, cardId, ...(guarded ? [input.expectedApprovalRevision] : [])],
   );
+  if (guarded && result.affectedRows === 0) {
+    throw Object.assign(new Error("A aprovação deste post mudou. Reabra o card antes de salvar novamente; seu rascunho foi preservado."), { statusCode: 409 });
+  }
 
   return findCardById(db, cardId);
 }

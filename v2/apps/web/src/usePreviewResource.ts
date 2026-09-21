@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type ResourceState<T> = {
   data: T;
@@ -19,13 +19,17 @@ export function usePreviewResource<T>(
     message: "Conectando ao banco real da V2.",
   });
 
+  const scopeRef = useRef(deps[0]);
   useEffect(() => {
     let active = true;
+    const scopeChanged = scopeRef.current !== deps[0];
+    scopeRef.current = deps[0];
 
     // Keep the current data on screen while fresh data arrives. Replacing it
     // with the fallback made every small action look like a full reload.
     setState((current) => ({
       ...current,
+      data: scopeChanged ? fallback : current.data,
       loading: true,
       source: "backend",
       message: "Atualizando dados.",
