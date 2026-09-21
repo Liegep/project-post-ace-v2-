@@ -10243,3 +10243,45 @@ button {
   .portal-report-download > span { width: 40px; height: 40px; }
   .portal-report-download button { grid-column: 1 / -1; width: 100%; }
 }
+
+
+/* Client portal: make requested changes visible on closed approval cards. */
+.portal-card.card-button {
+  position: relative;
+}
+.portal-change-request-tab {
+  position: absolute;
+  z-index: 5;
+  top: 14px;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 27px;
+  max-width: calc(100% - 28px);
+  padding: 5px 11px 5px 12px;
+  border: 1px solid rgba(214, 69, 91, .20);
+  border-right: 0;
+  border-radius: 999px 0 0 999px;
+  color: #a82946;
+  background: rgba(255, 239, 244, .96);
+  box-shadow: 0 5px 14px rgba(126, 49, 75, .10);
+  font-size: .68rem;
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: .015em;
+  white-space: nowrap;
+  pointer-events: none;
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+}
+.portal-card.card-button.has-change-request .closed-card-media {
+  position: relative;
+}
+@media (max-width: 640px) {
+  .portal-change-request-tab {
+    top: 10px;
+    min-height: 25px;
+    padding: 4px 9px 4px 10px;
+    font-size: .64rem;
+  }
+}
