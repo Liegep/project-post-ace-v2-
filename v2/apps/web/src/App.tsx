@@ -4982,7 +4982,8 @@ function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen =
     >
       <div className="artwork-carousel-track" style={{ "--artwork-index": index } as CSSProperties}>
         {urls.map((url, itemIndex) => {
-          const isVideo = /\.(mp4|webm|mov)(\?.*)?$/i.test(url) || (urls.length === 1 && /video|reels?/i.test(mediaType ?? ""));
+          const isLinkedExternalMedia = /(?:drive|docs)\.google\.com/i.test(url);
+          const isVideo = !isLinkedExternalMedia && (/\.(mp4|webm|mov)(\?.*)?$/i.test(url) || (urls.length === 1 && /video|reels?/i.test(mediaType ?? "")));
           const detectedKind = mediaKinds[itemIndex] ?? (isVideo ? "video" : undefined);
           return <figure className={`${itemIndex === index ? "artwork-carousel-slide active" : "artwork-carousel-slide"}${detectedKind === "video" ? " video" : ""}`} key={`${url}-${itemIndex}`} aria-hidden={itemIndex !== index}>
             <ResilientCardMedia
@@ -5265,6 +5266,17 @@ function portalCardAssets(card: BoardCard) {
 function linkedCardMaterial(card: BoardCard) {
   return card.externalLinkUrl ?? portalCardAssets(card).find((url) => /(?:drive|docs)\.google\.com/i.test(url)) ?? null;
 }
+
+function linkedMaterialPortalLabel(locale: string, url: string) {
+  const normalized = locale.toLocaleLowerCase("pt-BR");
+  const isGoogleDrive = /(?:drive|docs)\.google\.com/i.test(url);
+  if (normalized.startsWith("it") || normalized.includes("ital")) return isGoogleDrive ? "Apri materiale su Google Drive ↗" : "Apri materiale esterno ↗";
+  if (normalized.startsWith("es") || normalized.includes("espa")) return isGoogleDrive ? "Abrir material en Google Drive ↗" : "Abrir material externo ↗";
+  if (normalized.startsWith("en") || normalized.includes("ingl")) return isGoogleDrive ? "Open material in Google Drive ↗" : "Open external material ↗";
+  if (normalized.startsWith("sv") || normalized.includes("suec")) return isGoogleDrive ? "Öppna material i Google Drive ↗" : "Öppna externt material ↗";
+  return isGoogleDrive ? "Abrir material no Google Drive ↗" : "Abrir material externo ↗";
+}
+
 
 function portalAssetExtension(url: string, contentType?: string | null) {
   const urlExtension = url.split("?")[0].match(/\.([a-z0-9]{2,5})$/i)?.[1];
@@ -6283,8 +6295,9 @@ function CardDetailModal({
               ))}
             </div>
             {linkedCardMaterial(detail.card) ? (
-              <a className="external-card-link" href={linkedCardMaterial(detail.card) ?? undefined} target="_blank" rel="noreferrer">
-                {t("Abrir link externo ↗")}
+              <a className="external-card-link portal-linked-material-cta" href={linkedCardMaterial(detail.card) ?? undefined} target="_blank" rel="noreferrer">
+                <UiIcon name="link" />
+                <span>{linkedMaterialPortalLabel(localeTag, linkedCardMaterial(detail.card) ?? "")}</span>
               </a>
             ) : null}
           </div>
