@@ -10285,3 +10285,33 @@ button {
     font-size: .64rem;
   }
 }
+
+
+/* Client portal: external linked material should read as the primary action when no file is attached. */
+.portal-linked-material-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  margin-top: 10px;
+  padding: 9px 14px;
+  border: 1px solid rgba(101, 88, 221, .18);
+  border-radius: 12px;
+  color: #5547cf;
+  background: linear-gradient(135deg, rgba(240, 237, 255, .96), rgba(238, 249, 255, .96));
+  box-shadow: 0 8px 20px rgba(81, 69, 185, .08);
+  font-size: .78rem;
+  font-weight: 750;
+  text-decoration: none;
+  transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
+}
+.portal-linked-material-cta:hover {
+  transform: translateY(-1px);
+  border-color: rgba(101, 88, 221, .30);
+  box-shadow: 0 10px 24px rgba(81, 69, 185, .12);
+}
+.portal-linked-material-cta svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
