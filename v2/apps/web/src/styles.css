@@ -10326,3 +10326,39 @@ button {
 .approval-history-panel p { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .editor-feedback.approval-success { color: #a3e5c5; }
+
+
+/* Client portal: a resubmitted card is waiting for a fresh client review. */
+.portal-review-wait-tab {
+  position: absolute;
+  z-index: 5;
+  top: 14px;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 27px;
+  max-width: calc(100% - 28px);
+  padding: 5px 11px 5px 12px;
+  border: 1px solid rgba(92, 82, 218, .20);
+  border-right: 0;
+  border-radius: 999px 0 0 999px;
+  color: #5146bf;
+  background: rgba(239, 237, 255, .97);
+  box-shadow: 0 5px 14px rgba(83, 72, 177, .10);
+  font-size: .68rem;
+  font-weight: 750;
+  line-height: 1;
+  letter-spacing: .015em;
+  white-space: nowrap;
+  pointer-events: none;
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+}
+@media (max-width: 640px) {
+  .portal-review-wait-tab {
+    top: 10px;
+    min-height: 25px;
+    padding: 4px 9px 4px 10px;
+    font-size: .64rem;
+  }
+}
