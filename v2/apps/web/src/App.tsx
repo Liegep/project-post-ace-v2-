@@ -5303,6 +5303,13 @@ function linkedCardMaterial(card: BoardCard) {
   return card.externalLinkUrl ?? portalCardAssets(card).find((url) => /(?:drive|docs)\.google\.com/i.test(url)) ?? null;
 }
 
+function clientFeedbackToneClass(value: string) {
+  const normalized = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+  if (/aprovad/.test(normalized)) return "approved";
+  if (/(alteracao|revisao)/.test(normalized)) return "changes";
+  return "pending";
+}
+
 function linkedMaterialPortalLabel(locale: string, url: string) {
   const normalized = locale.toLocaleLowerCase("pt-BR");
   const isGoogleDrive = /(?:drive|docs)\.google\.com/i.test(url);
@@ -7036,7 +7043,7 @@ ${internalMessage.trim()}`, isInternal: true });
           <ArtTypeSelect value={artType} onChange={setArtType} />
           <EditorSelect label="Status" value={status} onChange={setStatus} options={CARD_STATUS_OPTIONS} emptyLabel="Sem status" />
           <label className="editor-field"><span>Prioridade</span><select value={priorityLevel} onChange={(event) => setPriorityLevel(event.target.value as CardPriority | "")}><option value="">Sem prioridade</option><option value="high">Alta prioridade</option><option value="medium">Média prioridade</option><option value="normal">Prioridade normal</option></select></label>
-          {approvalRevision > 0 ? <div className="editor-field"><span>Feedback do cliente</span><strong>{clientLabel === "Pendente" ? "Aguardando aprovação" : clientLabel}</strong></div> : <EditorSelect label="Feedback do cliente" value={clientLabel} onChange={setClientLabel} options={["Pendente", "Aprovado", "Alteração solicitada"]} />}
+          {approvalRevision > 0 ? <div className="editor-field"><span>Feedback do cliente</span><strong className={`client-feedback-status ${clientFeedbackToneClass(clientLabel)}`}>{clientLabel === "Pendente" ? "Aguardando aprovação" : clientLabel}</strong></div> : <EditorSelect label="Feedback do cliente" value={clientLabel} onChange={setClientLabel} options={["Pendente", "Aprovado", "Alteração solicitada"]} />}
           {hasClientDecision ? <section className="approval-resubmit-panel">
             <button type="button" className="gradient-button" disabled={resubmitting || saving || uploading || creatingApprovalLink || restoringCaptionVersionId !== null || Boolean(resendBlocked) || approvalConflict} onClick={() => void resendApproval()}>{resubmitting ? "Enviando..." : "Enviar novamente para aprovação"}</button>
             <small>{resendBlocked || "O conteúdo voltará para revisão. Os comentários e o histórico serão mantidos."}</small>
