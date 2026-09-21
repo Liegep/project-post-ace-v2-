@@ -5264,6 +5264,23 @@ function awaitingReReviewPortalLabel(locale: string) {
   return "Aguardando nova revisão";
 }
 
+function changeRequestConfirmationCopy(locale: string) {
+  const normalized = locale.toLocaleLowerCase("pt-BR");
+  if (normalized.startsWith("it") || normalized.includes("ital")) {
+    return { title: "Modifica richiesta", detail: "La richiesta è stata inviata. Il nostro team esaminerà il feedback e lavorerà sugli aggiornamenti." };
+  }
+  if (normalized.startsWith("es") || normalized.includes("espa")) {
+    return { title: "Cambio solicitado", detail: "La solicitud fue enviada. Nuestro equipo revisará el feedback y trabajará en los ajustes." };
+  }
+  if (normalized.startsWith("en") || normalized.includes("ingl")) {
+    return { title: "Changes requested", detail: "Your request was sent. Our team will review the feedback and work on the updates." };
+  }
+  if (normalized.startsWith("sv") || normalized.includes("suec")) {
+    return { title: "Ändring begärd", detail: "Din begäran har skickats. Vårt team granskar feedbacken och arbetar vidare med justeringarna." };
+  }
+  return { title: "Alteração solicitada", detail: "Sua solicitação foi enviada. Nossa equipe vai revisar o feedback e trabalhar nos ajustes." };
+}
+
 function hasPortalResubmittedReview(card: BoardCard) {
   return card.approvalState === "pending" && (card.approvalRevision ?? 0) > 0;
 }
@@ -6076,6 +6093,16 @@ function ClientPortalWorkspacePage({
         onRequestChanges={async (cardId, commentText) => {
           const result = await submitPortalCardDecisionBySlug(slug, cardId, { approved: false, commentText, expectedApprovalRevision: detail.data?.card.approvalRevision ?? 0 });
           applyPortalDecision(cardId, result);
+          setSelectedCardId(null);
+          const confirmation = changeRequestConfirmationCopy(data.locale);
+          window.dispatchEvent(new CustomEvent("design-hub:success", {
+            detail: {
+              title: confirmation.title,
+              detail: confirmation.detail,
+              tone: "success",
+              id: `${Date.now()}-changes-requested`,
+            },
+          }));
         }}
         canRespond={canRespondToClientContent}
         allowEditCaption={canUseEnabledClientTools && data.permissions.allowClientEditCaption}
