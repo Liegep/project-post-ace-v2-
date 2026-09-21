@@ -6809,6 +6809,15 @@ ${internalMessage.trim()}`, isInternal: true });
     }
   }
 
+  async function sendToClientAndClose() {
+    if (saving || uploading || resubmittingRef.current || approvalConflict) return;
+    const nextDraft = { ...latestDraftRef.current, status: "Enviar para Cliente" };
+    latestDraftRef.current = nextDraft;
+    setStatus("Enviar para Cliente");
+    setAutosaveState("pending");
+    await persistCard(true);
+  }
+
   async function requestClose() {
     if (saving || uploading || resubmittingRef.current) return;
     if (JSON.stringify(latestDraftRef.current) !== lastSavedDraftRef.current) {
@@ -7043,7 +7052,7 @@ ${internalMessage.trim()}`, isInternal: true });
           <ArtTypeSelect value={artType} onChange={setArtType} />
           <EditorSelect label="Status" value={status} onChange={setStatus} options={CARD_STATUS_OPTIONS} emptyLabel="Sem status" />
           <label className="editor-field"><span>Prioridade</span><select value={priorityLevel} onChange={(event) => setPriorityLevel(event.target.value as CardPriority | "")}><option value="">Sem prioridade</option><option value="high">Alta prioridade</option><option value="medium">Média prioridade</option><option value="normal">Prioridade normal</option></select></label>
-          {approvalRevision > 0 ? <div className="editor-field"><span>Feedback do cliente</span><strong className={`client-feedback-status ${clientFeedbackToneClass(clientLabel)}`}>{clientLabel === "Pendente" ? "Aguardando aprovação" : clientLabel}</strong></div> : <EditorSelect label="Feedback do cliente" value={clientLabel} onChange={setClientLabel} options={["Pendente", "Aprovado", "Alteração solicitada"]} />}
+          {approvalRevision > 0 ? <div className="editor-field client-feedback-field"><span>Retorno do cliente</span><span className={`client-feedback-badge ${clientFeedbackToneClass(clientLabel)}`}><i aria-hidden="true" />{clientLabel === "Pendente" ? "Aguardando aprovação" : clientLabel}</span></div> : <EditorSelect label="Feedback do cliente" value={clientLabel} onChange={setClientLabel} options={["Pendente", "Aprovado", "Alteração solicitada"]} />}
           {newApprovalUrl ? <section className="approval-resubmit-panel" aria-label="Novo link de aprovação"><small>O novo link é válido por 7 dias. Os links anteriores foram encerrados.</small><input aria-label="Novo link de aprovação" readOnly value={newApprovalUrl} onFocus={(event) => event.target.select()} /><button type="button" className="ghost-button" onClick={() => { void navigator.clipboard.writeText(newApprovalUrl).then(() => setApprovalLinkCopied(true)).catch(() => setFeedback("O reenvio foi concluído. Selecione o link acima para copiá-lo manualmente.")); }}>{approvalLinkCopied ? "Link copiado" : "Copiar novo link"}</button></section> : null}
           <EditorField label="Agendamento"><input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /><small className="editor-field-hint">Na data e hora informadas, o card será movido para Arquivados.</small></EditorField>
           <label className="editor-field"><span>Coluna</span><select value={columnId} onChange={(event) => setColumnId(event.target.value)}><option value="">Sem coluna</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select></label>
@@ -7093,6 +7102,7 @@ ${internalMessage.trim()}`, isInternal: true });
         <footer className="admin-card-footer">
           <div>{feedback ? <p className={`editor-feedback${newApprovalUrl && feedback.startsWith("Enviado novamente") ? " approval-success" : ""}`}>{feedback}</p> : null}<AutosaveIndicator state={autosaveState} savedAt={autosavedAt} /></div>
           <button type="button" className="ghost-button" onClick={() => void requestClose()} disabled={saving || uploading || resubmitting}>Cancelar</button>
+          <button type="button" className="send-client-button" onClick={() => void sendToClientAndClose()} disabled={saving || uploading || resubmitting || approvalConflict}>{saving ? "Salvando..." : "Enviar para cliente"}</button>
           <button className="gradient-button editor-save" onClick={() => void persistCard(true)} disabled={saving || uploading || resubmitting}>{saving ? "Salvando..." : "Salvar e fechar"}</button>
         </footer>
       </section>
