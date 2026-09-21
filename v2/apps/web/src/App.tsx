@@ -5237,7 +5237,7 @@ function hasPortalChangesRequested(card: BoardCard) {
     .trim()
     .toLocaleLowerCase("pt-BR")
     .replace(/[_-]+/g, " ");
-  return /(alteracao solicitada|changes requested|modifica richiesta|cambio solicitado|andring begard)/.test(normalized);
+  return /(alteracao solicitada|revisao solicitada|revisao|changes requested|modifica richiesta|cambio solicitado|andring begard)/.test(normalized);
 }
 
 function awaitingApprovalLabel(locale: string) {
