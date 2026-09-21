@@ -5220,6 +5220,26 @@ function ClientPortalInvoicesView({ invoices, onViewInvoice }: { invoices: Billi
   </section>;
 }
 
+function changesRequestedPortalLabel(locale: string) {
+  const normalized = locale.toLocaleLowerCase("pt-BR");
+  if (normalized.startsWith("it") || normalized.includes("ital")) return "Modifica richiesta";
+  if (normalized.startsWith("es") || normalized.includes("espa")) return "Cambio solicitado";
+  if (normalized.startsWith("en") || normalized.includes("ingl")) return "Changes requested";
+  if (normalized.startsWith("sv") || normalized.includes("suec")) return "Ändring begärd";
+  return "Alteração solicitada";
+}
+
+function hasPortalChangesRequested(card: BoardCard) {
+  const normalized = [card.clientLabel, ...card.statusBadges]
+    .join(" ")
+    .normalize("NFD")
+    .replace(/[\\u0300-\\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase("pt-BR")
+    .replace(/[_-]+/g, " ");
+  return /(alteracao solicitada|changes requested|modifica richiesta|cambio solicitado|andring begard)/.test(normalized);
+}
+
 function awaitingApprovalLabel(locale: string) {
   const normalized = locale.toLocaleLowerCase("pt-BR");
   if (normalized.startsWith("it") || normalized.includes("ital")) return "In attesa di approvazione";
@@ -5942,13 +5962,13 @@ function ClientPortalWorkspacePage({
                     {visiblePortalColumns.map((column) => { const approvalCards = column.cards.filter((card) => contentApprovalCardIds.has(card.id)); return (
                       <section key={column.id} className="portal-column glass-subtle">
                         <header className="portal-column-head" style={{ borderColor: column.color }}><h3>{column.name}</h3><span>{approvalCards.length}</span></header>
-                        {approvalCards.length ? <div className="portal-card-list">{approvalCards.map((card) => <button key={card.id} className="portal-card card-button" onClick={() => setSelectedCardId(card.id)}><ClosedCardMedia card={card} /><div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{new Intl.DateTimeFormat(clientLocaleTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(card.scheduledAt))}</p> : null}</div></button>)}</div> : <p className="portal-column-empty">{tr("Nenhum conteúdo nesta etapa.")}</p>}
+                        {approvalCards.length ? <div className="portal-card-list">{approvalCards.map((card) => <button key={card.id} className={`portal-card card-button${hasPortalChangesRequested(card) ? " has-change-request" : ""}`} onClick={() => setSelectedCardId(card.id)}><ClosedCardMedia card={card} />{hasPortalChangesRequested(card) ? <span className="portal-change-request-tab">{changesRequestedPortalLabel(data.locale)}</span> : null}<div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{new Intl.DateTimeFormat(clientLocaleTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(card.scheduledAt))}</p> : null}</div></button>)}</div> : <p className="portal-column-empty">{tr("Nenhum conteúdo nesta etapa.")}</p>}
                       </section>
                     ); })}
 
                     {data.withoutColumn.some((card) => contentApprovalCardIds.has(card.id)) ? <section className="portal-column glass-subtle">
                       <header className="portal-column-head" style={{ borderColor: "#7a86a9" }}><h3>{tr("Em criação")}</h3><span>{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).length}</span></header>
-                      <div className="portal-card-list">{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).map((card) => <button key={card.id} className="portal-card card-button" onClick={() => setSelectedCardId(card.id)}><ClosedCardMedia card={card} /><div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{new Intl.DateTimeFormat(clientLocaleTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(card.scheduledAt))}</p> : null}</div></button>)}</div>
+                      <div className="portal-card-list">{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).map((card) => <button key={card.id} className={`portal-card card-button${hasPortalChangesRequested(card) ? " has-change-request" : ""}`} onClick={() => setSelectedCardId(card.id)}><ClosedCardMedia card={card} />{hasPortalChangesRequested(card) ? <span className="portal-change-request-tab">{changesRequestedPortalLabel(data.locale)}</span> : null}<div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{new Intl.DateTimeFormat(clientLocaleTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(card.scheduledAt))}</p> : null}</div></button>)}</div>
                     </section> : null}
                   </div>
                 </section> : null}
