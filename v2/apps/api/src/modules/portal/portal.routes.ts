@@ -73,8 +73,20 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
     const mediaType = input.mediaUrls.some((url) => /\.(mp4|webm|mov)(\?.*)?$/i.test(url)) ? "video" : "image";
     const actor = request.auth!.user;
     const columns = await listColumnsByClientAccountId(app.db, params.clientAccountId);
-    const selectedColumn = columns.find((column) => column.id === input.columnId);
-    if (!selectedColumn) throw app.httpErrors.badRequest("Escolha uma coluna válida deste Kanban.");
+    let selectedColumn = columns.find((column) => column.name
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLocaleLowerCase("pt-BR") === "entrada");
+    if (!selectedColumn) {
+      selectedColumn = await createColumn(app.db, params.clientAccountId, {
+        name: "Entrada",
+        color: "#7c6be8",
+        visibleToClient: true,
+        autoCreated: true,
+      }) ?? undefined;
+    }
+    if (!selectedColumn) throw app.httpErrors.badRequest("Não foi possível preparar a coluna Entrada.");
     if (!selectedColumn.visibleToClient) await updateColumn(app.db, selectedColumn.id, { visibleToClient: true });
     const card = await createKanbanCard(app, params.clientAccountId, actor.id, {
         columnId: selectedColumn.id,

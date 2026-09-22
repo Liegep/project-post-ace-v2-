@@ -5671,17 +5671,16 @@ function ClientUpcomingPostsWidget({ items, onSelectPost }: { items: ClientPorta
   </section>;
 }
 
-type PortalPostDraft = { columnId: string; title: string; caption: string; commentText: string; artType: string; externalLinkUrl: string };
+type PortalPostDraft = { title: string; caption: string; commentText: string; artType: string; externalLinkUrl: string };
 
-function ClientPostSuggestionModal({ draft, columns, files, submitting, error, onChange, onFilesChange, onClose, onSubmit }: { draft: PortalPostDraft; columns: Array<{ id: string; name: string; color: string }>; files: File[]; submitting: boolean; error: string; onChange: (field: keyof PortalPostDraft, value: string) => void; onFilesChange: (files: File[]) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+function ClientPostSuggestionModal({ draft, files, submitting, error, onChange, onFilesChange, onClose, onSubmit }: { draft: PortalPostDraft; files: File[]; submitting: boolean; error: string; onChange: (field: keyof PortalPostDraft, value: string) => void; onFilesChange: (files: File[]) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const { t } = usePortalTranslation();
   return <div className="modal-backdrop portal-post-modal-backdrop" onMouseDown={onClose}>
     <form className="portal-post-modal" onSubmit={onSubmit} onMouseDown={(event) => event.stopPropagation()}>
-      <header><div><p className="eyebrow">{t("Novo post")}</p><h2>{t("Criar post")}</h2><p>{t("Envie o conteúdo para a equipe. Ele ficará pendente até entrar no planejamento.")}</p></div><button type="button" onClick={onClose} aria-label={t("Fechar")}>×</button></header>
+      <header><div><p className="eyebrow">{t("Nova sugestão")}</p><h2>{t("Sugerir pauta")}</h2><p>{t("Envie sua ideia para a equipe. Ela entrará automaticamente na coluna Entrada.")}</p></div><button type="button" onClick={onClose} aria-label={t("Fechar")}>×</button></header>
       <div className="portal-post-fields">
         <label>{t("Título do post *")}<input autoFocus value={draft.title} onChange={(event) => onChange("title", event.target.value)} placeholder={t("Ex.: Carrossel com dúvidas frequentes")} maxLength={255} /></label>
         <label>{t("Formato")}<select value={draft.artType} onChange={(event) => onChange("artType", event.target.value)}>{ART_TYPE_OPTIONS.map((option) => <option key={option}>{t(option)}</option>)}</select></label>
-        <label className="wide">{t("Coluna do Kanban *")}<select required value={draft.columnId} onChange={(event) => onChange("columnId", event.target.value)}><option value="">{t("Escolha uma coluna")}</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select><small>{t("O post aparecerá nesta coluna na sua área do cliente.")}</small></label>
         <label className="wide">{t("Descrição ou legenda")}<textarea value={draft.caption} onChange={(event) => onChange("caption", event.target.value)} placeholder={t("Conte a ideia, o objetivo e qualquer orientação para a equipe...")} maxLength={5000} /></label>
         <label className="wide">{t("Comentário para a equipe")}<textarea value={draft.commentText} onChange={(event) => onChange("commentText", event.target.value)} placeholder={t("Adicione um comentário ou observação sobre este post...")} maxLength={5000} /></label>
         <label className="wide">{t("Link de referência")}<input type="url" value={draft.externalLinkUrl} onChange={(event) => onChange("externalLinkUrl", event.target.value)} placeholder="https://..." /></label>
@@ -5689,7 +5688,7 @@ function ClientPostSuggestionModal({ draft, columns, files, submitting, error, o
       </div>
       {files.length ? <div className="portal-post-file-list">{files.map((file, index) => <span key={`${file.name}-${index}`}>{file.name}<button type="button" onClick={() => onFilesChange(files.filter((_, itemIndex) => itemIndex !== index))}>×</button></span>)}</div> : null}
       {error ? <p className="form-feedback error-text">{error}</p> : null}
-      <footer><button className="ghost-button" type="button" disabled={submitting} onClick={onClose}>{t("Cancelar")}</button><button className="gradient-button" type="submit" disabled={submitting || !draft.title.trim() || !draft.columnId}>{t(submitting ? "Criando post..." : "Criar post")}</button></footer>
+      <footer><button className="ghost-button" type="button" disabled={submitting} onClick={onClose}>{t("Cancelar")}</button><button className="gradient-button" type="submit" disabled={submitting || !draft.title.trim()}>{t(submitting ? "Enviando sugestão..." : "Enviar sugestão")}</button></footer>
     </form>
   </div>;
 }
@@ -5755,7 +5754,7 @@ function ClientPortalWorkspacePage({
   const [portalTextSubmitting, setPortalTextSubmitting] = useState<"comment" | "approve" | "changes" | null>(null);
   const [portalTextFeedback, setPortalTextFeedback] = useState<string | null>(null);
   const [createPostOpen, setCreatePostOpen] = useState(false);
-  const [postDraft, setPostDraft] = useState<PortalPostDraft>({ columnId: "", title: "", caption: "", commentText: "", artType: "Post único", externalLinkUrl: "" });
+  const [postDraft, setPostDraft] = useState<PortalPostDraft>({ title: "", caption: "", commentText: "", artType: "Post único", externalLinkUrl: "" });
   const [postFiles, setPostFiles] = useState<File[]>([]);
   const [postSubmitting, setPostSubmitting] = useState(false);
   const [postError, setPostError] = useState("");
@@ -5930,14 +5929,13 @@ function ClientPortalWorkspacePage({
 
   async function submitPostSuggestion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!postDraft.title.trim() || !postDraft.columnId) return;
+    if (!postDraft.title.trim()) return;
     setPostSubmitting(true);
     setPostError("");
     try {
       const mediaUrls: string[] = [];
       for (const file of postFiles) mediaUrls.push(await uploadPortalMediaBySlug(slug, file));
       await createPortalPostBySlug(slug, {
-        columnId: postDraft.columnId,
         title: postDraft.title.trim(),
         caption: postDraft.caption.trim() || null,
         commentText: postDraft.commentText.trim() || null,
@@ -5945,7 +5943,7 @@ function ClientPortalWorkspacePage({
         externalLinkUrl: postDraft.externalLinkUrl.trim() || null,
         mediaUrls,
       });
-      setPostDraft({ columnId: "", title: "", caption: "", commentText: "", artType: "Post único", externalLinkUrl: "" });
+      setPostDraft({ title: "", caption: "", commentText: "", artType: "Post único", externalLinkUrl: "" });
       setPostFiles([]);
       setCreatePostOpen(false);
       setPostSuccess(tr("Post enviado. Ele já está no quadro da equipe com status pendente."));
@@ -6158,7 +6156,7 @@ function ClientPortalWorkspacePage({
         onRefresh={() => setRefreshKey((value) => value + 1)}
         onClose={() => setSelectedCardId(null)}
       />
-      {createPostOpen ? <ClientPostSuggestionModal draft={postDraft} columns={data.postCreationColumns} files={postFiles} submitting={postSubmitting} error={postError} onChange={(field, value) => setPostDraft((current) => ({ ...current, [field]: value }))} onFilesChange={setPostFiles} onClose={() => { if (!postSubmitting) setCreatePostOpen(false); }} onSubmit={submitPostSuggestion} /> : null}
+      {createPostOpen ? <ClientPostSuggestionModal draft={postDraft} files={postFiles} submitting={postSubmitting} error={postError} onChange={(field, value) => setPostDraft((current) => ({ ...current, [field]: value }))} onFilesChange={setPostFiles} onClose={() => { if (!postSubmitting) setCreatePostOpen(false); }} onSubmit={submitPostSuggestion} /> : null}
     </div>
     </PortalLocaleContext.Provider>
   );
