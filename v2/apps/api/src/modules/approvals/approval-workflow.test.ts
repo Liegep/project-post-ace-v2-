@@ -7,7 +7,7 @@ import Fastify from "fastify";
 import { httpErrorsPluginRegistered } from "../../plugins/http-errors.js";
 import { approvalHistoryTableSql } from "./approval-history.repository.js";
 import { convertBriefApprovalToPost, decideCardApproval, resubmitCardApproval } from "./approval-workflow.service.js";
-import { approvalStatuses, resendBlockedReason } from "./approval-state.js";
+import { approvalStatuses, inferredApprovalState, resendBlockedReason } from "./approval-state.js";
 import { findCardById, updateCard } from "../cards/cards.repository.js";
 import { reconcileApprovedCardColumns } from "./approvals.service.js";
 import { approvalRoutes } from "./approvals.routes.js";
@@ -114,6 +114,20 @@ test("historical approval never revives a resent card; old links cannot decide a
     assert.equal(decision.card.status.includes("Aprovado"), false);
     assert.equal(decision.approvalLink!.isActive, false);
     await assert.rejects(decideCardApproval(f.app, "account", "post", client, { approved: true }, result.approvalLink.token), { statusCode: 403 });
+  } finally { await f.close(); }
+});
+
+test("legacy Alterado tag is recognized as a changes request that can be resent", async () => {
+  const f = await fixture();
+  try {
+    f.sql.exec("UPDATE kanban_cards SET client_label = 'Pendente', status_json = '[\"Design Pronto\"]', tags_json = '[\"Alterado\"]'");
+    const legacyCard = (await findCardById(f.pool, "post"))!;
+    assert.equal(inferredApprovalState(legacyCard), "changes_requested");
+
+    const resent = await resubmitCardApproval(f.app, "account", "post", admin, 0);
+    assert.equal(resent.card.approvalState, "pending");
+    assert.equal(resent.card.status.includes("Enviar para Cliente"), true);
+    assert.deepEqual(resent.card.tags, ["Alterado"]);
   } finally { await f.close(); }
 });
 

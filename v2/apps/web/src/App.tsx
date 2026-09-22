@@ -7043,7 +7043,8 @@ ${internalMessage.trim()}`, isInternal: true });
     setFeedback("Estado da aprovação atualizado. Sua legenda e seus arquivos em edição foram mantidos; confira antes de salvar.");
   }
 
-  const hasClientDecision = approvalRevision > (card.approvalRevision ?? 0) ? false : card.approvalState ? card.approvalState !== "pending" : /^(aprovado(?: pelo cliente)?|altera[çc][ãa]o solicitada|revis[ãa]o solicitada)$/i.test(card.clientLabel) || card.statusBadges.some((value) => /^(aprovado|revis[ãa]o solicitada|altera[çc][ãa]o solicitada)$/i.test(value));
+  const legacyDecisionValues = [card.clientLabel, ...card.statusBadges, ...card.tags];
+  const hasClientDecision = approvalRevision > (card.approvalRevision ?? 0) ? false : card.approvalState ? card.approvalState !== "pending" : legacyDecisionValues.some((value) => /^(aprovado(?: pelo cliente)?|alterad[oa]|altera[çc][ãa]o solicitada|revis[ãa]o solicitada)$/i.test(value.trim()));
   const resendBlocked = card.archived || card.archivedAt ? "Restaure o post antes de reenviar."
     : card.publishedAt || /^publicado$/i.test(status) ? "Este post já foi publicado. Crie uma nova versão para aprovação."
     : scheduledAt || /^agendados?$/i.test(status) ? "Remova o agendamento e o status Agendado antes de reenviar." : null;
