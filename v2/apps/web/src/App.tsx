@@ -85,6 +85,7 @@ import {
   type DashboardUpcomingPost,
   type DashboardTodayPost,
   type DashboardApprovedPauta,
+  type DashboardStatistics,
   type AgendaEvent,
   type AgendaLabel,
   type AgendaRecurrence,
@@ -1688,6 +1689,14 @@ function loadInternalApprovalMessages(userId?: string) {
   try { const records = JSON.parse(window.localStorage.getItem(INTERNAL_APPROVALS_STORAGE_KEY) ?? "[]") as InternalApprovalRecord[]; return userId ? records.filter((record) => record.recipients.includes(userId)) : records; } catch { return []; }
 }
 
+const EMPTY_DASHBOARD_STATISTICS: DashboardStatistics = { postsThisMonth: 0, postsPreviousMonth: 0, pending: 0, dueToday: 0, approvedThisMonth: 0, approvedPreviousMonth: 0 };
+
+function monthlyComparison(current: number, previous: number) {
+  if (previous === 0) return current === 0 ? "Nenhum registro este mês" : "Sem registros no mês anterior";
+  const change = Math.round(((current - previous) / previous) * 100);
+  return `${change > 0 ? "+" : ""}${change}% vs mês anterior`;
+}
+
 function DashboardInternalMessagesWidget({ items, onOpen }: { items: InternalApprovalRecord[]; onOpen: (item: InternalApprovalRecord) => void }) {
   const [dismissedIds, setDismissedIds] = useState<string[]>(() => { try { return JSON.parse(window.localStorage.getItem(DISMISSED_INTERNAL_MESSAGES_KEY) ?? "[]") as string[]; } catch { return []; } });
   const visibleItems = items.filter((item) => !dismissedIds.includes(item.id));
@@ -1706,6 +1715,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
   const [clientSubmissions, setClientSubmissions] = useState<DashboardSubmission[]>([]);
   const [clientActivities, setClientActivities] = useState<DashboardClientActivity[]>([]);
   const [approvedPautas, setApprovedPautas] = useState<DashboardApprovedPauta[]>([]);
+  const [statistics, setStatistics] = useState<DashboardStatistics>(EMPTY_DASHBOARD_STATISTICS);
   const [internalMessages, setInternalMessages] = useState<InternalApprovalRecord[]>(() => loadInternalApprovalMessages(session.id));
   const [scheduleActivity, setScheduleActivity] = useState<DashboardClientActivity | null>(null);
   const [scheduledNotice, setScheduledNotice] = useState<{ title: string; clientName: string } | null>(null);
@@ -1792,6 +1802,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
     const refreshOverview = () => loadDashboardOverview()
       .then((overview) => {
         if (!active) return;
+        setStatistics(overview.statistics ?? EMPTY_DASHBOARD_STATISTICS);
         setUpcomingPosts(overview.upcomingPosts);
         setPostsToday(overview.postsToday ?? []);
         setAgendaToday(overview.agendaToday);
@@ -1969,7 +1980,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
             <div className="dashboard-welcome">
               <div className="dashboard-liquid-field" aria-hidden="true"><i /><i /><i /></div>
               <div className="dashboard-welcome-copy"><p className="eyebrow">Seu estúdio hoje</p><h1>{greeting}, {session.name.split(" ")[0]}</h1><p className="dashboard-date">{new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(currentTime)}</p></div>
-              <div className="dashboard-welcome-aside"><div className="dashboard-orbs" aria-hidden="true"><i /><i /><i /></div><div className="dashboard-metrics dashboard-metrics-inline"><article className="dashboard-metric clients"><UiIcon name="users" /><div><span>Clientes ativos</span><strong>{loading ? "-" : clients.length}</strong><small>Contas em andamento</small></div></article><article className="dashboard-metric posts"><UiIcon name="calendar" /><div><span>Posts este mês</span><strong>128</strong><small>+18% vs mês anterior</small></div></article><article className="dashboard-metric pending"><UiIcon name="clock" /><div><span>Pendentes</span><strong>24</strong><small className="dashboard-alert">8 vencem hoje</small></div></article><article className="dashboard-metric approved"><UiIcon name="check" /><div><span>Aprovados</span><strong>88</strong><small>+20% vs mês anterior</small></div></article></div></div>
+              <div className="dashboard-welcome-aside"><div className="dashboard-orbs" aria-hidden="true"><i /><i /><i /></div><div className="dashboard-metrics dashboard-metrics-inline"><article className="dashboard-metric clients"><UiIcon name="users" /><div><span>Clientes ativos</span><strong>{loading ? "-" : clients.length}</strong><small>Contas em andamento</small></div></article><article className="dashboard-metric posts"><UiIcon name="calendar" /><div><span>Posts este mês</span><strong>{loading ? "-" : statistics.postsThisMonth}</strong><small>{monthlyComparison(statistics.postsThisMonth, statistics.postsPreviousMonth)}</small></div></article><article className="dashboard-metric pending"><UiIcon name="clock" /><div><span>Pendentes</span><strong>{loading ? "-" : statistics.pending}</strong><small className={statistics.dueToday > 0 ? "dashboard-alert" : undefined}>{statistics.dueToday > 0 ? `${statistics.dueToday} ${statistics.dueToday === 1 ? "vence" : "vencem"} hoje` : "Nenhum vence hoje"}</small></div></article><article className="dashboard-metric approved"><UiIcon name="check" /><div><span>Aprovados</span><strong>{loading ? "-" : statistics.approvedThisMonth}</strong><small>{monthlyComparison(statistics.approvedThisMonth, statistics.approvedPreviousMonth)}</small></div></article></div></div>
             </div>
           </div>
 

@@ -335,6 +335,14 @@ export type DashboardClientActivity = { recordedDecision?: boolean | number; can
 export type DashboardUpcomingPost = { id: string; title: string; scheduledAt: string; clientName: string; clientLogoUrl?: string | null };
 export type DashboardTodayPost = { id: string; title: string; scheduledAt: string; clientName: string; clientLogoUrl?: string | null; mediaUrl?: string | null };
 export type DashboardApprovedPauta = { id: string; title: string; approvedAt: string; clientName: string; clientSlug: string; clientLogoUrl?: string | null };
+export type DashboardStatistics = {
+  postsThisMonth: number;
+  postsPreviousMonth: number;
+  pending: number;
+  dueToday: number;
+  approvedThisMonth: number;
+  approvedPreviousMonth: number;
+};
 export type AgendaLabel = { id: string; name: string; color: string };
 export type AgendaRecurrence = "none" | "weekdays" | "weekly" | "monthly_nth_weekday";
 export type AgendaEvent = { id: string; sourceEventId?: string; title: string; taskDescription?: string | null; startsAt: string; endsAt?: string | null; recurrenceType?: AgendaRecurrence; repeatUntil?: string | null; color: string; isCompleted: boolean; clientAccountId?: string | null; clientName?: string | null; labelId?: string | null; labelName?: string | null; meetLink?: string | null };
@@ -1256,7 +1264,7 @@ export async function listAdminHashtagGroupsBySlug(slug: string) {
 }
 
 export async function loadDashboardOverview() {
-  return fetchJson<{ dueTasks: DashboardTask[]; upcomingPosts: DashboardUpcomingPost[]; postsToday: DashboardTodayPost[]; agendaToday: AgendaEvent[]; clientSubmissions: DashboardSubmission[]; clientActivities: DashboardClientActivity[]; approvedPautas: DashboardApprovedPauta[] }>("/api/dashboard/overview");
+  return fetchJson<{ statistics: DashboardStatistics; dueTasks: DashboardTask[]; upcomingPosts: DashboardUpcomingPost[]; postsToday: DashboardTodayPost[]; agendaToday: AgendaEvent[]; clientSubmissions: DashboardSubmission[]; clientActivities: DashboardClientActivity[]; approvedPautas: DashboardApprovedPauta[] }>("/api/dashboard/overview");
 }
 
 export async function loadDashboardNotes() {
