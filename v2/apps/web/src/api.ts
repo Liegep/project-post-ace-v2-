@@ -1401,6 +1401,13 @@ export async function updatePortalSuggestionBySlug(slug: string, cardId: string,
   });
 }
 
+export async function deletePortalSuggestionBySlug(slug: string, cardId: string) {
+  const account = await findPortalAccountBySlug(slug);
+  return sendJson<{ ok: true }>(`/api/portal/accounts/${account.clientAccountId}/cards/${cardId}/suggestion`, {
+    method: "DELETE",
+  });
+}
+
 export async function listPortalTagsBySlug(slug: string) {
   const account = await findPortalAccountBySlug(slug);
   return fetchJson<{ items: ClientTagDefinition[] }>(`/api/portal/accounts/${account.clientAccountId}/tags`);

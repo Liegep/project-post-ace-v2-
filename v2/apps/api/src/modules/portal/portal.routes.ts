@@ -3,7 +3,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { assertClientAccess, assertPortalAccessLevel } from "../auth/auth.access.js";
 import { addCardComment } from "../comments/comments.service.js";
 import { getPortalCardDetail } from "../cards/card-detail.service.js";
-import { createKanbanCard } from "../cards/cards.service.js";
+import { createKanbanCard, deleteKanbanCard } from "../cards/cards.service.js";
 import { findCardById, listCardsByClientAccountId, moveCard, updateCard } from "../cards/cards.repository.js";
 import { recordCaptionVersion } from "../cards/caption-history.repository.js";
 import { ensureCardActivityEventsTable } from "../cards/card-activity.service.js";
@@ -190,6 +190,32 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
     });
 
     return { ok: true, card: updatedCard };
+  });
+
+  app.delete("/portal/accounts/:clientAccountId/cards/:cardId/suggestion", async (request) => {
+    const params = request.params as { clientAccountId: string; cardId: string };
+    assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
+    assertPortalAccessLevel(request, params.clientAccountId, ["admin", "approver"]);
+    const permissions = await findClientPermissionsByAccountId(app.db, params.clientAccountId);
+    if (!permissions?.allowClientCreatePost) {
+      throw app.httpErrors.forbidden("A exclusão de sugestões não está habilitada para este cliente.");
+    }
+
+    const card = await findCardById(app.db, params.cardId);
+    if (!card || card.clientAccountId !== params.clientAccountId) {
+      throw app.httpErrors.notFound("Card não encontrado nesta conta.");
+    }
+    const isClientSuggestion = card.status.some((status) => status
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLocaleLowerCase("pt-BR") === "sugestao do cliente");
+    if (!isClientSuggestion) {
+      throw app.httpErrors.badRequest("Somente sugestões criadas pelo cliente podem ser excluídas por esta ação.");
+    }
+
+    await deleteKanbanCard(app, params.clientAccountId, params.cardId);
+    return { ok: true };
   });
 
   app.get("/portal/accounts/:clientAccountId/tags", async (request) => {

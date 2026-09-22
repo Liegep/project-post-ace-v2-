@@ -118,6 +118,7 @@ import {
   createPortalPostBySlug,
   updatePortalCardCaptionBySlug,
   updatePortalSuggestionBySlug,
+  deletePortalSuggestionBySlug,
   listPortalTagsBySlug,
   createPortalTagBySlug,
   updatePortalCardTagsBySlug,
@@ -5701,7 +5702,7 @@ function ClientPostSuggestionModal({ draft, files, submitting, error, onChange, 
   </div>;
 }
 
-function ClientPortalApprovalCard({ card, locale, localeTag, canEditSuggestion, onView, onEdit }: { card: BoardCard; locale: string; localeTag: string; canEditSuggestion: boolean; onView: () => void; onEdit: () => void }) {
+function ClientPortalApprovalCard({ card, locale, localeTag, canEditSuggestion, deleting, onView, onEdit, onDelete }: { card: BoardCard; locale: string; localeTag: string; canEditSuggestion: boolean; deleting: boolean; onView: () => void; onEdit: () => void; onDelete: () => void }) {
   const { t } = usePortalTranslation();
   if (isClientSuggestionCard(card)) {
     return <article className="portal-card portal-suggestion-card">
@@ -5712,8 +5713,9 @@ function ClientPortalApprovalCard({ card, locale, localeTag, canEditSuggestion, 
         {card.subtitle ? <p>{card.subtitle.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 140)}</p> : <p>{t("Abra para conferir os detalhes desta sugestão.")}</p>}
       </div>
       <div className="portal-suggestion-card-actions">
-        <button type="button" className="ghost-button" onClick={onView}><UiIcon name="eye" />{t("Visualizar")}</button>
-        {canEditSuggestion ? <button type="button" className="gradient-button" onClick={onEdit}><UiIcon name="pencil" />{t("Editar")}</button> : null}
+        <button type="button" className="ghost-button" disabled={deleting} onClick={onView}><UiIcon name="eye" />{t("Visualizar")}</button>
+        {canEditSuggestion ? <button type="button" className="gradient-button" disabled={deleting} onClick={onEdit}><UiIcon name="pencil" />{t("Editar")}</button> : null}
+        {canEditSuggestion ? <button type="button" className="danger-button" disabled={deleting} onClick={onDelete}><UiIcon name="trash" />{t(deleting ? "Excluindo..." : "Excluir")}</button> : null}
       </div>
     </article>;
   }
@@ -5765,6 +5767,7 @@ function ClientPortalWorkspacePage({
   const clientLocaleTag = portalLocaleTag(portalLocale);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [selectedCardIntent, setSelectedCardIntent] = useState<"view" | "edit-suggestion">("view");
+  const [deletingSuggestionId, setDeletingSuggestionId] = useState<string | null>(null);
   const [portalView, setPortalView] = useState<"board" | "approved" | "texts" | "reports" | "invoices" | "tracker" | "archived" | "search" | "brand">("board");
   const [portalMobileMenuOpen, setPortalMobileMenuOpen] = useState(false);
   const portalMobileMenuButtonRef = useRef<HTMLButtonElement>(null);
@@ -5804,6 +5807,28 @@ function ClientPortalWorkspacePage({
     setSelectedCardId(null);
     setSelectedCardIntent("view");
   }, []);
+  const deletePortalSuggestion = useCallback(async (card: BoardCard) => {
+    if (!window.confirm(tr(`Excluir a sugestão “${card.title}”? Esta ação não pode ser desfeita.`))) return;
+    setDeletingSuggestionId(card.id);
+    try {
+      await deletePortalSuggestionBySlug(slug, card.id);
+      resource.setData((current) => {
+        const next = {
+          ...current,
+          boardColumns: current.boardColumns.map((column) => ({ ...column, cards: column.cards.filter((item) => item.id !== card.id) })),
+          withoutColumn: current.withoutColumn.filter((item) => item.id !== card.id),
+        };
+        lastPortalSnapshot.current = { slug, data: next };
+        return next;
+      });
+      setPostSuccess(tr("Sugestão excluída."));
+      setRefreshKey((value) => value + 1);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : tr("Não foi possível excluir a sugestão."));
+    } finally {
+      setDeletingSuggestionId(null);
+    }
+  }, [resource, slug, tr]);
   useEffect(() => {
     const closePortalMenu = (event: KeyboardEvent) => {
       if (event.key === "Escape") setPortalMobileMenuOpen(false);
@@ -6102,13 +6127,13 @@ function ClientPortalWorkspacePage({
                     {visiblePortalColumns.map((column) => { const approvalCards = column.cards.filter((card) => contentApprovalCardIds.has(card.id)); return (
                       <section key={column.id} className="portal-column glass-subtle">
                         <header className="portal-column-head" style={{ borderColor: column.color }}><h3>{column.name}</h3><span>{approvalCards.length}</span></header>
-                        {approvalCards.length ? <div className="portal-card-list">{approvalCards.map((card) => <ClientPortalApprovalCard key={card.id} card={card} locale={data.locale} localeTag={clientLocaleTag} canEditSuggestion={canUseEnabledClientTools && data.permissions.allowClientCreatePost} onView={() => openPortalCard(card.id)} onEdit={() => openPortalCard(card.id, "edit-suggestion")} />)}</div> : <p className="portal-column-empty">{tr("Nenhum conteúdo nesta etapa.")}</p>}
+                        {approvalCards.length ? <div className="portal-card-list">{approvalCards.map((card) => <ClientPortalApprovalCard key={card.id} card={card} locale={data.locale} localeTag={clientLocaleTag} canEditSuggestion={canUseEnabledClientTools && data.permissions.allowClientCreatePost} deleting={deletingSuggestionId === card.id} onView={() => openPortalCard(card.id)} onEdit={() => openPortalCard(card.id, "edit-suggestion")} onDelete={() => void deletePortalSuggestion(card)} />)}</div> : <p className="portal-column-empty">{tr("Nenhum conteúdo nesta etapa.")}</p>}
                       </section>
                     ); })}
 
                     {data.withoutColumn.some((card) => contentApprovalCardIds.has(card.id)) ? <section className="portal-column glass-subtle">
                       <header className="portal-column-head" style={{ borderColor: "#7a86a9" }}><h3>{tr("Em criação")}</h3><span>{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).length}</span></header>
-                      <div className="portal-card-list">{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).map((card) => <ClientPortalApprovalCard key={card.id} card={card} locale={data.locale} localeTag={clientLocaleTag} canEditSuggestion={canUseEnabledClientTools && data.permissions.allowClientCreatePost} onView={() => openPortalCard(card.id)} onEdit={() => openPortalCard(card.id, "edit-suggestion")} />)}</div>
+                      <div className="portal-card-list">{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).map((card) => <ClientPortalApprovalCard key={card.id} card={card} locale={data.locale} localeTag={clientLocaleTag} canEditSuggestion={canUseEnabledClientTools && data.permissions.allowClientCreatePost} deleting={deletingSuggestionId === card.id} onView={() => openPortalCard(card.id)} onEdit={() => openPortalCard(card.id, "edit-suggestion")} onDelete={() => void deletePortalSuggestion(card)} />)}</div>
                     </section> : null}
                   </div>
                 </section> : null}

@@ -4871,10 +4871,12 @@ button {
 .portal-suggestion-card .portal-card-copy { padding: 2px 2px 0; }
 .portal-suggestion-label { display: block; margin-bottom: 7px; color: #6b58d8; font-size: .66rem; font-weight: 750; letter-spacing: .09em; text-transform: uppercase; }
 .portal-suggestion-card .portal-card-copy p { display: -webkit-box; overflow: hidden; margin-top: 7px; font-size: .78rem; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.portal-suggestion-card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding-top: 4px; }
+.portal-suggestion-card-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding-top: 4px; }
 .portal-suggestion-card-actions button { display: inline-flex; min-width: 0; min-height: 39px; padding: 8px 11px; align-items: center; justify-content: center; gap: 7px; font-size: .72rem; font-weight: 700; cursor: pointer; }
 .portal-suggestion-card-actions button svg { width: 15px; height: 15px; }
 .portal-suggestion-card-actions .gradient-button { background: linear-gradient(135deg, #43aef1, #7651e7); box-shadow: 0 8px 18px rgba(91, 75, 202, .18); }
+.portal-suggestion-card-actions .danger-button { border: 1px solid #f0cfd6; color: #be4159; background: #fff7f8; }
+@media (max-width: 520px) { .portal-suggestion-card-actions { grid-template-columns: 1fr 1fr; }.portal-suggestion-card-actions .danger-button { grid-column: 1 / -1; } }
 
 .widget-card {
   padding: 20px;
