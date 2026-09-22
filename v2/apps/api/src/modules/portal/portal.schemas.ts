@@ -33,6 +33,12 @@ export const updatePortalCardCaptionSchema = z.object({
   caption: z.string().trim().max(5000).nullable(),
 });
 
+export const updatePortalSuggestionSchema = z.object({
+  title: z.string().trim().min(1).max(255),
+  caption: z.string().trim().max(5000).nullable(),
+  externalLinkUrl: z.string().url().max(1024).nullable(),
+});
+
 export const updatePortalCardTagsSchema = z.object({
   tags: z.array(z.string().trim().min(1).max(100)).max(30),
 });
@@ -42,4 +48,5 @@ export type PortalSearchQueryInput = z.infer<typeof portalSearchQuerySchema>;
 export type CreatePortalPostInput = z.infer<typeof createPortalPostSchema>;
 export type PortalCardDecisionInput = z.infer<typeof portalCardDecisionSchema>;
 export type UpdatePortalCardCaptionInput = z.infer<typeof updatePortalCardCaptionSchema>;
+export type UpdatePortalSuggestionInput = z.infer<typeof updatePortalSuggestionSchema>;
 export type UpdatePortalCardTagsInput = z.infer<typeof updatePortalCardTagsSchema>;

@@ -5266,6 +5266,11 @@ button {
 .portal-caption-editor > label { color: #7d879e; font-size: .65rem; font-weight: 650; letter-spacing: .025em; }
 .portal-caption-editor textarea { width: 100%; min-height: 230px; box-sizing: border-box; resize: vertical; padding: 15px 16px; border: 1px solid #d9ddec; border-radius: 14px; outline: none; color: #3f4d69; background: rgba(255,255,255,.9); font: inherit; font-size: .82rem; line-height: 1.65; box-shadow: inset 0 1px 2px rgba(48,59,91,.03); transition: border-color .18s ease, box-shadow .18s ease; }
 .portal-caption-editor textarea:focus { border-color: #8c82df; box-shadow: 0 0 0 4px rgba(112,99,215,.1); }
+.portal-suggestion-editor { display: grid; gap: 12px; padding: 16px 0 18px; }
+.portal-suggestion-editor > label { display: grid; gap: 6px; color: #7d879e; font-size: .65rem; font-weight: 650; letter-spacing: .025em; }
+.portal-suggestion-editor input, .portal-suggestion-editor textarea { width: 100%; box-sizing: border-box; padding: 12px 14px; border: 1px solid #d9ddec; border-radius: 12px; outline: none; color: #3f4d69; background: rgba(255,255,255,.92); font: inherit; font-size: .78rem; line-height: 1.55; box-shadow: inset 0 1px 2px rgba(48,59,91,.03); transition: border-color .18s ease, box-shadow .18s ease; }
+.portal-suggestion-editor textarea { min-height: 170px; resize: vertical; }
+.portal-suggestion-editor input:focus, .portal-suggestion-editor textarea:focus { border-color: #8c82df; box-shadow: 0 0 0 4px rgba(112,99,215,.1); }
 .portal-caption-editor-footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .portal-caption-editor-footer > small { color: #9aa2b3; font-size: .61rem; font-weight: 600; }
 .portal-caption-editor-footer > div { display: flex; gap: 8px; }
@@ -6363,6 +6368,9 @@ button {
 .portal-card-sticky-actions > button { min-height: 39px; padding: 0 14px; white-space: nowrap; }
 .portal-card-sticky-actions > .gradient-button { background: linear-gradient(135deg, #1bb985, #28a96e); box-shadow: 0 8px 18px rgba(34,174,117,.2); }
 .portal-card-sticky-actions > .danger-button { border: 1px solid #f0cfd6; color: #c24f67; background: #fff7f8; }
+.portal-card-sticky-actions.has-suggestion-action { grid-template-columns: minmax(150px, 1fr) auto auto auto auto; }
+.portal-card-sticky-actions > .suggestion-save-button { border: 1px solid #cfcaf7; color: #5548c6; background: linear-gradient(135deg, #f4f2ff, #ebe8ff); box-shadow: 0 7px 16px rgba(91,77,194,.13); font: inherit; font-weight: 700; cursor: pointer; }
+.portal-card-sticky-actions > .suggestion-save-button:disabled { opacity: .55; cursor: default; }
 
 .portal-text-heading {
   display: flex;
@@ -8389,6 +8397,7 @@ button {
   .portal-card-sticky-actions > div { display: none; }
   .portal-card-sticky-actions > .ghost-button { display: none; }
   .portal-card-sticky-actions > button { min-width: 0; padding-inline: 8px; }
+  .portal-card-sticky-actions.has-suggestion-action { grid-template-columns: 1fr 1fr 1fr; }
 
   .portal-card-detail-modal .modal-grid,
   .portal-card-detail-modal .modal-actions,

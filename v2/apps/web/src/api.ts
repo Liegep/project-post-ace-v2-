@@ -1393,6 +1393,14 @@ export async function updatePortalCardCaptionBySlug(slug: string, cardId: string
   });
 }
 
+export async function updatePortalSuggestionBySlug(slug: string, cardId: string, input: { title: string; caption: string | null; externalLinkUrl: string | null }) {
+  const account = await findPortalAccountBySlug(slug);
+  return sendJson<{ ok: true; card: ApiBoardCard }>(`/api/portal/accounts/${account.clientAccountId}/cards/${cardId}/suggestion`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
 export async function listPortalTagsBySlug(slug: string) {
   const account = await findPortalAccountBySlug(slug);
   return fetchJson<{ items: ClientTagDefinition[] }>(`/api/portal/accounts/${account.clientAccountId}/tags`);

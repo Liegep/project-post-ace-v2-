@@ -11,7 +11,7 @@ import { createColumn, listColumnsByClientAccountId, updateColumn } from "../col
 import { findClientPermissionsByAccountId } from "../clients/clients.repository.js";
 import { createClientTag, listClientTags } from "../tags/tags.repository.js";
 import { createClientTagSchema } from "../tags/tags.schemas.js";
-import { createPortalPostSchema, portalBoardQuerySchema, portalCardDecisionSchema, portalSearchQuerySchema, updatePortalCardCaptionSchema, updatePortalCardTagsSchema } from "./portal.schemas.js";
+import { createPortalPostSchema, portalBoardQuerySchema, portalCardDecisionSchema, portalSearchQuerySchema, updatePortalCardCaptionSchema, updatePortalCardTagsSchema, updatePortalSuggestionSchema } from "./portal.schemas.js";
 import { getPortalBoard, getPortalHome } from "./portal.service.js";
 
 export const portalRoutes: FastifyPluginAsync = async (app) => {
@@ -139,6 +139,42 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
       authorName: actor.fullName,
       authorRole: actor.globalRole,
       canCreateInternal: false,
+    });
+
+    return { ok: true, card: updatedCard };
+  });
+
+  app.patch("/portal/accounts/:clientAccountId/cards/:cardId/suggestion", async (request) => {
+    const params = request.params as { clientAccountId: string; cardId: string };
+    assertClientAccess(request, params.clientAccountId, ["admin", "colaborador", "cliente"]);
+    assertPortalAccessLevel(request, params.clientAccountId, ["admin", "approver"]);
+    const permissions = await findClientPermissionsByAccountId(app.db, params.clientAccountId);
+    if (!permissions?.allowClientCreatePost) {
+      throw app.httpErrors.forbidden("A edição de sugestões não está habilitada para este cliente.");
+    }
+
+    const input = updatePortalSuggestionSchema.parse(request.body);
+    const card = await findCardById(app.db, params.cardId);
+    if (!card || card.clientAccountId !== params.clientAccountId) {
+      throw app.httpErrors.notFound("Card não encontrado nesta conta.");
+    }
+    const isClientSuggestion = card.status.some((status) => status
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .trim()
+      .toLocaleLowerCase("pt-BR") === "sugestao do cliente");
+    if (!isClientSuggestion) {
+      throw app.httpErrors.badRequest("Somente sugestões criadas pelo cliente podem ser editadas por esta ação.");
+    }
+
+    const actor = request.auth!.user;
+    if ((card.caption ?? null) !== input.caption) {
+      await recordCaptionVersion(app.db, { cardId: card.id, caption: card.caption, authorUserId: actor.id, authorName: actor.fullName, authorRole: actor.globalRole });
+    }
+    const updatedCard = await updateCard(app.db, params.cardId, {
+      title: input.title,
+      caption: input.caption,
+      externalLinkUrl: input.externalLinkUrl,
     });
 
     return { ok: true, card: updatedCard };

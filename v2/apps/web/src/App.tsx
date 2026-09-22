@@ -117,6 +117,7 @@ import {
   uploadPortalMediaBySlug,
   createPortalPostBySlug,
   updatePortalCardCaptionBySlug,
+  updatePortalSuggestionBySlug,
   listPortalTagsBySlug,
   createPortalTagBySlug,
   updatePortalCardTagsBySlug,
@@ -6148,6 +6149,8 @@ function ClientPortalWorkspacePage({
         canRespond={canRespondToClientContent}
         allowEditCaption={canUseEnabledClientTools && data.permissions.allowClientEditCaption}
         onUpdateCaption={(cardId, caption) => updatePortalCardCaptionBySlug(slug, cardId, caption)}
+        allowEditSuggestion={canUseEnabledClientTools && data.permissions.allowClientCreatePost}
+        onUpdateSuggestion={(cardId, input) => updatePortalSuggestionBySlug(slug, cardId, input)}
         allowManageTags={canUseEnabledClientTools && data.permissions.allowClientCreateTags}
         onLoadTags={() => listPortalTagsBySlug(slug)}
         onCreateTag={(input) => createPortalTagBySlug(slug, input)}
@@ -6186,6 +6189,8 @@ function CardDetailModal({
   canRespond = true,
   allowEditCaption,
   onUpdateCaption,
+  allowEditSuggestion,
+  onUpdateSuggestion,
   allowManageTags,
   onLoadTags,
   onCreateTag,
@@ -6205,6 +6210,8 @@ function CardDetailModal({
   canRespond?: boolean;
   allowEditCaption?: boolean;
   onUpdateCaption?: (cardId: string, caption: string | null) => Promise<unknown>;
+  allowEditSuggestion?: boolean;
+  onUpdateSuggestion?: (cardId: string, input: { title: string; caption: string | null; externalLinkUrl: string | null }) => Promise<unknown>;
   allowManageTags?: boolean;
   onLoadTags?: () => Promise<{ items: ClientTagDefinition[] }>;
   onCreateTag?: (input: { name: string; color: string }) => Promise<{ ok: true; tag: ClientTagDefinition }>;
@@ -6220,6 +6227,11 @@ function CardDetailModal({
   const [editingCaption, setEditingCaption] = useState(false);
   const [captionDraft, setCaptionDraft] = useState(detail?.card.subtitle ?? "");
   const [captionSaving, setCaptionSaving] = useState(false);
+  const [editingSuggestion, setEditingSuggestion] = useState(false);
+  const [suggestionTitle, setSuggestionTitle] = useState(detail?.card.title ?? "");
+  const [suggestionCaption, setSuggestionCaption] = useState(detail?.card.subtitle ?? "");
+  const [suggestionLink, setSuggestionLink] = useState(detail?.card.externalLinkUrl ?? "");
+  const [suggestionSaving, setSuggestionSaving] = useState(false);
   const [tagEditorOpen, setTagEditorOpen] = useState(false);
   const [portalTagLibrary, setPortalTagLibrary] = useState<ClientTagDefinition[]>([]);
   const [selectedPortalTags, setSelectedPortalTags] = useState<string[]>(detail?.card.tags ?? []);
@@ -6231,6 +6243,12 @@ function CardDetailModal({
     if (!detail || editingCaption) return;
     setCaptionDraft(detail.card.subtitle ?? "");
   }, [detail?.card.id, detail?.card.subtitle, editingCaption]);
+  useEffect(() => {
+    if (!detail || editingSuggestion) return;
+    setSuggestionTitle(detail.card.title);
+    setSuggestionCaption(detail.card.subtitle ?? "");
+    setSuggestionLink(detail.card.externalLinkUrl ?? "");
+  }, [detail?.card.id, detail?.card.title, detail?.card.subtitle, detail?.card.externalLinkUrl, editingSuggestion]);
   useEffect(() => {
     setSelectedPortalTags(detail?.card.tags ?? []);
     setTagEditorOpen(false);
@@ -6306,6 +6324,48 @@ function CardDetailModal({
     }
   }
 
+  function resetSuggestionDraft() {
+    if (!detail) return;
+    setSuggestionTitle(detail.card.title);
+    setSuggestionCaption(detail.card.subtitle ?? "");
+    setSuggestionLink(detail.card.externalLinkUrl ?? "");
+    setEditingSuggestion(false);
+  }
+
+  async function savePortalSuggestion() {
+    if (!onUpdateSuggestion || !detail) return;
+    const title = suggestionTitle.trim();
+    if (!title) {
+      setFeedback(t("Informe um título para a sugestão."));
+      return;
+    }
+    let externalLinkUrl = suggestionLink.trim();
+    if (externalLinkUrl && !/^https?:\/\//i.test(externalLinkUrl)) externalLinkUrl = `https://${externalLinkUrl}`;
+    try {
+      if (externalLinkUrl) new URL(externalLinkUrl);
+    } catch {
+      setFeedback(t("Informe um link válido, começando com https://"));
+      return;
+    }
+    setSuggestionSaving(true);
+    setFeedback(null);
+    try {
+      await onUpdateSuggestion(detail.card.id, {
+        title,
+        caption: suggestionCaption.trim() || null,
+        externalLinkUrl: externalLinkUrl || null,
+      });
+      setEditingSuggestion(false);
+      setCaptionDraft(suggestionCaption.trim());
+      setFeedback(t("Sugestão atualizada com sucesso."));
+      onRefresh();
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : t("Não foi possível salvar a sugestão."));
+    } finally {
+      setSuggestionSaving(false);
+    }
+  }
+
   async function createPortalTag() {
     const name = newPortalTagName.trim();
     if (!name || !onCreateTag) return;
@@ -6340,6 +6400,12 @@ function CardDetailModal({
     }
   }
   const hasPortalVisualMedia = portalCardAssets(detail.card).length > 0;
+  const isClientSuggestion = detail.card.statusBadges.some((status) => status
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase("pt-BR") === "sugestao do cliente");
+  const canEditClientSuggestion = Boolean(isClientSuggestion && allowEditSuggestion && onUpdateSuggestion);
   const lifecycle = getPortalCardLifecycle(detail.card, t);
   const clientResponseTone = /aprovad/i.test(detail.card.clientLabel)
     ? "approved"
@@ -6361,7 +6427,7 @@ function CardDetailModal({
         <div className="modal-head">
           <div>
             <p className="eyebrow">{titlePrefix}</p>
-            <h3>{detail.card.title}</h3>
+            <h3>{editingSuggestion ? suggestionTitle || detail.card.title : detail.card.title}</h3>
           </div>
           <button className="ghost-button" onClick={onClose}>
             {t("Fechar")}
@@ -6409,8 +6475,8 @@ function CardDetailModal({
 
           <div className="modal-sidebar-copy">
             <section className="glass-subtle modal-card portal-summary-card">
-              <header className="portal-summary-heading"><span><UiIcon name="file" /></span><div><small>{t("CONTEÚDO DO POST")}</small><h4>{t("Legenda")}</h4></div>{allowEditCaption && !editingCaption ? <button type="button" className="portal-caption-edit-button" onClick={() => setEditingCaption(true)}><UiIcon name="file" />{t("Editar legenda")}</button> : null}</header>
-              {editingCaption ? <div className="portal-caption-editor"><label htmlFor={`portal-caption-${detail.card.id}`}>{t("Edite o texto abaixo")}</label><textarea id={`portal-caption-${detail.card.id}`} autoFocus value={captionDraft} onChange={(event) => setCaptionDraft(event.target.value)} maxLength={5000} placeholder={t("Escreva a legenda do post...")} /><div className="portal-caption-editor-footer"><small>{captionDraft.length}/5000 {t("caracteres")}</small><div><button type="button" className="ghost-button" disabled={captionSaving} onClick={() => { setCaptionDraft(detail.card.subtitle ?? ""); setEditingCaption(false); }}>{t("Cancelar")}</button><button type="button" className="gradient-button" disabled={captionSaving} onClick={() => void savePortalCaption()}>{t(captionSaving ? "Salvando..." : "Salvar legenda")}</button></div></div></div> : <PortalFormattedCaption text={captionDraft} />}
+              <header className="portal-summary-heading"><span><UiIcon name="file" /></span><div><small>{t(isClientSuggestion ? "SUGESTÃO DE PAUTA" : "CONTEÚDO DO POST")}</small><h4>{t(isClientSuggestion ? "Detalhes da sugestão" : "Legenda")}</h4></div>{canEditClientSuggestion && !editingSuggestion ? <button type="button" className="portal-caption-edit-button" onClick={() => { setEditingCaption(false); setEditingSuggestion(true); }}><UiIcon name="file" />{t("Editar sugestão")}</button> : allowEditCaption && !editingCaption && !isClientSuggestion ? <button type="button" className="portal-caption-edit-button" onClick={() => setEditingCaption(true)}><UiIcon name="file" />{t("Editar legenda")}</button> : null}</header>
+              {editingSuggestion ? <div className="portal-suggestion-editor"><label>{t("Título da pauta")}<input autoFocus value={suggestionTitle} onChange={(event) => setSuggestionTitle(event.target.value)} maxLength={255} placeholder={t("Título da sugestão")} /></label><label>{t("Texto da sugestão")}<textarea value={suggestionCaption} onChange={(event) => setSuggestionCaption(event.target.value)} maxLength={5000} placeholder={t("Descreva a ideia da pauta...")} /></label><label>{t("Link de referência")}<input type="url" value={suggestionLink} onChange={(event) => setSuggestionLink(event.target.value)} maxLength={1024} placeholder="https://..." /></label><div className="portal-caption-editor-footer"><small>{suggestionCaption.length}/5000 {t("caracteres")}</small><div><button type="button" className="ghost-button" disabled={suggestionSaving} onClick={resetSuggestionDraft}>{t("Cancelar")}</button></div></div></div> : editingCaption ? <div className="portal-caption-editor"><label htmlFor={`portal-caption-${detail.card.id}`}>{t("Edite o texto abaixo")}</label><textarea id={`portal-caption-${detail.card.id}`} autoFocus value={captionDraft} onChange={(event) => setCaptionDraft(event.target.value)} maxLength={5000} placeholder={t("Escreva a legenda do post...")} /><div className="portal-caption-editor-footer"><small>{captionDraft.length}/5000 {t("caracteres")}</small><div><button type="button" className="ghost-button" disabled={captionSaving} onClick={() => { setCaptionDraft(detail.card.subtitle ?? ""); setEditingCaption(false); }}>{t("Cancelar")}</button><button type="button" className="gradient-button" disabled={captionSaving} onClick={() => void savePortalCaption()}>{t(captionSaving ? "Salvando..." : "Salvar legenda")}</button></div></div></div> : <PortalFormattedCaption text={captionDraft} />}
               {allowManageTags ? <section className="portal-tag-manager"><header><div><small>{t("ETIQUETAS DO POST")}</small><strong>{selectedPortalTags.length ? `${selectedPortalTags.length} ${t(selectedPortalTags.length === 1 ? "etiqueta selecionada" : "etiquetas selecionadas")}` : t("Nenhuma etiqueta")}</strong></div><button type="button" onClick={() => setTagEditorOpen((open) => !open)}>{t(tagEditorOpen ? "Fechar" : "Gerenciar tags")}</button></header>{selectedPortalTags.length ? <div className="portal-tag-pills">{selectedPortalTags.map((name) => { const tag = portalTagLibrary.find((item) => item.name === name); return <span key={name} style={{ "--portal-tag-color": tag?.color ?? "#7568dc" } as CSSProperties}>{name}</span>; })}</div> : null}{tagEditorOpen ? <div className="portal-tag-editor"><div className="portal-tag-options">{portalTagLibrary.map((tag) => { const selected = selectedPortalTags.includes(tag.name); return <button key={tag.id} type="button" className={selected ? "selected" : ""} onClick={() => setSelectedPortalTags((current) => selected ? current.filter((name) => name !== tag.name) : [...current, tag.name])}><i style={{ backgroundColor: tag.color }} />{tag.name}<span>{selected ? "✓" : "+"}</span></button>; })}{portalTagLibrary.length === 0 ? <p>{t("Nenhuma tag criada. Crie a primeira abaixo.")}</p> : null}</div><div className="portal-tag-create"><input value={newPortalTagName} onChange={(event) => setNewPortalTagName(event.target.value)} maxLength={100} placeholder={t("Nome da nova tag")} /><input type="color" value={newPortalTagColor} onChange={(event) => setNewPortalTagColor(event.target.value)} aria-label={t("Cor da nova tag")} /><button type="button" disabled={portalTagWorking || !newPortalTagName.trim()} onClick={() => void createPortalTag()}>{t("+ Criar")}</button></div><div className="portal-tag-actions"><button type="button" className="ghost-button" disabled={portalTagWorking} onClick={() => { setSelectedPortalTags(detail.card.tags); setTagEditorOpen(false); }}>{t("Cancelar")}</button><button type="button" className="gradient-button" disabled={portalTagWorking} onClick={() => void savePortalTags()}>{t(portalTagWorking ? "Salvando..." : "Salvar etiquetas")}</button></div></div> : null}</section> : null}
               <div className="portal-card-meta-grid">
                 <article className={`portal-card-meta status ${lifecycle.tone}`}>
@@ -6512,11 +6578,12 @@ function CardDetailModal({
             ) : null}
           </div>
         </div>
-        {mode === "portal" && canRespond ? <footer className="portal-card-sticky-actions">
+        {mode === "portal" && (canRespond || canEditClientSuggestion) ? <footer className={`portal-card-sticky-actions${canEditClientSuggestion ? " has-suggestion-action" : ""}`}>
           <div><strong>{t("Seu feedback")}</strong><small>{commentDraft.trim() ? t("Seu comentário será enviado junto com a decisão.") : t("Você pode aprovar agora ou escrever um comentário acima.")}</small></div>
-          <button className="ghost-button" disabled={submitting !== null || !commentDraft.trim()} onClick={() => handleAction("comment", () => onAddComment(detail.card.id, commentDraft.trim()))}>{t(submitting === "comment" ? "Salvando..." : "Comentar")}</button>
-          <button className="danger-button" disabled={submitting !== null} onClick={() => handleAction("changes", () => onRequestChanges(detail.card.id, commentDraft.trim()))}>{t(submitting === "changes" ? "Enviando..." : "Pedir alteração")}</button>
-          <button className="gradient-button" disabled={submitting !== null} onClick={() => handleAction("approve", () => onApprove(detail.card.id, commentDraft.trim()))}>{t(submitting === "approve" ? "Enviando..." : "Aprovar")}</button>
+          {canRespond ? <button className="ghost-button" disabled={submitting !== null || !commentDraft.trim()} onClick={() => handleAction("comment", () => onAddComment(detail.card.id, commentDraft.trim()))}>{t(submitting === "comment" ? "Salvando..." : "Comentar")}</button> : null}
+          {canEditClientSuggestion ? <button className="suggestion-save-button" disabled={suggestionSaving || submitting !== null} onClick={() => editingSuggestion ? void savePortalSuggestion() : setEditingSuggestion(true)}>{t(suggestionSaving ? "Salvando..." : editingSuggestion ? "Salvar alterações" : "Editar sugestão")}</button> : null}
+          {canRespond ? <button className="danger-button" disabled={submitting !== null || suggestionSaving} onClick={() => handleAction("changes", () => onRequestChanges(detail.card.id, commentDraft.trim()))}>{t(submitting === "changes" ? "Enviando..." : "Pedir alteração")}</button> : null}
+          {canRespond ? <button className="gradient-button" disabled={submitting !== null || suggestionSaving} onClick={() => handleAction("approve", () => onApprove(detail.card.id, commentDraft.trim()))}>{t(submitting === "approve" ? "Enviando..." : "Aprovar")}</button> : null}
         </footer> : null}
       </div>
       {videoPreviewUrl ? <div className="portal-video-player-backdrop" role="dialog" aria-modal="true" aria-label={t("Reproduzir vídeo")} onClick={(event) => { event.stopPropagation(); setVideoPreviewUrl(null); }}>
