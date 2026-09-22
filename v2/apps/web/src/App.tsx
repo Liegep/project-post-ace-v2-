@@ -5281,6 +5281,14 @@ function hasPortalChangesRequested(card: BoardCard) {
   return /(alteracao solicitada|revisao solicitada|revisao|changes requested|modifica richiesta|cambio solicitado|andring begard)/.test(normalized);
 }
 
+function isClientSuggestionCard(card: BoardCard) {
+  return card.statusBadges.some((status) => status
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase("pt-BR") === "sugestao do cliente");
+}
+
 function awaitingApprovalLabel(locale: string) {
   const normalized = locale.toLocaleLowerCase("pt-BR");
   if (normalized.startsWith("it") || normalized.includes("ital")) return "In attesa di approvazione";
@@ -5693,6 +5701,25 @@ function ClientPostSuggestionModal({ draft, files, submitting, error, onChange, 
   </div>;
 }
 
+function ClientPortalApprovalCard({ card, locale, localeTag, canEditSuggestion, onView, onEdit }: { card: BoardCard; locale: string; localeTag: string; canEditSuggestion: boolean; onView: () => void; onEdit: () => void }) {
+  const { t } = usePortalTranslation();
+  if (isClientSuggestionCard(card)) {
+    return <article className="portal-card portal-suggestion-card">
+      <ClosedCardMedia card={card} />
+      <div className="portal-card-copy">
+        <small className="portal-suggestion-label">{t("Sugestão de pauta")}</small>
+        <h4>{card.title}</h4>
+        {card.subtitle ? <p>{card.subtitle.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 140)}</p> : <p>{t("Abra para conferir os detalhes desta sugestão.")}</p>}
+      </div>
+      <div className="portal-suggestion-card-actions">
+        <button type="button" className="ghost-button" onClick={onView}><UiIcon name="eye" />{t("Visualizar")}</button>
+        {canEditSuggestion ? <button type="button" className="gradient-button" onClick={onEdit}><UiIcon name="pencil" />{t("Editar")}</button> : null}
+      </div>
+    </article>;
+  }
+  return <button className={`portal-card card-button${hasPortalChangesRequested(card) ? " has-change-request" : ""}${hasPortalResubmittedReview(card) ? " has-awaiting-rereview" : ""}`} onClick={onView}><ClosedCardMedia card={card} />{hasPortalChangesRequested(card) ? <span className="portal-change-request-tab">{changesRequestedPortalLabel(locale)}</span> : hasPortalResubmittedReview(card) ? <span className="portal-review-wait-tab">{awaitingReReviewPortalLabel(locale)}</span> : null}<div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{new Intl.DateTimeFormat(localeTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(card.scheduledAt))}</p> : null}</div></button>;
+}
+
 function ClientPortalWorkspacePage({
   session,
   slug,
@@ -5737,6 +5764,7 @@ function ClientPortalWorkspacePage({
   const tr = (source: string) => portalText(portalLocale, source);
   const clientLocaleTag = portalLocaleTag(portalLocale);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
+  const [selectedCardIntent, setSelectedCardIntent] = useState<"view" | "edit-suggestion">("view");
   const [portalView, setPortalView] = useState<"board" | "approved" | "texts" | "reports" | "invoices" | "tracker" | "archived" | "search" | "brand">("board");
   const [portalMobileMenuOpen, setPortalMobileMenuOpen] = useState(false);
   const portalMobileMenuButtonRef = useRef<HTMLButtonElement>(null);
@@ -5768,6 +5796,14 @@ function ClientPortalWorkspacePage({
     [slug],
   );
   const detail = useCardDetail(data, selectedCardId, loadCardDetail, refreshKey);
+  const openPortalCard = useCallback((cardId: string, intent: "view" | "edit-suggestion" = "view") => {
+    setSelectedCardIntent(intent);
+    setSelectedCardId(cardId);
+  }, []);
+  const closePortalCard = useCallback(() => {
+    setSelectedCardId(null);
+    setSelectedCardIntent("view");
+  }, []);
   useEffect(() => {
     const closePortalMenu = (event: KeyboardEvent) => {
       if (event.key === "Escape") setPortalMobileMenuOpen(false);
@@ -5970,7 +6006,7 @@ function ClientPortalWorkspacePage({
     applyPortalDecision(cardId, result);
     const approvedButton = document.querySelector<HTMLElement>('[data-portal-view="approved"]');
     const target = approvedButton?.getBoundingClientRect();
-    setSelectedCardId(null);
+    closePortalCard();
     setApprovedTransfer({
       title: cardTitle,
       targetX: target ? target.left + target.width / 2 - window.innerWidth / 2 : -Math.min(320, window.innerWidth * .35),
@@ -6066,13 +6102,13 @@ function ClientPortalWorkspacePage({
                     {visiblePortalColumns.map((column) => { const approvalCards = column.cards.filter((card) => contentApprovalCardIds.has(card.id)); return (
                       <section key={column.id} className="portal-column glass-subtle">
                         <header className="portal-column-head" style={{ borderColor: column.color }}><h3>{column.name}</h3><span>{approvalCards.length}</span></header>
-                        {approvalCards.length ? <div className="portal-card-list">{approvalCards.map((card) => <button key={card.id} className={`portal-card card-button${hasPortalChangesRequested(card) ? " has-change-request" : ""}${hasPortalResubmittedReview(card) ? " has-awaiting-rereview" : ""}`} onClick={() => setSelectedCardId(card.id)}><ClosedCardMedia card={card} />{hasPortalChangesRequested(card) ? <span className="portal-change-request-tab">{changesRequestedPortalLabel(data.locale)}</span> : hasPortalResubmittedReview(card) ? <span className="portal-review-wait-tab">{awaitingReReviewPortalLabel(data.locale)}</span> : null}<div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{new Intl.DateTimeFormat(clientLocaleTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(card.scheduledAt))}</p> : null}</div></button>)}</div> : <p className="portal-column-empty">{tr("Nenhum conteúdo nesta etapa.")}</p>}
+                        {approvalCards.length ? <div className="portal-card-list">{approvalCards.map((card) => <ClientPortalApprovalCard key={card.id} card={card} locale={data.locale} localeTag={clientLocaleTag} canEditSuggestion={canUseEnabledClientTools && data.permissions.allowClientCreatePost} onView={() => openPortalCard(card.id)} onEdit={() => openPortalCard(card.id, "edit-suggestion")} />)}</div> : <p className="portal-column-empty">{tr("Nenhum conteúdo nesta etapa.")}</p>}
                       </section>
                     ); })}
 
                     {data.withoutColumn.some((card) => contentApprovalCardIds.has(card.id)) ? <section className="portal-column glass-subtle">
                       <header className="portal-column-head" style={{ borderColor: "#7a86a9" }}><h3>{tr("Em criação")}</h3><span>{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).length}</span></header>
-                      <div className="portal-card-list">{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).map((card) => <button key={card.id} className={`portal-card card-button${hasPortalChangesRequested(card) ? " has-change-request" : ""}${hasPortalResubmittedReview(card) ? " has-awaiting-rereview" : ""}`} onClick={() => setSelectedCardId(card.id)}><ClosedCardMedia card={card} />{hasPortalChangesRequested(card) ? <span className="portal-change-request-tab">{changesRequestedPortalLabel(data.locale)}</span> : hasPortalResubmittedReview(card) ? <span className="portal-review-wait-tab">{awaitingReReviewPortalLabel(data.locale)}</span> : null}<div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{new Intl.DateTimeFormat(clientLocaleTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(card.scheduledAt))}</p> : null}</div></button>)}</div>
+                      <div className="portal-card-list">{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).map((card) => <ClientPortalApprovalCard key={card.id} card={card} locale={data.locale} localeTag={clientLocaleTag} canEditSuggestion={canUseEnabledClientTools && data.permissions.allowClientCreatePost} onView={() => openPortalCard(card.id)} onEdit={() => openPortalCard(card.id, "edit-suggestion")} />)}</div>
                     </section> : null}
                   </div>
                 </section> : null}
@@ -6133,7 +6169,7 @@ function ClientPortalWorkspacePage({
         onRequestChanges={async (cardId, commentText) => {
           const result = await submitPortalCardDecisionBySlug(slug, cardId, { approved: false, commentText, expectedApprovalRevision: detail.data?.card.approvalRevision ?? 0 });
           applyPortalDecision(cardId, result);
-          setSelectedCardId(null);
+          closePortalCard();
           const confirmation = changeRequestConfirmationCopy(data.locale);
           window.dispatchEvent(new CustomEvent("design-hub:success", {
             detail: {
@@ -6149,12 +6185,13 @@ function ClientPortalWorkspacePage({
         onUpdateCaption={(cardId, caption) => updatePortalCardCaptionBySlug(slug, cardId, caption)}
         allowEditSuggestion={canUseEnabledClientTools && data.permissions.allowClientCreatePost}
         onUpdateSuggestion={(cardId, input) => updatePortalSuggestionBySlug(slug, cardId, input)}
+        initialEditSuggestion={selectedCardIntent === "edit-suggestion"}
         allowManageTags={canUseEnabledClientTools && data.permissions.allowClientCreateTags}
         onLoadTags={() => listPortalTagsBySlug(slug)}
         onCreateTag={(input) => createPortalTagBySlug(slug, input)}
         onUpdateTags={(cardId, tags) => updatePortalCardTagsBySlug(slug, cardId, tags)}
         onRefresh={() => setRefreshKey((value) => value + 1)}
-        onClose={() => setSelectedCardId(null)}
+        onClose={closePortalCard}
       />
       {createPostOpen ? <ClientPostSuggestionModal draft={postDraft} files={postFiles} submitting={postSubmitting} error={postError} onChange={(field, value) => setPostDraft((current) => ({ ...current, [field]: value }))} onFilesChange={setPostFiles} onClose={() => { if (!postSubmitting) setCreatePostOpen(false); }} onSubmit={submitPostSuggestion} /> : null}
     </div>
@@ -6189,6 +6226,7 @@ function CardDetailModal({
   onUpdateCaption,
   allowEditSuggestion,
   onUpdateSuggestion,
+  initialEditSuggestion,
   allowManageTags,
   onLoadTags,
   onCreateTag,
@@ -6210,6 +6248,7 @@ function CardDetailModal({
   onUpdateCaption?: (cardId: string, caption: string | null) => Promise<unknown>;
   allowEditSuggestion?: boolean;
   onUpdateSuggestion?: (cardId: string, input: { title: string; caption: string | null; externalLinkUrl: string | null }) => Promise<unknown>;
+  initialEditSuggestion?: boolean;
   allowManageTags?: boolean;
   onLoadTags?: () => Promise<{ items: ClientTagDefinition[] }>;
   onCreateTag?: (input: { name: string; color: string }) => Promise<{ ok: true; tag: ClientTagDefinition }>;
@@ -6247,6 +6286,11 @@ function CardDetailModal({
     setSuggestionCaption(detail.card.subtitle ?? "");
     setSuggestionLink(detail.card.externalLinkUrl ?? "");
   }, [detail?.card.id, detail?.card.title, detail?.card.subtitle, detail?.card.externalLinkUrl, editingSuggestion]);
+  useEffect(() => {
+    if (!initialEditSuggestion || !detail || mode !== "portal" || !allowEditSuggestion || !isClientSuggestionCard(detail.card)) return;
+    setEditingCaption(false);
+    setEditingSuggestion(true);
+  }, [allowEditSuggestion, detail?.card.id, initialEditSuggestion, mode]);
   useEffect(() => {
     setSelectedPortalTags(detail?.card.tags ?? []);
     setTagEditorOpen(false);
