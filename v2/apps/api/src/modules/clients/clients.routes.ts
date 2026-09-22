@@ -214,14 +214,14 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         "CASE WHEN e.source = 'legacy' THEN CONCAT('Estado anterior preservado: ', COALESCE(e.comment_text, '')) ELSE COALESCE(e.comment_text, '') END AS detail,",
         "1 AS recordedDecision, CASE WHEN e.revision = c.approval_revision AND c.approval_state = 'approved' AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL THEN 1 ELSE 0 END AS canSchedule",
         "FROM card_approval_events e JOIN kanban_cards c ON c.id = e.card_id JOIN client_accounts a ON a.id = c.client_account_id",
-        "WHERE c.is_brief_approval = 0 AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND e.decision IN ('approved', 'changes_requested')", scopeSql,
+        "WHERE c.is_brief_approval = 0 AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.status_json NOT LIKE '%Sugestão do cliente%' AND e.decision IN ('approved', 'changes_requested')", scopeSql,
         "UNION ALL",
         "SELECT CONCAT('decision-', c.id, '-', UNIX_TIMESTAMP(c.updated_at)) AS id, c.id AS cardId, c.title, c.updated_at AS occurredAt,",
         "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl,",
         "CASE WHEN LOWER(c.client_label) LIKE '%aprovad%' THEN 'approved' ELSE 'changes_requested' END AS activityType,",
         "CASE WHEN LOWER(c.client_label) LIKE '%aprovad%' THEN 'Conteúdo aprovado pelo cliente' ELSE 'Cliente solicitou alterações' END AS detail, 0 AS recordedDecision, 1 AS canSchedule",
         "FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id",
-        "WHERE c.approval_revision = 0 AND c.archived = 0 AND c.is_brief_approval = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND (LOWER(c.client_label) LIKE '%aprovad%' OR LOWER(c.client_label) LIKE '%altera%')", scopeSql,
+        "WHERE c.approval_revision = 0 AND c.archived = 0 AND c.is_brief_approval = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.status_json NOT LIKE '%Sugestão do cliente%' AND (LOWER(c.client_label) LIKE '%aprovad%' OR LOWER(c.client_label) LIKE '%altera%') AND NOT EXISTS (SELECT 1 FROM card_approval_events ae WHERE ae.card_id = c.id AND ae.decision IN ('approved', 'changes_requested'))", scopeSql,
         "UNION ALL",
         "SELECT CONCAT('comment-', cc.id) AS id, c.id AS cardId, c.title, cc.created_at AS occurredAt,",
         "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl, 'comment' AS activityType, LEFT(CASE WHEN cc.comment_text = 'Legenda editada pelo cliente.' THEN CONCAT('Nova legenda: ', COALESCE(NULLIF(c.caption, ''), 'sem texto')) ELSE cc.comment_text END, 240) AS detail, 0 AS recordedDecision, 0 AS canSchedule",
@@ -229,7 +229,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         // Feedback is actionable only while the post is still waiting for the
         // team. Scheduling, publishing or archiving the card completes that
         // dashboard task and must remove all of its related feedback rows.
-        "WHERE c.is_brief_approval = 0 AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND cc.is_internal = 0 AND cc.author_role IN ('cliente', 'guest') AND NOT EXISTS (SELECT 1 FROM card_approval_events ce WHERE ce.comment_id = cc.id)", scopeSql,
+        "WHERE c.is_brief_approval = 0 AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.status_json NOT LIKE '%Sugestão do cliente%' AND cc.is_internal = 0 AND cc.author_role IN ('cliente', 'guest') AND NOT EXISTS (SELECT 1 FROM card_approval_events ce WHERE ce.comment_id = cc.id)", scopeSql,
         ") activity ORDER BY activity.occurredAt DESC LIMIT 24",
       ].join(" "), [...params, ...params, ...params]),
       app.db.query<RowDataPacket[]>([
