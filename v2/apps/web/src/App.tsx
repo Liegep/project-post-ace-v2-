@@ -1032,7 +1032,9 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
   const [noteColor, setNoteColor] = useState(DEFAULT_DRAWER_NOTE_COLOR);
   const [editingNoteIndex, setEditingNoteIndex] = useState<number | null>(null);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
-  const [editingLinks, setEditingLinks] = useState(false);
+  const [linkDraft, setLinkDraft] = useState<{ tab: "links" | "quick"; items: DrawerLink[] } | null>(null);
+  const [linkSaving, setLinkSaving] = useState(false);
+  const [linkSaveError, setLinkSaveError] = useState("");
   const [trackerFilterOpen, setTrackerFilterOpen] = useState(false);
   const [automationOpen, setAutomationOpen] = useState(false);
   const [automations, setAutomations] = useState<KanbanAutomation[]>([]);
@@ -1069,7 +1071,10 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
     void saveAdminWorkspaceDrawerBySlug(slug, next);
     if (quickChanged && canManageAccess) void saveAdminGlobalQuickLinks(next.quick);
   };
-  const items = tab === "quick" ? drawer.quick : tab === "links" ? drawer.links : [];
+  const linkTab = tab === "quick" || tab === "links" ? tab : null;
+  const storedLinkItems = linkTab === "quick" ? drawer.quick : linkTab === "links" ? drawer.links : [];
+  const editingLinks = Boolean(linkTab && linkDraft?.tab === linkTab);
+  const items = editingLinks ? linkDraft?.items ?? [] : storedLinkItems;
   const drafts = drawer.draftsByUser[userId] ?? [];
   const resetTextEditor = () => { setText(""); setNoteColor(DEFAULT_DRAWER_NOTE_COLOR); setEditingNoteIndex(null); setEditingDraftId(null); };
   const saveText = () => {
@@ -1094,10 +1099,39 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
   const deleteNote = (index: number) => persist({ ...drawer, notes: drawer.notes.filter((_, noteIndex) => noteIndex !== index) });
   const deleteDraft = (id: string) => persist({ ...drawer, draftsByUser: { ...drawer.draftsByUser, [userId]: drafts.filter((draft) => draft.id !== id) } });
   const addDraftAttachment = async (file: File | null) => { if (!file) return; const attachmentUrl = await uploadAdminMedia(file); persist({ ...drawer, draftsByUser: { ...drawer.draftsByUser, [userId]: [{ id: crypto.randomUUID(), text: text.trim() || file.name, attachmentUrl, createdAt: new Date().toISOString() }, ...drafts] } }); setText(""); };
-  const addLink = (type: "heading" | "link") => { const title = type === "heading" ? "Novo título" : "Novo link"; const next = [...items, { id: crypto.randomUUID(), type, title, url: type === "link" ? "https://" : undefined }]; persist({ ...drawer, [tab === "quick" ? "quick" : "links"]: next }); };
-  const updateLink = (id: string, changes: Partial<DrawerLink>) => { const next = items.map((item) => item.id === id ? { ...item, ...changes } : item); persist({ ...drawer, [tab === "quick" ? "quick" : "links"]: next }); };
-  const deleteLink = (id: string) => { const next = items.filter((item) => item.id !== id); persist({ ...drawer, [tab === "quick" ? "quick" : "links"]: next }); };
-  const moveLink = (id: string, direction: -1 | 1) => { const index = items.findIndex((item) => item.id === id); const target = index + direction; if (target < 0 || target >= items.length) return; const next = [...items]; [next[index], next[target]] = [next[target], next[index]]; persist({ ...drawer, [tab === "quick" ? "quick" : "links"]: next }); };
+  const startLinkEditing = () => {
+    if (!linkTab) return;
+    setLinkSaveError("");
+    setLinkDraft({ tab: linkTab, items: storedLinkItems.map((item) => ({ ...item })) });
+  };
+  const updateLinkDraft = (transform: (items: DrawerLink[]) => DrawerLink[]) => {
+    setLinkDraft((current) => current ? { ...current, items: transform(current.items) } : current);
+  };
+  const finishLinkEditing = async () => {
+    if (!linkDraft || linkSaving) return;
+    setLinkSaving(true);
+    setLinkSaveError("");
+    const next = { ...drawer, [linkDraft.tab]: linkDraft.items };
+    try {
+      if (linkDraft.tab === "quick") {
+        if (!canManageAccess) throw new Error("Apenas o super admin pode editar os links rápidos globais.");
+        await saveAdminGlobalQuickLinks(linkDraft.items);
+      } else {
+        await saveAdminWorkspaceDrawerBySlug(slug, next);
+        window.dispatchEvent(new CustomEvent("design-hub:workspace-links-updated", { detail: { slug, links: next.links } }));
+      }
+      setDrawer(next);
+      setLinkDraft(null);
+    } catch (caught) {
+      setLinkSaveError(caught instanceof Error ? caught.message : "Não foi possível salvar os links.");
+    } finally {
+      setLinkSaving(false);
+    }
+  };
+  const addLink = (type: "heading" | "link") => updateLinkDraft((current) => [...current, { id: crypto.randomUUID(), type, title: type === "heading" ? "Novo título" : "Novo link", url: type === "link" ? "https://" : undefined }]);
+  const updateLink = (id: string, changes: Partial<DrawerLink>) => updateLinkDraft((current) => current.map((item) => item.id === id ? { ...item, ...changes } : item));
+  const deleteLink = (id: string) => updateLinkDraft((current) => current.filter((item) => item.id !== id));
+  const moveLink = (id: string, direction: -1 | 1) => updateLinkDraft((current) => { const index = current.findIndex((item) => item.id === id); const target = index + direction; if (target < 0 || target >= current.length) return current; const next = [...current]; [next[index], next[target]] = [next[target], next[index]]; return next; });
   const saveIdea = () => { if (!ideaTitle.trim()) return; persist({ ...drawer, pautaIdeas: [{ id: crypto.randomUUID(), title: ideaTitle.trim(), description: ideaDescription.trim(), caption: ideaCaption.trim(), createdAt: new Date().toISOString() }, ...drawer.pautaIdeas] }); setIdeaTitle(""); setIdeaDescription(""); setIdeaCaption(""); setIdeaFormOpen(false); setIdeaSaved(true); window.setTimeout(() => setIdeaSaved(false), 3200); };
   const formatNoteDate = (value: string) => {
     const date = new Date(value);
@@ -1121,7 +1155,7 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
         {tab === "notes" ? <div className="drawer-card-list drawer-note-list">{drawer.notes.map((note, index) => <article className="drawer-note" key={note.id} style={{ "--drawer-note-color": note.color } as CSSProperties}>{note.authorName ? <small className="drawer-note-author">{note.authorName}</small> : null}<p>{note.text}</p>{note.attachments?.length ? <div className="drawer-note-attachments">{note.attachments.map((attachment, attachmentIndex) => <a key={`${attachment.url}-${attachmentIndex}`} href={attachment.url} target="_blank" rel="noreferrer">{attachment.name || "Ver anexo"} ↗</a>)}</div> : null}<footer className="drawer-note-footer"><div className="drawer-item-actions"><button onClick={() => editNote(note, index)}>Editar</button><button className="danger" onClick={() => deleteNote(index)}>Excluir</button></div><time dateTime={note.createdAt || undefined}>{formatNoteDate(note.createdAt)}</time></footer></article>)}</div> : <div className="drawer-card-list">{drafts.map((draft) => <article key={draft.id} className={draft.color ? "drawer-draft-colored" : undefined} style={draft.color ? { "--drawer-note-color": draft.color } as CSSProperties : undefined}><p>{draft.text}</p>{draft.attachmentUrl ? <a href={draft.attachmentUrl} target="_blank" rel="noreferrer">Ver anexo</a> : null}<footer className="drawer-note-footer"><div className="drawer-item-actions"><button onClick={() => editDraft(draft)}>Editar</button><button className="danger" onClick={() => deleteDraft(draft.id)}>Excluir</button></div>{draft.createdAt ? <time dateTime={draft.createdAt}>{formatNoteDate(draft.createdAt)}</time> : null}</footer></article>)}</div>}
       </> : <>
         <p className="drawer-helper">{tab === "links" ? "Crie títulos para organizar os links compartilhados da equipe." : "Acesse os atalhos mais usados do workspace."}</p>
-        <div className="drawer-link-actions"><button onClick={() => setEditingLinks((value) => !value)}>{editingLinks ? "Concluir edição" : "Organizar links"}</button>{editingLinks ? <><button onClick={() => addLink("heading")}>+ Adicionar título</button><button onClick={() => addLink("link")}>+ Adicionar link</button></> : null}</div><div className="drawer-link-list">{items.map((item) => item.type === "heading" ? <h4 key={item.id}>{editingLinks ? <><input value={item.title} onChange={(event) => updateLink(item.id, { title: event.target.value })} /><button className="drawer-inline-delete" onClick={() => deleteLink(item.id)}>Excluir</button></> : item.title}</h4> : <article key={item.id}>{editingLinks ? <><input value={item.title} onChange={(event) => updateLink(item.id, { title: event.target.value })} /><input value={item.url ?? ""} onChange={(event) => updateLink(item.id, { url: event.target.value })} /><button onClick={() => moveLink(item.id, -1)}>↑</button><button onClick={() => moveLink(item.id, 1)}>↓</button><button className="danger" onClick={() => deleteLink(item.id)}>Excluir</button></> : <a href={item.url} target="_blank" rel="noreferrer">{item.title} ↗</a>}</article>)}</div>
+        <div className="drawer-link-actions"><button disabled={linkSaving} onClick={() => editingLinks ? void finishLinkEditing() : startLinkEditing()}>{linkSaving ? "Salvando..." : editingLinks ? "Concluir edição" : "Organizar links"}</button>{editingLinks ? <><button disabled={linkSaving} onClick={() => addLink("heading")}>+ Adicionar título</button><button disabled={linkSaving} onClick={() => addLink("link")}>+ Adicionar link</button></> : null}</div>{linkSaveError ? <p className="form-feedback error-text">{linkSaveError}</p> : null}<div className="drawer-link-list">{items.map((item) => item.type === "heading" ? <h4 key={item.id}>{editingLinks ? <><input disabled={linkSaving} value={item.title} onChange={(event) => updateLink(item.id, { title: event.target.value })} /><button disabled={linkSaving} className="drawer-inline-delete" onClick={() => deleteLink(item.id)}>Excluir</button></> : item.title}</h4> : <article key={item.id}>{editingLinks ? <><input disabled={linkSaving} value={item.title} onChange={(event) => updateLink(item.id, { title: event.target.value })} /><input disabled={linkSaving} value={item.url ?? ""} onChange={(event) => updateLink(item.id, { url: event.target.value })} /><button disabled={linkSaving} onClick={() => moveLink(item.id, -1)}>↑</button><button disabled={linkSaving} onClick={() => moveLink(item.id, 1)}>↓</button><button disabled={linkSaving} className="danger" onClick={() => deleteLink(item.id)}>Excluir</button></> : <a href={item.url} target="_blank" rel="noreferrer">{item.title} ↗</a>}</article>)}</div>
       </>}
     </section></div>, document.body) : null}
     <AutomationModal open={automationOpen} automations={automations} columns={columns} tags={tags} onClose={() => setAutomationOpen(false)} onChange={(items) => { setAutomations(items); void saveAdminKanbanAutomationsBySlug(slug, items); }} />
