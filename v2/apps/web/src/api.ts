@@ -336,6 +336,8 @@ export type DashboardUpcomingPost = { id: string; title: string; scheduledAt: st
 export type DashboardTodayPost = { id: string; title: string; scheduledAt: string; clientName: string; clientLogoUrl?: string | null; mediaUrl?: string | null };
 export type DashboardApprovedPauta = { id: string; title: string; approvedAt: string; clientName: string; clientSlug: string; clientLogoUrl?: string | null };
 export type DashboardStatistics = {
+  trackingStartsAt: string;
+  trackingStarted: boolean;
   postsThisMonth: number;
   postsPreviousMonth: number;
   pending: number;
