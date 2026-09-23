@@ -9,6 +9,7 @@ import {
   updateAgendaEventSchema,
 } from "./agenda.schemas.js";
 import { zonedWallClockToIso } from "../../lib/zoned-date-time.js";
+import { normalizeMeetLink } from "./agenda.meet-link.js";
 
 type AgendaRow = RowDataPacket & {
   startsAt: string;
@@ -130,7 +131,7 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
         input.recurrenceType,
         input.repeatUntil ?? null,
         input.color,
-        input.meetLink?.trim() || null,
+        normalizeMeetLink(input.meetLink),
         request.auth!.user.id,
     );
     await app.db.query(
@@ -167,7 +168,7 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
     for (const [key, column] of mappings) {
       if (key in input) {
         updates.push(`${column} = ?`);
-        values.push(input[key] ?? null);
+        values.push(key === "meetLink" ? normalizeMeetLink(input.meetLink) : input[key] ?? null);
       }
     }
 

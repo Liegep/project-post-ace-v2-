@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import { ACCESS_TOKEN_KEY } from "./authApi";
 import type { AgendaEvent } from "./api";
+import { normalizeExternalHttpUrl } from "./externalUrl";
 
 const monthIndex: Record<string, number> = {
   janeiro: 0,
@@ -211,7 +212,7 @@ export function AgendaOverflowViewer() {
                 {item.taskDescription ? <p style={{ margin: "0 0 7px" }}>{item.taskDescription}</p> : null}
                 {item.clientName ? <div><strong>Cliente:</strong> {item.clientName}</div> : null}
                 {item.labelName ? <div><strong>Etiqueta:</strong> {item.labelName}</div> : null}
-                {item.meetLink ? <a href={item.meetLink} target="_blank" rel="noreferrer" style={{ display: "inline-block", marginTop: 8, color: "#5f50d5", fontWeight: 700 }}>Abrir Google Meet</a> : null}
+                {normalizeExternalHttpUrl(item.meetLink) ? <a href={normalizeExternalHttpUrl(item.meetLink)} target="_blank" rel="noopener noreferrer" onClick={(event) => event.stopPropagation()} style={{ display: "inline-block", marginTop: 8, color: "#5f50d5", fontWeight: 700 }}>Abrir Google Meet</a> : null}
               </div> : null}
             </button>;
           })}
