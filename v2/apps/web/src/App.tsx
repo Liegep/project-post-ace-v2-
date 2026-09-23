@@ -6171,7 +6171,7 @@ function ClientPortalWorkspacePage({
                         <strong>{event.title}</strong>
                         <p>{new Intl.DateTimeFormat(clientLocaleTag, { dateStyle: "short", timeStyle: "short" }).format(new Date(event.startsAt))}</p>
                       </div>
-                      {normalizeExternalHttpUrl(event.meetLink) ? <a className="ghost-button compact-button" href={normalizeExternalHttpUrl(event.meetLink)} target="_blank" rel="noopener noreferrer" onClick={(mouseEvent) => mouseEvent.stopPropagation()}><UiIcon name="link" />Meet</a> : null}
+                      {normalizeExternalHttpUrl(event.meetLink) ? <a className="ghost-button compact-button" href={normalizeExternalHttpUrl(event.meetLink)} onClick={(mouseEvent) => mouseEvent.stopPropagation()}><UiIcon name="link" />Meet</a> : null}
                     </article>
                   ))}
                 </div>
@@ -7813,7 +7813,7 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
             <header><div><p className="eyebrow">{t("Compromisso")}</p><h3>{selectedEvent.title}</h3></div><button className="icon-close" onClick={() => setSelectedEvent(null)} aria-label={t("Fechar")}>×</button></header>
             <p>{selectedEvent.taskDescription || t("Sem detalhes adicionais.")}</p>
             <dl><div><dt>{t("Quando")}</dt><dd>{new Intl.DateTimeFormat(localeTag, { dateStyle: "full", timeStyle: "short" }).format(new Date(selectedEvent.startsAt))}</dd></div></dl>
-            {normalizeExternalHttpUrl(selectedEvent.meetLink) ? <div className="portal-meet-card"><span><UiIcon name="link" /></span><div><small>{t("VIDEOCHAMADA")}</small><strong>Google Meet</strong><p>{t("O link será aberto em uma nova aba.")}</p></div><a href={normalizeExternalHttpUrl(selectedEvent.meetLink)} target="_blank" rel="noopener noreferrer">{t("Entrar na reunião")} <UiIcon name="link" /></a></div> : null}
+            {normalizeExternalHttpUrl(selectedEvent.meetLink) ? <div className="portal-meet-card"><span><UiIcon name="link" /></span><div><small>{t("VIDEOCHAMADA")}</small><strong>Google Meet</strong><p>{t("Abra a reunião e use Voltar para retornar ao portal.")}</p></div><a href={normalizeExternalHttpUrl(selectedEvent.meetLink)}>{t("Entrar na reunião")} <UiIcon name="link" /></a></div> : null}
           </section>
         </div>
       ) : null}
