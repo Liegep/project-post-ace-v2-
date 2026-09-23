@@ -24,6 +24,7 @@ import { uploadRoutes } from "./modules/uploads/uploads.routes.js";
 import { prepareUploadStorage } from "./modules/uploads/uploads.storage.js";
 import { tagRoutes } from "./modules/tags/tags.routes.js";
 import { hashtagRoutes } from "./modules/hashtags/hashtags.routes.js";
+import { importSerenaLegacyHashtagGroups } from "./modules/hashtags/serena-legacy-hashtags.js";
 import { agendaRoutes } from "./modules/agenda/agenda.routes.js";
 import { textRoutes } from "./modules/texts/texts.routes.js";
 import { reportRoutes } from "./modules/reports/reports.routes.js";
@@ -119,6 +120,10 @@ export async function buildApp() {
       await ensureMcpStorage(app.db);
       await ensureCardTimeZoneStorage(app.db, appEnv.APP_TIMEZONE);
       await ensureApprovalStorage(app.db);
+      const importedHashtagGroups = await importSerenaLegacyHashtagGroups(app.db);
+      if (importedHashtagGroups > 0) {
+        app.log.info({ importedHashtagGroups }, "Serena V1 hashtag groups imported");
+      }
     } catch (error) {
       databaseAvailableAtStartup = false;
       app.log.error(error, "Database unavailable during startup; continuing with degraded API");
