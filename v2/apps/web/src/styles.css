@@ -9588,6 +9588,7 @@ button {
 
 .dashboard-layout .dashboard-grid {
   grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: start;
   gap: 18px;
   margin-top: 24px;
 }
@@ -9595,7 +9596,9 @@ button {
 .dashboard-layout .dashboard-grid > * {
   position: relative;
   grid-column: span 4;
-  min-height: 230px;
+  min-height: 0;
+  height: auto;
+  align-self: start;
   overflow: hidden;
   border: 1px solid rgba(225, 230, 241, .88);
   border-radius: 23px;
