@@ -8046,7 +8046,9 @@ function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: {
   useEffect(() => { loadBrandBrainBySlug(slug).then((result) => setBrain({ ...EMPTY_BRAND_BRAIN, ...(result.data ?? {}) })).catch(() => setBrain(EMPTY_BRAND_BRAIN)); }, [slug]);
   const visible = ideas.filter((idea) => (filter === "all" || (idea.status ?? "draft") === filter) && idea.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
   const send = async (idea: PautaIdea) => {
-    const columnId = columns.find((column) => column.name.toLocaleLowerCase() === "pauta")?.id ?? columns[0]?.id ?? null;
+    const columnId = columns.find((column) =>
+      column.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("pt-BR") === "pautas para aprovacao"
+    )?.id ?? null;
     const mediaUrls = idea.mediaUrls ?? [];
     if (sending) return;
     setSending(idea.id);
