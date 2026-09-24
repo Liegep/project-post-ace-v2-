@@ -3004,6 +3004,7 @@ function AdminWorkspacePage({
   const [invoiceLineDialog, setInvoiceLineDialog] = useState<BillingLineRequest | null>(null);
   const [openColumnMenuId, setOpenColumnMenuId] = useState<string | null>(null);
   const [newCardTarget, setNewCardTarget] = useState<{ columnId: string | null } | null>(null);
+  const [bulkCardColumn, setBulkCardColumn] = useState<BoardColumn | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
   const [bulkColumnDialog, setBulkColumnDialog] = useState<"copy" | "move" | null>(null);
@@ -3335,6 +3336,30 @@ function AdminWorkspacePage({
     setRefreshKey((value) => value + 1);
   };
 
+  const createMultipleCards = async (columnId: string, quantity: number) => {
+    let created = 0;
+    try {
+      for (let index = 1; index <= quantity; index += 1) {
+        await createAdminCardBySlug(slug, {
+          columnId,
+          title: `${index} -`,
+          caption: null,
+          primaryMediaUrl: null,
+          externalLinkUrl: null,
+          artType: "Post único",
+          status: ["Pendente"],
+          tags: [],
+        });
+        created += 1;
+      }
+    } catch (caught) {
+      setRefreshKey((value) => value + 1);
+      const reason = caught instanceof Error ? caught.message : "Não foi possível concluir a criação.";
+      throw new Error(created > 0 ? `${created} de ${quantity} posts foram criados. ${reason}` : reason);
+    }
+    setRefreshKey((value) => value + 1);
+  };
+
   const unassignedCards = filterCardsByTags(data.withoutColumn);
 
   const boardActions = boardView === "board" ? <div className="board-actions">
@@ -3528,6 +3553,10 @@ function AdminWorkspacePage({
                     }}
                     onArchiveCurrentMonth={() => void archiveColumnCurrentMonth(column)}
                     onAddCard={() => setNewCardTarget({ columnId: column.id })}
+                    onAddMultipleCards={() => {
+                      setOpenColumnMenuId(null);
+                      setBulkCardColumn(column);
+                    }}
                     onQuickAddCard={(title) => createQuickCard(column.id, title)}
                     selectionMode={selectionMode}
                     selectedCardIds={selectedCardIds}
@@ -3906,6 +3935,15 @@ function AdminWorkspacePage({
         }}
       />
 
+      {bulkCardColumn ? <BulkCardsModal
+        column={bulkCardColumn}
+        onClose={() => setBulkCardColumn(null)}
+        onConfirm={async (quantity) => {
+          await createMultipleCards(bulkCardColumn.id, quantity);
+          setBulkCardColumn(null);
+        }}
+      /> : null}
+
       {invoiceLineDialog ? <BillingLineModal
         request={invoiceLineDialog}
         onClose={() => setInvoiceLineDialog(null)}
@@ -3918,6 +3956,42 @@ function AdminWorkspacePage({
       /> : null}
     </div>
   );
+}
+
+function BulkCardsModal({ column, onClose, onConfirm }: { column: BoardColumn; onClose: () => void; onConfirm: (quantity: number) => Promise<void> }) {
+  const [quantity, setQuantity] = useState("8");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const parsedQuantity = Number(quantity);
+  const validQuantity = Number.isInteger(parsedQuantity) && parsedQuantity >= 1 && parsedQuantity <= 50;
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!validQuantity || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      await onConfirm(parsedQuantity);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível criar os posts.");
+      setSaving(false);
+    }
+  };
+
+  return <div className="modal-backdrop" onMouseDown={() => { if (!saving) onClose(); }}>
+    <section className="modal-panel glass billing-line-modal bulk-cards-modal" role="dialog" aria-modal="true" aria-labelledby="bulk-cards-title" onMouseDown={(event) => event.stopPropagation()}>
+      <header className="billing-line-modal-head">
+        <div><p className="eyebrow">Coluna · {column.name}</p><h2 id="bulk-cards-title">Adicionar vários posts</h2><p>Informe quantos cartões deseja criar nesta coluna.</p></div>
+        <button type="button" className="icon-close" disabled={saving} onClick={onClose} aria-label="Fechar">×</button>
+      </header>
+      <form onSubmit={submit}>
+        <label>Quantidade<input autoFocus type="number" min="1" max="50" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label>
+        <p className="bulk-cards-preview">Os cartões serão numerados como <strong>1 -</strong>, <strong>2 -</strong>, <strong>3 -</strong> e assim por diante.</p>
+        {error ? <p className="form-error">{error}</p> : null}
+        <footer className="billing-line-modal-actions"><button type="button" className="ghost-button" disabled={saving} onClick={onClose}>Cancelar</button><button className="gradient-button" type="submit" disabled={!validQuantity || saving}>{saving ? `Criando ${parsedQuantity} posts...` : `Criar ${parsedQuantity} ${parsedQuantity === 1 ? "post" : "posts"}`}</button></footer>
+      </form>
+    </section>
+  </div>;
 }
 
 function BillingLineModal({ request, onChange, onClose, onConfirm }: { request: BillingLineRequest; onChange: (request: BillingLineRequest) => void; onClose: () => void; onConfirm: (request: BillingLineRequest) => void }) {
@@ -3952,6 +4026,7 @@ function BoardColumnView({
   onDelete,
   onArchiveCurrentMonth,
   onAddCard,
+  onAddMultipleCards,
   onQuickAddCard,
   onCardContextMenu,
   selectionMode,
@@ -3981,6 +4056,7 @@ function BoardColumnView({
   onDelete: () => void;
   onArchiveCurrentMonth: () => void;
   onAddCard: () => void;
+  onAddMultipleCards: () => void;
   onQuickAddCard: (title: string) => Promise<void>;
   onCardContextMenu: (event: React.MouseEvent<HTMLButtonElement>, card: BoardCard) => void;
   selectionMode: boolean;
@@ -4074,6 +4150,10 @@ function BoardColumnView({
               <button role="menuitem" onClick={onAddCard}>
                 <UiIcon name="plus" />
                 <span>Adicionar post</span>
+              </button>
+              <button role="menuitem" onClick={onAddMultipleCards}>
+                <UiIcon name="copy" />
+                <span>Adicionar vários posts</span>
               </button>
               <button role="menuitem" onClick={onEdit}>
                 <UiIcon name="pencil" />

@@ -6202,6 +6202,28 @@ button {
   min-width: 270px;
 }
 
+.bulk-cards-modal {
+  width: min(560px, calc(100vw - 32px));
+}
+
+.bulk-cards-modal form {
+  display: grid;
+  gap: 18px;
+}
+
+.bulk-cards-preview {
+  margin: 0;
+  padding: 13px 15px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.09);
+  color: #d5d5dc;
+  line-height: 1.45;
+}
+
+.bulk-cards-preview strong {
+  color: #fff;
+}
+
 @media (max-width: 640px) {
   .billing-line-modal {
     padding: 20px;
