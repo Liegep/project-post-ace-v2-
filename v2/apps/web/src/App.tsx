@@ -6096,7 +6096,7 @@ function ClientPortalWorkspacePage({
           </div>
           <div className="portal-welcome-copy">
             <p>{tr("Área do cliente")}</p>
-            <h1>{tr("Olá")}, {data.accountName}! <span aria-hidden="true">👋</span></h1>
+            <h1>{tr("Olá")}, {data.clientGreetingName || data.accountName}! <span aria-hidden="true">👋</span></h1>
             <small>{tr("Bem-vindo à sua área do cliente. Aqui você acompanha conteúdos, aprovações e próximos passos.")}</small>
           </div>
           <span className="portal-welcome-spark" aria-hidden="true">✦</span>
