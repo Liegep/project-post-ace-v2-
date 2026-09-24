@@ -310,6 +310,12 @@ function slugify(value: string) {
     .replace(/(^-|-$)/g, "");
 }
 
+function normalizeOptionalClientUrl(value: unknown) {
+  if (typeof value !== "string") return "";
+  const normalized = value.trim();
+  return /^https?:\/\/$/i.test(normalized) ? "" : normalized;
+}
+
 function statusTone(status: string) {
   const normalized = status.toLocaleLowerCase("pt-BR");
   if (/(aprov|finaliz|pronto|public)/.test(normalized)) return "approved";
@@ -1869,13 +1875,13 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
         ...current,
         clientUserId: portalUser?.userId ?? "",
         email: portalUser?.email ?? "",
-        instagram: typeof socialLinks.instagram === "string" ? socialLinks.instagram : "",
-        facebook: typeof socialLinks.facebook === "string" ? socialLinks.facebook : "",
-        tiktok: typeof socialLinks.tiktok === "string" ? socialLinks.tiktok : "",
-        youtube: typeof socialLinks.youtube === "string" ? socialLinks.youtube : "",
-        linkedin: typeof socialLinks.linkedin === "string" ? socialLinks.linkedin : "",
-        x: typeof socialLinks.x === "string" ? socialLinks.x : "",
-        website: typeof socialLinks.website === "string" ? socialLinks.website : "",
+        instagram: normalizeOptionalClientUrl(socialLinks.instagram),
+        facebook: normalizeOptionalClientUrl(socialLinks.facebook),
+        tiktok: normalizeOptionalClientUrl(socialLinks.tiktok),
+        youtube: normalizeOptionalClientUrl(socialLinks.youtube),
+        linkedin: normalizeOptionalClientUrl(socialLinks.linkedin),
+        x: normalizeOptionalClientUrl(socialLinks.x),
+        website: normalizeOptionalClientUrl(socialLinks.website),
       }));
     } catch (caught) { setClientActionError(caught instanceof Error ? caught.message : "Não foi possível carregar os acessos."); }
   };
@@ -1896,8 +1902,8 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
       await saveAdminWorkspaceDrawerBySlug(slugify(editForm.slug), {
         ...editDrawerData,
         socialLinks: {
-          instagram: editForm.instagram.trim(), facebook: editForm.facebook.trim(), tiktok: editForm.tiktok.trim(),
-          youtube: editForm.youtube.trim(), linkedin: editForm.linkedin.trim(), x: editForm.x.trim(), website: editForm.website.trim(),
+          instagram: normalizeOptionalClientUrl(editForm.instagram), facebook: normalizeOptionalClientUrl(editForm.facebook), tiktok: normalizeOptionalClientUrl(editForm.tiktok),
+          youtube: normalizeOptionalClientUrl(editForm.youtube), linkedin: normalizeOptionalClientUrl(editForm.linkedin), x: normalizeOptionalClientUrl(editForm.x), website: normalizeOptionalClientUrl(editForm.website),
         },
       });
       if (editForm.password) {
@@ -1953,8 +1959,8 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
       const client = await createAdminClient({ name, slug, locale: form.locale, portalTitle: form.greetingName.trim() || name, logoUrl, ownerUserId: session.id });
       await saveAdminWorkspaceDrawerBySlug(client.slug, {
         socialLinks: {
-          instagram: form.instagram.trim(), facebook: form.facebook.trim(), tiktok: form.tiktok.trim(),
-          youtube: form.youtube.trim(), linkedin: form.linkedin.trim(), x: form.x.trim(), website: form.website.trim(),
+          instagram: normalizeOptionalClientUrl(form.instagram), facebook: normalizeOptionalClientUrl(form.facebook), tiktok: normalizeOptionalClientUrl(form.tiktok),
+          youtube: normalizeOptionalClientUrl(form.youtube), linkedin: normalizeOptionalClientUrl(form.linkedin), x: normalizeOptionalClientUrl(form.x), website: normalizeOptionalClientUrl(form.website),
         },
       });
       if (email && password) {
