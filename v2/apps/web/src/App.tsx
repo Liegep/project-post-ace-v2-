@@ -316,7 +316,8 @@ function slugify(value: string) {
 function normalizeOptionalClientUrl(value: unknown) {
   if (typeof value !== "string") return "";
   const normalized = value.trim();
-  return /^https?:\/\/$/i.test(normalized) ? "" : normalized;
+  if (!normalized || /^https?:\/\/$/i.test(normalized)) return "";
+  return /^https?:\/\//i.test(normalized) ? normalized : `https://${normalized.replace(/^\/+/, "")}`;
 }
 
 function statusTone(status: string) {
@@ -1776,6 +1777,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
   const [editForm, setEditForm] = useState<EditClientForm>({ name: "", slug: "", locale: "pt", greetingName: "", portalTitle: "", email: "", password: "", clientUserId: "", instagram: "", facebook: "", tiktok: "", youtube: "", linkedin: "", x: "", website: "" });
   const [editLogoFile, setEditLogoFile] = useState<File | null>(null);
   const [editDrawerData, setEditDrawerData] = useState<Record<string, unknown>>({});
+  const [editClientDetailsLoading, setEditClientDetailsLoading] = useState(false);
   const [shareUserId, setShareUserId] = useState("");
   const [shareRole, setShareRole] = useState<"admin" | "colaborador">("colaborador");
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -1897,7 +1899,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
 
   const openEditClient = async (client: AdminClientOption) => {
     setEditClient(client); setClientActionError(""); setClientAccesses([]);
-    setEditLogoFile(null); setEditDrawerData({});
+    setEditLogoFile(null); setEditDrawerData({}); setEditClientDetailsLoading(true);
     setEditForm({ name: client.name, slug: client.slug, locale: client.locale ?? "pt", greetingName: client.portal_title ?? client.name, portalTitle: client.portal_title ?? client.name, email: "", password: "", clientUserId: "", instagram: "", facebook: "", tiktok: "", youtube: "", linkedin: "", x: "", website: "" });
     try {
       const [result, drawerResult] = await Promise.all([loadClientAccesses(client.id), loadAdminWorkspaceDrawerBySlug(client.slug)]);
@@ -1918,12 +1920,20 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
         x: normalizeOptionalClientUrl(socialLinks.x),
         website: normalizeOptionalClientUrl(socialLinks.website),
       }));
-    } catch (caught) { setClientActionError(caught instanceof Error ? caught.message : "Não foi possível carregar os acessos."); }
+    } catch (caught) {
+      setClientActionError(caught instanceof Error ? caught.message : "Não foi possível carregar os dados do cliente.");
+    } finally {
+      setEditClientDetailsLoading(false);
+    }
   };
 
   const saveEditedClient = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!editClient) return;
+    if (editClientDetailsLoading) {
+      setClientActionError("Aguarde os dados e links atuais terminarem de carregar antes de salvar.");
+      return;
+    }
     setClientActionSaving(true); setClientActionError("");
     try {
       const logoUrl = editLogoFile ? await uploadAdminMedia(editLogoFile) : editClient.logo_url ?? null;
@@ -2066,7 +2076,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
           {scheduledNotice ? <div className="dashboard-scheduled-notice" role="status" aria-live="polite"><span className="dashboard-scheduled-calendar"><UiIcon name="calendar" /><i>✓</i></span><div><strong>Post agendado!</strong><small>{scheduledNotice.title} · {scheduledNotice.clientName}</small></div><span className="dashboard-scheduled-spark one" /><span className="dashboard-scheduled-spark two" /><span className="dashboard-scheduled-spark three" /></div> : null}
         </section>
         {createOpen ? <CreateClientModal form={form} logoFile={logoFile} creating={creating} error={createError} onChange={updateForm} onLogoChange={setLogoFile} onClose={closeCreate} onSubmit={submitClient} /> : null}
-        {editClient ? <EditClientModal client={editClient} form={editForm} logoFile={editLogoFile} accesses={clientAccesses} saving={clientActionSaving} error={clientActionError} onChange={(key, value) => setEditForm((current) => ({ ...current, [key]: value }))} onLogoChange={setEditLogoFile} onClose={() => setEditClient(null)} onSubmit={saveEditedClient} /> : null}
+        {editClient ? <EditClientModal client={editClient} form={editForm} logoFile={editLogoFile} accesses={clientAccesses} saving={clientActionSaving} detailsLoading={editClientDetailsLoading} error={clientActionError} onChange={(key, value) => setEditForm((current) => ({ ...current, [key]: value }))} onLogoChange={setEditLogoFile} onClose={() => { setEditClientDetailsLoading(false); setEditClient(null); }} onSubmit={saveEditedClient} /> : null}
         {shareClient ? <ShareClientModal client={shareClient} accesses={clientAccesses} users={managedUsers} userId={shareUserId} role={shareRole} saving={clientActionSaving} error={clientActionError} onUserChange={setShareUserId} onRoleChange={setShareRole} onClose={() => setShareClient(null)} onShare={() => void shareSelectedClient()} /> : null}
         {scheduleActivity ? <DashboardScheduleModal activity={scheduleActivity} onClose={() => setScheduleActivity(null)} onScheduled={() => { setClientActivities((current) => current.filter((item) => item.cardId !== scheduleActivity.cardId)); setScheduledNotice({ title: scheduleActivity.title, clientName: scheduleActivity.clientName }); setScheduleActivity(null); }} /> : null}
       </main>
@@ -2865,10 +2875,10 @@ function SocialNetworkIcon({ network }: { network: "instagram" | "facebook" | "t
   return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3.5 12h17M12 3c2.4 2.5 3.7 5.5 3.7 9s-1.3 6.5-3.7 9c-2.4-2.5-3.7-5.5-3.7-9S9.6 5.5 12 3Z" /></svg>;
 }
 
-function EditClientModal({ client, form, logoFile, accesses, saving, error, onChange, onLogoChange, onClose, onSubmit }: { client: AdminClientOption; form: EditClientForm; logoFile: File | null; accesses: ClientAccess[]; saving: boolean; error: string; onChange: (key: keyof EditClientForm, value: string) => void; onLogoChange: (file: File | null) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+function EditClientModal({ client, form, logoFile, accesses, saving, detailsLoading, error, onChange, onLogoChange, onClose, onSubmit }: { client: AdminClientOption; form: EditClientForm; logoFile: File | null; accesses: ClientAccess[]; saving: boolean; detailsLoading: boolean; error: string; onChange: (key: keyof EditClientForm, value: string) => void; onLogoChange: (file: File | null) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const portalUsers = accesses.filter((access) => access.globalRole === "cliente");
   const socialFields: Array<[keyof EditClientForm, string, string]> = [["instagram", "Instagram", "https://instagram.com/..."], ["facebook", "Facebook", "https://facebook.com/..."], ["tiktok", "TikTok", "https://tiktok.com/@..."], ["youtube", "YouTube", "https://youtube.com/..."], ["linkedin", "LinkedIn", "https://linkedin.com/..."], ["x", "X", "https://x.com/..."], ["website", "Site", "https://meusite.com.br"]];
-  return <div className="client-modal-backdrop" onMouseDown={onClose}><form className="client-modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={onSubmit}><header><div><p className="eyebrow">Detalhes do cliente</p><h2>Editar Cliente</h2></div><button type="button" onClick={onClose} aria-label="Fechar">×</button></header><label>Nome do Cliente<input required value={form.name} onChange={(event) => onChange("name", event.target.value)} /></label><label>Nome para saudação no portal<input required value={form.greetingName} onChange={(event) => onChange("greetingName", event.target.value)} placeholder="Ex: Liege" /></label><label>Slug (URL)<span className="slug-input"><em>/client/</em><input required value={form.slug} onChange={(event) => onChange("slug", event.target.value)} /></span></label><label>Idioma do Cliente<select value={form.locale} onChange={(event) => onChange("locale", event.target.value)}><option value="pt">🇧🇷 Português</option><option value="en">🇺🇸 English</option><option value="es">🇪🇸 Español</option><option value="it">🇮🇹 Italiano</option><option value="sv">🇸🇪 Svenska</option></select></label><label>Título do portal<input required value={form.portalTitle} onChange={(event) => onChange("portalTitle", event.target.value)} /></label><label>Logo<span className="logo-picker"><input type="file" accept="image/*" onChange={(event) => onLogoChange(event.target.files?.[0] ?? null)} /><strong>{logoFile ? logoFile.name : client.logo_url ? "▧ Manter logo atual" : "▧ Selecionar logo"}</strong></span></label><fieldset><legend>Redes Sociais</legend>{socialFields.map(([key, label, placeholder]) => <label key={key} className="social-field"><span>{label}</span><input type="url" value={form[key]} onChange={(event) => onChange(key, event.target.value)} placeholder={placeholder} /></label>)}</fieldset><fieldset className="client-login"><legend>Login do Cliente</legend>{portalUsers.length === 0 ? <p>Esta conta ainda não possui login de cliente.</p> : <><label>Login<select value={form.clientUserId} onChange={(event) => onChange("clientUserId", event.target.value)}>{portalUsers.map((user) => <option key={user.userId} value={user.userId}>{user.fullName} · {user.email}</option>)}</select></label><label>E-mail do cliente<input value={form.email} disabled /></label><label>Nova senha <small>Deixe em branco para manter a atual.</small><input type="password" minLength={8} value={form.password} onChange={(event) => onChange("password", event.target.value)} placeholder="Mínimo de 8 caracteres" /></label></>}</fieldset>{error ? <p className="form-error">{error}</p> : null}<button className="gradient-button client-submit" disabled={saving}>{saving ? "Salvando..." : "Salvar alterações"}</button></form></div>;
+  return <div className="client-modal-backdrop" onMouseDown={onClose}><form className="client-modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={onSubmit}><header><div><p className="eyebrow">Detalhes do cliente</p><h2>Editar Cliente</h2></div><button type="button" onClick={onClose} aria-label="Fechar">×</button></header><label>Nome do Cliente<input required value={form.name} onChange={(event) => onChange("name", event.target.value)} /></label><label>Nome para saudação no portal<input required value={form.greetingName} onChange={(event) => onChange("greetingName", event.target.value)} placeholder="Ex: Liege" /></label><label>Slug (URL)<span className="slug-input"><em>/client/</em><input required value={form.slug} onChange={(event) => onChange("slug", event.target.value)} /></span></label><label>Idioma do Cliente<select value={form.locale} onChange={(event) => onChange("locale", event.target.value)}><option value="pt">🇧🇷 Português</option><option value="en">🇺🇸 English</option><option value="es">🇪🇸 Español</option><option value="it">🇮🇹 Italiano</option><option value="sv">🇸🇪 Svenska</option></select></label><label>Título do portal<input required value={form.portalTitle} onChange={(event) => onChange("portalTitle", event.target.value)} /></label><label>Logo<span className="logo-picker"><input type="file" accept="image/*" onChange={(event) => onLogoChange(event.target.files?.[0] ?? null)} /><strong>{logoFile ? logoFile.name : client.logo_url ? "▧ Manter logo atual" : "▧ Selecionar logo"}</strong></span></label><fieldset><legend>Redes Sociais</legend>{socialFields.map(([key, label, placeholder]) => <label key={key} className="social-field"><span>{label}</span><input type="url" value={form[key]} onChange={(event) => onChange(key, event.target.value)} placeholder={placeholder} /></label>)}</fieldset><fieldset className="client-login"><legend>Login do Cliente</legend>{portalUsers.length === 0 ? <p>Esta conta ainda não possui login de cliente.</p> : <><label>Login<select value={form.clientUserId} onChange={(event) => onChange("clientUserId", event.target.value)}>{portalUsers.map((user) => <option key={user.userId} value={user.userId}>{user.fullName} · {user.email}</option>)}</select></label><label>E-mail do cliente<input value={form.email} disabled /></label><label>Nova senha <small>Deixe em branco para manter a atual.</small><input type="password" minLength={8} value={form.password} onChange={(event) => onChange("password", event.target.value)} placeholder="Mínimo de 8 caracteres" /></label></>}</fieldset>{detailsLoading ? <p className="form-feedback">Carregando links e dados atuais do cliente…</p> : null}{error ? <p className="form-error">{error}</p> : null}<button className="gradient-button client-submit" disabled={saving || detailsLoading}>{detailsLoading ? "Carregando dados..." : saving ? "Salvando..." : "Salvar alterações"}</button></form></div>;
 }
 
 function ShareClientModal({ client, accesses, users, userId, role, saving, error, onUserChange, onRoleChange, onClose, onShare }: { client: AdminClientOption; accesses: ClientAccess[]; users: ManagedUser[]; userId: string; role: "admin" | "colaborador"; saving: boolean; error: string; onUserChange: (value: string) => void; onRoleChange: (value: "admin" | "colaborador") => void; onClose: () => void; onShare: () => void }) {
