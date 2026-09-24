@@ -2,6 +2,7 @@ export type PortalLocale = "pt" | "en" | "es" | "it" | "sv";
 
 const translations: Record<Exclude<PortalLocale, "pt">, Record<string, string>> = {
   en: {
+    "Comentar": "Comment",
     "Pauta para aprovação": "Content idea for approval",
     "Acesso somente para visualização.": "View-only access.",
     "Descreva a ideia da pauta...": "Describe the content idea...",
@@ -94,6 +95,7 @@ const translations: Record<Exclude<PortalLocale, "pt">, Record<string, string>> 
     "Ao clicar, você confirma que leu e está de acordo com os termos apresentados.": "By clicking, you confirm that you have read and agree to the terms presented.", "Li e aceito o contrato": "I have read and accept the contract",
   },
   es: {
+    "Comentar": "Comentar",
     "Pauta para aprovação": "Propuesta para aprobación",
     "Acesso somente para visualização.": "Acceso de solo lectura.",
     "Descreva a ideia da pauta...": "Describe la idea de contenido...",
@@ -132,6 +134,7 @@ const translations: Record<Exclude<PortalLocale, "pt">, Record<string, string>> 
     "Mês anterior": "Mes anterior", "Próximo mês": "Mes siguiente", "Posts agendados": "Publicaciones programadas", "Post agendado": "Publicación programada", "Compromissos": "Citas", "Nenhum item agendado neste mês.": "No hay elementos programados este mes.", "Use as setas acima para consultar outro mês.": "Usa las flechas de arriba para consultar otro mes.", "Compromisso": "Cita", "Sem detalhes adicionais.": "Sin detalles adicionales.", "Quando": "Cuándo", "VIDEOCHAMADA": "VIDEOLLAMADA", "O link será aberto em uma nova aba.": "El enlace se abrirá en una nueva pestaña.", "Entrar na reunião": "Entrar a la reunión",
   },
   it: {
+    "Comentar": "Commenta",
     "Pauta para aprovação": "Proposta da approvare",
     "Acesso somente para visualização.": "Accesso in sola visualizzazione.",
     "Descreva a ideia da pauta...": "Descrivi l'idea del contenuto...",
@@ -170,6 +173,7 @@ const translations: Record<Exclude<PortalLocale, "pt">, Record<string, string>> 
     "Mês anterior": "Mese precedente", "Próximo mês": "Mese successivo", "Posts agendados": "Post programmati", "Post agendado": "Post programmato", "Compromissos": "Appuntamenti", "Nenhum item agendado neste mês.": "Nessun elemento programmato questo mese.", "Use as setas acima para consultar outro mês.": "Usa le frecce qui sopra per consultare un altro mese.", "Compromisso": "Appuntamento", "Sem detalhes adicionais.": "Nessun dettaglio aggiuntivo.", "Quando": "Quando", "VIDEOCHAMADA": "VIDEOCHIAMATA", "O link será aberto em uma nova aba.": "Il link si aprirà in una nuova scheda.", "Entrar na reunião": "Partecipa alla riunione",
   },
   sv: {
+    "Comentar": "Kommentera",
     "Pauta para aprovação": "Innehållsidé för godkännande",
     "Acesso somente para visualização.": "Endast visningsåtkomst.",
     "Descreva a ideia da pauta...": "Beskriv innehållsidén...",
