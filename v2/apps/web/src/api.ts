@@ -1281,6 +1281,14 @@ export async function createAdminTagBySlug(slug: string, input: { name: string; 
   });
 }
 
+export async function updateAdminTagBySlug(slug: string, tagId: string, input: { name: string; color: string }) {
+  const matchedClient = await findAdminClientBySlug(slug);
+  return sendJson<{ ok: true; tag: ClientTagDefinition }>(`/api/clients/${matchedClient.id}/tags/${tagId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
 export async function listAdminHashtagGroupsBySlug(slug: string) {
   const matchedClient = await findAdminClientBySlug(slug);
   return fetchJson<{ items: HashtagGroup[] }>(`/api/clients/${matchedClient.id}/hashtag-groups`);

@@ -51,6 +51,7 @@ import {
   loadPublicApproval,
   submitPublicApproval,
   createAdminTagBySlug,
+  updateAdminTagBySlug,
   listAdminTagsBySlug,
   type ClientTagDefinition,
   createAdminHashtagGroupBySlug,
@@ -6865,6 +6866,10 @@ function AdminCardEditor({
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState("#5e5cf1");
   const [creatingTag, setCreatingTag] = useState(false);
+  const [editingTagId, setEditingTagId] = useState<string | null>(null);
+  const [editingTagName, setEditingTagName] = useState("");
+  const [editingTagColor, setEditingTagColor] = useState("#5e5cf1");
+  const [editingTagSaving, setEditingTagSaving] = useState(false);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [tagSearch, setTagSearch] = useState("");
   const [hashtags, setHashtags] = useState(initialDraft.hashtags);
@@ -7259,6 +7264,32 @@ ${internalMessage.trim()}`, isInternal: true });
     }
   }
 
+  function startEditingTag(tag: ClientTagDefinition) {
+    setEditingTagId(tag.id);
+    setEditingTagName(tag.name);
+    setEditingTagColor(tag.color);
+    setFeedback(null);
+  }
+
+  async function saveTagEdit() {
+    const currentTag = tagLibrary.find((tag) => tag.id === editingTagId);
+    const name = editingTagName.trim();
+    if (!currentTag || !name || editingTagSaving) return;
+    setEditingTagSaving(true);
+    try {
+      const result = await updateAdminTagBySlug(slug, currentTag.id, { name, color: editingTagColor });
+      setTagLibrary((current) => current.map((tag) => tag.id === currentTag.id ? result.tag : tag).sort((left, right) => left.name.localeCompare(right.name)));
+      setTags((current) => splitValues(current).map((tagName) => tagName === currentTag.name ? result.tag.name : tagName).join(", "));
+      setEditingTagId(null);
+      setFeedback(`Etiqueta “${result.tag.name}” atualizada.`);
+      onRefresh();
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Não foi possível editar a etiqueta.");
+    } finally {
+      setEditingTagSaving(false);
+    }
+  }
+
   async function createHashtagGroup() {
     const name = newHashtagGroupName.trim();
     const values = newHashtagGroupText.split(/[,\s]+/).map((item) => item.trim()).filter(Boolean).map((item) => item.startsWith("#") ? item : `#${item}`);
@@ -7383,11 +7414,12 @@ ${internalMessage.trim()}`, isInternal: true });
               <div className="tag-picker-list">
                 {tagLibrary.filter((tag) => tag.name.toLocaleLowerCase("pt-BR").includes(tagSearch.toLocaleLowerCase("pt-BR"))).map((tag) => {
                   const selected = splitValues(tags).includes(tag.name);
-                  return <button key={tag.id} type="button" className={selected ? "tag-picker-item selected" : "tag-picker-item"} onClick={() => setTags((current) => selected ? splitValues(current).filter((item) => item !== tag.name).join(", ") : [...splitValues(current), tag.name].join(", "))}><i style={{ backgroundColor: cardTagColor(tag.name, tag.color) }} />{cardStatusLabel(tag.name)}<span>{selected ? "Selecionada" : ""}</span></button>;
+                  return <div className="tag-picker-item-row" key={tag.id}><button type="button" className={selected ? "tag-picker-item selected" : "tag-picker-item"} onClick={() => setTags((current) => selected ? splitValues(current).filter((item) => item !== tag.name).join(", ") : [...splitValues(current), tag.name].join(", "))}><i style={{ backgroundColor: cardTagColor(tag.name, tag.color) }} />{cardStatusLabel(tag.name)}<span>{selected ? "Selecionada" : ""}</span></button><button type="button" className="tag-picker-edit" title={`Editar ${tag.name}`} aria-label={`Editar etiqueta ${tag.name}`} onClick={() => startEditingTag(tag)}><UiIcon name="pencil" /></button></div>;
                 })}
                 {tagLibrary.length === 0 ? <p className="tag-empty">Nenhuma etiqueta criada ainda.</p> : null}
                 {tagLibrary.length > 0 && tagLibrary.filter((tag) => tag.name.toLocaleLowerCase("pt-BR").includes(tagSearch.toLocaleLowerCase("pt-BR"))).length === 0 ? <p className="tag-empty">Nenhuma etiqueta encontrada.</p> : null}
               </div>
+              {editingTagId ? <div className="tag-edit-row"><input autoFocus value={editingTagName} maxLength={100} onChange={(event) => setEditingTagName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void saveTagEdit(); } }} aria-label="Nome da etiqueta" /><input className="tag-color-input" type="color" value={editingTagColor} onChange={(event) => setEditingTagColor(event.target.value)} aria-label="Cor da etiqueta" /><button type="button" className="tag-edit-save" onClick={() => void saveTagEdit()} disabled={editingTagSaving || !editingTagName.trim()}>{editingTagSaving ? "..." : "Salvar"}</button><button type="button" className="tag-edit-cancel" onClick={() => setEditingTagId(null)} aria-label="Cancelar edição">×</button></div> : null}
               <div className="tag-create-row"><input value={newTagName} onChange={(event) => setNewTagName(event.target.value)} placeholder="Nova etiqueta" /><input className="tag-color-input" type="color" value={newTagColor} onChange={(event) => setNewTagColor(event.target.value)} aria-label="Cor da etiqueta" /><button type="button" onClick={createTag} disabled={creatingTag}>{creatingTag ? "Criando..." : "+ Nova"}</button></div>
             </div> : null}
           </section>
