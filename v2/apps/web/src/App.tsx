@@ -126,6 +126,9 @@ import {
   updatePortalCardTagsBySlug,
   loadAdminWorkspaceDrawerBySlug,
   saveAdminWorkspaceDrawerBySlug,
+  createAdminPautaIdeaBySlug,
+  updateAdminPautaIdeaBySlug,
+  deleteAdminPautaIdeaBySlug,
   loadAdminGlobalQuickLinks,
   saveAdminGlobalQuickLinks,
   loadAdminKanbanAutomationsBySlug,
@@ -989,6 +992,7 @@ type WorkspaceDrawerData = { notes: DrawerNote[]; links: DrawerLink[]; quick: Dr
 type KanbanAutomation = { id: string; name: string; enabled: boolean; triggerType: "tag_added" | "column_moved"; triggerValue: string; actionType: "add_tag" | "move_column" | "change_color"; actionValue: string };
 
 const EMPTY_DRAWER: WorkspaceDrawerData = { notes: [], links: [], quick: [], draftsByUser: {}, pautaIdeas: [] };
+const PAUTA_IDEAS_UPDATED_EVENT = "design-hub:pauta-ideas-updated";
 const DEFAULT_DRAWER_NOTE_COLOR = "#fff6cf";
 const DRAWER_NOTE_COLORS = [
   { value: "#fff6cf", label: "Amarelo" },
@@ -1157,7 +1161,10 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
     try {
       const mediaUrls: string[] = [];
       for (const file of ideaMediaFiles) mediaUrls.push(await uploadAdminMedia(file));
-      persist({ ...drawer, pautaIdeas: [{ id: crypto.randomUUID(), title: ideaTitle.trim(), description: ideaDescription.trim(), caption: ideaCaption.trim(), mediaUrls, createdAt: new Date().toISOString() }, ...drawer.pautaIdeas] });
+      const idea: PautaIdea = { id: crypto.randomUUID(), title: ideaTitle.trim(), description: ideaDescription.trim(), caption: ideaCaption.trim(), mediaUrls, createdAt: new Date().toISOString(), status: "draft" };
+      await createAdminPautaIdeaBySlug(slug, idea);
+      setDrawer((current) => ({ ...current, pautaIdeas: [idea, ...current.pautaIdeas.filter((item) => item.id !== idea.id)] }));
+      window.dispatchEvent(new CustomEvent(PAUTA_IDEAS_UPDATED_EVENT, { detail: { slug } }));
       setIdeaTitle("");
       setIdeaDescription("");
       setIdeaCaption("");
@@ -7996,23 +8003,18 @@ function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: {
   const [editingError, setEditingError] = useState("");
   const [brainOpen, setBrainOpen] = useState(false);
   const [brain, setBrain] = useState<BrandBrain>(EMPTY_BRAND_BRAIN);
-  const save = (next: PautaIdea[]) => {
-    setIdeas(next);
-    return loadAdminWorkspaceDrawerBySlug(slug).then((result) => {
-      const saved = result.data as Partial<WorkspaceDrawerData> | null;
-      return saveAdminWorkspaceDrawerBySlug(slug, { ...EMPTY_DRAWER, ...saved, pautaIdeas: next });
-    });
-  };
   const saveIdeaPatch = async (ideaId: string, patch: Partial<PautaIdea>) => {
-    const result = await loadAdminWorkspaceDrawerBySlug(slug);
-    const saved = result.data as Partial<WorkspaceDrawerData> | null;
-    const storedIdeas = saved?.pautaIdeas ?? [];
-    const next = storedIdeas.map((item) => item.id === ideaId ? { ...item, ...patch } : item);
-    await saveAdminWorkspaceDrawerBySlug(slug, { ...EMPTY_DRAWER, ...saved, pautaIdeas: next });
-    setIdeas(next);
-    return next;
+    await updateAdminPautaIdeaBySlug(slug, ideaId, patch);
+    setIdeas((current) => current.map((item) => item.id === ideaId ? { ...item, ...patch } : item));
   };
-  useEffect(() => { loadAdminWorkspaceDrawerBySlug(slug).then((result) => { const data = result.data as Partial<WorkspaceDrawerData> | null; setIdeas(data?.pautaIdeas ?? []); }).catch(() => setIdeas([])); }, [slug]);
+  useEffect(() => {
+    let active = true;
+    const refreshIdeas = () => { void loadAdminWorkspaceDrawerBySlug(slug).then((result) => { if (!active) return; const data = result.data as Partial<WorkspaceDrawerData> | null; setIdeas(data?.pautaIdeas ?? []); }).catch(() => undefined); };
+    const handleIdeasUpdated = (event: Event) => { if ((event as CustomEvent<{ slug?: string }>).detail?.slug === slug) refreshIdeas(); };
+    refreshIdeas();
+    window.addEventListener(PAUTA_IDEAS_UPDATED_EVENT, handleIdeasUpdated);
+    return () => { active = false; window.removeEventListener(PAUTA_IDEAS_UPDATED_EVENT, handleIdeasUpdated); };
+  }, [slug]);
   useEffect(() => {
     let active = true;
     const refreshPautaCards = () => { void loadAdminWorkspaceBySlug(slug, { archived: false }).then((workspace) => { if (active) setPautaCards([...workspace.columns.flatMap((column) => column.cards), ...workspace.withoutColumn]); }).catch(() => undefined); };
@@ -8021,7 +8023,7 @@ function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: {
   }, [slug]);
   useEffect(() => {
     if (!pautaCards.length || !ideas.length) return;
-    let changed = false;
+    const repairs: Array<{ id: string; patch: Partial<PautaIdea> }> = [];
     const claimedCardIds = new Set(ideas.map((idea) => idea.cardId).filter((cardId): cardId is string => Boolean(cardId)));
     const next = ideas.map((idea) => {
       const linkedCard = idea.cardId
@@ -8032,10 +8034,13 @@ function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: {
       const approved = /aprovad/i.test(`${linkedCard.clientLabel} ${linkedCard.statusBadges.join(" ")}`);
       const status = approved ? "approved" as const : "sent" as const;
       if (idea.cardId === linkedCard.id && idea.status === status) return idea;
-      changed = true;
+      repairs.push({ id: idea.id, patch: { cardId: linkedCard.id, status } });
       return { ...idea, cardId: linkedCard.id, status };
     });
-    if (changed) void save(next).catch(() => undefined);
+    if (repairs.length) {
+      setIdeas(next);
+      void (async () => { for (const repair of repairs) await updateAdminPautaIdeaBySlug(slug, repair.id, repair.patch); })().catch(() => undefined);
+    }
   }, [pautaCards, ideas]);
   useEffect(() => { onCountChange?.(ideas.length); }, [ideas.length, onCountChange]);
   useEffect(() => { loadBrandBrainBySlug(slug).then((result) => setBrain({ ...EMPTY_BRAND_BRAIN, ...(result.data ?? {}) })).catch(() => setBrain(EMPTY_BRAND_BRAIN)); }, [slug]);
@@ -8101,7 +8106,8 @@ function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: {
       for (const file of editingMediaFiles) uploadedUrls.push(await uploadAdminMedia(file));
       const mediaUrls = [...(editing.mediaUrls ?? []), ...uploadedUrls];
       const updatedIdea = { ...editing, mediaUrls, updatedAt: new Date().toISOString() };
-      await save(ideas.map((idea) => idea.id === editing.id ? updatedIdea : idea));
+      await updateAdminPautaIdeaBySlug(slug, editing.id, updatedIdea);
+      setIdeas((current) => current.map((idea) => idea.id === editing.id ? updatedIdea : idea));
       if (updatedIdea.cardId) {
         await updateAdminCardBySlug(slug, updatedIdea.cardId, {
           title: updatedIdea.title.trim(),
@@ -8120,7 +8126,15 @@ function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: {
       setEditingSaving(false);
     }
   };
-  const deleteIdea = (id: string) => { if (window.confirm("Excluir esta pauta?")) void save(ideas.filter((idea) => idea.id !== id)).catch(() => undefined); };
+  const deleteIdea = async (id: string) => {
+    if (!window.confirm("Excluir esta pauta?")) return;
+    try {
+      await deleteAdminPautaIdeaBySlug(slug, id);
+      setIdeas((current) => current.filter((idea) => idea.id !== id));
+    } catch {
+      // Keep the pauta visible when the server could not remove it.
+    }
+  };
   const pautaTypeLabel = (value?: string) => ({ post: "Post", reels: "Reels", story: "Story", carousel: "Carrossel", article: "Artigo", video: "Vídeo", other: "Outro" }[value ?? "post"] ?? value ?? "Post");
   const text = `${editing?.title ?? ""} ${editing?.description ?? ""} ${editing?.caption ?? ""}`.toLocaleLowerCase();
   const avoidHits = brain.avoidWords.filter((word) => text.includes(word.toLocaleLowerCase()));

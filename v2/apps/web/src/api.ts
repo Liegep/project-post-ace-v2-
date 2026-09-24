@@ -1218,6 +1218,27 @@ export async function saveAdminWorkspaceDrawerBySlug(slug: string, data: unknown
   });
 }
 
+export async function createAdminPautaIdeaBySlug(slug: string, idea: unknown) {
+  const matchedClient = await findAdminClientBySlug(slug);
+  return sendJson<{ ok: true; idea: unknown }>(`/api/clients/${matchedClient.id}/workspace-drawer/pauta-ideas`, {
+    method: "POST",
+    body: JSON.stringify({ idea }),
+  });
+}
+
+export async function updateAdminPautaIdeaBySlug(slug: string, ideaId: string, patch: unknown) {
+  const matchedClient = await findAdminClientBySlug(slug);
+  return sendJson<{ ok: true; idea: unknown }>(`/api/clients/${matchedClient.id}/workspace-drawer/pauta-ideas/${ideaId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ patch }),
+  });
+}
+
+export async function deleteAdminPautaIdeaBySlug(slug: string, ideaId: string) {
+  const matchedClient = await findAdminClientBySlug(slug);
+  return sendJson<{ ok: true }>(`/api/clients/${matchedClient.id}/workspace-drawer/pauta-ideas/${ideaId}`, { method: "DELETE" });
+}
+
 export async function loadAdminGlobalQuickLinks() {
   return fetchJson<{ items: unknown[] }>("/api/clients/workspace-quick-links");
 }

@@ -556,6 +556,98 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     return { ok: true };
   });
 
+  app.post("/clients/:clientAccountId/workspace-drawer/pauta-ideas", async (request) => {
+    assertInternalAccess(request);
+    const { clientAccountId } = request.params as { clientAccountId: string };
+    assertClientAccess(request, clientAccountId, ["admin", "colaborador"]);
+    const body = request.body as { idea?: unknown };
+    if (!body.idea || typeof body.idea !== "object" || Array.isArray(body.idea)) throw app.httpErrors.badRequest("Pauta inválida.");
+    const idea = body.idea as Record<string, unknown>;
+    if (typeof idea.id !== "string" || !idea.id.trim() || typeof idea.title !== "string" || !idea.title.trim()) throw app.httpErrors.badRequest("Informe o título da pauta.");
+    const connection = await app.db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query<Array<RowDataPacket & { workspace_drawer_json: unknown }>>(
+        "SELECT workspace_drawer_json FROM client_accounts WHERE id = ? LIMIT 1 FOR UPDATE",
+        [clientAccountId],
+      );
+      if (!rows[0]) throw app.httpErrors.notFound("Conta do cliente não encontrada.");
+      const drawer = parseWorkspaceDrawer(rows[0].workspace_drawer_json);
+      const pautaIdeas = Array.isArray(drawer.pautaIdeas) ? drawer.pautaIdeas : [];
+      const nextIdeas = [idea, ...pautaIdeas.filter((item) => !item || typeof item !== "object" || (item as Record<string, unknown>).id !== idea.id)];
+      await connection.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...drawer, pautaIdeas: nextIdeas }), clientAccountId]);
+      await connection.commit();
+      return { ok: true, idea };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  });
+
+  app.patch("/clients/:clientAccountId/workspace-drawer/pauta-ideas/:ideaId", async (request) => {
+    assertInternalAccess(request);
+    const { clientAccountId, ideaId } = request.params as { clientAccountId: string; ideaId: string };
+    assertClientAccess(request, clientAccountId, ["admin", "colaborador"]);
+    const body = request.body as { patch?: unknown };
+    if (!body.patch || typeof body.patch !== "object" || Array.isArray(body.patch)) throw app.httpErrors.badRequest("Alteração de pauta inválida.");
+    const patch = body.patch as Record<string, unknown>;
+    const connection = await app.db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query<Array<RowDataPacket & { workspace_drawer_json: unknown }>>(
+        "SELECT workspace_drawer_json FROM client_accounts WHERE id = ? LIMIT 1 FOR UPDATE",
+        [clientAccountId],
+      );
+      if (!rows[0]) throw app.httpErrors.notFound("Conta do cliente não encontrada.");
+      const drawer = parseWorkspaceDrawer(rows[0].workspace_drawer_json);
+      const pautaIdeas = Array.isArray(drawer.pautaIdeas) ? drawer.pautaIdeas : [];
+      let updatedIdea: Record<string, unknown> | null = null;
+      const nextIdeas = pautaIdeas.map((item) => {
+        if (!item || typeof item !== "object" || (item as Record<string, unknown>).id !== ideaId) return item;
+        updatedIdea = { ...(item as Record<string, unknown>), ...patch, id: ideaId };
+        return updatedIdea;
+      });
+      if (!updatedIdea) throw app.httpErrors.notFound("Pauta não encontrada.");
+      await connection.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...drawer, pautaIdeas: nextIdeas }), clientAccountId]);
+      await connection.commit();
+      return { ok: true, idea: updatedIdea };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  });
+
+  app.delete("/clients/:clientAccountId/workspace-drawer/pauta-ideas/:ideaId", async (request) => {
+    assertInternalAccess(request);
+    const { clientAccountId, ideaId } = request.params as { clientAccountId: string; ideaId: string };
+    assertClientAccess(request, clientAccountId, ["admin", "colaborador"]);
+    const connection = await app.db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query<Array<RowDataPacket & { workspace_drawer_json: unknown }>>(
+        "SELECT workspace_drawer_json FROM client_accounts WHERE id = ? LIMIT 1 FOR UPDATE",
+        [clientAccountId],
+      );
+      if (!rows[0]) throw app.httpErrors.notFound("Conta do cliente não encontrada.");
+      const drawer = parseWorkspaceDrawer(rows[0].workspace_drawer_json);
+      const pautaIdeas = Array.isArray(drawer.pautaIdeas) ? drawer.pautaIdeas : [];
+      const nextIdeas = pautaIdeas.filter((item) => !item || typeof item !== "object" || (item as Record<string, unknown>).id !== ideaId);
+      if (nextIdeas.length === pautaIdeas.length) throw app.httpErrors.notFound("Pauta não encontrada.");
+      await connection.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...drawer, pautaIdeas: nextIdeas }), clientAccountId]);
+      await connection.commit();
+      return { ok: true };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  });
+
   app.get("/clients/:clientAccountId/kanban-automations", async (request) => {
     assertInternalAccess(request);
     const params = request.params as { clientAccountId: string };
