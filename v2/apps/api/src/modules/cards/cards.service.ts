@@ -3,7 +3,7 @@ import { approvalStatuses } from "../approvals/approval-state.js";
 import type { FastifyInstance } from "fastify";
 import type { RowDataPacket } from "mysql2/promise";
 import { findClientAccountById } from "../clients/clients.repository.js";
-import { createColumn, findColumnById, listColumnsByClientAccountId } from "../columns/columns.repository.js";
+import { createColumn, findColumnById, listColumnsByClientAccountId, updateColumn } from "../columns/columns.repository.js";
 import { listClientTags } from "../tags/tags.repository.js";
 import {
   createCard,
@@ -255,6 +255,31 @@ export async function getKanbanBoard(
   };
 }
 
+async function ensureBriefApprovalColumn(app: FastifyInstance, clientAccountId: string) {
+  const normalizeColumnName = (name: string) =>
+    name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("pt-BR");
+
+  const columns = await listColumnsByClientAccountId(app.db, clientAccountId);
+  let target = columns.find((column) => normalizeColumnName(column.name) === "pautas para aprovacao");
+
+  if (!target) {
+    target = await createColumn(app.db, clientAccountId, {
+      name: "Pautas para aprovação",
+      color: "#8b5cf6",
+      visibleToClient: true,
+      autoCreated: true,
+    }) ?? undefined;
+  } else if (!target.visibleToClient) {
+    target = await updateColumn(app.db, target.id, { visibleToClient: true }) ?? target;
+  }
+
+  if (!target) {
+    throw app.httpErrors.badRequest("Não foi possível preparar a coluna Pautas para aprovação.");
+  }
+
+  return target;
+}
+
 export async function createKanbanCard(
   app: FastifyInstance,
   clientAccountId: string,
@@ -266,9 +291,19 @@ export async function createKanbanCard(
     throw app.httpErrors.notFound("Conta do cliente não encontrada.");
   }
 
-  await assertColumnBelongsToClient(app, clientAccountId, input.columnId);
+  const briefApprovalColumn = input.isBriefApproval
+    ? await ensureBriefApprovalColumn(app, clientAccountId)
+    : null;
+  const targetColumnId = briefApprovalColumn?.id ?? input.columnId;
 
-  const created = await createCard(app.db, clientAccountId, createdByUserId, normalizeScheduleInput(input, app.appEnv.APP_TIMEZONE));
+  await assertColumnBelongsToClient(app, clientAccountId, targetColumnId);
+
+  const created = await createCard(
+    app.db,
+    clientAccountId,
+    createdByUserId,
+    normalizeScheduleInput({ ...input, columnId: targetColumnId }, app.appEnv.APP_TIMEZONE),
+  );
   if (!created) {
     throw app.httpErrors.badRequest("Não foi possível criar o card.");
   }
