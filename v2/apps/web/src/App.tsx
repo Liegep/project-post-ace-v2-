@@ -1054,6 +1054,9 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
   const [ideaDescription, setIdeaDescription] = useState("");
   const [ideaCaption, setIdeaCaption] = useState("");
   const [ideaSaved, setIdeaSaved] = useState(false);
+  const [ideaMediaFiles, setIdeaMediaFiles] = useState<File[]>([]);
+  const [ideaSaving, setIdeaSaving] = useState(false);
+  const [ideaError, setIdeaError] = useState("");
   useEffect(() => {
     if (!isOpen && !mobileMenuOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1142,7 +1145,32 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
   const updateLink = (id: string, changes: Partial<DrawerLink>) => updateLinkDraft((current) => current.map((item) => item.id === id ? { ...item, ...changes } : item));
   const deleteLink = (id: string) => updateLinkDraft((current) => current.filter((item) => item.id !== id));
   const moveLink = (id: string, direction: -1 | 1) => updateLinkDraft((current) => { const index = current.findIndex((item) => item.id === id); const target = index + direction; if (target < 0 || target >= current.length) return current; const next = [...current]; [next[index], next[target]] = [next[target], next[index]]; return next; });
-  const saveIdea = () => { if (!ideaTitle.trim()) return; persist({ ...drawer, pautaIdeas: [{ id: crypto.randomUUID(), title: ideaTitle.trim(), description: ideaDescription.trim(), caption: ideaCaption.trim(), createdAt: new Date().toISOString() }, ...drawer.pautaIdeas] }); setIdeaTitle(""); setIdeaDescription(""); setIdeaCaption(""); setIdeaFormOpen(false); setIdeaSaved(true); window.setTimeout(() => setIdeaSaved(false), 3200); };
+  const saveIdea = async () => {
+    if (!ideaTitle.trim() || ideaSaving) return;
+    const oversized = ideaMediaFiles.find((file) => file.size > MAX_MEDIA_FILE_SIZE);
+    if (oversized) {
+      setIdeaError(`“${oversized.name}” tem ${formatFileSize(oversized.size)}. O limite por foto é 12 MB.`);
+      return;
+    }
+    setIdeaSaving(true);
+    setIdeaError("");
+    try {
+      const mediaUrls: string[] = [];
+      for (const file of ideaMediaFiles) mediaUrls.push(await uploadAdminMedia(file));
+      persist({ ...drawer, pautaIdeas: [{ id: crypto.randomUUID(), title: ideaTitle.trim(), description: ideaDescription.trim(), caption: ideaCaption.trim(), mediaUrls, createdAt: new Date().toISOString() }, ...drawer.pautaIdeas] });
+      setIdeaTitle("");
+      setIdeaDescription("");
+      setIdeaCaption("");
+      setIdeaMediaFiles([]);
+      setIdeaFormOpen(false);
+      setIdeaSaved(true);
+      window.setTimeout(() => setIdeaSaved(false), 3200);
+    } catch (caught) {
+      setIdeaError(caught instanceof Error ? caught.message : "Não foi possível enviar as fotos agora.");
+    } finally {
+      setIdeaSaving(false);
+    }
+  };
   const formatNoteDate = (value: string) => {
     const date = new Date(value);
     return value && !Number.isNaN(date.getTime())
@@ -1159,7 +1187,7 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
     </aside></>, document.body)}
     {isOpen ? createPortal(<div className="workspace-drawer-modal-backdrop" role="presentation" onMouseDown={() => setIsOpen(false)}><section className="workspace-drawer-panel workspace-drawer-modal" role="dialog" aria-modal="true" aria-labelledby="workspace-drawer-modal-title" onMouseDown={(event) => event.stopPropagation()}>
       <header><h3 id="workspace-drawer-modal-title">{tabs.find((item) => item.id === tab)?.label}{tab === "progress" ? <span className="drawer-title-count">{columns.reduce((count, column) => count + column.cards.length, 0)}</span> : null}</h3><div>{tab === "progress" ? <button className="tracker-header-filter" onClick={() => setTrackerFilterOpen((value) => !value)} title="Filtrar o que o cliente vê" aria-label="Filtrar o que o cliente vê">⌕</button> : <small>{loaded ? "Equipe interna" : "Carregando..."}</small>}<button className="workspace-drawer-close" onClick={() => setIsOpen(false)} aria-label="Fechar janela">×</button></div></header>
-      {tab === "tracker" ? <ClientSettingsPanel slug={slug} canManageAccess={canManageAccess} onTrackingChange={setTrackingActive} /> : tab === "progress" ? <ProjectTrackerPanel slug={slug} columns={columns} filterOpen={trackerFilterOpen} /> : tab === "ideas" ? <section className="drawer-ideas"><div className="drawer-ideas-count"><span>💡</span><div><strong>{drawer.pautaIdeas.length} {drawer.pautaIdeas.length === 1 ? "pauta" : "pautas"}</strong><small>salvas para este cliente</small></div></div><p className="drawer-helper">Registre uma ideia rápida aqui. A organização e o envio ficam na aba Pautas.</p><button className="gradient-button drawer-ideas-create" type="button" onClick={() => { setIdeaSaved(false); setIdeaFormOpen(true); }}>+ Nova ideia de pauta</button>{ideaSaved ? <p className="drawer-idea-success">Pauta enviada para a aba Pautas.</p> : null}{ideaFormOpen ? <div className="drawer-ideas-form"><label>Título<input autoFocus value={ideaTitle} onChange={(event) => setIdeaTitle(event.target.value)} placeholder="Ex.: Carrossel com mitos e verdades" /></label><label>Descrição<textarea value={ideaDescription} onChange={(event) => setIdeaDescription(event.target.value)} placeholder="Contexto e objetivo da pauta" /></label><label>Legenda sugerida<textarea value={ideaCaption} onChange={(event) => setIdeaCaption(event.target.value)} placeholder="Primeira direção para a legenda" /></label><div><button type="button" onClick={saveIdea}>Enviar para Pautas</button><button type="button" className="drawer-secondary-action" onClick={() => setIdeaFormOpen(false)}>Cancelar</button></div></div> : null}</section> : (tab === "notes" || tab === "drafts") ? <>
+      {tab === "tracker" ? <ClientSettingsPanel slug={slug} canManageAccess={canManageAccess} onTrackingChange={setTrackingActive} /> : tab === "progress" ? <ProjectTrackerPanel slug={slug} columns={columns} filterOpen={trackerFilterOpen} /> : tab === "ideas" ? <section className="drawer-ideas"><div className="drawer-ideas-count"><span>💡</span><div><strong>{drawer.pautaIdeas.length} {drawer.pautaIdeas.length === 1 ? "pauta" : "pautas"}</strong><small>salvas para este cliente</small></div></div><p className="drawer-helper">Registre uma ideia rápida aqui. A organização e o envio ficam na aba Pautas.</p><button className="gradient-button drawer-ideas-create" type="button" onClick={() => { setIdeaSaved(false); setIdeaError(""); setIdeaFormOpen(true); }}>+ Nova ideia de pauta</button>{ideaSaved ? <p className="drawer-idea-success">Pauta enviada para a aba Pautas.</p> : null}{ideaFormOpen ? <div className="drawer-ideas-form"><label>Título<input autoFocus value={ideaTitle} onChange={(event) => setIdeaTitle(event.target.value)} placeholder="Ex.: Carrossel com mitos e verdades" /></label><label>Descrição<textarea value={ideaDescription} onChange={(event) => setIdeaDescription(event.target.value)} placeholder="Contexto e objetivo da pauta" /></label><label>Legenda sugerida<textarea value={ideaCaption} onChange={(event) => setIdeaCaption(event.target.value)} placeholder="Primeira direção para a legenda" /></label><label className="pauta-photo-picker">Fotos <span>opcional · até 12 MB cada</span><input type="file" accept="image/*" multiple onChange={(event) => setIdeaMediaFiles(Array.from(event.target.files ?? []))} /></label>{ideaMediaFiles.length ? <div className="pauta-file-list">{ideaMediaFiles.map((file, index) => <span key={`${file.name}-${file.lastModified}`}><b>{file.name}</b><button type="button" onClick={() => setIdeaMediaFiles((files) => files.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remover ${file.name}`}>×</button></span>)}</div> : null}{ideaError ? <p className="form-error">{ideaError}</p> : null}<div><button type="button" disabled={ideaSaving || !ideaTitle.trim()} onClick={() => void saveIdea()}>{ideaSaving ? "Enviando fotos..." : "Enviar para Pautas"}</button><button type="button" className="drawer-secondary-action" disabled={ideaSaving} onClick={() => { setIdeaFormOpen(false); setIdeaMediaFiles([]); setIdeaError(""); }}>Cancelar</button></div></div> : null}</section> : (tab === "notes" || tab === "drafts") ? <>
         <p className="drawer-helper">{tab === "notes" ? "Recados são visíveis para toda a equipe." : "Rascunhos e anexos são visíveis somente para você."}</p>
         <div className="drawer-compose"><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder={tab === "notes" ? "Escreva um recado para a equipe" : "Escreva uma anotação privada"} />{tab === "notes" ? <div className="drawer-note-color-picker"><span>Cor da notinha</span>{DRAWER_NOTE_COLORS.map((color) => <button type="button" key={color.value} className={noteColor === color.value ? "selected" : ""} style={{ "--drawer-note-color": color.value } as CSSProperties} onClick={() => setNoteColor(color.value)} aria-label={`Usar fundo ${color.label}`} title={color.label} />)}</div> : null}<div><button onClick={saveText}>{editingNoteIndex !== null || editingDraftId !== null ? "Salvar alterações" : tab === "notes" ? "Publicar recado" : "Salvar rascunho"}</button>{(editingNoteIndex !== null || editingDraftId !== null) ? <button className="drawer-secondary-action" onClick={resetTextEditor}>Cancelar</button> : null}{tab === "drafts" ? <label className="drawer-attachment">Anexar foto<input type="file" accept="image/*" onChange={(event) => void addDraftAttachment(event.target.files?.[0] ?? null)} /></label> : null}</div></div>
         {tab === "notes" ? <div className="drawer-card-list drawer-note-list">{drawer.notes.map((note, index) => <article className="drawer-note" key={note.id} style={{ "--drawer-note-color": note.color } as CSSProperties}>{note.authorName ? <small className="drawer-note-author">{note.authorName}</small> : null}<p>{note.text}</p>{note.attachments?.length ? <div className="drawer-note-attachments">{note.attachments.map((attachment, attachmentIndex) => <a key={`${attachment.url}-${attachmentIndex}`} href={attachment.url} target="_blank" rel="noreferrer">{attachment.name || "Ver anexo"} ↗</a>)}</div> : null}<footer className="drawer-note-footer"><div className="drawer-item-actions"><button onClick={() => editNote(note, index)}>Editar</button><button className="danger" onClick={() => deleteNote(index)}>Excluir</button></div><time dateTime={note.createdAt || undefined}>{formatNoteDate(note.createdAt)}</time></footer></article>)}</div> : <div className="drawer-card-list">{drafts.map((draft) => <article key={draft.id} className={draft.color ? "drawer-draft-colored" : undefined} style={draft.color ? { "--drawer-note-color": draft.color } as CSSProperties : undefined}><p>{draft.text}</p>{draft.attachmentUrl ? <a href={draft.attachmentUrl} target="_blank" rel="noreferrer">Ver anexo</a> : null}<footer className="drawer-note-footer"><div className="drawer-item-actions"><button onClick={() => editDraft(draft)}>Editar</button><button className="danger" onClick={() => deleteDraft(draft.id)}>Excluir</button></div>{draft.createdAt ? <time dateTime={draft.createdAt}>{formatNoteDate(draft.createdAt)}</time> : null}</footer></article>)}</div>}
@@ -6213,7 +6241,7 @@ function ClientPortalWorkspacePage({
                     <b>{pautaApprovalCards.length} {tr(pautaApprovalCards.length === 1 ? "pauta" : "pautas")}</b>
                   </header>
                   <div className="portal-pauta-grid">{pautaApprovalCards.map((card) => <button key={card.id} type="button" className="portal-pauta-card" onClick={() => setSelectedCardId(card.id)}>
-                    <span className="portal-pauta-icon"><UiIcon name="file" /></span>
+                    <span className={card.mediaUrl ? "portal-pauta-icon has-image" : "portal-pauta-icon"}>{card.mediaUrl ? <img src={card.mediaUrl} alt="" /> : <UiIcon name="file" />}</span>
                     <span className="portal-pauta-copy"><small>{tr("PAUTA")}</small><strong>{card.title}</strong><p>{card.subtitle || tr("Proposta de conteúdo enviada para sua avaliação.")}</p></span>
                     <span className="portal-pauta-review">{tr("Revisar")} <UiIcon name="eye" /></span>
                   </button>)}</div>
@@ -7957,15 +7985,23 @@ function KanbanActivities({ slug }: { slug: string }) {
 
 const EMPTY_BRAND_BRAIN: BrandBrain = { mission: "", vision: "", positioning: "", brandPromise: "", audience: "", audiencePains: [], audienceDesires: [], voice: "", personalityTraits: [], voiceExamples: [], voiceAvoidExamples: [], visualNotes: "", typographyDisplay: "", typographyBody: "", typographyAccent: "", typographySample: "A identidade ganha voz quando cada detalhe fala a mesma língua.", approvedWords: [], avoidWords: [], expressions: [], colors: ["#5b5ce2", "#18b98b", "#f5a41a"], differentiators: [], proofPoints: [], references: [], pillars: [] };
 function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: { slug: string; clientName: string; columns: BoardColumn[]; onSent: () => void; onCountChange?: (count: number) => void }) {
-  const [ideas, setIdeas] = useState<PautaIdea[]>([]); const [query, setQuery] = useState(""); const [filter, setFilter] = useState<"all" | "draft" | "sent" | "approved">("all"); const [sending, setSending] = useState<string | null>(null);
+  const [ideas, setIdeas] = useState<PautaIdea[]>([]);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "draft" | "sent" | "approved">("all");
+  const [sending, setSending] = useState<string | null>(null);
   const [pautaCards, setPautaCards] = useState<BoardCard[]>([]);
-  const [editing, setEditing] = useState<PautaIdea | null>(null); const [brainOpen, setBrainOpen] = useState(false); const [brain, setBrain] = useState<BrandBrain>(EMPTY_BRAND_BRAIN);
+  const [editing, setEditing] = useState<PautaIdea | null>(null);
+  const [editingMediaFiles, setEditingMediaFiles] = useState<File[]>([]);
+  const [editingSaving, setEditingSaving] = useState(false);
+  const [editingError, setEditingError] = useState("");
+  const [brainOpen, setBrainOpen] = useState(false);
+  const [brain, setBrain] = useState<BrandBrain>(EMPTY_BRAND_BRAIN);
   const save = (next: PautaIdea[]) => {
     setIdeas(next);
-    void loadAdminWorkspaceDrawerBySlug(slug).then((result) => {
+    return loadAdminWorkspaceDrawerBySlug(slug).then((result) => {
       const saved = result.data as Partial<WorkspaceDrawerData> | null;
       return saveAdminWorkspaceDrawerBySlug(slug, { ...EMPTY_DRAWER, ...saved, pautaIdeas: next });
-    }).catch(() => undefined);
+    });
   };
   useEffect(() => { loadAdminWorkspaceDrawerBySlug(slug).then((result) => { const data = result.data as Partial<WorkspaceDrawerData> | null; setIdeas(data?.pautaIdeas ?? []); }).catch(() => setIdeas([])); }, [slug]);
   useEffect(() => {
@@ -7989,17 +8025,94 @@ function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: {
       changed = true;
       return { ...idea, cardId: linkedCard.id, status };
     });
-    if (changed) save(next);
+    if (changed) void save(next).catch(() => undefined);
   }, [pautaCards, ideas]);
   useEffect(() => { onCountChange?.(ideas.length); }, [ideas.length, onCountChange]);
   useEffect(() => { loadBrandBrainBySlug(slug).then((result) => setBrain({ ...EMPTY_BRAND_BRAIN, ...(result.data ?? {}) })).catch(() => setBrain(EMPTY_BRAND_BRAIN)); }, [slug]);
   const visible = ideas.filter((idea) => (filter === "all" || (idea.status ?? "draft") === filter) && idea.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
-  const send = async (idea: PautaIdea) => { const columnId = columns.find((column) => column.name.toLocaleLowerCase() === "pauta")?.id ?? columns[0]?.id ?? null; setSending(idea.id); try { const result = await createAdminCardBySlug(slug, { columnId, title: idea.title, caption: idea.caption || idea.description || null, primaryMediaUrl: null, externalLinkUrl: null, artType: "Post", status: ["Enviar para Cliente"], tags: [], clientLabel: "Pauta para aprovação", isBriefApproval: true }); save(ideas.map((item) => item.id === idea.id ? { ...item, status: "sent", cardId: result.card.id } : item)); onSent(); } finally { setSending(null); } };
-  const saveEdit = () => { if (!editing?.title.trim()) return; save(ideas.map((idea) => idea.id === editing.id ? editing : idea)); setEditing(null); };
-  const deleteIdea = (id: string) => { if (window.confirm("Excluir esta pauta?")) save(ideas.filter((idea) => idea.id !== id)); };
+  const send = async (idea: PautaIdea) => {
+    const columnId = columns.find((column) => column.name.toLocaleLowerCase() === "pauta")?.id ?? columns[0]?.id ?? null;
+    const mediaUrls = idea.mediaUrls ?? [];
+    setSending(idea.id);
+    try {
+      const result = await createAdminCardBySlug(slug, {
+        columnId,
+        title: idea.title,
+        caption: idea.caption || idea.description || null,
+        primaryMediaUrl: mediaUrls[0] ?? null,
+        mediaUrls,
+        mediaType: "image",
+        externalLinkUrl: null,
+        artType: "Post",
+        status: ["Enviar para Cliente"],
+        tags: [],
+        clientLabel: "Pauta para aprovação",
+        isBriefApproval: true,
+      });
+      await save(ideas.map((item) => item.id === idea.id ? { ...item, status: "sent", cardId: result.card.id } : item));
+      onSent();
+    } finally {
+      setSending(null);
+    }
+  };
+  const openEdit = (idea: PautaIdea) => {
+    setEditing({ ...idea, mediaUrls: [...(idea.mediaUrls ?? [])] });
+    setEditingMediaFiles([]);
+    setEditingError("");
+    setBrainOpen(false);
+  };
+  const closeEdit = () => {
+    if (editingSaving) return;
+    setEditing(null);
+    setEditingMediaFiles([]);
+    setEditingError("");
+  };
+  const saveEdit = async () => {
+    if (!editing?.title.trim() || editingSaving) return;
+    const oversized = editingMediaFiles.find((file) => file.size > MAX_MEDIA_FILE_SIZE);
+    if (oversized) {
+      setEditingError(`“${oversized.name}” tem ${formatFileSize(oversized.size)}. O limite por foto é 12 MB.`);
+      return;
+    }
+    setEditingSaving(true);
+    setEditingError("");
+    try {
+      const uploadedUrls: string[] = [];
+      for (const file of editingMediaFiles) uploadedUrls.push(await uploadAdminMedia(file));
+      const mediaUrls = [...(editing.mediaUrls ?? []), ...uploadedUrls];
+      const updatedIdea = { ...editing, mediaUrls, updatedAt: new Date().toISOString() };
+      await save(ideas.map((idea) => idea.id === editing.id ? updatedIdea : idea));
+      if (updatedIdea.cardId) {
+        await updateAdminCardBySlug(slug, updatedIdea.cardId, {
+          title: updatedIdea.title.trim(),
+          caption: updatedIdea.caption || updatedIdea.description || null,
+          primaryMediaUrl: mediaUrls[0] ?? null,
+          mediaUrls,
+          mediaType: "image",
+        });
+        onSent();
+      }
+      setEditing(null);
+      setEditingMediaFiles([]);
+    } catch (caught) {
+      setEditingError(caught instanceof Error ? caught.message : "Não foi possível salvar as fotos agora.");
+    } finally {
+      setEditingSaving(false);
+    }
+  };
+  const deleteIdea = (id: string) => { if (window.confirm("Excluir esta pauta?")) void save(ideas.filter((idea) => idea.id !== id)).catch(() => undefined); };
   const pautaTypeLabel = (value?: string) => ({ post: "Post", reels: "Reels", story: "Story", carousel: "Carrossel", article: "Artigo", video: "Vídeo", other: "Outro" }[value ?? "post"] ?? value ?? "Post");
-  const text = `${editing?.title ?? ""} ${editing?.description ?? ""} ${editing?.caption ?? ""}`.toLocaleLowerCase(); const avoidHits = brain.avoidWords.filter((word) => text.includes(word.toLocaleLowerCase()));
-  return <section className="pautas-workspace"><header><span>Banco interno</span><h2>Pautas de {clientName}</h2><p>Organize, revise e envie ideias para o quadro do cliente.</p></header><div className="pautas-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar pauta" /><select value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)}><option value="all">Todas</option><option value="draft">Rascunhos</option><option value="sent">Enviadas</option><option value="approved">Aprovadas</option></select></div><div className="pautas-table"><div className="pautas-row pautas-head"><span>Cliente</span><span>Título</span><span>Tipo</span><span>Data</span><span>Status</span><span>Ações</span></div>{visible.map((idea) => { const status = idea.status ?? "draft"; return <div className="pautas-row" key={idea.id}><span>{clientName}</span><strong>{idea.title}</strong><span>{pautaTypeLabel(idea.contentType)}</span><span>{new Date(idea.plannedDate || idea.createdAt).toLocaleDateString("pt-BR")}</span><span className={`pauta-status ${status}`}>{status === "approved" ? "Aprovada" : status === "sent" ? "Enviada" : "Rascunho"}</span><span className="pauta-actions"><button onClick={() => { setEditing({ ...idea }); setBrainOpen(false); }}>✎</button><button className="delete" onClick={() => deleteIdea(idea.id)}>⌫</button>{status === "draft" ? <button disabled={sending === idea.id} onClick={() => void send(idea)}>{sending === idea.id ? "..." : "Enviar"}</button> : status === "approved" ? <span className="pauta-approved-mark">✓ Aprovada</span> : "✓"}</span></div>; })}{visible.length === 0 ? <p className="pautas-empty">Nenhuma pauta encontrada. Use a lâmpada na lateral para criar uma.</p> : null}</div>{editing ? <div className="pauta-modal-backdrop" onMouseDown={() => setEditing(null)}><section className="pauta-modal" onMouseDown={(event) => event.stopPropagation()}><header><h3>Editar pauta</h3><button onClick={() => setEditing(null)}>×</button></header><label>Título<input value={editing.title} onChange={(event) => setEditing({ ...editing, title: event.target.value })} /></label><label>Descrição<textarea value={editing.description} onChange={(event) => setEditing({ ...editing, description: event.target.value })} /></label><label>Legenda sugerida<textarea value={editing.caption} onChange={(event) => setEditing({ ...editing, caption: event.target.value })} /></label>{editing.internalNotes ? <label>Notas internas<textarea value={editing.internalNotes} onChange={(event) => setEditing({ ...editing, internalNotes: event.target.value })} /></label> : null}<button className="brain-check" onClick={() => setBrainOpen((open) => !open)}>✧ Brand Brain</button>{brainOpen ? <div className="brain-feedback">{avoidHits.length ? <p>Evite: {avoidHits.join(", ")}.</p> : <p>Sem termos a evitar encontrados.</p>}{brain.expressions.slice(0, 3).length ? <p>Expressões da marca: {brain.expressions.slice(0, 3).join(" · ")}</p> : null}</div> : null}<footer><button className="drawer-secondary-action" onClick={() => setEditing(null)}>Cancelar</button><button className="gradient-button" onClick={saveEdit}>Salvar alterações</button></footer></section></div> : null}</section>;
+  const text = `${editing?.title ?? ""} ${editing?.description ?? ""} ${editing?.caption ?? ""}`.toLocaleLowerCase();
+  const avoidHits = brain.avoidWords.filter((word) => text.includes(word.toLocaleLowerCase()));
+  return <section className="pautas-workspace">
+    <header><span>Banco interno</span><h2>Pautas de {clientName}</h2><p>Organize, revise e envie ideias para o quadro do cliente.</p></header>
+    <div className="pautas-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar pauta" /><select value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)}><option value="all">Todas</option><option value="draft">Rascunhos</option><option value="sent">Enviadas</option><option value="approved">Aprovadas</option></select></div>
+    <div className="pautas-table"><div className="pautas-row pautas-head"><span>Cliente</span><span>Título</span><span>Tipo</span><span>Data</span><span>Status</span><span>Ações</span></div>{visible.map((idea) => {
+      const status = idea.status ?? "draft";
+      return <div className="pautas-row" key={idea.id}><span>{clientName}</span><strong className="pauta-title-cell">{idea.mediaUrls?.[0] ? <img src={idea.mediaUrls[0]} alt="" /> : null}<span>{idea.title}{idea.mediaUrls?.length ? <small>{idea.mediaUrls.length} {idea.mediaUrls.length === 1 ? "foto" : "fotos"}</small> : null}</span></strong><span>{pautaTypeLabel(idea.contentType)}</span><span>{new Date(idea.plannedDate || idea.createdAt).toLocaleDateString("pt-BR")}</span><span className={`pauta-status ${status}`}>{status === "approved" ? "Aprovada" : status === "sent" ? "Enviada" : "Rascunho"}</span><span className="pauta-actions"><button onClick={() => openEdit(idea)}>✎</button><button className="delete" onClick={() => deleteIdea(idea.id)}>⌫</button>{status === "draft" ? <button disabled={sending === idea.id} onClick={() => void send(idea)}>{sending === idea.id ? "..." : "Enviar"}</button> : status === "approved" ? <span className="pauta-approved-mark">✓ Aprovada</span> : "✓"}</span></div>;
+    })}{visible.length === 0 ? <p className="pautas-empty">Nenhuma pauta encontrada. Use a lâmpada na lateral para criar uma.</p> : null}</div>
+    {editing ? <div className="pauta-modal-backdrop" onMouseDown={closeEdit}><section className="pauta-modal" onMouseDown={(event) => event.stopPropagation()}><header><h3>Editar pauta</h3><button disabled={editingSaving} onClick={closeEdit}>×</button></header><label>Título<input value={editing.title} onChange={(event) => setEditing({ ...editing, title: event.target.value })} /></label><label>Descrição<textarea value={editing.description} onChange={(event) => setEditing({ ...editing, description: event.target.value })} /></label><label>Legenda sugerida<textarea value={editing.caption} onChange={(event) => setEditing({ ...editing, caption: event.target.value })} /></label>{editing.internalNotes ? <label>Notas internas<textarea value={editing.internalNotes} onChange={(event) => setEditing({ ...editing, internalNotes: event.target.value })} /></label> : null}<div className="pauta-media-editor"><div><strong>Fotos da pauta</strong><small>Estas imagens aparecerão para o cliente ao revisar a pauta.</small></div>{editing.mediaUrls?.length ? <div className="pauta-media-grid">{editing.mediaUrls.map((url, index) => <figure key={`${url}-${index}`}><img src={url} alt={`Foto ${index + 1} da pauta`} /><button type="button" onClick={() => setEditing({ ...editing, mediaUrls: editing.mediaUrls?.filter((_, itemIndex) => itemIndex !== index) })} aria-label={`Remover foto ${index + 1}`}>×</button></figure>)}</div> : null}<label className="pauta-photo-picker">+ Adicionar fotos <span>JPG, PNG ou WebP · até 12 MB cada</span><input type="file" accept="image/*" multiple onChange={(event) => setEditingMediaFiles((current) => [...current, ...Array.from(event.target.files ?? [])])} /></label>{editingMediaFiles.length ? <div className="pauta-file-list">{editingMediaFiles.map((file, index) => <span key={`${file.name}-${file.lastModified}-${index}`}><b>{file.name}</b><button type="button" onClick={() => setEditingMediaFiles((files) => files.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remover ${file.name}`}>×</button></span>)}</div> : null}</div><button className="brain-check" onClick={() => setBrainOpen((open) => !open)}>✧ Brand Brain</button>{brainOpen ? <div className="brain-feedback">{avoidHits.length ? <p>Evite: {avoidHits.join(", ")}.</p> : <p>Sem termos a evitar encontrados.</p>}{brain.expressions.slice(0, 3).length ? <p>Expressões da marca: {brain.expressions.slice(0, 3).join(" · ")}</p> : null}</div> : null}{editingError ? <p className="form-error">{editingError}</p> : null}<footer><button className="drawer-secondary-action" disabled={editingSaving} onClick={closeEdit}>Cancelar</button><button className="gradient-button" disabled={editingSaving || !editing.title.trim()} onClick={() => void saveEdit()}>{editingSaving ? "Enviando fotos..." : "Salvar alterações"}</button></footer></section></div> : null}
+  </section>;
 }
 function BrandBrainWorkspace({ slug, clientName }: { slug: string; clientName: string }) {
   const [brain, setBrain] = useState<BrandBrain>(EMPTY_BRAND_BRAIN);
