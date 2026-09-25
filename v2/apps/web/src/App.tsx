@@ -1748,9 +1748,78 @@ function DashboardInternalMessagesWidget({ items, onOpen }: { items: InternalApp
   return <section className="dashboard-widget dashboard-internal-messages"><header className="dashboard-widget-head"><div><p className="eyebrow">Equipe</p><h3>Mensagens internas</h3><small>Cards enviados para sua revisão</small></div><span>{visibleItems.length}</span></header>{visibleItems.length ? <div className="dashboard-internal-list">{visibleItems.slice(0, 5).map((item) => <div className="dashboard-internal-row" key={item.id}><button className="dashboard-internal-open" onClick={() => onOpen(item)}><span className="dashboard-item-bullet" aria-hidden="true" /><span className="internal-message-icon">♙</span><div><strong>{item.cardTitle}</strong><small>{item.message}</small></div><time>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.createdAt))}</time></button><button className="dashboard-internal-dismiss" aria-label="Fechar mensagem" title="Fechar mensagem" onClick={() => setDismissedIds((current) => { const next = [...current, item.id]; window.localStorage.setItem(DISMISSED_INTERNAL_MESSAGES_KEY, JSON.stringify(next)); return next; })}>×</button></div>)}</div> : <div className="dashboard-internal-empty">Nenhuma mensagem interna por enquanto.</div>}</section>;
 }
 
+function useDashboardMasonry() {
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid || typeof ResizeObserver === "undefined") return;
+
+    const desktopQuery = window.matchMedia("(min-width: 761px)");
+    let frame = 0;
+
+    const reset = () => {
+      Array.from(grid.children).forEach((child) => {
+        if (child instanceof HTMLElement) child.style.removeProperty("grid-row-end");
+      });
+      grid.classList.remove("dashboard-masonry-active");
+    };
+
+    const layout = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        if (!desktopQuery.matches) {
+          reset();
+          return;
+        }
+
+        grid.classList.add("dashboard-masonry-active");
+        const verticalGap = 18;
+        Array.from(grid.children).forEach((child) => {
+          if (!(child instanceof HTMLElement)) return;
+          child.style.removeProperty("grid-row-end");
+          const height = Math.ceil(child.getBoundingClientRect().height);
+          child.style.gridRowEnd = `span ${Math.max(1, height + verticalGap)}`;
+        });
+      });
+    };
+
+    const resizeObserver = new ResizeObserver(layout);
+    resizeObserver.observe(grid);
+    Array.from(grid.children).forEach((child) => {
+      if (child instanceof HTMLElement) resizeObserver.observe(child);
+    });
+
+    const mutationObserver = new MutationObserver(() => {
+      resizeObserver.disconnect();
+      resizeObserver.observe(grid);
+      Array.from(grid.children).forEach((child) => {
+        if (child instanceof HTMLElement) resizeObserver.observe(child);
+      });
+      layout();
+    });
+    mutationObserver.observe(grid, { childList: true });
+
+    const onBreakpointChange = () => layout();
+    desktopQuery.addEventListener("change", onBreakpointChange);
+    layout();
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+      desktopQuery.removeEventListener("change", onBreakpointChange);
+      reset();
+    };
+  }, []);
+
+  return gridRef;
+}
+
 function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const dashboardMasonryRef = useDashboardMasonry();
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [clients, setClients] = useState<AdminClientOption[]>([]);
   const [upcomingPosts, setUpcomingPosts] = useState<DashboardUpcomingPost[]>([]);
@@ -2037,7 +2106,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
             </div>
           </div>
 
-          <div className="dashboard-grid">
+          <div className="dashboard-grid" ref={dashboardMasonryRef}>
             <DashboardClockWidget currentTime={currentTime} />
             <DashboardNotesWidget userId={session.id} canPersist={session.source === "api"} />
             {upcomingPosts.length > 0 ? <DashboardTasksWidget posts={upcomingPosts} /> : null}
