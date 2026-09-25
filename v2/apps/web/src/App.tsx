@@ -1749,71 +1749,10 @@ function DashboardInternalMessagesWidget({ items, onOpen }: { items: InternalApp
 }
 
 function useDashboardMasonry() {
-  const gridRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const grid = gridRef.current;
-    if (!grid || typeof ResizeObserver === "undefined") return;
-
-    const desktopQuery = window.matchMedia("(min-width: 761px)");
-    let frame = 0;
-
-    const reset = () => {
-      Array.from(grid.children).forEach((child) => {
-        if (child instanceof HTMLElement) child.style.removeProperty("grid-row-end");
-      });
-      grid.classList.remove("dashboard-masonry-active");
-    };
-
-    const layout = () => {
-      window.cancelAnimationFrame(frame);
-      frame = window.requestAnimationFrame(() => {
-        if (!desktopQuery.matches) {
-          reset();
-          return;
-        }
-
-        grid.classList.add("dashboard-masonry-active");
-        const verticalGap = 18;
-        Array.from(grid.children).forEach((child) => {
-          if (!(child instanceof HTMLElement)) return;
-          child.style.removeProperty("grid-row-end");
-          const height = Math.ceil(child.getBoundingClientRect().height);
-          child.style.gridRowEnd = `span ${Math.max(1, height + verticalGap)}`;
-        });
-      });
-    };
-
-    const resizeObserver = new ResizeObserver(layout);
-    resizeObserver.observe(grid);
-    Array.from(grid.children).forEach((child) => {
-      if (child instanceof HTMLElement) resizeObserver.observe(child);
-    });
-
-    const mutationObserver = new MutationObserver(() => {
-      resizeObserver.disconnect();
-      resizeObserver.observe(grid);
-      Array.from(grid.children).forEach((child) => {
-        if (child instanceof HTMLElement) resizeObserver.observe(child);
-      });
-      layout();
-    });
-    mutationObserver.observe(grid, { childList: true });
-
-    const onBreakpointChange = () => layout();
-    desktopQuery.addEventListener("change", onBreakpointChange);
-    layout();
-
-    return () => {
-      window.cancelAnimationFrame(frame);
-      resizeObserver.disconnect();
-      mutationObserver.disconnect();
-      desktopQuery.removeEventListener("change", onBreakpointChange);
-      reset();
-    };
-  }, []);
-
-  return gridRef;
+  // Keep a stable ref for the dashboard grid. The previous JS masonry algorithm
+  // used 1px implicit grid rows and produced very large vertical gaps with mixed
+  // column spans. The regular dense CSS grid is more predictable here.
+  return useRef<HTMLDivElement>(null);
 }
 
 function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: () => void }) {
