@@ -2322,7 +2322,7 @@ function DashboardTasksWidget({ posts }: { posts: DashboardUpcomingPost[] }) {
     return () => observer.disconnect();
   }, [expanded, posts]);
   const displayedPosts = expanded ? posts : posts.slice(0, visibleLimit);
-  const hiddenCount = Math.max(0, posts.length - displayedPosts.length);
+  const hasMore = posts.length > visibleLimit;
   return <section className="dashboard-tasks-widget dashboard-first-row-widget" ref={widgetRef}>
     <header><div><span className="dashboard-task-icon">◴</span><h3>Próximos posts</h3></div><span className="dashboard-task-count">Próximos 3 dias ({postCount})</span></header>
     <div className="dashboard-task-rows" ref={rowsRef}>
@@ -2335,7 +2335,7 @@ function DashboardTasksWidget({ posts }: { posts: DashboardUpcomingPost[] }) {
       </article>)}
       {displayedPosts.length === 0 ? <p className="dashboard-upcoming-empty">Nenhum post previsto para os próximos 3 dias.</p> : null}
     </div>
-    {hiddenCount > 0 ? <button className="dashboard-task-link" type="button" onClick={() => setExpanded(true)}>Ver mais...</button> : null}
+    {hasMore ? <button className="dashboard-task-link" type="button" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>{expanded ? "Ver menos" : "Ver mais..."}</button> : null}
   </section>;
 }
 
@@ -2679,7 +2679,7 @@ function DashboardClientSubmissionsWidget({ items, userId }: { items: DashboardS
   };
   const visibleItems = items.filter((item) => !dismissedIds.includes(item.id));
   const displayedItems = expanded ? visibleItems : visibleItems.slice(0, 3);
-  const hiddenCount = Math.max(0, visibleItems.length - displayedItems.length);
+  const hasMore = visibleItems.length > 3;
   const dismissSuggestion = (id: string) => {
     setDismissedIds((current) => {
       const next = current.includes(id) ? current : [...current, id];
@@ -2705,7 +2705,7 @@ function DashboardClientSubmissionsWidget({ items, userId }: { items: DashboardS
       <small>{formatSubmissionDate(item.createdAt)}</small>
       <button className="dashboard-submission-dismiss" type="button" onClick={() => dismissSuggestion(item.id)} aria-label={`Remover sugestão de ${item.clientName}`} title="Já vi esta sugestão">×</button>
     </article>)}</div>
-    {hiddenCount > 0 ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded(true)}>Ver mais...</button> : null}
+    {hasMore ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>{expanded ? "Ver menos" : "Ver mais..."}</button> : null}
   </section>;
 }
 
@@ -2773,7 +2773,7 @@ function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items:
     });
   const visibleItems = mergedItems.filter((item) => !dismissedIds.includes(item.id));
   const displayedItems = expanded ? visibleItems : visibleItems.slice(0, 3);
-  const hiddenCount = Math.max(0, visibleItems.length - displayedItems.length);
+  const hasMore = visibleItems.length > 3;
   const dismissFeedback = (id: string) => {
     setDismissedIds((current) => {
       const next = current.includes(id) ? current : [...current, id];
@@ -2804,7 +2804,7 @@ function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items:
         <button className="dashboard-activity-dismiss" type="button" onClick={() => dismissFeedback(item.id)} aria-label={`Remover feedback de ${item.clientName}`} title="Marcar como visualizado">×</button>
       </article>;
     })}</div>
-    {hiddenCount > 0 ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded(true)}>Ver mais...</button> : null}
+    {hasMore ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>{expanded ? "Ver menos" : "Ver mais..."}</button> : null}
   </section>;
 }
 
