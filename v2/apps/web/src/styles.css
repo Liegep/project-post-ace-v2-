@@ -10595,3 +10595,27 @@ button {
     display: none;
   }
 }
+
+
+/* Dashboard masonry: preserve existing widget widths and compact only vertical gaps.
+   Disabled on mobile so the current single-column experience remains untouched. */
+@media (min-width: 761px) {
+  .dashboard-layout .dashboard-grid.dashboard-masonry-active {
+    grid-auto-flow: row dense;
+    grid-auto-rows: 1px;
+    column-gap: 18px;
+    row-gap: 0;
+    align-items: start;
+  }
+
+  .dashboard-layout .dashboard-grid.dashboard-masonry-active > * {
+    align-self: start;
+  }
+}
+
+@media (max-width: 760px) {
+  .dashboard-layout .dashboard-grid {
+    grid-auto-flow: row;
+    grid-auto-rows: auto;
+  }
+}
