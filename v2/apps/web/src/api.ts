@@ -291,6 +291,7 @@ type ApiPortalBoardResponse = {
 type ApiCalendarEvent = {
   id: string;
   title: string;
+  caption?: string | null;
   mediaType?: string;
   mediaUrls?: string[];
   publishDate: string;
@@ -580,6 +581,7 @@ function mapCalendarEvent(event: ApiCalendarEvent): CalendarEvent {
   return {
     id: event.id,
     title: event.title,
+    caption: event.caption ?? null,
     mediaType: event.mediaType,
     mediaUrls: event.mediaUrls ?? [],
     publishDate: hasInstant ? `${scheduled!.getFullYear()}-${String(scheduled!.getMonth() + 1).padStart(2, "0")}-${String(scheduled!.getDate()).padStart(2, "0")}` : event.publishDate,
