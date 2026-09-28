@@ -2039,18 +2039,17 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
       })
       .catch(() => undefined);
 
-    void Promise.all([refreshClients(), refreshOverview()]);
+    const refreshDashboard = () => Promise.all([refreshClients(), refreshOverview()]);
+    void refreshDashboard();
 
-    let lastClientRefreshAt = Date.now();
+    let lastRefreshAt = Date.now();
     const refreshVisibleDashboard = () => {
       if (document.visibilityState !== "visible") return;
-      void refreshOverview();
-      if (Date.now() - lastClientRefreshAt >= 10 * 60_000) {
-        lastClientRefreshAt = Date.now();
-        void refreshClients();
-      }
+      if (Date.now() - lastRefreshAt < 10 * 60_000) return;
+      lastRefreshAt = Date.now();
+      void refreshDashboard();
     };
-    const interval = window.setInterval(refreshVisibleDashboard, 60_000);
+    const interval = window.setInterval(refreshVisibleDashboard, 10 * 60_000);
     const refreshOnFocus = () => refreshVisibleDashboard();
     const refreshOnVisibility = () => { if (document.visibilityState === "visible") refreshVisibleDashboard(); };
     window.addEventListener("focus", refreshOnFocus);
