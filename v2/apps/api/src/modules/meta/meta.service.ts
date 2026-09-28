@@ -3,7 +3,12 @@ import type { FastifyInstance } from "fastify";
 import { findMetaConnection, saveMetaOAuthState, upsertMetaConnection } from "./meta.repository.js";
 
 const GRAPH_VERSION = "v26.0";
-const META_SCOPES = ["pages_show_list", "pages_read_engagement", "instagram_basic", "business_management"];
+const META_SCOPES = [
+  "pages_show_list",
+  "pages_read_engagement",
+  "instagram_basic",
+  "instagram_manage_insights",
+];
 
 type MetaTokenResponse = { access_token?: string; token_type?: string; expires_in?: number; error?: { message?: string } };
 type MetaProfileResponse = { id?: string; name?: string; error?: { message?: string } };
