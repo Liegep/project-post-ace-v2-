@@ -519,13 +519,77 @@ function navClass(isActive: boolean) {
 
 type PageMetric = { label: string; value: string | number; note: string; icon: ReactNode; tone?: string };
 
+function playInternalApprovalChime() {
+  try {
+    const AudioContextCtor = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return;
+    const context = new AudioContextCtor();
+    const now = context.currentTime;
+    const master = context.createGain();
+    master.gain.setValueAtTime(0.0001, now);
+    master.gain.exponentialRampToValueAtTime(0.16, now + 0.02);
+    master.gain.exponentialRampToValueAtTime(0.0001, now + 0.62);
+    master.connect(context.destination);
+
+    const notes = [
+      { frequency: 659.25, start: 0, duration: 0.22 },
+      { frequency: 880, start: 0.19, duration: 0.34 },
+    ];
+    notes.forEach(({ frequency, start, duration }) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(frequency, now + start);
+      gain.gain.setValueAtTime(0.0001, now + start);
+      gain.gain.exponentialRampToValueAtTime(0.8, now + start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + start + duration);
+      oscillator.connect(gain);
+      gain.connect(master);
+      oscillator.start(now + start);
+      oscillator.stop(now + start + duration + 0.03);
+    });
+    window.setTimeout(() => { void context.close().catch(() => undefined); }, 900);
+  } catch {
+    // Notification remains visible even if the browser blocks audio.
+  }
+}
+
 function WorkspaceNavbar({ session, onLogout, clientKanban = false, workspaceContext, utilityAction }: { session: SessionUser; onLogout: () => void; clientKanban?: boolean; workspaceContext?: ReactNode; utilityAction?: ReactNode }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [messages, setMessages] = useState<InternalApprovalRecord[]>(() => loadInternalApprovalMessages(session.id));
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => { try { return JSON.parse(window.localStorage.getItem(`designhub-v2-read-notifications:${session.id}`) ?? "[]") as string[]; } catch { return []; } });
   const notificationMenuRef = useRef<HTMLDivElement>(null);
+  const knownNotificationIdsRef = useRef<Set<string>>(new Set(messages.map((item) => item.id)));
+  const audioUnlockedRef = useRef(false);
   const unreadMessages = messages.filter((item) => !readNotificationIds.includes(item.id));
-  useEffect(() => { const sync = () => { setMessages(loadInternalApprovalMessages(session.id)); try { setReadNotificationIds(JSON.parse(window.localStorage.getItem(`designhub-v2-read-notifications:${session.id}`) ?? "[]") as string[]); } catch { setReadNotificationIds([]); } }; window.addEventListener("storage", sync); const timer = window.setInterval(sync, 5_000); return () => { window.removeEventListener("storage", sync); window.clearInterval(timer); }; }, [session.id]);
+  useEffect(() => {
+    knownNotificationIdsRef.current = new Set(loadInternalApprovalMessages(session.id).map((item) => item.id));
+    const unlockAudio = () => { audioUnlockedRef.current = true; };
+    window.addEventListener("pointerdown", unlockAudio, { once: true });
+    window.addEventListener("keydown", unlockAudio, { once: true });
+
+    const sync = () => {
+      const nextMessages = loadInternalApprovalMessages(session.id);
+      const newItems = nextMessages.filter((item) => !knownNotificationIdsRef.current.has(item.id));
+      nextMessages.forEach((item) => knownNotificationIdsRef.current.add(item.id));
+      setMessages(nextMessages);
+      try {
+        setReadNotificationIds(JSON.parse(window.localStorage.getItem(`designhub-v2-read-notifications:${session.id}`) ?? "[]") as string[]);
+      } catch {
+        setReadNotificationIds([]);
+      }
+      if (newItems.length && audioUnlockedRef.current) playInternalApprovalChime();
+    };
+
+    window.addEventListener("storage", sync);
+    const timer = window.setInterval(sync, 5_000);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+      window.clearInterval(timer);
+    };
+  }, [session.id]);
   useEffect(() => { const close = (event: MouseEvent) => { if (!notificationMenuRef.current?.contains(event.target as Node)) setNotificationsOpen(false); }; const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setNotificationsOpen(false); }; document.addEventListener("mousedown", close); document.addEventListener("keydown", escape); return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", escape); }; }, []);
   const markNotificationRead = (id: string) => { setReadNotificationIds((current) => { if (current.includes(id)) return current; const next = [...current, id]; window.localStorage.setItem(`designhub-v2-read-notifications:${session.id}`, JSON.stringify(next)); return next; }); };
   return <div className={`dashboard-nav workspace-navbar${clientKanban ? " client-kanban-navbar" : ""}`}>
