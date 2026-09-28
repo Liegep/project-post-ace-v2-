@@ -21,6 +21,24 @@ export const metaConnectQuerySchema = z.object({
   returnTo: z.string().trim().regex(/^#\/(dashboard|admin\/[a-z0-9-]+)$/).optional(),
 });
 
+const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use uma data no formato AAAA-MM-DD.").refine(
+  (value) => {
+    const date = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  },
+  "Data inválida.",
+);
+
+export const metaInsightsQuerySchema = z.object({
+  since: isoDateSchema,
+  until: isoDateSchema,
+}).refine((value) => value.since <= value.until, {
+  message: "A data inicial deve ser anterior ou igual à data final.",
+  path: ["until"],
+});
+
+export type MetaInsightsPeriod = z.infer<typeof metaInsightsQuerySchema>;
+
 export const clientMetaAssetsSchema = z.object({
   facebookPageId: nullableMetaIdentifier,
   facebookPageName: nullableMetaLabel,

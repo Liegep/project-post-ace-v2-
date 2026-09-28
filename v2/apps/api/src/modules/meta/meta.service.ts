@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { findMetaConnection, saveMetaOAuthState, upsertMetaConnection } from "./meta.repository.js";
+import type { MetaInsightsPeriod } from "./meta.schemas.js";
 
 const GRAPH_VERSION = "v26.0";
 const META_SCOPES = [
@@ -46,6 +47,70 @@ type MetaDiagnosticPage = {
 };
 
 type MetaDiagnosticBusiness = { id?: string; name?: string };
+
+type MetaInsightsAssets = {
+  facebookPageId: string | null;
+  facebookPageName: string | null;
+  instagramAccountId: string | null;
+  instagramUsername: string | null;
+};
+
+type MetaInsightsWarning = {
+  endpoint: string;
+  code: number | null;
+  message: string;
+  metricOrOperation: string;
+};
+
+type MetaApiError = { error?: { code?: number; message?: string } };
+type MetaInsight = {
+  name?: string;
+  values?: Array<{ value?: number }>;
+  total_value?: { value?: number };
+};
+
+type MetaInsightsPayload = MetaApiError & { data?: MetaInsight[] };
+
+type InstagramProfilePayload = MetaApiError & {
+  id?: string;
+  username?: string;
+  followers_count?: number;
+};
+
+type InstagramMedia = {
+  id?: string;
+  caption?: string;
+  media_type?: string;
+  timestamp?: string;
+  permalink?: string;
+  like_count?: number;
+  comments_count?: number;
+};
+
+type InstagramMediaPayload = MetaApiError & {
+  data?: InstagramMedia[];
+  paging?: { next?: string };
+};
+
+type FacebookPagePayload = MetaApiError & {
+  id?: string;
+  name?: string;
+  access_token?: string;
+  followers_count?: number;
+  fan_count?: number;
+};
+
+type FacebookPost = {
+  id?: string;
+  message?: string;
+  created_time?: string;
+  permalink_url?: string;
+  reactions?: { summary?: { total_count?: number } };
+  comments?: { summary?: { total_count?: number } };
+  shares?: { count?: number };
+};
+
+type FacebookPostsPayload = MetaApiError & { data?: FacebookPost[] };
 
 function requireMetaConfig(app: FastifyInstance) {
   const { META_APP_ID, META_APP_SECRET, META_REDIRECT_URI, META_TOKEN_ENCRYPTION_KEY } = app.appEnv;
@@ -99,7 +164,92 @@ function safePaging(paging: MetaPaging | undefined, page: number) {
 
 function redactMetaSecrets(message: string, accessToken: string, appSecret: string) {
   const proof = appSecretProof(accessToken, appSecret);
-  return message.split(accessToken).join("[REDACTED]").split(proof).join("[REDACTED]");
+  return message
+    .split(accessToken).join("[REDACTED]")
+    .split(proof).join("[REDACTED]")
+    .replace(/(access_token|appsecret_proof)=([^&\s]+)/gi, "$1=[REDACTED]");
+}
+
+async function fetchMetaResult<T extends MetaApiError>(input: {
+  path: string;
+  token: string;
+  appSecret: string;
+  params?: Record<string, string>;
+  metricOrOperation: string;
+}): Promise<{ payload: T | null; warning: MetaInsightsWarning | null }> {
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}${input.path}`);
+  for (const [key, value] of Object.entries(input.params ?? {})) url.searchParams.set(key, value);
+  url.searchParams.set("access_token", input.token);
+  url.searchParams.set("appsecret_proof", appSecretProof(input.token, input.appSecret));
+
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(15_000),
+    });
+    const payload = await response.json().catch(() => ({})) as T;
+    if (!response.ok || payload.error) {
+      return {
+        payload: null,
+        warning: {
+          endpoint: input.path,
+          code: payload.error?.code ?? null,
+          message: redactMetaSecrets(
+            payload.error?.message ?? `Meta Graph API respondeu com HTTP ${response.status}`,
+            input.token,
+            input.appSecret,
+          ),
+          metricOrOperation: input.metricOrOperation,
+        },
+      };
+    }
+    return { payload, warning: null };
+  } catch {
+    return {
+      payload: null,
+      warning: {
+        endpoint: input.path,
+        code: null,
+        message: "Falha de rede ao consultar a Meta Graph API.",
+        metricOrOperation: input.metricOrOperation,
+      },
+    };
+  }
+}
+
+function insightNumber(payload: MetaInsightsPayload | null) {
+  const insight = payload?.data?.[0];
+  if (typeof insight?.total_value?.value === "number") return insight.total_value.value;
+  const values = insight?.values?.map((item) => item.value).filter((value): value is number => typeof value === "number") ?? [];
+  return values.length ? values.reduce((total, value) => total + value, 0) : null;
+}
+
+async function fetchInsightMetric(input: {
+  objectId: string;
+  metric: string;
+  token: string;
+  appSecret: string;
+  period: MetaInsightsPeriod;
+  totalValue?: boolean;
+  warnings: MetaInsightsWarning[];
+  operationPrefix: string;
+}) {
+  const path = `/${input.objectId}/insights`;
+  const result = await fetchMetaResult<MetaInsightsPayload>({
+    path,
+    token: input.token,
+    appSecret: input.appSecret,
+    params: {
+      metric: input.metric,
+      period: "day",
+      since: input.period.since,
+      until: input.period.until,
+      ...(input.totalValue ? { metric_type: "total_value" } : {}),
+    },
+    metricOrOperation: `${input.operationPrefix}.${input.metric}`,
+  });
+  if (result.warning) input.warnings.push(result.warning);
+  return insightNumber(result.payload);
 }
 
 async function fetchMetaDiagnosticCollection<T>(input: {
@@ -328,4 +478,246 @@ export async function debugMetaAssets(app: FastifyInstance, userId: string) {
     },
     errors,
   };
+}
+
+async function getInstagramInsights(input: {
+  accountId: string;
+  savedUsername: string | null;
+  token: string;
+  appSecret: string;
+  period: MetaInsightsPeriod;
+  warnings: MetaInsightsWarning[];
+}) {
+  const profilePath = `/${input.accountId}`;
+  const profile = await fetchMetaResult<InstagramProfilePayload>({
+    path: profilePath,
+    token: input.token,
+    appSecret: input.appSecret,
+    params: { fields: "id,username,followers_count" },
+    metricOrOperation: "instagram.account",
+  });
+  if (profile.warning) input.warnings.push(profile.warning);
+
+  const metricNames = ["reach", "views", "profile_views", "profile_links_taps", "total_interactions", "accounts_engaged"] as const;
+  const metricValues = await Promise.all(metricNames.map(async (metric) => [
+    metric,
+    await fetchInsightMetric({
+      objectId: input.accountId,
+      metric,
+      token: input.token,
+      appSecret: input.appSecret,
+      period: input.period,
+      totalValue: true,
+      warnings: input.warnings,
+      operationPrefix: "instagram.account",
+    }),
+  ] as const));
+  const metrics = Object.fromEntries(metricValues) as Record<typeof metricNames[number], number | null>;
+
+  const mediaPath = `/${input.accountId}/media`;
+  const mediaResult = await fetchMetaResult<InstagramMediaPayload>({
+    path: mediaPath,
+    token: input.token,
+    appSecret: input.appSecret,
+    params: {
+      fields: "id,caption,media_type,timestamp,permalink,like_count,comments_count",
+      since: input.period.since,
+      until: input.period.until,
+      limit: "100",
+    },
+    metricOrOperation: "instagram.media.list",
+  });
+  if (mediaResult.warning) input.warnings.push(mediaResult.warning);
+  if (mediaResult.payload?.paging?.next) {
+    input.warnings.push({
+      endpoint: mediaPath,
+      code: null,
+      message: "O período possui mais de 100 mídias; o ranking considera as 100 primeiras retornadas pela Meta.",
+      metricOrOperation: "instagram.media.pagination",
+    });
+  }
+
+  const candidates = (mediaResult.payload?.data ?? [])
+    .filter((media) => media.id)
+    .sort((left, right) => ((right.like_count ?? 0) + (right.comments_count ?? 0)) - ((left.like_count ?? 0) + (left.comments_count ?? 0)))
+    .slice(0, 10);
+  const topContent = [];
+  for (const media of candidates) {
+    const mediaMetrics = ["reach", "views", "saved", "shares", "total_interactions"] as const;
+    const values = await Promise.all(mediaMetrics.map(async (metric) => {
+      const path = `/${media.id}/insights`;
+      const result = await fetchMetaResult<MetaInsightsPayload>({
+        path,
+        token: input.token,
+        appSecret: input.appSecret,
+        params: { metric },
+        metricOrOperation: `instagram.media.${media.id}.${metric}`,
+      });
+      if (result.warning) input.warnings.push(result.warning);
+      return [metric, insightNumber(result.payload)] as const;
+    }));
+    const mediaInsight = Object.fromEntries(values) as Record<typeof mediaMetrics[number], number | null>;
+    topContent.push({
+      id: media.id,
+      caption: media.caption ?? null,
+      mediaType: media.media_type ?? null,
+      timestamp: media.timestamp ?? null,
+      permalink: media.permalink ?? null,
+      reach: mediaInsight.reach,
+      views: mediaInsight.views,
+      likes: media.like_count ?? null,
+      comments: media.comments_count ?? null,
+      saved: mediaInsight.saved,
+      shares: mediaInsight.shares,
+      totalInteractions: mediaInsight.total_interactions,
+    });
+  }
+  topContent.sort((left, right) => (
+    (right.totalInteractions ?? ((right.likes ?? 0) + (right.comments ?? 0))) -
+    (left.totalInteractions ?? ((left.likes ?? 0) + (left.comments ?? 0)))
+  ));
+
+  return {
+    accountId: input.accountId,
+    username: profile.payload?.username ?? input.savedUsername,
+    metrics: {
+      reach: metrics.reach,
+      views: metrics.views,
+      followers: profile.payload?.followers_count ?? null,
+      profileViews: metrics.profile_views,
+      interactions: metrics.total_interactions,
+      linkClicks: metrics.profile_links_taps,
+      accountsEngaged: metrics.accounts_engaged,
+    },
+    topContent,
+  };
+}
+
+async function getFacebookInsights(input: {
+  pageId: string;
+  savedPageName: string | null;
+  userToken: string;
+  appSecret: string;
+  period: MetaInsightsPeriod;
+  warnings: MetaInsightsWarning[];
+}) {
+  const pagePath = `/${input.pageId}`;
+  const page = await fetchMetaResult<FacebookPagePayload>({
+    path: pagePath,
+    token: input.userToken,
+    appSecret: input.appSecret,
+    params: { fields: "id,name,access_token,followers_count,fan_count" },
+    metricOrOperation: "facebook.page",
+  });
+  if (page.warning) input.warnings.push(page.warning);
+  const pageToken = page.payload?.access_token ?? input.userToken;
+  if (page.payload && !page.payload.access_token) {
+    input.warnings.push({
+      endpoint: pagePath,
+      code: null,
+      message: "A Meta não retornou um Page Access Token; as leituras da Página serão tentadas com o token atual.",
+      metricOrOperation: "facebook.pageAccessToken",
+    });
+  }
+
+  input.warnings.push({
+    endpoint: `/${input.pageId}/insights`,
+    code: null,
+    message: "page_impressions_unique foi descontinuada acima da Graph API v25; alcance da Página não é consultado na v26.",
+    metricOrOperation: "facebook.page.reach",
+  });
+
+  const metricNames = ["page_impressions", "page_post_engagements", "page_views_total"] as const;
+  const metricValues = await Promise.all(metricNames.map(async (metric) => [
+    metric,
+    await fetchInsightMetric({
+      objectId: input.pageId,
+      metric,
+      token: pageToken,
+      appSecret: input.appSecret,
+      period: input.period,
+      warnings: input.warnings,
+      operationPrefix: "facebook.page",
+    }),
+  ] as const));
+  const metrics = Object.fromEntries(metricValues) as Record<typeof metricNames[number], number | null>;
+
+  const postsPath = `/${input.pageId}/posts`;
+  const posts = await fetchMetaResult<FacebookPostsPayload>({
+    path: postsPath,
+    token: pageToken,
+    appSecret: input.appSecret,
+    params: {
+      fields: "id,message,created_time,permalink_url,reactions.limit(0).summary(true),comments.limit(0).summary(true),shares",
+      since: input.period.since,
+      until: input.period.until,
+      limit: "100",
+    },
+    metricOrOperation: "facebook.posts.list",
+  });
+  if (posts.warning) input.warnings.push(posts.warning);
+  const topContent = (posts.payload?.data ?? []).filter((post) => post.id).map((post) => {
+    const reactions = post.reactions?.summary?.total_count ?? null;
+    const comments = post.comments?.summary?.total_count ?? null;
+    const shares = post.shares?.count ?? null;
+    return {
+      id: post.id,
+      message: post.message ?? null,
+      timestamp: post.created_time ?? null,
+      permalink: post.permalink_url ?? null,
+      reactions,
+      comments,
+      shares,
+      interactions: (reactions ?? 0) + (comments ?? 0) + (shares ?? 0),
+    };
+  }).sort((left, right) => right.interactions - left.interactions).slice(0, 10);
+
+  return {
+    pageId: input.pageId,
+    pageName: page.payload?.name ?? input.savedPageName,
+    metrics: {
+      reach: null,
+      impressions: metrics.page_impressions,
+      engagement: metrics.page_post_engagements,
+      followers: page.payload?.followers_count ?? null,
+      fans: page.payload?.fan_count ?? null,
+      pageViews: metrics.page_views_total,
+    },
+    topContent,
+  };
+}
+
+export async function getMetaInsights(
+  app: FastifyInstance,
+  userId: string,
+  assets: MetaInsightsAssets,
+  period: MetaInsightsPeriod,
+) {
+  const config = requireMetaConfig(app);
+  const connection = await findMetaConnection(app.db, userId);
+  if (!connection) throw app.httpErrors.badRequest("Conecte uma conta Meta antes de consultar Insights.");
+  if (connection.expiresAt && new Date(connection.expiresAt).getTime() <= Date.now()) {
+    throw app.httpErrors.badRequest("A conexão Meta expirou. Atualize a conexão antes de consultar Insights.");
+  }
+  const token = decryptToken(connection.encryptedToken, config.encryptionKey);
+  const warnings: MetaInsightsWarning[] = [];
+
+  const instagram = assets.instagramAccountId ? await getInstagramInsights({
+    accountId: assets.instagramAccountId,
+    savedUsername: assets.instagramUsername,
+    token,
+    appSecret: config.appSecret,
+    period,
+    warnings,
+  }) : null;
+  const facebook = assets.facebookPageId ? await getFacebookInsights({
+    pageId: assets.facebookPageId,
+    savedPageName: assets.facebookPageName,
+    userToken: token,
+    appSecret: config.appSecret,
+    period,
+    warnings,
+  }) : null;
+
+  return { period, instagram, facebook, warnings };
 }

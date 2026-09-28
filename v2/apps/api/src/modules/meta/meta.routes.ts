@@ -1,8 +1,8 @@
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { findClientAccountById } from "../clients/clients.repository.js";
-import { clientMetaAssetsSchema, metaCallbackSchema, metaConnectQuerySchema } from "./meta.schemas.js";
+import { clientMetaAssetsSchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema } from "./meta.schemas.js";
 import { consumeMetaOAuthState, findClientMetaAssets, upsertClientMetaAssets } from "./meta.repository.js";
-import { completeMetaAuthorization, createMetaAuthorizationUrl, debugMetaAssets, getMetaStatus, listMetaAssets } from "./meta.service.js";
+import { completeMetaAuthorization, createMetaAuthorizationUrl, debugMetaAssets, getMetaInsights, getMetaStatus, listMetaAssets } from "./meta.service.js";
 
 function assertSuperAdmin(request: FastifyRequest) {
   if (!request.auth) throw request.server.httpErrors.unauthorized("Sessão obrigatória.");
@@ -64,6 +64,19 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
     const { clientAccountId } = request.params as { clientAccountId: string };
     if (!await findClientAccountById(app.db, clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
     return { assets: await findClientMetaAssets(app.db, clientAccountId) };
+  });
+
+  app.get("/clients/:clientAccountId/meta-insights", async (request) => {
+    const auth = assertSuperAdmin(request);
+    const { clientAccountId } = request.params as { clientAccountId: string };
+    if (!await findClientAccountById(app.db, clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
+    const parsed = metaInsightsQuerySchema.safeParse(request.query);
+    if (!parsed.success) throw app.httpErrors.badRequest(parsed.error.issues[0]?.message ?? "Período inválido.");
+    const assets = await findClientMetaAssets(app.db, clientAccountId);
+    if (!assets || (!assets.facebookPageId && !assets.instagramAccountId)) {
+      throw app.httpErrors.badRequest("O cliente ainda não possui ativos Meta vinculados.");
+    }
+    return getMetaInsights(app, auth.user.id, assets, parsed.data);
   });
 
   app.put("/clients/:clientAccountId/meta-assets", async (request) => {
