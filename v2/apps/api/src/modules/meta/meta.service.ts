@@ -113,6 +113,16 @@ type FacebookPost = {
 
 type FacebookPostsPayload = MetaApiError & { data?: FacebookPost[] };
 
+type FacebookPageInsightDiagnosticPayload = MetaApiError & {
+  data?: Array<{
+    name?: string;
+    period?: string;
+    values?: unknown;
+    total_value?: unknown;
+    [key: string]: unknown;
+  }>;
+};
+
 function requireMetaConfig(app: FastifyInstance) {
   const { META_APP_ID, META_APP_SECRET, META_REDIRECT_URI, META_TOKEN_ENCRYPTION_KEY } = app.appEnv;
   if (!META_APP_ID || !META_APP_SECRET || !META_REDIRECT_URI || !META_TOKEN_ENCRYPTION_KEY) {
@@ -216,6 +226,28 @@ async function fetchMetaResult<T extends MetaApiError>(input: {
       },
     };
   }
+}
+
+async function getFacebookPageAccessContext(input: {
+  pageId: string;
+  userToken: string;
+  appSecret: string;
+}) {
+  const path = `/${input.pageId}`;
+  const result = await fetchMetaResult<FacebookPagePayload>({
+    path,
+    token: input.userToken,
+    appSecret: input.appSecret,
+    params: { fields: "id,name,access_token,followers_count,fan_count" },
+    metricOrOperation: "facebook.page",
+  });
+  return {
+    path,
+    page: result.payload,
+    pageToken: result.payload?.access_token ?? input.userToken,
+    tokenSource: result.payload?.access_token ? "page" as const : "user_fallback" as const,
+    warning: result.warning,
+  };
 }
 
 function insightNumber(payload: MetaInsightsPayload | null) {
@@ -481,6 +513,125 @@ export async function debugMetaAssets(app: FastifyInstance, userId: string) {
   };
 }
 
+async function fetchFacebookPageInsightDiagnostic(input: {
+  pageId: string;
+  metric: string;
+  period: "day" | "week" | "days_28";
+  since: string;
+  until: string;
+  pageToken: string;
+  appSecret: string;
+}) {
+  const path = `/${input.pageId}/insights`;
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}${path}`);
+  url.searchParams.set("metric", input.metric);
+  url.searchParams.set("period", input.period);
+  url.searchParams.set("since", input.since);
+  url.searchParams.set("until", input.until);
+  url.searchParams.set("access_token", input.pageToken);
+  url.searchParams.set("appsecret_proof", appSecretProof(input.pageToken, input.appSecret));
+
+  try {
+    const response = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(15_000),
+    });
+    const payload = await response.json().catch(() => ({})) as FacebookPageInsightDiagnosticPayload;
+    const firstItem = payload.data?.[0];
+    const error = payload.error ? {
+      code: payload.error.code ?? null,
+      message: redactMetaSecrets(payload.error.message ?? "Erro sem mensagem retornado pela Meta.", input.pageToken, input.appSecret),
+    } : !response.ok ? {
+      code: null,
+      message: `Meta Graph API respondeu com HTTP ${response.status}`,
+    } : null;
+    return {
+      httpStatus: response.status,
+      metric: input.metric,
+      period: input.period,
+      data: payload.data ?? null,
+      values: firstItem?.values ?? null,
+      total_value: firstItem?.total_value ?? null,
+      error,
+    };
+  } catch {
+    return {
+      httpStatus: null,
+      metric: input.metric,
+      period: input.period,
+      data: null,
+      values: null,
+      total_value: null,
+      error: { code: null, message: "Falha de rede ao consultar a Meta Graph API." },
+    };
+  }
+}
+
+export async function debugFacebookPageInsights(
+  app: FastifyInstance,
+  userId: string,
+  pageId: string,
+  period: MetaInsightsPeriod,
+) {
+  const config = requireMetaConfig(app);
+  const connection = await findMetaConnection(app.db, userId);
+  if (!connection) throw app.httpErrors.badRequest("Conecte uma conta Meta antes de executar o diagnóstico.");
+  if (connection.expiresAt && new Date(connection.expiresAt).getTime() <= Date.now()) {
+    throw app.httpErrors.badRequest("A conexão Meta expirou. Atualize a conexão antes do diagnóstico.");
+  }
+
+  const userToken = decryptToken(connection.encryptedToken, config.encryptionKey);
+  const pageAccess = await getFacebookPageAccessContext({ pageId, userToken, appSecret: config.appSecret });
+  const metricNames = [
+    "page_total_media_view_unique",
+    "page_media_view",
+    "page_post_engagements",
+    "page_views_total",
+  ] as const;
+  const metrics = [];
+  for (const metric of metricNames) {
+    const day = await fetchFacebookPageInsightDiagnostic({
+      pageId,
+      metric,
+      period: "day",
+      since: period.since,
+      until: period.until,
+      pageToken: pageAccess.pageToken,
+      appSecret: config.appSecret,
+    });
+    const results = [day];
+    if (!day.error) {
+      results.push(...await Promise.all((["week", "days_28"] as const).map((insightPeriod) => (
+        fetchFacebookPageInsightDiagnostic({
+          pageId,
+          metric,
+          period: insightPeriod,
+          since: period.since,
+          until: period.until,
+          pageToken: pageAccess.pageToken,
+          appSecret: config.appSecret,
+        })
+      ))));
+    }
+    metrics.push({ metric, results });
+  }
+
+  return {
+    graphVersion: GRAPH_VERSION,
+    pageId,
+    period,
+    pageAccess: {
+      tokenSource: pageAccess.tokenSource,
+      error: pageAccess.warning ? {
+        endpoint: pageAccess.warning.endpoint,
+        code: pageAccess.warning.code,
+        message: pageAccess.warning.message,
+      } : null,
+    },
+    metrics,
+  };
+}
+
 async function getInstagramInsights(input: {
   accountId: string;
   savedUsername: string | null;
@@ -602,19 +753,17 @@ async function getFacebookInsights(input: {
   period: MetaInsightsPeriod;
   warnings: MetaInsightsWarning[];
 }) {
-  const pagePath = `/${input.pageId}`;
-  const page = await fetchMetaResult<FacebookPagePayload>({
-    path: pagePath,
-    token: input.userToken,
+  const pageAccess = await getFacebookPageAccessContext({
+    pageId: input.pageId,
+    userToken: input.userToken,
     appSecret: input.appSecret,
-    params: { fields: "id,name,access_token,followers_count,fan_count" },
-    metricOrOperation: "facebook.page",
   });
-  if (page.warning) input.warnings.push(page.warning);
-  const pageToken = page.payload?.access_token ?? input.userToken;
-  if (page.payload && !page.payload.access_token) {
+  if (pageAccess.warning) input.warnings.push(pageAccess.warning);
+  const page = pageAccess.page;
+  const pageToken = pageAccess.pageToken;
+  if (page && pageAccess.tokenSource === "user_fallback") {
     input.warnings.push({
-      endpoint: pagePath,
+      endpoint: pageAccess.path,
       code: null,
       message: "A Meta não retornou um Page Access Token; as leituras da Página serão tentadas com o token atual.",
       metricOrOperation: "facebook.pageAccessToken",
@@ -711,14 +860,14 @@ async function getFacebookInsights(input: {
 
   return {
     pageId: input.pageId,
-    pageName: page.payload?.name ?? input.savedPageName,
+    pageName: page?.name ?? input.savedPageName,
     metrics: {
       reach: metrics.page_total_media_view_unique,
       views: metrics.page_media_view,
       impressions: null,
       engagement: metrics.page_post_engagements,
-      followers: page.payload?.followers_count ?? null,
-      fans: page.payload?.fan_count ?? null,
+      followers: page?.followers_count ?? null,
+      fans: page?.fan_count ?? null,
       pageViews: metrics.page_views_total,
     },
     topContent,

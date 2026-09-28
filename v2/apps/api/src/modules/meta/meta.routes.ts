@@ -2,7 +2,7 @@ import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { findClientAccountById } from "../clients/clients.repository.js";
 import { clientMetaAssetsSchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema } from "./meta.schemas.js";
 import { consumeMetaOAuthState, findClientMetaAssets, upsertClientMetaAssets } from "./meta.repository.js";
-import { completeMetaAuthorization, createMetaAuthorizationUrl, debugMetaAssets, getMetaInsights, getMetaStatus, listMetaAssets } from "./meta.service.js";
+import { completeMetaAuthorization, createMetaAuthorizationUrl, debugFacebookPageInsights, debugMetaAssets, getMetaInsights, getMetaStatus, listMetaAssets } from "./meta.service.js";
 
 function assertSuperAdmin(request: FastifyRequest) {
   if (!request.auth) throw request.server.httpErrors.unauthorized("Sessão obrigatória.");
@@ -57,6 +57,15 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
   app.get("/meta/debug/assets", async (request) => {
     const auth = assertSuperAdmin(request);
     return debugMetaAssets(app, auth.user.id);
+  });
+
+  app.get("/meta/debug/page-insights/:pageId", async (request) => {
+    const auth = assertSuperAdmin(request);
+    const { pageId } = request.params as { pageId: string };
+    if (!/^\d+$/.test(pageId)) throw app.httpErrors.badRequest("Page ID inválido.");
+    const parsed = metaInsightsQuerySchema.safeParse(request.query);
+    if (!parsed.success) throw app.httpErrors.badRequest(parsed.error.issues[0]?.message ?? "Período inválido.");
+    return debugFacebookPageInsights(app, auth.user.id, pageId, parsed.data);
   });
 
   app.get("/clients/:clientAccountId/meta-assets", async (request) => {
