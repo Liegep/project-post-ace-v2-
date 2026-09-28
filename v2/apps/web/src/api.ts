@@ -333,6 +333,15 @@ export type DashboardApprovedPauta = { id: string; title: string; approvedAt: st
 export type AgendaLabel = { id: string; name: string; color: string };
 export type AgendaRecurrence = "none" | "weekdays" | "weekly" | "monthly_nth_weekday";
 export type AgendaEvent = { id: string; sourceEventId?: string; title: string; taskDescription?: string | null; startsAt: string; endsAt?: string | null; recurrenceType?: AgendaRecurrence; repeatUntil?: string | null; color: string; isCompleted: boolean; clientAccountId?: string | null; clientName?: string | null; labelId?: string | null; labelName?: string | null; meetLink?: string | null };
+export type MetaStatus = { connected: boolean; expiresAt: string | null; accountName: string | null; metaUserId: string | null };
+export type MetaAssetPage = { id: string; name: string; instagramAccount: { id: string; username: string } | null };
+export type ClientMetaAssets = {
+  facebookPageId: string | null;
+  facebookPageName: string | null;
+  instagramAccountId: string | null;
+  instagramUsername: string | null;
+  updatedAt?: string;
+};
 
 type ApiCardDetailResponse = {
   card: ApiBoardCard;
@@ -1135,6 +1144,31 @@ export async function saveAdminTrackerSettingsBySlug(slug: string, settings: Cli
       ...settings,
       visibleColumnIds: settings.columns.filter((column) => column.visibleToClient).map((column) => column.id),
     }),
+  });
+}
+
+export async function loadMetaStatus() {
+  return fetchJson<MetaStatus>("/api/meta/status");
+}
+
+export async function beginMetaConnection(returnTo: string) {
+  return fetchJson<{ authorizationUrl: string }>(`/api/meta/connect?returnTo=${encodeURIComponent(returnTo)}`);
+}
+
+export async function loadMetaAssets() {
+  return fetchJson<{ pages: MetaAssetPage[] }>("/api/meta/assets");
+}
+
+export async function loadClientMetaAssetsBySlug(slug: string) {
+  const client = await findAdminClientBySlug(slug);
+  return fetchJson<{ assets: ClientMetaAssets | null }>(`/api/clients/${client.id}/meta-assets`);
+}
+
+export async function saveClientMetaAssetsBySlug(slug: string, assets: ClientMetaAssets) {
+  const client = await findAdminClientBySlug(slug);
+  return sendJson<{ assets: ClientMetaAssets }>(`/api/clients/${client.id}/meta-assets`, {
+    method: "PUT",
+    body: JSON.stringify(assets),
   });
 }
 

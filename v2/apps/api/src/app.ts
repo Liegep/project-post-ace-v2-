@@ -35,6 +35,8 @@ import { proposalRoutes } from "./modules/proposals/proposals.routes.js";
 import { designBriefRoutes } from "./modules/design-briefs/design-briefs.routes.js";
 import { dashboardNotesRoutes } from "./modules/dashboard-notes/dashboard-notes.routes.js";
 import { scheduledCardArchiverPluginRegistered } from "./plugins/scheduled-card-archiver.js";
+import { ensureMetaStorage } from "./modules/meta/meta.storage.js";
+import { metaRoutes } from "./modules/meta/meta.routes.js";
 
 export async function buildApp() {
   const appEnv = loadEnv();
@@ -64,6 +66,7 @@ export async function buildApp() {
     let databaseAvailableAtStartup = true;
     try {
       await ensureMcpStorage(app.db);
+      await ensureMetaStorage(app.db);
     } catch (error) {
       databaseAvailableAtStartup = false;
       app.log.error(error, "Database unavailable during startup; continuing with degraded API");
@@ -92,6 +95,7 @@ export async function buildApp() {
     await app.register(proposalRoutes, { prefix: "/api" });
     await app.register(designBriefRoutes, { prefix: "/api" });
     await app.register(dashboardNotesRoutes, { prefix: "/api" });
+    await app.register(metaRoutes, { prefix: "/api" });
     await app.register(scheduledCardArchiverPluginRegistered);
 
     if (databaseAvailableAtStartup) {
