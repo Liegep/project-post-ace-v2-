@@ -18,6 +18,34 @@ type MetaAccountsResponse = {
   error?: { message?: string };
 };
 
+type MetaDiagnosticError = {
+  endpoint: string;
+  code: number | null;
+  message: string;
+  apparentlyRequiredPermission: string;
+};
+
+type MetaPaging = {
+  cursors?: { before?: string; after?: string };
+  next?: string;
+  previous?: string;
+};
+
+type MetaDiagnosticResponse<T> = {
+  data?: T[];
+  paging?: MetaPaging;
+  error?: { code?: number; message?: string };
+};
+
+type MetaDiagnosticPage = {
+  id?: string;
+  name?: string;
+  tasks?: string[];
+  instagram_business_account?: { id?: string; username?: string } | null;
+};
+
+type MetaDiagnosticBusiness = { id?: string; name?: string };
+
 function requireMetaConfig(app: FastifyInstance) {
   const { META_APP_ID, META_APP_SECRET, META_REDIRECT_URI, META_TOKEN_ENCRYPTION_KEY } = app.appEnv;
   if (!META_APP_ID || !META_APP_SECRET || !META_REDIRECT_URI || !META_TOKEN_ENCRYPTION_KEY) {
@@ -57,6 +85,78 @@ async function getMetaJson<T>(url: URL): Promise<T> {
   const payload = await response.json().catch(() => ({})) as T & { error?: { message?: string } };
   if (!response.ok || payload.error) throw new Error(payload.error?.message || `Meta Graph API respondeu com HTTP ${response.status}`);
   return payload;
+}
+
+function safePaging(paging: MetaPaging | undefined, page: number) {
+  return {
+    page,
+    cursors: paging?.cursors ?? null,
+    hasNext: Boolean(paging?.next),
+    hasPrevious: Boolean(paging?.previous),
+  };
+}
+
+function redactMetaSecrets(message: string, accessToken: string, appSecret: string) {
+  const proof = appSecretProof(accessToken, appSecret);
+  return message.split(accessToken).join("[REDACTED]").split(proof).join("[REDACTED]");
+}
+
+async function fetchMetaDiagnosticCollection<T>(input: {
+  path: string;
+  fields: string;
+  token: string;
+  appSecret: string;
+  apparentlyRequiredPermission: string;
+}) {
+  const data: T[] = [];
+  const paging: ReturnType<typeof safePaging>[] = [];
+  let next: string | undefined;
+  let page = 0;
+  let error: MetaDiagnosticError | null = null;
+
+  do {
+    page += 1;
+    const url = next
+      ? new URL(next)
+      : new URL(`https://graph.facebook.com/${GRAPH_VERSION}${input.path}`);
+    if (!next) {
+      url.searchParams.set("fields", input.fields);
+      url.searchParams.set("limit", "100");
+      url.searchParams.set("access_token", input.token);
+    }
+    url.searchParams.set("appsecret_proof", appSecretProof(input.token, input.appSecret));
+
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(15_000),
+      });
+      const payload = await response.json().catch(() => ({})) as MetaDiagnosticResponse<T>;
+      if (!response.ok || payload.error) {
+        const message = payload.error?.message ?? `Meta Graph API respondeu com HTTP ${response.status}`;
+        error = {
+          endpoint: input.path,
+          code: payload.error?.code ?? null,
+          message: redactMetaSecrets(message, input.token, input.appSecret),
+          apparentlyRequiredPermission: input.apparentlyRequiredPermission,
+        };
+        break;
+      }
+      data.push(...(payload.data ?? []));
+      paging.push(safePaging(payload.paging, page));
+      next = payload.paging?.next;
+    } catch {
+      error = {
+        endpoint: input.path,
+        code: null,
+        message: "Falha de rede ao consultar a Meta Graph API.",
+        apparentlyRequiredPermission: input.apparentlyRequiredPermission,
+      };
+      break;
+    }
+  } while (next);
+
+  return { data, paging, totalCount: data.length, error };
 }
 
 export async function createMetaAuthorizationUrl(app: FastifyInstance, userId: string, returnPath: string) {
@@ -149,4 +249,82 @@ export async function listMetaAssets(app: FastifyInstance, userId: string) {
     next = response.paging?.next;
   } while (next);
   return { pages };
+}
+
+export async function debugMetaAssets(app: FastifyInstance, userId: string) {
+  const config = requireMetaConfig(app);
+  const connection = await findMetaConnection(app.db, userId);
+  if (!connection) throw app.httpErrors.badRequest("Conecte uma conta Meta antes de executar o diagnóstico.");
+  if (connection.expiresAt && new Date(connection.expiresAt).getTime() <= Date.now()) {
+    throw app.httpErrors.badRequest("A conexão Meta expirou. Atualize a conexão antes do diagnóstico.");
+  }
+
+  const token = decryptToken(connection.encryptedToken, config.encryptionKey);
+  const errors: MetaDiagnosticError[] = [];
+  const accounts = await fetchMetaDiagnosticCollection<MetaDiagnosticPage>({
+    path: "/me/accounts",
+    fields: "id,name,tasks,instagram_business_account{id,username}",
+    token,
+    appSecret: config.appSecret,
+    apparentlyRequiredPermission: "pages_show_list; pages_read_engagement e instagram_basic para os campos relacionados",
+  });
+  if (accounts.error) errors.push(accounts.error);
+
+  const businesses = await fetchMetaDiagnosticCollection<MetaDiagnosticBusiness>({
+    path: "/me/businesses",
+    fields: "id,name",
+    token,
+    appSecret: config.appSecret,
+    apparentlyRequiredPermission: "business_management",
+  });
+  if (businesses.error) errors.push(businesses.error);
+
+  const businessPortfolios = [];
+  if (!businesses.error) {
+    for (const business of businesses.data) {
+      if (!business.id) continue;
+      const [ownedPages, clientPages] = await Promise.all([
+        fetchMetaDiagnosticCollection<MetaDiagnosticPage>({
+          path: `/${business.id}/owned_pages`,
+          fields: "id,name,instagram_business_account{id,username}",
+          token,
+          appSecret: config.appSecret,
+          apparentlyRequiredPermission: "business_management",
+        }),
+        fetchMetaDiagnosticCollection<MetaDiagnosticPage>({
+          path: `/${business.id}/client_pages`,
+          fields: "id,name,instagram_business_account{id,username}",
+          token,
+          appSecret: config.appSecret,
+          apparentlyRequiredPermission: "business_management",
+        }),
+      ]);
+      if (ownedPages.error) errors.push(ownedPages.error);
+      if (clientPages.error) errors.push(clientPages.error);
+      businessPortfolios.push({
+        id: business.id,
+        name: business.name ?? null,
+        ownedPages: { data: ownedPages.data, paging: ownedPages.paging, totalCount: ownedPages.totalCount },
+        clientPages: { data: clientPages.data, paging: clientPages.paging, totalCount: clientPages.totalCount },
+      });
+    }
+  }
+
+  return {
+    graphVersion: GRAPH_VERSION,
+    accounts: {
+      endpoint: "/me/accounts",
+      fields: ["id", "name", "tasks", "instagram_business_account{id,username}"],
+      data: accounts.data,
+      paging: accounts.paging,
+      totalCount: accounts.totalCount,
+    },
+    businesses: {
+      endpoint: "/me/businesses",
+      data: businessPortfolios,
+      paging: businesses.paging,
+      totalCount: businesses.totalCount,
+    },
+    errors,
+  };
 }
