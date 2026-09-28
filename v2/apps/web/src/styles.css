@@ -10619,3 +10619,22 @@ button {
     grid-auto-rows: auto;
   }
 }
+
+.meta-integration-settings { display: grid; gap: 16px; padding: 4px; }
+.meta-integration-settings > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px; border: 1px solid rgba(118, 104, 220, .18); border-radius: 16px; background: rgba(255, 255, 255, .72); }
+.meta-integration-settings > header > div { display: flex; align-items: center; gap: 11px; }
+.meta-integration-settings h4, .meta-integration-settings p { margin: 0; }
+.meta-integration-settings header p { margin-top: 3px; color: #6c6880; font-size: .86rem; }
+.meta-status-dot { width: 11px; height: 11px; border-radius: 50%; background: #b7b3c3; box-shadow: 0 0 0 4px rgba(183, 179, 195, .15); }
+.meta-status-dot.connected { background: #2fa36b; box-shadow: 0 0 0 4px rgba(47, 163, 107, .14); }
+.meta-expiration { color: #777187; }
+.meta-assets-button { justify-self: start; }
+.meta-assets-form { display: grid; gap: 13px; padding: 16px; border-radius: 16px; background: rgba(247, 246, 252, .9); }
+.meta-assets-form label { display: grid; gap: 6px; color: #4e485d; font-size: .84rem; font-weight: 700; }
+.meta-assets-form select { width: 100%; min-height: 42px; padding: 0 11px; border: 1px solid #ddd8ea; border-radius: 10px; background: #fff; color: #302a3d; }
+.meta-assets-form > button { justify-self: start; }
+.meta-current-assets { padding: 12px 14px; border-radius: 12px; background: #f4f1fb; color: #544d65; }
+
+@media (max-width: 640px) {
+  .meta-integration-settings > header { align-items: stretch; flex-direction: column; }
+}

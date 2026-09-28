@@ -163,6 +163,13 @@ import {
   type TextComment,
   type TextDocument,
   type TextTag,
+  beginMetaConnection,
+  loadMetaAssets,
+  loadMetaStatus,
+  loadClientMetaAssetsBySlug,
+  saveClientMetaAssetsBySlug,
+  type ClientMetaAssets,
+  type MetaAssetPage,
 } from "./api";
 import { ACCESS_TOKEN_KEY, completePasswordResetWithApi, loginWithApi, requestPasswordResetWithApi, restoreApiSession } from "./authApi";
 import { demoUsers } from "./mockData";
@@ -1216,14 +1223,112 @@ const PORTAL_ACCESS_COPY: Record<PortalAccessLevel, { label: string; description
 };
 
 function ClientSettingsPanel({ slug, canManageAccess, onTrackingChange }: { slug: string; canManageAccess: boolean; onTrackingChange: (active: boolean) => void }) {
-  const [section, setSection] = useState<"people" | "portal">("portal");
+  const [section, setSection] = useState<"people" | "portal" | "meta">("portal");
   return <div className="client-settings-panel">
     <nav className="client-settings-tabs" aria-label="Configurações do cliente">
       <button className={section === "portal" ? "active" : ""} onClick={() => setSection("portal")}><UiIcon name="settings" />Kanban e portal</button>
       <button className={section === "people" ? "active" : ""} onClick={() => setSection("people")}><UiIcon name="users" />Pessoas e acessos</button>
+      {canManageAccess ? <button className={section === "meta" ? "active" : ""} onClick={() => setSection("meta")}><UiIcon name="link" />Integrações Meta</button> : null}
     </nav>
-    {section === "people" ? <ClientPeopleAccessPanel slug={slug} canManage={canManageAccess} /> : <ClientTrackerPanel slug={slug} onTrackingChange={onTrackingChange} />}
+    {section === "people" ? <ClientPeopleAccessPanel slug={slug} canManage={canManageAccess} /> : section === "meta" ? <ClientMetaIntegrationPanel slug={slug} /> : <ClientTrackerPanel slug={slug} onTrackingChange={onTrackingChange} />}
   </div>;
+}
+
+const EMPTY_CLIENT_META_ASSETS: ClientMetaAssets = {
+  facebookPageId: null,
+  facebookPageName: null,
+  instagramAccountId: null,
+  instagramUsername: null,
+};
+
+function ClientMetaIntegrationPanel({ slug }: { slug: string }) {
+  const [status, setStatus] = useState<Awaited<ReturnType<typeof loadMetaStatus>> | null>(null);
+  const [pages, setPages] = useState<MetaAssetPage[]>([]);
+  const [selection, setSelection] = useState<ClientMetaAssets>(EMPTY_CLIENT_META_ASSETS);
+  const [loading, setLoading] = useState(true);
+  const [loadingAssets, setLoadingAssets] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    Promise.all([loadMetaStatus(), loadClientMetaAssetsBySlug(slug)])
+      .then(([nextStatus, saved]) => {
+        if (!active) return;
+        setStatus(nextStatus);
+        setSelection(saved.assets ?? EMPTY_CLIENT_META_ASSETS);
+      })
+      .catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : "Não foi possível carregar a integração Meta."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [slug]);
+
+  const connect = async () => {
+    setError("");
+    try {
+      const result = await beginMetaConnection(`#/admin/${slug}`);
+      window.location.assign(result.authorizationUrl);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível iniciar a conexão Meta.");
+    }
+  };
+
+  const revealAssets = async () => {
+    setLoadingAssets(true); setError(""); setMessage("");
+    try {
+      const result = await loadMetaAssets();
+      setPages(result.pages);
+      if (result.pages.length === 0) setMessage("Nenhuma Página foi disponibilizada por esta conta Meta.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível listar os ativos Meta.");
+    } finally { setLoadingAssets(false); }
+  };
+
+  const choosePage = (pageId: string) => {
+    const page = pages.find((item) => item.id === pageId);
+    setSelection(page ? {
+      facebookPageId: page.id,
+      facebookPageName: page.name,
+      instagramAccountId: page.instagramAccount?.id ?? null,
+      instagramUsername: page.instagramAccount?.username ?? null,
+    } : EMPTY_CLIENT_META_ASSETS);
+  };
+
+  const save = async () => {
+    setSaving(true); setError(""); setMessage("");
+    try {
+      const result = await saveClientMetaAssetsBySlug(slug, selection);
+      setSelection(result.assets);
+      setMessage("Integração do cliente salva.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível salvar a integração.");
+    } finally { setSaving(false); }
+  };
+
+  if (loading) return <p className="drawer-helper">Carregando integração Meta...</p>;
+  return <section className="meta-integration-settings">
+    <header>
+      <div><span className={`meta-status-dot ${status?.connected ? "connected" : ""}`} /><div><h4>Meta</h4><p>Status: {status?.connected ? "Conectado" : "Não conectado"}{status?.accountName ? ` · ${status.accountName}` : ""}</p></div></div>
+      <button className="gradient-button" type="button" onClick={() => void connect()}>{status?.connected ? "Atualizar conexão" : "Conectar Meta"}</button>
+    </header>
+    {status?.expiresAt ? <small className="meta-expiration">Token válido até {new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(new Date(status.expiresAt))}.</small> : null}
+    {status?.connected ? <>
+      <button className="drawer-secondary-action meta-assets-button" type="button" disabled={loadingAssets} onClick={() => void revealAssets()}>{loadingAssets ? "Buscando ativos..." : "Ver ativos disponíveis"}</button>
+      {pages.length ? <div className="meta-assets-form">
+        <label>Facebook<select value={selection.facebookPageId ?? ""} onChange={(event) => choosePage(event.target.value)}><option value="">Selecione uma Página</option>{pages.map((page) => <option key={page.id} value={page.id}>{page.name}</option>)}</select></label>
+        <label>Instagram<select value={selection.instagramAccountId ?? ""} disabled={!selection.facebookPageId} onChange={(event) => {
+          const page = pages.find((item) => item.id === selection.facebookPageId);
+          const instagram = page?.instagramAccount?.id === event.target.value ? page.instagramAccount : null;
+          setSelection((current) => ({ ...current, instagramAccountId: instagram?.id ?? null, instagramUsername: instagram?.username ?? null }));
+        }}><option value="">{selection.facebookPageId ? "Sem conta profissional conectada" : "Selecione uma Página primeiro"}</option>{pages.filter((page) => page.id === selection.facebookPageId && page.instagramAccount).map((page) => <option key={page.instagramAccount!.id} value={page.instagramAccount!.id}>@{page.instagramAccount!.username}</option>)}</select></label>
+        <button className="gradient-button" type="button" disabled={saving} onClick={() => void save()}>{saving ? "Salvando..." : "Salvar integração"}</button>
+      </div> : selection.facebookPageId ? <p className="meta-current-assets">Vínculo atual: {selection.facebookPageName}{selection.instagramUsername ? ` · @${selection.instagramUsername}` : " · sem Instagram"}</p> : null}
+    </> : <p className="drawer-helper">Conecte a conta corporativa da Liege Studio para selecionar as Páginas e contas profissionais dos clientes.</p>}
+    {message ? <p className="client-access-message">{message}</p> : null}
+    {error ? <p className="tracker-error">{error}</p> : null}
+  </section>;
 }
 
 function ClientPeopleAccessPanel({ slug, canManage }: { slug: string; canManage: boolean }) {
