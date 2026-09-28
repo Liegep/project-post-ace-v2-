@@ -7,6 +7,7 @@ const GRAPH_VERSION = "v26.0";
 const META_SCOPES = [
   "pages_show_list",
   "pages_read_engagement",
+  "pages_read_user_content",
   "instagram_basic",
   "instagram_manage_insights",
   "business_management",
@@ -620,14 +621,7 @@ async function getFacebookInsights(input: {
     });
   }
 
-  input.warnings.push({
-    endpoint: `/${input.pageId}/insights`,
-    code: null,
-    message: "page_impressions_unique foi descontinuada acima da Graph API v25; alcance da Página não é consultado na v26.",
-    metricOrOperation: "facebook.page.reach",
-  });
-
-  const metricNames = ["page_impressions", "page_post_engagements", "page_views_total"] as const;
+  const metricNames = ["page_total_media_view_unique", "page_media_view", "page_post_engagements", "page_views_total"] as const;
   const metricValues = await Promise.all(metricNames.map(async (metric) => [
     metric,
     await fetchInsightMetric({
@@ -641,6 +635,23 @@ async function getFacebookInsights(input: {
     }),
   ] as const));
   const metrics = Object.fromEntries(metricValues) as Record<typeof metricNames[number], number | null>;
+  input.warnings.push({
+    endpoint: `/${input.pageId}/insights`,
+    code: null,
+    message: "page_impressions não é uma métrica válida na Graph API v26 e não possui equivalente direto. page_media_view é retornada separadamente como views.",
+    metricOrOperation: "facebook.page.impressions",
+  });
+  for (const metric of metricNames) {
+    const operation = `facebook.page.${metric}`;
+    if (metrics[metric] === null && !input.warnings.some((warning) => warning.metricOrOperation === operation)) {
+      input.warnings.push({
+        endpoint: `/${input.pageId}/insights`,
+        code: null,
+        message: "A Meta não retornou valor numérico para esta métrica no período informado.",
+        metricOrOperation: operation,
+      });
+    }
+  }
 
   const postsPath = `/${input.pageId}/posts`;
   const posts = await fetchMetaResult<FacebookPostsPayload>({
@@ -656,7 +667,7 @@ async function getFacebookInsights(input: {
     metricOrOperation: "facebook.posts.list",
   });
   if (posts.warning) input.warnings.push(posts.warning);
-  const topContent = (posts.payload?.data ?? []).filter((post) => post.id).map((post) => {
+  const postCandidates = (posts.payload?.data ?? []).filter((post) => post.id).map((post) => {
     const reactions = post.reactions?.summary?.total_count ?? null;
     const comments = post.comments?.summary?.total_count ?? null;
     const shares = post.shares?.count ?? null;
@@ -671,13 +682,40 @@ async function getFacebookInsights(input: {
       interactions: (reactions ?? 0) + (comments ?? 0) + (shares ?? 0),
     };
   }).sort((left, right) => right.interactions - left.interactions).slice(0, 10);
+  const topContent = [];
+  for (const post of postCandidates) {
+    const postMetrics = ["post_total_media_view_unique", "post_media_view", "post_clicks"] as const;
+    const values = await Promise.all(postMetrics.map(async (metric) => {
+      const path = `/${post.id}/insights`;
+      const result = await fetchMetaResult<MetaInsightsPayload>({
+        path,
+        token: pageToken,
+        appSecret: input.appSecret,
+        params: { metric, period: "lifetime" },
+        metricOrOperation: `facebook.post.${post.id}.${metric}`,
+      });
+      if (result.warning) input.warnings.push(result.warning);
+      return [metric, insightNumber(result.payload)] as const;
+    }));
+    const postInsight = Object.fromEntries(values) as Record<typeof postMetrics[number], number | null>;
+    topContent.push({
+      ...post,
+      reach: postInsight.post_total_media_view_unique,
+      views: postInsight.post_media_view,
+      clicks: postInsight.post_clicks,
+    });
+  }
+  topContent.sort((left, right) => (
+    (right.interactions + (right.clicks ?? 0)) - (left.interactions + (left.clicks ?? 0))
+  ));
 
   return {
     pageId: input.pageId,
     pageName: page.payload?.name ?? input.savedPageName,
     metrics: {
-      reach: null,
-      impressions: metrics.page_impressions,
+      reach: metrics.page_total_media_view_unique,
+      views: metrics.page_media_view,
+      impressions: null,
       engagement: metrics.page_post_engagements,
       followers: page.payload?.followers_count ?? null,
       fans: page.payload?.fan_count ?? null,
