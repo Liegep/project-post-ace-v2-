@@ -1902,6 +1902,8 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
   const [linksOpen, setLinksOpen] = useState(false);
   const [kanbanLinks, setKanbanLinks] = useState<Array<{ slug: string; clientName: string; links: DrawerLink[] }>>([]);
   const [linksLoading, setLinksLoading] = useState(false);
+  const dashboardNotificationIdsRef = useRef<Set<string> | null>(null);
+  const dashboardAudioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     const interval = window.setInterval(() => setCurrentTime(new Date()), 1_000);
@@ -1917,6 +1919,59 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
     const timeout = window.setTimeout(() => setScheduledNotice(null), 2_300);
     return () => window.clearTimeout(timeout);
   }, [scheduledNotice]);
+
+  const playDashboardNotificationTone = useCallback(() => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const context = dashboardAudioContextRef.current ?? new AudioContextClass();
+      dashboardAudioContextRef.current = context;
+      const play = () => {
+        const now = context.currentTime;
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(880, now);
+        oscillator.frequency.exponentialRampToValueAtTime(660, now + 0.18);
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(0.16, now + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(now);
+        oscillator.stop(now + 0.26);
+      };
+      if (context.state === "suspended") {
+        void context.resume().then(play).catch(() => undefined);
+      } else {
+        play();
+      }
+    } catch {
+      // Som é complementar; o dashboard continua funcionando sem áudio.
+    }
+  }, []);
+
+  useEffect(() => {
+    const unlockAudio = () => {
+      try {
+        const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioContextClass) return;
+        const context = dashboardAudioContextRef.current ?? new AudioContextClass();
+        dashboardAudioContextRef.current = context;
+        if (context.state === "suspended") void context.resume().catch(() => undefined);
+      } catch {
+        // Alguns navegadores não permitem Web Audio; nada mais precisa ser feito.
+      }
+    };
+    window.addEventListener("pointerdown", unlockAudio, { once: true });
+    window.addEventListener("keydown", unlockAudio, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+      void dashboardAudioContextRef.current?.close().catch(() => undefined);
+      dashboardAudioContextRef.current = null;
+    };
+  }, []);
 
   const greeting = currentTime.getHours() < 12 ? "Bom dia" : currentTime.getHours() < 18 ? "Boa tarde" : "Boa noite";
 
@@ -1957,9 +2012,22 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
       .then(({ items }) => { if (active) setClients(items); })
       .catch(() => { if (active) setClients([]); })
       .finally(() => { if (active) setLoading(false); });
+
     const refreshOverview = () => loadDashboardOverview()
       .then((overview) => {
         if (!active) return;
+        const nextNotificationIds = new Set<string>([
+          ...(overview.clientActivities ?? []).map((item) => `activity:${item.id}`),
+          ...(overview.approvedPautas ?? []).map((item) => `pauta:${item.id}`),
+          ...(overview.clientSubmissions ?? []).map((item) => `submission:${item.id}`),
+        ]);
+        const previousIds = dashboardNotificationIdsRef.current;
+        if (previousIds) {
+          const hasNewNotification = Array.from(nextNotificationIds).some((id) => !previousIds.has(id));
+          if (hasNewNotification) playDashboardNotificationTone();
+        }
+        dashboardNotificationIdsRef.current = nextNotificationIds;
+
         setStatistics(overview.statistics ?? EMPTY_DASHBOARD_STATISTICS);
         setUpcomingPosts(overview.upcomingPosts);
         setPostsToday(overview.postsToday ?? []);
@@ -1970,20 +2038,30 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
         setInternalMessages(loadInternalApprovalMessages(session.id));
       })
       .catch(() => undefined);
-    const refreshDashboard = () => Promise.all([refreshClients(), refreshOverview()]);
-    void refreshDashboard();
-    let lastRefreshAt = Date.now();
-    const refreshOnFocus = () => {
-      if (Date.now() - lastRefreshAt < 10 * 60_000) return;
-      lastRefreshAt = Date.now();
-      void refreshDashboard();
+
+    void Promise.all([refreshClients(), refreshOverview()]);
+
+    let lastClientRefreshAt = Date.now();
+    const refreshVisibleDashboard = () => {
+      if (document.visibilityState !== "visible") return;
+      void refreshOverview();
+      if (Date.now() - lastClientRefreshAt >= 10 * 60_000) {
+        lastClientRefreshAt = Date.now();
+        void refreshClients();
+      }
     };
-    const refreshOnVisibility = () => { if (document.visibilityState === "visible") refreshOnFocus(); };
-    const interval = window.setInterval(() => { if (document.visibilityState === "visible") refreshOnFocus(); }, 10 * 60_000);
+    const interval = window.setInterval(refreshVisibleDashboard, 60_000);
+    const refreshOnFocus = () => refreshVisibleDashboard();
+    const refreshOnVisibility = () => { if (document.visibilityState === "visible") refreshVisibleDashboard(); };
     window.addEventListener("focus", refreshOnFocus);
     document.addEventListener("visibilitychange", refreshOnVisibility);
-    return () => { active = false; window.clearInterval(interval); window.removeEventListener("focus", refreshOnFocus); document.removeEventListener("visibilitychange", refreshOnVisibility); };
-  }, []);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnVisibility);
+    };
+  }, [playDashboardNotificationTone, session.id]);
   useEffect(() => { const sync = () => setInternalMessages(loadInternalApprovalMessages(session.id)); window.addEventListener("storage", sync); const timer = window.setInterval(sync, 5_000); return () => { window.removeEventListener("storage", sync); window.clearInterval(timer); }; }, [session.id]);
 
   const updateForm = (key: keyof typeof form, value: string) => {
