@@ -519,15 +519,20 @@ async function fetchFacebookPageInsightDiagnostic(input: {
   period: "day" | "week" | "days_28";
   since: string;
   until: string;
+  metricType?: "total_value";
   pageToken: string;
   appSecret: string;
 }) {
   const path = `/${input.pageId}/insights`;
   const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}${path}`);
-  url.searchParams.set("metric", input.metric);
-  url.searchParams.set("period", input.period);
-  url.searchParams.set("since", input.since);
-  url.searchParams.set("until", input.until);
+  const params = {
+    metric: input.metric,
+    period: input.period,
+    since: input.since,
+    until: input.until,
+    ...(input.metricType ? { metric_type: input.metricType } : {}),
+  };
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
   url.searchParams.set("access_token", input.pageToken);
   url.searchParams.set("appsecret_proof", appSecretProof(input.pageToken, input.appSecret));
 
@@ -549,6 +554,7 @@ async function fetchFacebookPageInsightDiagnostic(input: {
       httpStatus: response.status,
       metric: input.metric,
       period: input.period,
+      params,
       data: payload.data ?? null,
       values: firstItem?.values ?? null,
       total_value: firstItem?.total_value ?? null,
@@ -559,6 +565,7 @@ async function fetchFacebookPageInsightDiagnostic(input: {
       httpStatus: null,
       metric: input.metric,
       period: input.period,
+      params,
       data: null,
       values: null,
       total_value: null,
@@ -599,6 +606,16 @@ export async function debugFacebookPageInsights(
       pageToken: pageAccess.pageToken,
       appSecret: config.appSecret,
     });
+    const totalValue = await fetchFacebookPageInsightDiagnostic({
+      pageId,
+      metric,
+      period: "day",
+      since: period.since,
+      until: period.until,
+      metricType: "total_value",
+      pageToken: pageAccess.pageToken,
+      appSecret: config.appSecret,
+    });
     const results = [day];
     if (!day.error) {
       results.push(...await Promise.all((["week", "days_28"] as const).map((insightPeriod) => (
@@ -613,7 +630,7 @@ export async function debugFacebookPageInsights(
         })
       ))));
     }
-    metrics.push({ metric, results });
+    metrics.push({ metric, results, totalValue });
   }
 
   return {
