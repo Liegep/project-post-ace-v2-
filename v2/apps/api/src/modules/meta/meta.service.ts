@@ -8,6 +8,7 @@ const META_SCOPES = [
   "pages_read_engagement",
   "instagram_basic",
   "instagram_manage_insights",
+  "business_management",
 ];
 
 type MetaTokenResponse = { access_token?: string; token_type?: string; expires_in?: number; error?: { message?: string } };
