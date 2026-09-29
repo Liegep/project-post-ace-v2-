@@ -1010,7 +1010,58 @@ export async function scheduleInstagramCardPublication(app: FastifyInstance, inp
   });
 }
 
+const INSTAGRAM_CONTAINER_POLL_ATTEMPTS = 10;
+const INSTAGRAM_CONTAINER_POLL_INTERVAL_MS = 2_000;
+
+function wait(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function waitForInstagramContainer(app: FastifyInstance, input: {
+  publicationId: string;
+  containerId: string;
+  token: string;
+  appSecret: string;
+}) {
+  for (let attempt = 1; attempt <= INSTAGRAM_CONTAINER_POLL_ATTEMPTS; attempt += 1) {
+    await wait(INSTAGRAM_CONTAINER_POLL_INTERVAL_MS);
+    const result = await fetchMetaResult<MetaApiError & { status_code?: string; error_message?: string }>({
+      app,
+      path: `/${input.containerId}`,
+      token: input.token,
+      appSecret: input.appSecret,
+      params: { fields: "status_code" },
+      metricOrOperation: "instagram.publish.containerStatus",
+    });
+    if (!result.payload) {
+      throw new Error(result.warning?.message || "Não foi possível consultar o processamento da imagem na Meta.");
+    }
+    const statusCode = result.payload.status_code?.trim().toUpperCase() || "UNKNOWN";
+    app.log.info({
+      publicationId: input.publicationId,
+      containerId: input.containerId,
+      attempt,
+      status_code: statusCode,
+    }, "Instagram media container status checked");
+    if (statusCode === "FINISHED") return;
+    if (statusCode === "ERROR" || result.payload.error_message) {
+      throw new Error(result.payload.error_message || "A Meta encontrou um erro ao processar a imagem.");
+    }
+    if (statusCode === "EXPIRED") {
+      throw new Error("O container da imagem expirou antes da publicação.");
+    }
+    if (statusCode === "PUBLISHED") {
+      throw new Error("A Meta informou que este container já foi publicado.");
+    }
+    if (statusCode !== "IN_PROGRESS") {
+      throw new Error(`A Meta retornou um status inesperado ao processar a imagem: ${statusCode}.`);
+    }
+  }
+  throw new Error("A Meta ainda não concluiu o processamento da imagem. Tente publicar novamente.");
+}
+
 async function publishInstagramImage(app: FastifyInstance, input: {
+  publicationId: string;
   userId: string;
   instagramAccountId: string;
   imageUrl: string;
@@ -1027,6 +1078,12 @@ async function publishInstagramImage(app: FastifyInstance, input: {
     method: "POST",
   });
   if (!create.payload?.id) throw new Error(create.warning?.message || "A Meta não criou o container da publicação.");
+  await waitForInstagramContainer(app, {
+    publicationId: input.publicationId,
+    containerId: create.payload.id,
+    token: context.token,
+    appSecret: context.appSecret,
+  });
   const publish = await fetchMetaResult<MetaApiError & { id?: string }>({
     app,
     path: `/${input.instagramAccountId}/media_publish`,
@@ -1071,6 +1128,7 @@ export async function processDueMetaPublications(app: FastifyInstance, limit = 1
         throw new Error("A conta do Instagram vinculada ao cliente mudou desde o agendamento.");
       }
       const result = await publishInstagramImage(app, {
+        publicationId: publication.id,
         userId: publication.createdByUserId,
         instagramAccountId: publication.metaAssetId,
         imageUrl: publication.mediaUrl,
