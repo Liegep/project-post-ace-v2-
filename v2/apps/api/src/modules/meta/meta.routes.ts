@@ -26,6 +26,7 @@ function publicationResponse(publication: NonNullable<Awaited<ReturnType<typeof 
     platform: publication.platform,
     scheduledAt: publication.scheduledAt,
     timezone: publication.timezone,
+    reelCoverUrl: publication.reelCoverUrl,
     locationId: publication.locationId,
     instagramUserTags: publication.instagramUserTags,
     status: publication.status,
@@ -166,6 +167,7 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
       card,
       scheduledAt: parsed.data.scheduledAt,
       timezone: parsed.data.timezone,
+      reelCoverUrl: parsed.data.reelCoverUrl,
       locationId: parsed.data.locationId,
       instagramUserTags: parsed.data.instagramUserTags,
     });

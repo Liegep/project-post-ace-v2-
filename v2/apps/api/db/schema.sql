@@ -751,6 +751,7 @@ CREATE TABLE IF NOT EXISTS meta_scheduled_publications (
   media_url VARCHAR(2048) NULL,
   media_urls_json JSON NULL,
   media_type VARCHAR(50) NULL,
+  reel_cover_url VARCHAR(2048) NULL,
   status ENUM('scheduled', 'publishing', 'published', 'failed', 'cancelled') NOT NULL DEFAULT 'scheduled',
   attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
   idempotency_key CHAR(64) NOT NULL,

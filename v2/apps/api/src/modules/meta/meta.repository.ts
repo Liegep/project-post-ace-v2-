@@ -34,6 +34,7 @@ type ScheduledPublicationRow = RowDataPacket & {
   media_url: string | null;
   media_urls_json: unknown;
   media_type: string | null;
+  reel_cover_url: string | null;
   location_id: string | null;
   instagram_user_tags_json: unknown;
   status: MetaScheduledPublicationStatus;
@@ -50,7 +51,7 @@ type ScheduledPublicationRow = RowDataPacket & {
 
 const scheduledPublicationSelect = [
   "SELECT id, client_account_id, card_id, platform, meta_asset_id,",
-  "DATE_FORMAT(scheduled_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS scheduled_at, timezone, caption, media_url, media_urls_json, media_type, location_id, instagram_user_tags_json,",
+  "DATE_FORMAT(scheduled_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS scheduled_at, timezone, caption, media_url, media_urls_json, media_type, reel_cover_url, location_id, instagram_user_tags_json,",
   "status, attempt_count, idempotency_key, published_meta_id, published_permalink, last_error, created_by_user_id, created_at, updated_at, published_at",
   "FROM meta_scheduled_publications",
 ].join(" ");
@@ -101,6 +102,7 @@ function mapScheduledPublication(row: ScheduledPublicationRow) {
     mediaUrl: row.media_url,
     mediaUrls: parseStringArray(row.media_urls_json),
     mediaType: row.media_type,
+    reelCoverUrl: row.reel_cover_url,
     locationId: row.location_id,
     instagramUserTags: parseInstagramUserTags(row.instagram_user_tags_json),
     status: row.status,
@@ -222,6 +224,7 @@ export type CreateScheduledPublicationInput = {
   mediaUrl: string;
   mediaUrls: string[];
   mediaType: "image" | "carousel" | "reel";
+  reelCoverUrl: string | null;
   locationId: string | null;
   instagramUserTags: Array<{ username: string; x: number; y: number }>;
   createdByUserId: string;
@@ -239,13 +242,13 @@ export async function createScheduledPublications(db: Pool, inputs: CreateSchedu
         await connection.query(
           [
             "INSERT INTO meta_scheduled_publications",
-            "(id, client_account_id, card_id, platform, meta_asset_id, scheduled_at, timezone, caption, media_url, media_urls_json, media_type, location_id, instagram_user_tags_json, status, created_by_user_id, idempotency_key)",
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)",
+            "(id, client_account_id, card_id, platform, meta_asset_id, scheduled_at, timezone, caption, media_url, media_urls_json, media_type, reel_cover_url, location_id, instagram_user_tags_json, status, created_by_user_id, idempotency_key)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)",
           ].join(" "),
           [
             id, input.clientAccountId, input.cardId, input.platform, input.metaAssetId,
             mysqlUtcDateTime(input.scheduledAt), input.timezone, input.caption, input.mediaUrl,
-            JSON.stringify(input.mediaUrls), input.mediaType, input.locationId, JSON.stringify(input.instagramUserTags),
+            JSON.stringify(input.mediaUrls), input.mediaType, input.reelCoverUrl, input.locationId, JSON.stringify(input.instagramUserTags),
             input.createdByUserId, input.idempotencyKey,
           ],
         );

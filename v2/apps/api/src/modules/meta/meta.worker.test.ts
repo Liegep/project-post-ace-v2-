@@ -36,6 +36,7 @@ function publishingHarness(fetchImpl: typeof fetch, overrides: {
   mediaUrl?: string;
   caption?: string | null;
   locationId?: string | null;
+  reelCoverUrl?: string | null;
   instagramUserTags?: Array<{ username: string; x: number; y: number }>;
 } = {}) {
   const encryptionKey = Buffer.alloc(32, 7);
@@ -52,6 +53,7 @@ function publishingHarness(fetchImpl: typeof fetch, overrides: {
     media_url: overrides.mediaUrl ?? "https://cdn.example.com/image.jpg",
     media_urls_json: [overrides.mediaUrl ?? "https://cdn.example.com/image.jpg"],
     media_type: overrides.mediaType ?? "image",
+    reel_cover_url: overrides.reelCoverUrl ?? null,
     location_id: overrides.locationId ?? null,
     instagram_user_tags_json: overrides.instagramUserTags ?? [],
     status: "scheduled",
@@ -206,8 +208,31 @@ test("a finished Reel container publishes with its caption and without image-onl
   assert.equal(create?.searchParams.get("media_type"), "REELS");
   assert.equal(create?.searchParams.get("video_url"), "https://cdn.example.com/reel.mp4");
   assert.equal(create?.searchParams.get("caption"), "Legenda original do Reel");
+  assert.equal(create?.searchParams.has("cover_url"), false);
   assert.equal(create?.searchParams.has("user_tags"), false);
   assert.equal(create?.searchParams.has("location_id"), false);
+});
+
+test("a Reel sends cover_url only when a custom cover is present", async () => {
+  let createUrl: URL | null = null;
+  const harness = publishingHarness(async (input, init) => {
+    const url = new URL(String(input));
+    if (init?.method === "POST" && url.pathname.endsWith("/media_publish")) return metaResponse({ id: "reel-media-1" });
+    if (init?.method === "POST" && url.pathname.endsWith("/media")) {
+      createUrl = url;
+      return metaResponse({ id: "reel-container-1" });
+    }
+    if (url.pathname.endsWith("/reel-container-1")) return metaResponse({ status_code: "FINISHED" });
+    if (url.pathname.endsWith("/reel-media-1")) return metaResponse({ permalink: "https://instagram.com/reel/test" });
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, {
+    mediaType: "reel",
+    mediaUrl: "https://cdn.example.com/reel.mp4",
+    reelCoverUrl: "https://app.example.com/api/uploads/cover.webp?format=jpeg",
+  });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { reelPollIntervalMs: 1, reelMaxWaitMs: 20 }));
+  assert.equal(result.published, 1);
+  assert.equal((createUrl as URL | null)?.searchParams.get("cover_url"), "https://app.example.com/api/uploads/cover.webp?format=jpeg");
 });
 
 test("a Reel container ERROR marks the publication failed", async () => {

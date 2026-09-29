@@ -7,6 +7,7 @@ type MetaPublicationMediaPlan = {
   mediaType: MetaPublicationMediaType;
   mediaUrl: string;
   mediaUrls: string[];
+  reelCoverUrl: string | null;
   locationId: string | null;
   instagramUserTags: InstagramUserTag[];
 };
@@ -16,6 +17,7 @@ export function planMetaCardPublications(input: {
   mediaUrls: string[];
   mediaType: string | null;
   artType: string | null;
+  reelCoverUrl?: string | null;
   locationId: string | null;
   instagramUserTags: InstagramUserTag[];
 }): { plans: MetaPublicationMediaPlan[]; error: null } | { plans: null; error: string } {
@@ -36,6 +38,21 @@ export function planMetaCardPublications(input: {
   if (isReel && input.platforms.includes("facebook")) {
     return { plans: null, error: "Nesta etapa, Reels está disponível somente no Instagram. Remova o Facebook para continuar." };
   }
+  const reelCoverUrl = input.reelCoverUrl?.trim() || null;
+  if (isReel && reelCoverUrl) {
+    const isInternalUpload = reelCoverUrl.startsWith("/api/uploads/");
+    let parsedCover: URL | null = null;
+    if (!isInternalUpload) {
+      try {
+        parsedCover = new URL(reelCoverUrl);
+      } catch {
+        return { plans: null, error: "A capa do Reel precisa ser uma imagem válida enviada pelo Design Hub." };
+      }
+    }
+    if ((!isInternalUpload && parsedCover?.protocol !== "https:") || /\.(mp4|mov|webm)(?:$|[?#])/i.test(reelCoverUrl)) {
+      return { plans: null, error: "A capa do Reel precisa ser uma imagem JPG, JPEG ou PNG disponível por HTTPS." };
+    }
+  }
   if (mediaUrls.length > 10) {
     return { plans: null, error: "O carrossel do Instagram aceita no máximo 10 imagens." };
   }
@@ -49,6 +66,7 @@ export function planMetaCardPublications(input: {
       mediaType: isReel ? "reel" : isCarousel ? "carousel" : "image",
       mediaUrl: mediaUrls[0],
       mediaUrls,
+      reelCoverUrl: isReel ? reelCoverUrl : null,
       locationId: isReel ? null : input.locationId,
       instagramUserTags: platform === "instagram" && !isCarousel && !isReel ? input.instagramUserTags : [],
     })),

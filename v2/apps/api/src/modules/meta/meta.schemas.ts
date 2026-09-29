@@ -84,6 +84,13 @@ export const createMetaPublicationSchema = z.object({
   platform: metaPublicationPlatformSchema.optional(),
   platforms: z.array(metaPublicationPlatformSchema).min(1).max(2).optional(),
   scheduledAt: isoDateTimeSchema,
+  reelCoverUrl: z.union([
+    z.string().trim().max(2048).refine(
+      (value) => value.startsWith("/api/uploads/") || z.string().url().safeParse(value).success,
+      "URL da capa do Reel inválida.",
+    ),
+    z.null(),
+  ]).optional(),
   locationId: z.union([z.string().trim().regex(/^\d+$/, "O ID da localização deve ser numérico.").max(190), z.null()]).optional(),
   instagramUserTags: z.array(instagramUserTagSchema).max(20, "O Instagram aceita no máximo 20 marcações por publicação.").optional(),
   timezone: z.string().trim().min(1).max(100).refine((value) => {
@@ -106,5 +113,6 @@ export const createMetaPublicationSchema = z.object({
   ...value,
   platforms: [...new Set(value.platforms ?? (value.platform ? [value.platform] : []))],
   locationId: value.locationId || null,
+  reelCoverUrl: value.reelCoverUrl || null,
   instagramUserTags: value.instagramUserTags ?? [],
 }));

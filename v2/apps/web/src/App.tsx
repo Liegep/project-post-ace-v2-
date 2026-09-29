@@ -7556,7 +7556,7 @@ ${internalMessage.trim()}`, isInternal: true });
     platforms: ("instagram" | "facebook")[],
     localDateTime: string,
     timezone: string,
-    options: { locationId: string | null; instagramUserTags: Array<{ username: string; x: number; y: number }> },
+    options: { reelCoverUrl: string | null; locationId: string | null; instagramUserTags: Array<{ username: string; x: number; y: number }> },
   ) {
     setMetaScheduling(true);
     setFeedback(null);
@@ -7569,6 +7569,7 @@ ${internalMessage.trim()}`, isInternal: true });
         platforms,
         scheduledAt: date.toISOString(),
         timezone,
+        reelCoverUrl: options.reelCoverUrl,
         locationId: options.locationId,
         instagramUserTags: options.instagramUserTags,
       });
@@ -7957,7 +7958,7 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
     platforms: ("instagram" | "facebook")[],
     localDateTime: string,
     timezone: string,
-    options: { locationId: string | null; instagramUserTags: Array<{ username: string; x: number; y: number }> },
+    options: { reelCoverUrl: string | null; locationId: string | null; instagramUserTags: Array<{ username: string; x: number; y: number }> },
   ) => Promise<void>;
 }) {
   const fallback = new Date(Date.now() + 60 * 60_000);
@@ -7968,6 +7969,10 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
   const [localDateTime, setLocalDateTime] = useState(suggestedAt || toDateTimeLocal(fallback.toISOString()));
   const [platforms, setPlatforms] = useState<("instagram" | "facebook")[]>(instagramAvailable ? ["instagram"] : !isCarousel && !isReel && facebookAvailable ? ["facebook"] : []);
   const [locationId, setLocationId] = useState("");
+  const [reelCoverUrl, setReelCoverUrl] = useState<string | null>(null);
+  const [reelCoverUploading, setReelCoverUploading] = useState(false);
+  const [reelCoverError, setReelCoverError] = useState("");
+  const reelCoverInputRef = useRef<HTMLInputElement>(null);
   const [tagUsername, setTagUsername] = useState("");
   const [pendingTagUsername, setPendingTagUsername] = useState<string | null>(null);
   const [instagramUserTags, setInstagramUserTags] = useState<Array<{ username: string; x: number; y: number }>>([]);
@@ -8014,6 +8019,30 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
   const normalizedLocationId = locationId.trim();
   const locationInvalid = Boolean(normalizedLocationId && !/^\d+$/.test(normalizedLocationId));
 
+  const uploadReelCover = async (file: File | null) => {
+    if (!file) return;
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      setReelCoverError("Envie uma capa JPG, JPEG ou PNG.");
+      if (reelCoverInputRef.current) reelCoverInputRef.current.value = "";
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setReelCoverError("A capa do Reel pode ter no máximo 8 MB.");
+      if (reelCoverInputRef.current) reelCoverInputRef.current.value = "";
+      return;
+    }
+    setReelCoverUploading(true);
+    setReelCoverError("");
+    try {
+      setReelCoverUrl(await uploadAdminMedia(file));
+    } catch (error) {
+      setReelCoverError(error instanceof Error ? error.message : "Não foi possível enviar a capa do Reel.");
+    } finally {
+      setReelCoverUploading(false);
+      if (reelCoverInputRef.current) reelCoverInputRef.current.value = "";
+    }
+  };
+
   return <div className="meta-schedule-backdrop" onClick={onClose}>
     <section className="meta-schedule-modal" role="dialog" aria-modal="true" aria-labelledby="meta-schedule-title" onClick={(event) => event.stopPropagation()}>
       <header><div><span>PUBLICAÇÃO META</span><h3 id="meta-schedule-title">Agendar publicação</h3></div><button type="button" onClick={onClose} aria-label="Fechar">×</button></header>
@@ -8025,6 +8054,12 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
       <div className={`meta-schedule-preview${isCarousel ? " carousel" : isReel ? " reel" : ""}`}><div className="meta-schedule-preview-media">{isReel ? <video src={firstMediaUrl} controls preload="metadata" aria-label="Prévia do Reel" /> : <img src={firstMediaUrl} alt="Prévia da publicação" />}{isCarousel ? <span>{mediaUrls.length} imagens</span> : isReel ? <span>Reel</span> : null}</div><div><p>{caption.trim() || "Sem legenda"}</p>{isCarousel ? <div className="meta-carousel-thumbnails">{mediaUrls.slice(1, 5).map((url, index) => <img key={`${url}-${index}`} src={url} alt={`Imagem ${index + 2} do carrossel`} />)}{mediaUrls.length > 5 ? <span>+{mediaUrls.length - 5}</span> : null}</div> : null}</div></div>
 
       <section className="meta-publish-options">
+        {isReel ? <div className="meta-reel-cover-option">
+          <div className="meta-option-heading"><div><strong>Capa do Reel</strong><small>Opcional · JPG, JPEG ou PNG · até 8 MB</small></div></div>
+          <input ref={reelCoverInputRef} className="meta-reel-cover-input" type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" onChange={(event) => void uploadReelCover(event.target.files?.[0] ?? null)} />
+          {reelCoverUrl ? <div className="meta-reel-cover-preview"><img src={reelCoverUrl} alt="Capa personalizada do Reel" /><div><span>Capa do Reel</span><div><button type="button" disabled={reelCoverUploading || submitting} onClick={() => reelCoverInputRef.current?.click()}>Alterar</button><button type="button" disabled={reelCoverUploading || submitting} onClick={() => { setReelCoverUrl(null); setReelCoverError(""); }}>Remover</button></div></div></div> : <button type="button" className="meta-reel-cover-upload" disabled={reelCoverUploading || submitting} onClick={() => reelCoverInputRef.current?.click()}>{reelCoverUploading ? "Enviando capa…" : "Enviar imagem de capa"}</button>}
+          {reelCoverError ? <em>{reelCoverError}</em> : null}
+        </div> : null}
         <label>
           <span>Localização <small>{isReel ? "indisponível para Reels" : "opcional · Instagram e Facebook"}</small></span>
           <input
@@ -8058,7 +8093,7 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
 
       <label><span>Data e hora</span><input type="datetime-local" value={localDateTime} onChange={(event) => setLocalDateTime(event.target.value)} /></label>
       <small>Fuso horário: {timezone}</small>
-      <footer><button type="button" className="ghost-button" disabled={submitting} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || !localDateTime || platforms.length === 0 || locationInvalid || Boolean(pendingTagUsername)} onClick={() => void onSubmit(platforms, localDateTime, timezone, { locationId: isReel ? null : normalizedLocationId || null, instagramUserTags: isCarousel || isReel ? [] : instagramUserTags })}>{submitting ? "Agendando…" : "Agendar publicação"}</button></footer>
+      <footer><button type="button" className="ghost-button" disabled={submitting || reelCoverUploading} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || reelCoverUploading || !localDateTime || platforms.length === 0 || locationInvalid || Boolean(pendingTagUsername)} onClick={() => void onSubmit(platforms, localDateTime, timezone, { reelCoverUrl: isReel ? reelCoverUrl : null, locationId: isReel ? null : normalizedLocationId || null, instagramUserTags: isCarousel || isReel ? [] : instagramUserTags })}>{submitting ? "Agendando…" : reelCoverUploading ? "Enviando capa…" : "Agendar publicação"}</button></footer>
     </section>
   </div>;
 }

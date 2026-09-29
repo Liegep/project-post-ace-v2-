@@ -980,6 +980,27 @@ function assertPublicHttpUrl(app: FastifyInstance, rawUrl: string, mediaType: "i
   return url.toString();
 }
 
+function assertPublicReelCoverUrl(app: FastifyInstance, rawUrl: string) {
+  let url: URL;
+  try {
+    url = rawUrl.startsWith("/api/uploads/") ? new URL(rawUrl, app.appEnv.API_URL) : new URL(rawUrl);
+  } catch {
+    throw app.httpErrors.badRequest("A capa do Reel precisa ser uma imagem válida enviada pelo Design Hub.");
+  }
+  if (url.protocol !== "https:" || isPrivateHostname(url.hostname)) {
+    throw app.httpErrors.badRequest("A capa do Reel precisa estar disponível em uma URL pública HTTPS.");
+  }
+  if (rawUrl.startsWith("/api/uploads/")) {
+    if (!/\.(webp|png|jpe?g)$/i.test(url.pathname)) {
+      throw app.httpErrors.badRequest("A capa do Reel precisa ser uma imagem JPG, JPEG ou PNG válida.");
+    }
+    url.searchParams.set("format", "jpeg");
+  } else if (!/\.jpe?g$/i.test(url.pathname)) {
+    throw app.httpErrors.badRequest("A Meta aceita capa personalizada de Reel em JPEG. Envie a imagem pelo Design Hub para conversão segura.");
+  }
+  return url.toString();
+}
+
 async function getPublishingContext(app: FastifyInstance, userId: string) {
   const config = requireMetaConfig(app);
   const connection = await findMetaConnection(app.db, userId);
@@ -997,6 +1018,7 @@ export async function scheduleMetaCardPublications(app: FastifyInstance, input: 
   card: SchedulableCard;
   scheduledAt: string;
   timezone: string;
+  reelCoverUrl?: string | null;
   locationId?: string | null;
   instagramUserTags?: Array<{ username: string; x: number; y: number }>;
 }) {
@@ -1007,6 +1029,7 @@ export async function scheduleMetaCardPublications(app: FastifyInstance, input: 
     mediaUrls: input.card.mediaUrls.length ? input.card.mediaUrls : input.card.primaryMediaUrl ? [input.card.primaryMediaUrl] : [],
     mediaType: input.card.mediaType,
     artType: input.card.artType,
+    reelCoverUrl: input.reelCoverUrl ?? null,
     locationId: input.locationId ?? null,
     instagramUserTags: input.instagramUserTags ?? [],
   });
@@ -1025,6 +1048,7 @@ export async function scheduleMetaCardPublications(app: FastifyInstance, input: 
     mediaUrl: validatedUrls.get(plan.mediaUrl)!,
     mediaUrls: plan.mediaUrls.map((url) => validatedUrls.get(url)!),
     mediaType: plan.mediaType,
+    reelCoverUrl: plan.reelCoverUrl ? assertPublicReelCoverUrl(app, plan.reelCoverUrl) : null,
     locationId: plan.locationId,
     instagramUserTags: plan.instagramUserTags,
     createdByUserId: input.userId,
@@ -1266,6 +1290,7 @@ async function publishInstagramReel(app: FastifyInstance, input: {
   userId: string;
   instagramAccountId: string;
   videoUrl: string;
+  reelCoverUrl: string | null;
   caption: string | null;
   pollIntervalMs?: number;
   maxWaitMs?: number;
@@ -1279,6 +1304,7 @@ async function publishInstagramReel(app: FastifyInstance, input: {
     params: {
       media_type: "REELS",
       video_url: input.videoUrl,
+      ...(input.reelCoverUrl ? { cover_url: input.reelCoverUrl } : {}),
       ...(input.caption ? { caption: input.caption } : {}),
     },
     metricOrOperation: "instagram.publish.reel.createContainer",
@@ -1416,6 +1442,7 @@ export async function processDueMetaPublications(app: FastifyInstance, limit = 1
           userId: publication.createdByUserId,
           instagramAccountId: publication.metaAssetId,
           videoUrl: publication.mediaUrl,
+          reelCoverUrl: publication.reelCoverUrl,
           caption: publication.caption,
           pollIntervalMs: options?.reelPollIntervalMs,
           maxWaitMs: options?.reelMaxWaitMs,

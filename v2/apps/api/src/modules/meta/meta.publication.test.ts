@@ -55,6 +55,41 @@ test("one MP4 is classified as an Instagram Reel", () => {
   assert.equal(result.plans?.[0]?.mediaType, "reel");
   assert.equal(result.plans?.[0]?.locationId, null);
   assert.deepEqual(result.plans?.[0]?.instagramUserTags, []);
+  assert.equal(result.plans?.[0]?.reelCoverUrl, null);
+});
+
+test("a Reel keeps an optional uploaded cover reference", () => {
+  const result = planMetaCardPublications({
+    platforms: ["instagram"],
+    mediaUrls: ["https://cdn.example.com/reel.mp4"],
+    mediaType: "video",
+    artType: "Reels",
+    reelCoverUrl: "/api/uploads/cover.webp",
+    locationId: null,
+    instagramUserTags: [],
+  });
+  assert.equal(result.error, null);
+  assert.equal(result.plans?.[0]?.reelCoverUrl, "/api/uploads/cover.webp");
+});
+
+test("an invalid Reel cover is rejected", () => {
+  const result = planMetaCardPublications({
+    platforms: ["instagram"],
+    mediaUrls: ["https://cdn.example.com/reel.mp4"],
+    mediaType: "video",
+    artType: "Reels",
+    reelCoverUrl: "https://cdn.example.com/cover.mp4",
+    locationId: null,
+    instagramUserTags: [],
+  });
+  assert.match(result.error ?? "", /capa.+imagem/i);
+});
+
+test("image and carousel plans never receive a Reel cover", () => {
+  const image = planMetaCardPublications({ platforms: ["instagram"], mediaUrls: imageUrls(1), mediaType: "image", artType: "Post único", reelCoverUrl: "/api/uploads/cover.webp", locationId: null, instagramUserTags: [] });
+  const carousel = planMetaCardPublications({ platforms: ["instagram"], mediaUrls: imageUrls(2), mediaType: "image", artType: "Carrossel", reelCoverUrl: "/api/uploads/cover.webp", locationId: null, instagramUserTags: [] });
+  assert.equal(image.plans?.[0]?.reelCoverUrl, null);
+  assert.equal(carousel.plans?.[0]?.reelCoverUrl, null);
 });
 
 test("Reel cannot be scheduled for Facebook", () => {
