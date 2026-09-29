@@ -126,9 +126,40 @@ export type BrandBrainComment = { id: string; revisionId: string | null; section
 export type BrandBrainSnapshot = { data: BrandBrain | null; meta: { version: number; updatedAt: string | null; updatedBy: string | null }; revisions: BrandBrainRevision[]; history: Array<{ id: string; version: number; authorName: string; createdAt: string }>; comments: BrandBrainComment[] };
 export type ReportMetricKey = "reach" | "impressions" | "engagement" | "followers" | "visits" | "clicks";
 export type ReportChannelMetrics = Record<ReportMetricKey, number | null>;
+export type ReportAdsCampaign = {
+  campaignId: string | null;
+  campaignName: string | null;
+  objective: string | null;
+  spend: number | null;
+  reach: number | null;
+  impressions: number | null;
+  clicks: number | null;
+  inlineLinkClicks: number | null;
+  ctr: number | null;
+  cpc: number | null;
+  cpm: number | null;
+};
+export type ReportAdsMetrics = {
+  accountName: string | null;
+  currency: string | null;
+  spend: number | null;
+  reach: number | null;
+  impressions: number | null;
+  frequency: number | null;
+  clicks: number | null;
+  inlineLinkClicks: number | null;
+  ctr: number | null;
+  cpc: number | null;
+  cpm: number | null;
+  cpp: number | null;
+  uniqueClicks: number | null;
+  uniqueCtr: number | null;
+  campaigns: ReportAdsCampaign[];
+};
 export type ReportMetrics = {
   instagram: ReportChannelMetrics;
   facebook: ReportChannelMetrics & { posts?: number | null; reactions?: number | null; comments?: number | null; shares?: number | null };
+  ads?: ReportAdsMetrics | null;
 };
 export type ClientReport = { id: string; clientAccountId: string; title: string; periodStart: string; periodEnd: string; status: "draft" | "published"; metrics: ReportMetrics; highlights: Array<{ channel: "instagram" | "facebook"; title: string; value: number; thumbnailUrl?: string | null; permalink?: string | null; metricLabel?: "interactions" }>; evidenceUrls: string[]; notes: string | null; publishedAt: string | null; createdAt: string; updatedAt: string };
 export type ClientMetaInsights = {
@@ -147,6 +178,35 @@ export type ClientMetaInsights = {
   };
   warnings: Array<{ endpoint: string; code: number | null; message: string; metricOrOperation: string; kind: "api_error" | "network_error" | "timeout" | "unavailable"; httpStatus?: number; durationMs?: number }>;
 };
+
+export type ClientMetaAdsInsights = {
+  period: { since: string; until: string };
+  adAccount: { id: string; name: string | null; currency: string | null; timezoneName: string | null };
+  summary: {
+    spend: number | null; reach: number | null; impressions: number | null; frequency: number | null;
+    clicks: number | null; inlineLinkClicks: number | null; ctr: number | null; cpc: number | null;
+    cpm: number | null; cpp: number | null; uniqueClicks: number | null; uniqueCtr: number | null;
+  };
+  actions: Array<{ actionType: string; value: number }>;
+  costPerAction: Array<{ actionType: string; value: number }>;
+  actionValues: Array<{ actionType: string; value: number }>;
+  campaigns: Array<{
+    campaignId: string | null; campaignName: string | null; objective: string | null;
+    spend: number | null; reach: number | null; impressions: number | null; frequency: number | null;
+    clicks: number | null; inlineLinkClicks: number | null; ctr: number | null; cpc: number | null; cpm: number | null;
+    actions: Array<{ actionType: string; value: number }>;
+    costPerAction: Array<{ actionType: string; value: number }>;
+    actionValues: Array<{ actionType: string; value: number }>;
+  }>;
+  topAds: Array<{
+    adId: string | null; adName: string | null; adsetId: string | null; adsetName: string | null;
+    campaignId: string | null; campaignName: string | null;
+    spend: number | null; reach: number | null; impressions: number | null; frequency: number | null;
+    clicks: number | null; inlineLinkClicks: number | null; ctr: number | null; cpc: number | null; cpm: number | null;
+  }>;
+  warnings: Array<{ operation: string; code: number | null; message: string }>;
+};
+
 export type BillingCurrency = "BRL" | "EUR" | "USD" | "SEK";
 export type BillingInvoiceStatus = "open" | "paid" | "overdue" | "cancelled";
 export type BillingInvoice = {
@@ -1244,6 +1304,11 @@ export async function loadClientMetaInsights(clientAccountId: string, since: str
   // This endpoint fans out to bounded Meta requests; its deadline is explicit
   // and slightly above the backend's maximum per-request phases.
   return fetchJson<ClientMetaInsights>(`/api/clients/${clientAccountId}/meta-insights?${query.toString()}`, 28_000);
+}
+
+export async function loadClientMetaAdsInsights(clientAccountId: string, since: string, until: string) {
+  const query = new URLSearchParams({ since, until });
+  return fetchJson<ClientMetaAdsInsights>(`/api/clients/${clientAccountId}/meta-ads-insights?${query.toString()}`, 28_000);
 }
 
 export async function saveClientMetaAssetsBySlug(slug: string, assets: ClientMetaAssets) {

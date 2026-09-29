@@ -10688,3 +10688,23 @@ button {
 @media (max-width: 640px) {
   .meta-integration-settings > header { align-items: stretch; flex-direction: column; }
 }
+
+
+/* Meta Ads reports */
+.report-ads,.report-ads-editor{display:grid;gap:14px;padding:18px;border:1px solid #dfe5f2;border-radius:17px;background:linear-gradient(145deg,#f8fbff,#f4f0ff);box-shadow:0 10px 24px rgba(69,82,134,.08)}
+.report-ads-heading,.report-ads-editor>header{display:flex;align-items:flex-end;justify-content:space-between;gap:18px}
+.report-ads-heading>span,.report-ads-editor>header span{color:#6254d8;font-size:.72rem;font-weight:700;letter-spacing:.1em}
+.report-ads-heading h3,.report-ads-editor h3{margin:3px 0 0;color:#293555}
+.report-ads-heading p,.report-ads-editor p{margin:4px 0 0;color:#748099;font-size:.78rem}
+.report-ads-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}
+.report-ads-kpis article{display:grid;gap:6px;padding:13px 14px;border:1px solid #e4e8f1;border-radius:13px;background:rgba(255,255,255,.88);box-shadow:0 7px 16px rgba(69,82,134,.06)}
+.report-ads-kpis span{color:#77839a;font-size:.7rem;font-weight:650}
+.report-ads-kpis strong{color:#283552;font-size:1.08rem}
+.report-ads-campaigns{display:grid;gap:8px}
+.report-ads-campaigns h4{margin:5px 0;color:#44506c;font-size:.82rem}
+.report-ads-campaigns>div{display:grid;grid-template-columns:minmax(0,1.8fr) auto auto auto;gap:12px;align-items:center;padding:11px 12px;border-radius:11px;background:#fff;border:1px solid #e7eaf2;color:#5e6a82;font-size:.74rem}
+.report-ads-campaigns>div>div{display:grid;gap:2px;min-width:0}
+.report-ads-campaigns strong{overflow:hidden;color:#2e3a59;text-overflow:ellipsis;white-space:nowrap}
+.report-ads-campaigns small{color:#8a93a5;font-size:.65rem;text-transform:capitalize}
+@media(max-width:900px){.report-ads-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.report-ads-campaigns>div{grid-template-columns:1fr auto}.report-ads-campaigns>div>span:nth-last-child(-n+2){display:none}}
+@media(max-width:620px){.report-ads-kpis{grid-template-columns:1fr 1fr}}

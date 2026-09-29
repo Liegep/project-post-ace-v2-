@@ -10,6 +10,38 @@ const channelMetricsSchema = z.object({
   clicks: metricValueSchema,
 });
 
+const adsCampaignSchema = z.object({
+  campaignId: z.string().nullable(),
+  campaignName: z.string().max(255).nullable(),
+  objective: z.string().max(120).nullable(),
+  spend: metricValueSchema,
+  reach: metricValueSchema,
+  impressions: metricValueSchema,
+  clicks: metricValueSchema,
+  inlineLinkClicks: metricValueSchema,
+  ctr: metricValueSchema,
+  cpc: metricValueSchema,
+  cpm: metricValueSchema,
+});
+
+const adsMetricsSchema = z.object({
+  accountName: z.string().max(255).nullable(),
+  currency: z.string().max(12).nullable(),
+  spend: metricValueSchema,
+  reach: metricValueSchema,
+  impressions: metricValueSchema,
+  frequency: metricValueSchema,
+  clicks: metricValueSchema,
+  inlineLinkClicks: metricValueSchema,
+  ctr: metricValueSchema,
+  cpc: metricValueSchema,
+  cpm: metricValueSchema,
+  cpp: metricValueSchema,
+  uniqueClicks: metricValueSchema,
+  uniqueCtr: metricValueSchema,
+  campaigns: z.array(adsCampaignSchema).max(50).default([]),
+});
+
 const metricsSchema = z.object({
   instagram: channelMetricsSchema,
   facebook: channelMetricsSchema.extend({
@@ -18,6 +50,7 @@ const metricsSchema = z.object({
     comments: metricValueSchema.optional(),
     shares: metricValueSchema.optional(),
   }),
+  ads: adsMetricsSchema.nullable().optional(),
 });
 
 const highlightsSchema = z.array(z.object({

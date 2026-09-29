@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import {
   createAdminReport, deleteAdminReport, extractAdminReportMetrics, listAdminClients, listAdminReports,
-  listPortalReportsBySlug, loadClientMetaAssets, loadClientMetaInsights, loadMetaStatus,
+  listPortalReportsBySlug, loadClientMetaAdsInsights, loadClientMetaAssets, loadClientMetaInsights, loadMetaStatus,
   publishAdminReport, updateAdminReport, uploadAdminMedia,
   ApiRequestTimeoutError,
-  type AdminClientOption, type ClientMetaAssets, type ClientMetaInsights, type ClientReport,
+  type AdminClientOption, type ClientMetaAdsInsights, type ClientMetaAssets, type ClientMetaInsights, type ClientReport,
   type MetaStatus, type ReportMetricKey, type ReportMetrics,
 } from "./api";
 
@@ -38,6 +38,9 @@ const metricText: Record<ReportLocale, Record<string, string>> = {
 };
 const number = (value: number, locale: ReportLocale = "pt") => new Intl.NumberFormat(browserLocale[locale], { notation: value >= 10_000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(value);
 const displayMetric = (value: number | null | undefined, locale: ReportLocale) => value == null ? reportText[locale].unavailable : number(value, locale);
+const currency = (value: number | null | undefined, code: string | null | undefined, locale: ReportLocale) => value == null ? reportText[locale].unavailable : new Intl.NumberFormat(browserLocale[locale], { style: "currency", currency: code || "BRL", maximumFractionDigits: 2 }).format(value);
+const percent = (value: number | null | undefined, locale: ReportLocale) => value == null ? reportText[locale].unavailable : `${new Intl.NumberFormat(browserLocale[locale], { maximumFractionDigits: 2 }).format(value)}%`;
+const decimal = (value: number | null | undefined, locale: ReportLocale) => value == null ? reportText[locale].unavailable : new Intl.NumberFormat(browserLocale[locale], { maximumFractionDigits: 2 }).format(value);
 const localReportKey = (clientId: string) => `designhub-v2-local-reports:${clientId}`;
 const readLocalReports = (clientId: string): ClientReport[] => { try { return JSON.parse(window.localStorage.getItem(localReportKey(clientId)) ?? "[]") as ClientReport[]; } catch { return []; } };
 const writeLocalReports = (clientId: string, reports: ClientReport[]) => window.localStorage.setItem(localReportKey(clientId), JSON.stringify(reports));
@@ -74,6 +77,22 @@ function PlatformMetrics({ report, channel, locale }: { report: ClientReport; ch
   return <article className={`report-platform ${channel}`}><header><span aria-hidden="true">{channel === "instagram" ? "◎" : "f"}</span><h3>{channel === "instagram" ? "Instagram" : "Facebook"}</h3></header><div>{reportPlatformRows(report, channel).map(([key, value]) => <p className={value == null ? "unavailable" : ""} key={key}><span>{metricText[locale][key]}</span><b>{displayMetric(value, locale)}</b></p>)}</div></article>;
 }
 
+function AdsMetricsSection({ report, locale }: { report: ClientReport; locale: ReportLocale }) {
+  const ads = report.metrics.ads;
+  if (!ads) return null;
+  const rows = [
+    ["Investimento", currency(ads.spend, ads.currency, locale)],
+    ["Alcance pago", displayMetric(ads.reach, locale)],
+    ["Impressões", displayMetric(ads.impressions, locale)],
+    ["Cliques no link", displayMetric(ads.inlineLinkClicks ?? ads.clicks, locale)],
+    ["CTR", percent(ads.ctr, locale)],
+    ["CPC", currency(ads.cpc, ads.currency, locale)],
+    ["CPM", currency(ads.cpm, ads.currency, locale)],
+    ["Frequência", decimal(ads.frequency, locale)],
+  ] as const;
+  return <section className="report-ads"><div className="report-ads-heading"><span>META ADS</span><div><h3>Performance de anúncios</h3><p>{ads.accountName || "Conta de anúncios"}{ads.currency ? ` · ${ads.currency}` : ""}</p></div></div><div className="report-ads-kpis">{rows.map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong></article>)}</div>{ads.campaigns.length ? <div className="report-ads-campaigns"><h4>Campanhas com maior investimento</h4>{ads.campaigns.slice(0, 4).map((campaign) => <div key={campaign.campaignId || campaign.campaignName}><div><strong>{campaign.campaignName || "Campanha"}</strong><small>{campaign.objective?.replace(/^OUTCOME_/, "").replaceAll("_", " ") || "Meta Ads"}</small></div><span>{currency(campaign.spend, ads.currency, locale)}</span><span>{displayMetric(campaign.reach, locale)} alcance</span><span>{percent(campaign.ctr, locale)} CTR</span></div>)}</div> : null}</section>;
+}
+
 function HighlightThumbnail({ item }: { item: ClientReport["highlights"][number] }) {
   const platform = item.channel === "instagram" ? "Instagram" : "Facebook";
   return <div className={`report-highlight-thumbnail ${item.channel}`}><span aria-hidden="true">{item.channel === "instagram" ? "◎" : "f"}</span>{item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={`Publicação do ${platform}`} loading="lazy" onError={(event) => { event.currentTarget.hidden = true; }} /> : null}</div>;
@@ -85,6 +104,7 @@ function ReportDocument({ report, clientName, locale = "pt", printable = false }
     <header><div><span>{copy.performance}</span><h2>{clientName}</h2><p>{formatReportDate(report.periodStart, language)} a {formatReportDate(report.periodEnd, language)}</p></div><b>{report.status === "published" ? copy.published : copy.draft}</b></header>
     <section className="report-summary"><strong>{copy.summary}</strong><p>{reportSummary(report, language)}</p></section>
     <section className="report-organic"><span>{copy.organic}</span><div className="report-platform-grid"><PlatformMetrics report={report} channel="instagram" locale={language} /><PlatformMetrics report={report} channel="facebook" locale={language} /></div></section>
+    {report.metrics.ads ? <AdsMetricsSection report={report} locale={language} /> : null}
     {report.highlights.length ? <section className="report-highlights"><span>{copy.highlights}</span><div className="report-highlight-grid">{report.highlights.map((item, index) => <article className="report-highlight-card" key={`${item.channel}-${item.title}-${index}`}><HighlightThumbnail item={item} /><div><p>{item.title}</p><footer><span>{item.channel === "instagram" ? "Instagram" : "Facebook"}</span><strong>{number(item.value, language)} {metricText[language].engagement.toLocaleLowerCase(browserLocale[language])}</strong></footer></div></article>)}</div></section> : null}
     {notes ? <section className="report-notes"><strong>{copy.teamNotes}</strong><p>{notes}</p></section> : null}
   </article>;
@@ -139,6 +159,41 @@ async function downloadReportPdf(report: ClientReport, clientName: string, local
   const notes = visibleReportNotes(report.notes); if (notes) { pdf.setTextColor(79, 91, 122); pdf.setFontSize(9); pdf.text(copy.teamNotes.toUpperCase(), contentX, 735); pdf.setTextColor(82, 94, 122); pdf.text(notes, contentX, 754, { maxWidth: 500 }); }
   drawFooter();
 
+  if (report.metrics.ads) {
+    const ads = report.metrics.ads;
+    pdf.addPage(); drawBackground();
+    pdf.setTextColor(255, 255, 255); pdf.setFontSize(9); pdf.text(copy.performance, contentX, 40); pdf.setFontSize(22); pdf.text("META ADS", contentX, 70); pdf.setFontSize(10); pdf.text(`${clientName} · ${formatReportDate(report.periodStart, language)} a ${formatReportDate(report.periodEnd, language)}`, contentX, 91);
+    pdf.setFillColor(255, 255, 255); pdf.roundedRect(25, 112, 545, 684, 22, 22, "F");
+    pdf.setTextColor(39, 51, 87); pdf.setFontSize(17); pdf.text("Performance de anúncios", contentX, 150);
+    pdf.setTextColor(103, 117, 148); pdf.setFontSize(9); pdf.text(`${ads.accountName || "Conta de anúncios"}${ads.currency ? ` · ${ads.currency}` : ""}`, contentX, 169);
+    const adCards = [
+      ["Investimento", currency(ads.spend, ads.currency, language)],
+      ["Alcance pago", displayMetric(ads.reach, language)],
+      ["Impressões", displayMetric(ads.impressions, language)],
+      ["Cliques no link", displayMetric(ads.inlineLinkClicks ?? ads.clicks, language)],
+      ["CTR", percent(ads.ctr, language)],
+      ["CPC", currency(ads.cpc, ads.currency, language)],
+      ["CPM", currency(ads.cpm, ads.currency, language)],
+      ["Frequência", decimal(ads.frequency, language)],
+    ] as const;
+    adCards.forEach(([label, value], index) => {
+      const x = contentX + (index % 2) * 258; const y = 196 + Math.floor(index / 2) * 70;
+      pdf.setFillColor(index % 2 ? 243 : 247, index % 2 ? 245 : 249, 255); pdf.roundedRect(x, y, 246, 55, 11, 11, "F");
+      pdf.setTextColor(103, 117, 148); pdf.setFontSize(8); pdf.text(label.toUpperCase(), x + 13, y + 18);
+      pdf.setTextColor(39, 51, 87); pdf.setFontSize(15); pdf.text(value, x + 13, y + 41);
+    });
+    if (ads.campaigns.length) {
+      pdf.setTextColor(79, 91, 122); pdf.setFontSize(9); pdf.text("CAMPANHAS COM MAIOR INVESTIMENTO", contentX, 505);
+      ads.campaigns.slice(0, 4).forEach((campaign, index) => {
+        const y = 535 + index * 52;
+        pdf.setFillColor(248, 250, 255); pdf.roundedRect(contentX, y - 18, 511, 42, 9, 9, "F");
+        pdf.setTextColor(39, 51, 87); pdf.setFontSize(9.5); pdf.text(clampLines(campaign.campaignName || "Campanha", 285, 1), contentX + 12, y);
+        pdf.setTextColor(103, 117, 148); pdf.setFontSize(8); pdf.text(`${currency(campaign.spend, ads.currency, language)} · ${displayMetric(campaign.reach, language)} alcance · ${percent(campaign.ctr, language)} CTR`, contentX + 12, y + 15);
+      });
+    }
+    drawFooter();
+  }
+
   if (pdfHighlights.length) {
     pdf.addPage(); drawBackground();
     pdf.setTextColor(255, 255, 255); pdf.setFontSize(9); pdf.text(copy.performance, contentX, 40); pdf.setFontSize(22); pdf.text(copy.highlights, contentX, 70); pdf.setFontSize(10); pdf.text(`${clientName} · ${formatReportDate(report.periodStart, language)} a ${formatReportDate(report.periodEnd, language)}`, contentX, 91);
@@ -166,10 +221,31 @@ function metaHighlights(insights: ClientMetaInsights): ClientReport["highlights"
   const seen = new Set<string>(); return candidates.sort((a, b) => b.value - a.value).filter((item) => !seen.has(item.identity) && Boolean(seen.add(item.identity))).slice(0, 8).map(({ identity: _identity, ...item }) => ({ ...item, title: item.title.slice(0, 255) }));
 }
 function metricsFromMeta(insights: ClientMetaInsights, current: ReportMetrics) {
-  const metrics: ReportMetrics = { instagram: { ...current.instagram }, facebook: { ...current.facebook } }; const imported: string[] = [];
+  const metrics: ReportMetrics = { instagram: { ...current.instagram }, facebook: { ...current.facebook }, ads: current.ads ?? null }; const imported: string[] = [];
   if (insights.instagram && insights.sources.instagram !== "failed") { const values = insights.instagram.metrics; metrics.instagram = { reach: values.reach, impressions: values.views, engagement: values.interactions, followers: values.followers, visits: values.profileViews, clicks: values.linkClicks }; for (const [key] of METRICS) if (metrics.instagram[key] != null) imported.push(`instagram.${key}`); }
   if (insights.facebook && insights.sources.facebook !== "failed") { const values = insights.facebook.metrics; const postListFailed = insights.warnings.some((warning) => warning.metricOrOperation === "facebook.posts.list"); const emptyAggregate = postListFailed ? null : 0; metrics.facebook = { reach: values.reach, impressions: values.views ?? values.impressions, engagement: values.engagement, followers: values.followers ?? values.fans, visits: values.pageViews, clicks: null, posts: postListFailed ? null : insights.facebook.topContent.length, reactions: sumKnown(insights.facebook.topContent.map((item) => item.reactions), emptyAggregate), comments: sumKnown(insights.facebook.topContent.map((item) => item.comments), emptyAggregate), shares: sumKnown(insights.facebook.topContent.map((item) => item.shares), emptyAggregate) }; for (const [key, value] of reportPlatformRows({ metrics }, "facebook")) if (value != null) imported.push(`facebook.${key}`); }
   return { metrics, imported };
+}
+
+function adsFromMeta(insights: ClientMetaAdsInsights): NonNullable<ReportMetrics["ads"]> {
+  return {
+    accountName: insights.adAccount.name,
+    currency: insights.adAccount.currency,
+    ...insights.summary,
+    campaigns: insights.campaigns.map((campaign) => ({
+      campaignId: campaign.campaignId,
+      campaignName: campaign.campaignName,
+      objective: campaign.objective,
+      spend: campaign.spend,
+      reach: campaign.reach,
+      impressions: campaign.impressions,
+      clicks: campaign.clicks,
+      inlineLinkClicks: campaign.inlineLinkClicks,
+      ctr: campaign.ctr,
+      cpc: campaign.cpc,
+      cpm: campaign.cpm,
+    })),
+  };
 }
 
 export function ReportsWorkspace({ newReportSignal = 0 }: { newReportSignal?: number }) {
@@ -181,16 +257,64 @@ export function ReportsWorkspace({ newReportSignal = 0 }: { newReportSignal?: nu
   useEffect(() => { if (!clientId) return; setEditing((current) => current?.clientAccountId === clientId ? current : null); setFiles({}); setMessage(""); setImportedFields([]); if (clientId.startsWith("demo-")) { setReports(readLocalReports(clientId)); setMetaStatus(null); setMetaAssets(null); return; } void refresh(clientId); void refreshMetaContext(clientId); }, [clientId]);
   const newReport = () => { if (!clientId) return; const end = new Date(); const start = new Date(); start.setDate(end.getDate() - 30); setFiles({}); setImportedFields([]); setEditing({ id: "", clientAccountId: clientId, title: defaultReportTitle(end), periodStart: dateValue(start), periodEnd: dateValue(end), status: "draft", metrics: emptyMetrics(), highlights: [], evidenceUrls: [], notes: null, publishedAt: null, createdAt: "", updatedAt: "" }); };
   useEffect(() => { if (newReportSignal > 0 && clientId) newReport(); }, [newReportSignal, clientId]);
-  const importMeta = async () => { if (!editing) return; setImportingMeta(true); setMessage(""); try { const insights = await loadClientMetaInsights(clientId, reportDateValue(editing.periodStart), reportDateValue(editing.periodEnd)); if (insights.status === "failed") { const timedOut = insights.warnings.some((warning) => warning.kind === "timeout"); setMessageTone(timedOut ? "timeout" : "error"); setMessage(timedOut ? "A Meta não concluiu as consultas dentro do limite. Nenhum campo existente foi apagado; tente novamente." : "A Meta retornou erro nas fontes vinculadas. Nenhum campo existente foi apagado."); return; } const mapped = metricsFromMeta(insights, editing.metrics); const highlights = metaHighlights(insights); setEditing({ ...editing, metrics: mapped.metrics, highlights: highlights.length ? highlights : editing.highlights }); setImportedFields(mapped.imported); const available = mapped.imported.length; if (insights.status === "empty") { setMessageTone("warning"); setMessage("A importação foi concluída, mas a Meta realmente não retornou métricas nem conteúdos para este período."); } else if (insights.status === "partial") { setMessageTone("warning"); setMessage(`Importação parcial concluída: ${available} campo${available === 1 ? "" : "s"} recebido${available === 1 ? "" : "s"}. Uma das fontes ou métricas falhou; os demais dados foram preservados.`); } else { setMessageTone("success"); setMessage(`${available} campo${available === 1 ? "" : "s"} importado${available === 1 ? "" : "s"} da Meta com sucesso.`); } } catch (error) { const timedOut = error instanceof ApiRequestTimeoutError; setMessageTone(timedOut ? "timeout" : "error"); setMessage(timedOut ? "A importação excedeu o tempo limite antes de ser concluída. Nenhum dado foi interpretado como indisponível e os campos existentes foram preservados." : error instanceof Error ? `Erro de API: ${error.message}` : "Erro de API: não foi possível concluir a importação dos dados da Meta."); } finally { setImportingMeta(false); } };
+  const importMeta = async () => {
+    if (!editing) return;
+    setImportingMeta(true); setMessage("");
+    const since = reportDateValue(editing.periodStart); const until = reportDateValue(editing.periodEnd);
+    const hasOrganic = Boolean(metaAssets?.instagramAccountId || metaAssets?.facebookPageId);
+    const hasAds = Boolean(metaAssets?.metaAdAccountId);
+    try {
+      const [organicResult, adsResult] = await Promise.allSettled([
+        hasOrganic ? loadClientMetaInsights(clientId, since, until) : Promise.resolve(null),
+        hasAds ? loadClientMetaAdsInsights(clientId, since, until) : Promise.resolve(null),
+      ]);
+      let nextMetrics: ReportMetrics = editing.metrics;
+      let nextHighlights = editing.highlights;
+      let imported: string[] = [];
+      let successes = 0;
+      const warnings: string[] = [];
+
+      if (organicResult.status === "fulfilled" && organicResult.value) {
+        const insights = organicResult.value;
+        if (insights.status !== "failed") {
+          const mapped = metricsFromMeta(insights, nextMetrics);
+          nextMetrics = mapped.metrics; imported = [...imported, ...mapped.imported];
+          const highlights = metaHighlights(insights); if (highlights.length) nextHighlights = highlights;
+          successes += 1;
+          if (insights.status === "partial") warnings.push("dados orgânicos parciais");
+        } else warnings.push("dados orgânicos indisponíveis");
+      } else if (hasOrganic) warnings.push("falha ao importar dados orgânicos");
+
+      if (adsResult.status === "fulfilled" && adsResult.value) {
+        nextMetrics = { ...nextMetrics, ads: adsFromMeta(adsResult.value) };
+        imported = [...imported, "ads.spend", "ads.reach", "ads.impressions", "ads.clicks", "ads.ctr", "ads.cpc", "ads.cpm"];
+        successes += 1;
+        if (adsResult.value.warnings.length) warnings.push("alguns dados de anúncios vieram com avisos");
+      } else if (hasAds) warnings.push("falha ao importar Meta Ads");
+
+      if (!successes) {
+        setMessageTone("error"); setMessage("A Meta não retornou dados utilizáveis para este período. Nenhum campo existente foi apagado."); return;
+      }
+      setEditing({ ...editing, metrics: nextMetrics, highlights: nextHighlights });
+      setImportedFields(imported);
+      setMessageTone(warnings.length ? "warning" : "success");
+      setMessage(warnings.length ? `Importação concluída com ressalvas: ${warnings.join(" · ")}.` : "Dados orgânicos e de anúncios importados da Meta com sucesso.");
+    } catch (error) {
+      const timedOut = error instanceof ApiRequestTimeoutError;
+      setMessageTone(timedOut ? "timeout" : "error");
+      setMessage(timedOut ? "A importação excedeu o tempo limite. Os dados existentes foram preservados." : error instanceof Error ? `Erro de API: ${error.message}` : "Erro de API: não foi possível concluir a importação da Meta.");
+    } finally { setImportingMeta(false); }
+  };
   const readScreenshots = async () => { if (!editing || !Object.keys(files).length) return; setReading(true); setMessage(""); try { const evidenceUrls = await Promise.all(Object.values(files).map(uploadAdminMedia)); const extracted = await extractAdminReportMetrics(clientId, evidenceUrls); setEditing({ ...editing, metrics: extracted.metrics, highlights: extracted.highlights, evidenceUrls: [...editing.evidenceUrls, ...evidenceUrls] }); setImportedFields([]); setMessageTone("success"); setMessage("Análise concluída. Revise os números e os conteúdos em destaque antes de salvar."); } catch (error) { setMessageTone("error"); setMessage(error instanceof Error ? error.message : "Não foi possível analisar as capturas. Você pode preencher os campos manualmente."); } finally { setReading(false); } };
   const changeMetric = (channel: "instagram" | "facebook", key: string, raw: string) => { if (!editing) return; const value = raw === "" ? null : Math.max(0, Number(raw) || 0); setEditing({ ...editing, metrics: { ...editing.metrics, [channel]: { ...editing.metrics[channel], [key]: value } } }); setImportedFields((current) => current.filter((field) => field !== `${channel}.${key}`)); };
   const save = async () => { if (!editing || !clientId || !editing.title.trim()) return; const payload = { title: editing.title.trim(), periodStart: reportDateValue(editing.periodStart), periodEnd: reportDateValue(editing.periodEnd), metrics: editing.metrics, highlights: editing.highlights, evidenceUrls: editing.evidenceUrls, notes: editing.notes }; try { const response = editing.id ? await updateAdminReport(clientId, editing.id, payload) : await createAdminReport(clientId, payload); setEditing(response.report); await refresh(); setMessageTone("success"); setMessage("Relatório salvo como rascunho."); } catch { const now = new Date().toISOString(); const localReport: ClientReport = editing.id ? { ...editing, ...payload, updatedAt: now } : { ...editing, ...payload, id: crypto.randomUUID(), clientAccountId: clientId, createdAt: now, updatedAt: now }; const next = [localReport, ...reports.filter((report) => report.id !== localReport.id)]; writeLocalReports(clientId, next); setReports(next); setEditing(localReport); setLocalMode(true); setMessageTone("warning"); setMessage("Rascunho salvo neste navegador."); } };
   const publish = async () => { if (!editing?.id) return; try { const response = await publishAdminReport(clientId, editing.id); setEditing(response.report); await refresh(); setMessageTone("success"); setMessage("Relatório publicado no portal do cliente."); } catch { const report = { ...editing, status: "published" as const, publishedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }; const next = reports.map((item) => item.id === report.id ? report : item); writeLocalReports(clientId, next); setReports(next); setEditing(report); setLocalMode(true); setMessageTone("warning"); setMessage("Relatório publicado nesta demonstração."); } };
-  const linkedAccounts = [metaAssets?.instagramUsername ? `Instagram @${metaAssets.instagramUsername}` : null, metaAssets?.facebookPageName ? `Facebook ${metaAssets.facebookPageName}` : null].filter(Boolean);
+  const linkedAccounts = [metaAssets?.instagramUsername ? `Instagram @${metaAssets.instagramUsername}` : null, metaAssets?.facebookPageName ? `Facebook ${metaAssets.facebookPageName}` : null, metaAssets?.metaAdAccountName ? `Ads ${metaAssets.metaAdAccountName}` : null].filter(Boolean);
   return <section className="reports-workspace"><div className="reports-client-picker"><label>Cliente<select value={clientId} onChange={(event) => setClientId(event.target.value)}>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label><span>{reports.length} relatório{reports.length === 1 ? "" : "s"} neste cliente</span></div><div className="reports-layout"><aside className="reports-history"><h3>Histórico</h3>{reports.map((report) => <button key={report.id} className={editing?.id === report.id ? "selected" : ""} onClick={() => { setEditing(report); setFiles({}); setMessage(""); setImportedFields([]); }}><small>{report.status === "published" ? "Publicado" : "Rascunho"}</small><strong>{report.title}</strong><span>{formatReportDate(report.periodEnd)}</span></button>)}{!reports.length ? <p>Crie o primeiro relatório deste cliente.</p> : null}</aside><main>{editing ? <div className="report-editor">
     <div className="report-form-top"><label>Título<input value={editing.title} onChange={(event) => setEditing({ ...editing, title: event.target.value })} /></label><label>De<input type="date" value={reportDateValue(editing.periodStart)} onChange={(event) => setEditing({ ...editing, periodStart: event.target.value })} /></label><label>Até<input type="date" value={reportDateValue(editing.periodEnd)} onChange={(event) => setEditing({ ...editing, periodEnd: event.target.value })} /></label></div>
     <section className="report-meta-import"><div className="report-meta-import-icon" aria-hidden="true">M</div><div><span>DADOS DA META</span><h3>Importar Insights do período <small className={metaStatus?.connected ? "connected" : ""}>{metaStatus?.connected ? "Conectada" : "Não conectada"}</small></h3><p>{formatReportDate(editing.periodStart)} – {formatReportDate(editing.periodEnd)} · {metaStatus?.connected ? linkedAccounts.length ? linkedAccounts.join(" · ") : "Nenhum Instagram ou Facebook vinculado a este cliente." : "Conecte a Meta e vincule os ativos deste cliente para importar dados automaticamente."}</p></div><button className="gradient-button" disabled={importingMeta || !metaStatus?.connected || !linkedAccounts.length} onClick={() => void importMeta()}>{importingMeta ? "Importando..." : "Importar dados da Meta"}</button></section>
     <section className="report-metrics-editor">{(["instagram", "facebook"] as const).map((channel) => <article key={channel}><h3>{channel === "instagram" ? "Instagram" : "Facebook"}</h3>{METRICS.map(([key, label]) => <label className={importedFields.includes(`${channel}.${key}`) ? "meta-imported" : ""} key={key}><span>{label}{importedFields.includes(`${channel}.${key}`) ? <small>Meta</small> : null}</span><input type="number" min="0" value={editing.metrics[channel][key] ?? ""} placeholder="Não disponível" onChange={(event) => changeMetric(channel, key, event.target.value)} /></label>)}{channel === "facebook" ? FACEBOOK_EXTRAS.map(([key, label]) => <label className={importedFields.includes(`facebook.${key}`) ? "meta-imported" : ""} key={key}><span>{label}{importedFields.includes(`facebook.${key}`) ? <small>Meta</small> : null}</span><input type="number" min="0" value={editing.metrics.facebook[key] ?? ""} placeholder="Não disponível" onChange={(event) => changeMetric("facebook", key, event.target.value)} /></label>) : null}</article>)}</section>
+    {editing.metrics.ads ? <section className="report-ads-editor"><header><div><span>META ADS</span><h3>Dados pagos importados</h3><p>{editing.metrics.ads.accountName || "Conta de anúncios"}{editing.metrics.ads.currency ? ` · ${editing.metrics.ads.currency}` : ""}</p></div></header><div className="report-ads-kpis">{[["Investimento", currency(editing.metrics.ads.spend, editing.metrics.ads.currency, "pt")], ["Alcance pago", displayMetric(editing.metrics.ads.reach, "pt")], ["Impressões", displayMetric(editing.metrics.ads.impressions, "pt")], ["Cliques no link", displayMetric(editing.metrics.ads.inlineLinkClicks ?? editing.metrics.ads.clicks, "pt")], ["CTR", percent(editing.metrics.ads.ctr, "pt")], ["CPC", currency(editing.metrics.ads.cpc, editing.metrics.ads.currency, "pt")], ["CPM", currency(editing.metrics.ads.cpm, editing.metrics.ads.currency, "pt")], ["Frequência", decimal(editing.metrics.ads.frequency, "pt")]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong></article>)}</div></section> : null}
     <details className="report-advanced"><summary>Opções avançadas · importar por screenshots</summary><section className="report-checklist"><header><div><span>FALLBACK POR IMAGEM</span><h3>Checklist de capturas</h3><p>Use esta opção quando os dados da Meta não estiverem disponíveis.</p></div><button className="ghost-button" disabled={reading || !Object.keys(files).length} onClick={() => void readScreenshots()}>{reading ? "Lendo capturas..." : "Analisar com IA"}</button></header>{(["instagram", "facebook"] as const).map((channel) => <div className="report-checklist-channel" key={channel}><strong>{channel === "instagram" ? "Instagram" : "Facebook"}</strong>{CHECKLIST.map((item) => { const key = `${channel}-${item}`; return <label key={key}><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) setFiles({ ...files, [key]: file }); }} /><span>{files[key] ? "✓" : "+"}</span>{item}</label>; })}</div>)}</section></details>
     <label className="report-notes-editor">Observações da equipe<textarea value={editing.notes ?? ""} onChange={(event) => setEditing({ ...editing, notes: event.target.value || null })} placeholder="Contexto, campanhas ou pontos a destacar para o cliente." /></label>
     <div className="report-actions"><button className="ghost-button" onClick={() => setEditing(null)}>Fechar</button>{editing.id ? <button className="danger-button" onClick={() => { if (window.confirm("Excluir este relatório?")) void deleteAdminReport(clientId, editing.id).then(() => { setEditing(null); void refresh(); }).catch(() => { const next = reports.filter((report) => report.id !== editing.id); writeLocalReports(clientId, next); setReports(next); setEditing(null); }); }}>Excluir</button> : null}<button className="gradient-button" onClick={() => void save()}>Salvar rascunho</button>{editing.id && editing.status !== "published" ? <button className="gradient-button" onClick={() => void publish()}>Publicar para cliente</button> : null}</div>{message ? <p className={`report-message ${messageTone}`}>{message}</p> : null}<ReportDocument report={editing} clientName={selectedClient?.name ?? "Cliente"} />
