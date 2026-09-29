@@ -5045,6 +5045,7 @@ button {
 .meta-publication-item.facebook > small { color: #9fc8ff; }
 .meta-publication-item > strong { font-size: 13px; line-height: 1.4; }
 .meta-schedule-button { min-height: 44px; color: #fff; border: 0; border-radius: 9px; background: linear-gradient(120deg, #7652dc, #d13e8c); font: inherit; font-weight: 750; cursor: pointer; }
+.meta-schedule-unavailable { color: #ffd1d7; font-size: 11px; line-height: 1.45; }
 .meta-schedule-backdrop { position: fixed; inset: 0; z-index: 190; display: grid; place-items: center; padding: 20px; background: rgba(9, 10, 16, .82); }
 .meta-schedule-modal { display: grid; width: min(560px, 100%); max-height: calc(100vh - 40px); gap: 18px; padding: 24px; overflow-y: auto; color: #f8f8fb; border: 1px solid rgba(255,255,255,.22); border-radius: 18px; background: #24252b; box-shadow: 0 28px 80px rgba(0,0,0,.55); }
 .meta-schedule-modal header, .meta-schedule-modal footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -5052,8 +5053,14 @@ button {
 .meta-schedule-modal h3 { margin: 4px 0 0; }
 .meta-schedule-modal header > button { color: #fff; border: 0; background: transparent; font-size: 28px; cursor: pointer; }
 .meta-schedule-preview { display: grid; grid-template-columns: 112px minmax(0,1fr); gap: 16px; align-items: center; }
-.meta-schedule-preview img { width: 112px; height: 112px; object-fit: cover; border-radius: 12px; }
+.meta-schedule-preview-media { position: relative; width: 112px; height: 112px; }
+.meta-schedule-preview-media > img { width: 112px; height: 112px; object-fit: cover; border-radius: 12px; }
+.meta-schedule-preview-media > span { position: absolute; right: 7px; bottom: 7px; padding: 4px 7px; color: #fff; border-radius: 999px; background: rgba(17,18,23,.82); font-size: 9px; font-weight: 800; }
 .meta-schedule-preview p { display: -webkit-box; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 5; line-height: 1.45; }
+.meta-carousel-thumbnails { display: flex; align-items: center; gap: 5px; margin-top: 9px; }
+.meta-carousel-thumbnails img, .meta-carousel-thumbnails span { width: 30px; height: 30px; box-sizing: border-box; border-radius: 6px; }
+.meta-carousel-thumbnails img { object-fit: cover; }
+.meta-carousel-thumbnails span { display: grid; place-items: center; color: #ddd7ef; background: rgba(255,255,255,.1); font-size: 9px; font-weight: 800; }
 .meta-schedule-modal label { display: grid; gap: 8px; font-size: 13px; font-weight: 700; }
 .meta-schedule-modal input { box-sizing: border-box; width: 100%; padding: 13px; border: 0; border-radius: 9px; font: inherit; }
 .meta-schedule-modal > small { color: #aeb3c2; }
@@ -5063,6 +5070,7 @@ button {
 .meta-publish-options label > small { color: #9fa7ba; font-size: 10px; font-weight: 500; line-height: 1.4; }
 .meta-publish-options label > em { color: #ffadb7; font-size: 11px; font-style: normal; }
 .meta-instagram-tags { display: grid; gap: 10px; }
+.meta-carousel-tags-note { padding: 10px 12px; color: #d9ccff; border: 1px solid rgba(210,115,218,.28); border-radius: 9px; background: rgba(132,73,218,.12); font-size: 11px; line-height: 1.4; }
 .meta-option-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .meta-option-heading > div { display: grid; gap: 2px; }
 .meta-option-heading strong { font-size: 13px; }
@@ -5090,7 +5098,7 @@ button {
 .meta-platform-options .facebook i { border-radius: 50%; background: #3478d4; color: #fff; border-color: #3478d4; font-family: Arial, sans-serif; }
 .meta-platform-options span { display: grid; min-width: 0; gap: 3px; }
 .meta-platform-options small { overflow: hidden; color: #aeb3c2; font-size: 10px; line-height: 1.2; text-overflow: ellipsis; }
-@media (max-width: 480px) { .meta-platform-options { grid-template-columns: 1fr; }.meta-schedule-preview { grid-template-columns: 88px minmax(0,1fr); }.meta-schedule-preview img { width: 88px; height: 88px; }.meta-tag-input-row { grid-template-columns: 1fr; } }
+@media (max-width: 480px) { .meta-platform-options { grid-template-columns: 1fr; }.meta-schedule-preview { grid-template-columns: 88px minmax(0,1fr); }.meta-schedule-preview-media, .meta-schedule-preview-media > img { width: 88px; height: 88px; }.meta-tag-input-row { grid-template-columns: 1fr; } }
 .editor-field em { margin-left: auto; font-style: normal; }
 .editor-field em button { padding: 5px 10px; color: #30343b; background: #fff; border: 0; border-radius: 5px; cursor: pointer; }
 .editor-field input, .editor-field select, .editor-field textarea { width: 100%; box-sizing: border-box; padding: 17px 20px; color: #111318; background: #fbfbfc; border: 1px solid rgba(255,255,255,.7); border-radius: 8px; font: inherit; font-size: 17px; font-weight: 500; letter-spacing: normal; text-transform: none; }

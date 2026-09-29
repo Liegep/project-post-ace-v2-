@@ -14,6 +14,7 @@ import {
   saveMetaOAuthState,
   upsertMetaConnection,
 } from "./meta.repository.js";
+import { planMetaCardPublications } from "./meta.publication.js";
 import type { MetaInsightsPeriod } from "./meta.schemas.js";
 
 const GRAPH_VERSION = "v26.0";
@@ -978,15 +979,6 @@ async function getPublishingContext(app: FastifyInstance, userId: string) {
   return { token: decryptToken(connection.encryptedToken, config.encryptionKey), appSecret: config.appSecret };
 }
 
-function singleImageFromCard(app: FastifyInstance, card: SchedulableCard) {
-  const media = [...new Set((card.mediaUrls.length ? card.mediaUrls : card.primaryMediaUrl ? [card.primaryMediaUrl] : []).filter(Boolean))];
-  const unsupportedType = /video|reel|story|carousel/i.test(`${card.mediaType ?? ""} ${card.artType ?? ""}`);
-  if (media.length !== 1 || unsupportedType) {
-    throw app.httpErrors.badRequest("Esta primeira versão aceita somente um card com uma única imagem.");
-  }
-  return assertPublicHttpUrl(app, media[0]);
-}
-
 export async function scheduleMetaCardPublications(app: FastifyInstance, input: {
   userId: string;
   clientAccountId: string;
@@ -999,24 +991,33 @@ export async function scheduleMetaCardPublications(app: FastifyInstance, input: 
 }) {
   await getPublishingContext(app, input.userId);
   if (input.card.clientAccountId !== input.clientAccountId) throw app.httpErrors.badRequest("O card não pertence a este cliente.");
-  const mediaUrl = singleImageFromCard(app, input.card);
+  const planned = planMetaCardPublications({
+    platforms: input.platforms.map(({ platform }) => platform),
+    mediaUrls: input.card.mediaUrls.length ? input.card.mediaUrls : input.card.primaryMediaUrl ? [input.card.primaryMediaUrl] : [],
+    mediaType: input.card.mediaType,
+    artType: input.card.artType,
+    locationId: input.locationId ?? null,
+    instagramUserTags: input.instagramUserTags ?? [],
+  });
+  if (!planned.plans) throw app.httpErrors.badRequest(planned.error);
+  const validatedUrls = new Map(planned.plans[0]?.mediaUrls.map((url) => [url, assertPublicHttpUrl(app, url)]) ?? []);
   const scheduledAt = new Date(input.scheduledAt).toISOString();
-  return createScheduledPublications(app.db, input.platforms.map(({ platform, metaAssetId }) => ({
+  return createScheduledPublications(app.db, planned.plans.map((plan) => ({
     clientAccountId: input.clientAccountId,
     cardId: input.card.id,
-    platform,
-    metaAssetId,
+    platform: plan.platform,
+    metaAssetId: input.platforms.find(({ platform }) => platform === plan.platform)!.metaAssetId,
     scheduledAt,
     timezone: input.timezone,
     caption: input.card.caption?.trim() || null,
-    mediaUrl,
-    mediaUrls: [mediaUrl],
-    mediaType: "image",
-    locationId: input.locationId ?? null,
-    instagramUserTags: platform === "instagram" ? (input.instagramUserTags ?? []) : [],
+    mediaUrl: validatedUrls.get(plan.mediaUrl)!,
+    mediaUrls: plan.mediaUrls.map((url) => validatedUrls.get(url)!),
+    mediaType: plan.mediaType,
+    locationId: plan.locationId,
+    instagramUserTags: plan.instagramUserTags,
     createdByUserId: input.userId,
     idempotencyKey: crypto.createHash("sha256")
-      .update([input.clientAccountId, input.card.id, platform, scheduledAt].join(":"))
+      .update([input.clientAccountId, input.card.id, plan.platform, scheduledAt].join(":"))
       .digest("hex"),
   })));
 }
@@ -1085,6 +1086,33 @@ async function waitForInstagramContainer(app: FastifyInstance, input: {
   throw new Error("A Meta ainda não concluiu o processamento da imagem. Tente publicar novamente.");
 }
 
+async function publishInstagramContainer(app: FastifyInstance, input: {
+  instagramAccountId: string;
+  creationId: string;
+  token: string;
+  appSecret: string;
+}) {
+  const publish = await fetchMetaResult<MetaApiError & { id?: string }>({
+    app,
+    path: `/${input.instagramAccountId}/media_publish`,
+    token: input.token,
+    appSecret: input.appSecret,
+    params: { creation_id: input.creationId },
+    metricOrOperation: "instagram.publish.media",
+    method: "POST",
+  });
+  if (!publish.payload?.id) throw new Error(publish.warning?.message || "A Meta não confirmou a publicação no Instagram.");
+  const permalink = await fetchMetaResult<MetaApiError & { permalink?: string }>({
+    app,
+    path: `/${publish.payload.id}`,
+    token: input.token,
+    appSecret: input.appSecret,
+    params: { fields: "permalink" },
+    metricOrOperation: "instagram.publish.permalink",
+  });
+  return { publishedMetaId: publish.payload.id, publishedPermalink: permalink.payload?.permalink ?? null };
+}
+
 async function publishInstagramImage(app: FastifyInstance, input: {
   publicationId: string;
   userId: string;
@@ -1116,25 +1144,88 @@ async function publishInstagramImage(app: FastifyInstance, input: {
     token: context.token,
     appSecret: context.appSecret,
   });
-  const publish = await fetchMetaResult<MetaApiError & { id?: string }>({
-    app,
-    path: `/${input.instagramAccountId}/media_publish`,
+  return publishInstagramContainer(app, {
+    instagramAccountId: input.instagramAccountId,
+    creationId: create.payload.id,
     token: context.token,
     appSecret: context.appSecret,
-    params: { creation_id: create.payload.id },
-    metricOrOperation: "instagram.publish.media",
+  });
+}
+
+async function publishInstagramCarousel(app: FastifyInstance, input: {
+  publicationId: string;
+  userId: string;
+  instagramAccountId: string;
+  imageUrls: string[];
+  caption: string | null;
+  locationId: string | null;
+}) {
+  if (input.imageUrls.length < 2) throw new Error("O carrossel do Instagram precisa ter pelo menos 2 imagens.");
+  if (input.imageUrls.length > 10) throw new Error("O carrossel do Instagram aceita no máximo 10 imagens.");
+  const context = await getPublishingContext(app, input.userId);
+  const children: string[] = [];
+  for (const [index, imageUrl] of input.imageUrls.entries()) {
+    const child = await fetchMetaResult<MetaApiError & { id?: string }>({
+      app,
+      path: `/${input.instagramAccountId}/media`,
+      token: context.token,
+      appSecret: context.appSecret,
+      params: { image_url: imageUrl, is_carousel_item: "true" },
+      metricOrOperation: `instagram.publish.carouselItem.${index + 1}.createContainer`,
+      method: "POST",
+    });
+    if (!child.payload?.id) {
+      const detail = child.warning?.message ? ` ${child.warning.message}` : "";
+      throw new Error(`A Meta não criou o container da imagem ${index + 1} do carrossel.${detail}`);
+    }
+    try {
+      await waitForInstagramContainer(app, {
+        publicationId: input.publicationId,
+        containerId: child.payload.id,
+        token: context.token,
+        appSecret: context.appSecret,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido.";
+      throw new Error(`A Meta não concluiu o processamento da imagem ${index + 1} do carrossel: ${message}`);
+    }
+    children.push(child.payload.id);
+  }
+  const carousel = await fetchMetaResult<MetaApiError & { id?: string }>({
+    app,
+    path: `/${input.instagramAccountId}/media`,
+    token: context.token,
+    appSecret: context.appSecret,
+    params: {
+      media_type: "CAROUSEL",
+      children: children.join(","),
+      ...(input.caption ? { caption: input.caption } : {}),
+      ...(input.locationId ? { location_id: input.locationId } : {}),
+    },
+    metricOrOperation: "instagram.publish.carousel.createContainer",
     method: "POST",
   });
-  if (!publish.payload?.id) throw new Error(publish.warning?.message || "A Meta não confirmou a publicação no Instagram.");
-  const permalink = await fetchMetaResult<MetaApiError & { permalink?: string }>({
-    app,
-    path: `/${publish.payload.id}`,
+  if (!carousel.payload?.id) {
+    const detail = carousel.warning?.message ? ` ${carousel.warning.message}` : "";
+    throw new Error(`A Meta não criou o container principal do carrossel.${detail}`);
+  }
+  try {
+    await waitForInstagramContainer(app, {
+      publicationId: input.publicationId,
+      containerId: carousel.payload.id,
+      token: context.token,
+      appSecret: context.appSecret,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Erro desconhecido.";
+    throw new Error(`A Meta não concluiu o processamento do carrossel: ${message}`);
+  }
+  return publishInstagramContainer(app, {
+    instagramAccountId: input.instagramAccountId,
+    creationId: carousel.payload.id,
     token: context.token,
     appSecret: context.appSecret,
-    params: { fields: "permalink" },
-    metricOrOperation: "instagram.publish.permalink",
   });
-  return { publishedMetaId: publish.payload.id, publishedPermalink: permalink.payload?.permalink ?? null };
 }
 
 async function publishFacebookImage(app: FastifyInstance, input: {
@@ -1222,9 +1313,21 @@ export async function processDueMetaPublications(app: FastifyInstance, limit = 1
         caption: publication.caption,
         locationId: publication.locationId,
       };
-      const result = publication.platform === "instagram"
-        ? await publishInstagramImage(app, { ...commonInput, instagramUserTags: publication.instagramUserTags, publicationId: publication.id, instagramAccountId: publication.metaAssetId })
-        : await publishFacebookImage(app, { ...commonInput, pageId: publication.metaAssetId });
+      if (publication.platform === "facebook" && publication.mediaType === "carousel") {
+        throw new Error("Carrossel ainda não está disponível para publicação no Facebook.");
+      }
+      const result = publication.platform === "instagram" && publication.mediaType === "carousel"
+        ? await publishInstagramCarousel(app, {
+          publicationId: publication.id,
+          userId: publication.createdByUserId,
+          instagramAccountId: publication.metaAssetId,
+          imageUrls: publication.mediaUrls,
+          caption: publication.caption,
+          locationId: publication.locationId,
+        })
+        : publication.platform === "instagram"
+          ? await publishInstagramImage(app, { ...commonInput, instagramUserTags: publication.instagramUserTags, publicationId: publication.id, instagramAccountId: publication.metaAssetId })
+          : await publishFacebookImage(app, { ...commonInput, pageId: publication.metaAssetId });
       const markedPublished = await markPublicationPublished(app.db, publication.id, result);
       if (!markedPublished) throw new Error("O status do agendamento mudou antes da confirmação da publicação.");
       if (publication.cardId) {

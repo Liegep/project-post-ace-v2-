@@ -7533,8 +7533,16 @@ ${internalMessage.trim()}`, isInternal: true });
   const currentMetaPublications = selectMetaPublicationsByCard(card.archived
     ? metaPublications.filter((publication) => publication.status === "published")
     : metaPublications).get(card.id) ?? [];
-  const metaCompatibleImage = mediaUrls.length === 1 && !/\.(mp4|webm|mov)(\?|$)/i.test(mediaUrls[0]) && !/video|reel|story|carousel/i.test(artType);
   const hasLinkedMetaPlatform = Boolean(metaAssets?.instagramAccountId || metaAssets?.facebookPageId);
+  const hasMetaImageMedia = mediaUrls.length >= 1
+    && mediaUrls.every((url) => !/\.(mp4|webm|mov)(\?|$)/i.test(url))
+    && !/video|reel|story/i.test(artType);
+  const metaScheduleUnavailableReason = mediaUrls.length > 10
+    ? "O carrossel do Instagram aceita no máximo 10 imagens."
+    : mediaUrls.length > 1 && !metaAssets?.instagramAccountId
+      ? "Carrossel está disponível somente para clientes com Instagram vinculado."
+      : null;
+  const metaCompatibleImage = hasMetaImageMedia && !metaScheduleUnavailableReason;
 
   async function scheduleMetaPublication(
     platforms: ("instagram" | "facebook")[],
@@ -7850,7 +7858,7 @@ ${internalMessage.trim()}`, isInternal: true });
           {approvalRevision > 0 ? <div className="editor-field client-feedback-field"><span>Retorno do cliente</span><span className={`client-feedback-badge ${clientFeedbackToneClass(clientLabel)}`}><i aria-hidden="true" />{clientLabel === "Pendente" ? "Aguardando aprovação" : clientLabel}</span></div> : <EditorSelect label="Feedback do cliente" value={clientLabel} onChange={setClientLabel} options={["Pendente", "Aprovado", "Alteração solicitada"]} />}
           {newApprovalUrl ? <section className="approval-resubmit-panel" aria-label="Novo link de aprovação"><small>O novo link é válido por 7 dias. Os links anteriores foram encerrados.</small><input aria-label="Novo link de aprovação" readOnly value={newApprovalUrl} onFocus={(event) => event.target.select()} /><button type="button" className="ghost-button" onClick={() => { void navigator.clipboard.writeText(newApprovalUrl).then(() => setApprovalLinkCopied(true)).catch(() => setFeedback("O reenvio foi concluído. Selecione o link acima para copiá-lo manualmente.")); }}>{approvalLinkCopied ? "Link copiado" : "Copiar novo link"}</button></section> : null}
           <EditorField label="Agendamento"><input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /><small className="editor-field-hint">Na data e hora informadas, o card será movido para Arquivados.</small></EditorField>
-          {canScheduleMeta && (currentMetaPublications.length || (hasLinkedMetaPlatform && metaCompatibleImage)) ? <section className="meta-publication-panel">
+          {canScheduleMeta && (currentMetaPublications.length || (hasLinkedMetaPlatform && hasMetaImageMedia)) ? <section className="meta-publication-panel">
             <span>PUBLICAÇÃO META REAL</span>
             {currentMetaPublications.length ? <div className="meta-publication-list">{currentMetaPublications.map((publication) => <article key={publication.id} className={`meta-publication-item ${publication.platform}`}>
               <small>{publication.platform === "facebook" ? "Facebook" : "Instagram"}</small>
@@ -7858,7 +7866,7 @@ ${internalMessage.trim()}`, isInternal: true });
               {publication.status === "failed" && publication.lastError ? <details><summary>Ver erro</summary><p>{publication.lastError}</p></details> : null}
               {publication.publishedPermalink ? <a href={publication.publishedPermalink} target="_blank" rel="noreferrer">Abrir publicação ↗</a> : null}
               {publication.status === "scheduled" || publication.status === "failed" ? <button type="button" className="ghost-button" onClick={() => void cancelMetaPublication(publication.id)}>Cancelar publicação</button> : null}
-            </article>)}</div> : <button type="button" className="meta-schedule-button" onClick={() => setMetaScheduleOpen(true)}>Agendar publicação Meta</button>}
+            </article>)}</div> : metaScheduleUnavailableReason ? <small className="meta-schedule-unavailable">{metaScheduleUnavailableReason}</small> : metaCompatibleImage ? <button type="button" className="meta-schedule-button" onClick={() => setMetaScheduleOpen(true)}>Agendar publicação Meta</button> : null}
           </section> : null}
           <label className="editor-field"><span>Coluna</span><select value={columnId} onChange={(event) => setColumnId(event.target.value)}><option value="">Sem coluna</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select></label>
           <section className="tag-library">
@@ -7912,7 +7920,7 @@ ${internalMessage.trim()}`, isInternal: true });
           <button className="gradient-button editor-save" onClick={() => void persistCard(true)} disabled={saving || uploading || resubmitting}>{saving ? "Salvando..." : "Salvar e fechar"}</button>
         </footer>
         {metaScheduleOpen ? <MetaScheduleModal
-          imageUrl={mediaUrls[0]}
+          imageUrls={mediaUrls}
           caption={caption}
           suggestedAt={scheduledAt}
           instagramAvailable={Boolean(metaAssets?.instagramAccountId)}
@@ -7927,8 +7935,8 @@ ${internalMessage.trim()}`, isInternal: true });
   );
 }
 
-function MetaScheduleModal({ imageUrl, caption, suggestedAt, instagramAvailable, facebookAvailable, submitting, onClose, onSubmit }: {
-  imageUrl: string;
+function MetaScheduleModal({ imageUrls, caption, suggestedAt, instagramAvailable, facebookAvailable, submitting, onClose, onSubmit }: {
+  imageUrls: string[];
   caption: string;
   suggestedAt: string;
   instagramAvailable: boolean;
@@ -7944,8 +7952,10 @@ function MetaScheduleModal({ imageUrl, caption, suggestedAt, instagramAvailable,
 }) {
   const fallback = new Date(Date.now() + 60 * 60_000);
   fallback.setSeconds(0, 0);
+  const isCarousel = imageUrls.length > 1;
+  const firstImageUrl = imageUrls[0];
   const [localDateTime, setLocalDateTime] = useState(suggestedAt || toDateTimeLocal(fallback.toISOString()));
-  const [platforms, setPlatforms] = useState<("instagram" | "facebook")[]>(instagramAvailable ? ["instagram"] : facebookAvailable ? ["facebook"] : []);
+  const [platforms, setPlatforms] = useState<("instagram" | "facebook")[]>(instagramAvailable ? ["instagram"] : !isCarousel && facebookAvailable ? ["facebook"] : []);
   const [locationId, setLocationId] = useState("");
   const [tagUsername, setTagUsername] = useState("");
   const [pendingTagUsername, setPendingTagUsername] = useState<string | null>(null);
@@ -7997,11 +8007,11 @@ function MetaScheduleModal({ imageUrl, caption, suggestedAt, instagramAvailable,
     <section className="meta-schedule-modal" role="dialog" aria-modal="true" aria-labelledby="meta-schedule-title" onClick={(event) => event.stopPropagation()}>
       <header><div><span>PUBLICAÇÃO META</span><h3 id="meta-schedule-title">Agendar publicação</h3></div><button type="button" onClick={onClose} aria-label="Fechar">×</button></header>
       <div className="meta-platform-options" role="group" aria-label="Plataformas de publicação">
-        <button type="button" className={platforms.includes("instagram") ? "selected instagram" : "instagram"} disabled={!instagramAvailable} aria-pressed={platforms.includes("instagram")} onClick={() => togglePlatform("instagram")}><i aria-hidden="true">◎</i><span><strong>Instagram</strong>{instagramAvailable ? <small>Imagem única</small> : <small>Não vinculado a este cliente</small>}</span></button>
-        <button type="button" className={platforms.includes("facebook") ? "selected facebook" : "facebook"} disabled={!facebookAvailable} aria-pressed={platforms.includes("facebook")} onClick={() => togglePlatform("facebook")}><i aria-hidden="true">f</i><span><strong>Facebook</strong>{facebookAvailable ? <small>Imagem única</small> : <small>Não vinculado a este cliente</small>}</span></button>
+        <button type="button" className={platforms.includes("instagram") ? "selected instagram" : "instagram"} disabled={!instagramAvailable} aria-pressed={platforms.includes("instagram")} onClick={() => togglePlatform("instagram")}><i aria-hidden="true">◎</i><span><strong>Instagram</strong>{instagramAvailable ? <small>{isCarousel ? `Carrossel · ${imageUrls.length} imagens` : "Imagem única"}</small> : <small>Não vinculado a este cliente</small>}</span></button>
+        <button type="button" className={platforms.includes("facebook") ? "selected facebook" : "facebook"} disabled={!facebookAvailable || isCarousel} aria-pressed={platforms.includes("facebook")} onClick={() => togglePlatform("facebook")}><i aria-hidden="true">f</i><span><strong>Facebook</strong>{!facebookAvailable ? <small>Não vinculado a este cliente</small> : isCarousel ? <small>Carrossel ainda não disponível no Facebook</small> : <small>Imagem única</small>}</span></button>
       </div>
 
-      <div className="meta-schedule-preview"><img src={imageUrl} alt="Prévia da publicação" /><p>{caption.trim() || "Sem legenda"}</p></div>
+      <div className={`meta-schedule-preview${isCarousel ? " carousel" : ""}`}><div className="meta-schedule-preview-media"><img src={firstImageUrl} alt="Prévia da publicação" />{isCarousel ? <span>{imageUrls.length} imagens</span> : null}</div><div><p>{caption.trim() || "Sem legenda"}</p>{isCarousel ? <div className="meta-carousel-thumbnails">{imageUrls.slice(1, 5).map((url, index) => <img key={`${url}-${index}`} src={url} alt={`Imagem ${index + 2} do carrossel`} />)}{imageUrls.length > 5 ? <span>+{imageUrls.length - 5}</span> : null}</div> : null}</div></div>
 
       <section className="meta-publish-options">
         <label>
@@ -8017,7 +8027,8 @@ function MetaScheduleModal({ imageUrl, caption, suggestedAt, instagramAvailable,
           {locationInvalid ? <em>O ID da localização deve conter somente números.</em> : null}
         </label>
 
-        {instagramSelected ? <div className="meta-instagram-tags">
+        {instagramSelected && isCarousel ? <div className="meta-carousel-tags-note">Marcações por imagem serão adicionadas em uma próxima etapa.</div> : null}
+        {instagramSelected && !isCarousel ? <div className="meta-instagram-tags">
           <div className="meta-option-heading"><div><strong>Marcar pessoas no Instagram</strong><small>Opcional · até 20 contas públicas</small></div><span>{instagramUserTags.length}/20</span></div>
           <div className="meta-tag-input-row">
             <input value={tagUsername} placeholder="@usuario" onChange={(event) => { setTagUsername(event.target.value); setTagError(""); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); prepareTag(); } }} />
@@ -8026,7 +8037,7 @@ function MetaScheduleModal({ imageUrl, caption, suggestedAt, instagramAvailable,
           {pendingTagUsername ? <div className="meta-tag-placement-note">Clique na imagem onde <strong>@{pendingTagUsername}</strong> deve aparecer.</div> : null}
           {tagError ? <div className="meta-tag-error">{tagError}</div> : null}
           {(pendingTagUsername || instagramUserTags.length > 0) ? <button type="button" className={pendingTagUsername ? "meta-tag-canvas is-placing" : "meta-tag-canvas"} onClick={placeTag} aria-label={pendingTagUsername ? `Clique para posicionar @${pendingTagUsername}` : "Prévia das marcações"} disabled={!pendingTagUsername}>
-            <img src={imageUrl} alt="Imagem para posicionar marcações do Instagram" />
+            <img src={firstImageUrl} alt="Imagem para posicionar marcações do Instagram" />
             {instagramUserTags.map((tag) => <span key={tag.username} className="meta-tag-marker" style={{ left: `${tag.x * 100}%`, top: `${tag.y * 100}%` }}>@{tag.username}</span>)}
           </button> : null}
           {instagramUserTags.length ? <div className="meta-tag-list">{instagramUserTags.map((tag) => <span key={tag.username}>@{tag.username}<button type="button" aria-label={`Remover @${tag.username}`} onClick={() => setInstagramUserTags((current) => current.filter((item) => item.username !== tag.username))}>×</button></span>)}</div> : null}
@@ -8035,7 +8046,7 @@ function MetaScheduleModal({ imageUrl, caption, suggestedAt, instagramAvailable,
 
       <label><span>Data e hora</span><input type="datetime-local" value={localDateTime} onChange={(event) => setLocalDateTime(event.target.value)} /></label>
       <small>Fuso horário: {timezone}</small>
-      <footer><button type="button" className="ghost-button" disabled={submitting} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || !localDateTime || platforms.length === 0 || locationInvalid || Boolean(pendingTagUsername)} onClick={() => void onSubmit(platforms, localDateTime, timezone, { locationId: normalizedLocationId || null, instagramUserTags })}>{submitting ? "Agendando…" : "Agendar publicação"}</button></footer>
+      <footer><button type="button" className="ghost-button" disabled={submitting} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || !localDateTime || platforms.length === 0 || locationInvalid || Boolean(pendingTagUsername)} onClick={() => void onSubmit(platforms, localDateTime, timezone, { locationId: normalizedLocationId || null, instagramUserTags: isCarousel ? [] : instagramUserTags })}>{submitting ? "Agendando…" : "Agendar publicação"}</button></footer>
     </section>
   </div>;
 }
