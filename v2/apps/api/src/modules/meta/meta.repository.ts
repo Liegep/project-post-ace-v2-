@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import type { Pool, RowDataPacket } from "mysql2/promise";
+import type { Pool, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import type { ClientMetaAssetsInput } from "./meta.schemas.js";
 
 type ConnectionRow = RowDataPacket & {
@@ -19,6 +19,86 @@ type AssetsRow = RowDataPacket & {
   meta_ad_account_name: string | null;
   updated_at: Date | string;
 };
+
+export type MetaScheduledPublicationStatus = "scheduled" | "publishing" | "published" | "failed" | "cancelled";
+
+type ScheduledPublicationRow = RowDataPacket & {
+  id: string;
+  client_account_id: string;
+  card_id: string | null;
+  platform: "instagram" | "facebook";
+  meta_asset_id: string;
+  scheduled_at: string;
+  timezone: string;
+  caption: string | null;
+  media_url: string | null;
+  media_urls_json: unknown;
+  media_type: string | null;
+  status: MetaScheduledPublicationStatus;
+  attempt_count: number;
+  idempotency_key: string;
+  published_meta_id: string | null;
+  published_permalink: string | null;
+  last_error: string | null;
+  created_by_user_id: string | null;
+  created_at: Date | string;
+  updated_at: Date | string;
+  published_at: Date | string | null;
+};
+
+const scheduledPublicationSelect = [
+  "SELECT id, client_account_id, card_id, platform, meta_asset_id,",
+  "DATE_FORMAT(scheduled_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS scheduled_at, timezone, caption, media_url, media_urls_json, media_type,",
+  "status, attempt_count, idempotency_key, published_meta_id, published_permalink, last_error, created_by_user_id, created_at, updated_at, published_at",
+  "FROM meta_scheduled_publications",
+].join(" ");
+
+function parseStringArray(value: unknown) {
+  if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string");
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(String(value));
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function isoValue(value: Date | string | null) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toISOString();
+}
+
+function mapScheduledPublication(row: ScheduledPublicationRow) {
+  return {
+    id: row.id,
+    clientAccountId: row.client_account_id,
+    cardId: row.card_id,
+    platform: row.platform,
+    metaAssetId: row.meta_asset_id,
+    scheduledAt: row.scheduled_at,
+    timezone: row.timezone,
+    caption: row.caption,
+    mediaUrl: row.media_url,
+    mediaUrls: parseStringArray(row.media_urls_json),
+    mediaType: row.media_type,
+    status: row.status,
+    attemptCount: Number(row.attempt_count),
+    idempotencyKey: row.idempotency_key,
+    publishedMetaId: row.published_meta_id,
+    publishedPermalink: row.published_permalink,
+    lastError: row.last_error,
+    createdByUserId: row.created_by_user_id,
+    createdAt: isoValue(row.created_at)!,
+    updatedAt: isoValue(row.updated_at)!,
+    publishedAt: isoValue(row.published_at),
+  };
+}
+
+function mysqlUtcDateTime(value: string) {
+  return new Date(value).toISOString().replace("T", " ").replace("Z", "");
+}
 
 function stateHash(state: string) {
   return crypto.createHash("sha256").update(state).digest("hex");
@@ -109,4 +189,107 @@ export async function upsertClientMetaAssets(db: Pool, clientAccountId: string, 
     input.metaAdAccountId ?? null, input.metaAdAccountName ?? null,
   ]);
   return findClientMetaAssets(db, clientAccountId);
+}
+
+export type CreateScheduledPublicationInput = {
+  clientAccountId: string;
+  cardId: string | null;
+  platform: "instagram";
+  metaAssetId: string;
+  scheduledAt: string;
+  timezone: string;
+  caption: string | null;
+  mediaUrl: string;
+  mediaUrls: string[];
+  mediaType: "image";
+  createdByUserId: string;
+  idempotencyKey: string;
+};
+
+async function findScheduledPublicationByIdempotencyKey(db: Pool, idempotencyKey: string) {
+  const [rows] = await db.query<ScheduledPublicationRow[]>(
+    `${scheduledPublicationSelect} WHERE idempotency_key = ? LIMIT 1`,
+    [idempotencyKey],
+  );
+  return rows[0] ? mapScheduledPublication(rows[0]) : null;
+}
+
+export async function createScheduledPublication(db: Pool, input: CreateScheduledPublicationInput) {
+  const id = crypto.randomUUID();
+  try {
+    await db.query(
+      [
+        "INSERT INTO meta_scheduled_publications",
+        "(id, client_account_id, card_id, platform, meta_asset_id, scheduled_at, timezone, caption, media_url, media_urls_json, media_type, status, created_by_user_id, idempotency_key)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)",
+      ].join(" "),
+      [
+        id, input.clientAccountId, input.cardId, input.platform, input.metaAssetId,
+        mysqlUtcDateTime(input.scheduledAt), input.timezone, input.caption, input.mediaUrl,
+        JSON.stringify(input.mediaUrls), input.mediaType, input.createdByUserId, input.idempotencyKey,
+      ],
+    );
+    return { publication: await findScheduledPublication(db, id), created: true };
+  } catch (error) {
+    if ((error as { code?: string }).code !== "ER_DUP_ENTRY") throw error;
+    const existing = await findScheduledPublicationByIdempotencyKey(db, input.idempotencyKey);
+    if (!existing) throw error;
+    return { publication: existing, created: false };
+  }
+}
+
+export async function findScheduledPublication(db: Pool, id: string, clientAccountId?: string) {
+  const [rows] = await db.query<ScheduledPublicationRow[]>(
+    `${scheduledPublicationSelect} WHERE id = ?${clientAccountId ? " AND client_account_id = ?" : ""} LIMIT 1`,
+    clientAccountId ? [id, clientAccountId] : [id],
+  );
+  return rows[0] ? mapScheduledPublication(rows[0]) : null;
+}
+
+export async function listScheduledPublicationsForClient(db: Pool, clientAccountId: string) {
+  const [rows] = await db.query<ScheduledPublicationRow[]>(
+    `${scheduledPublicationSelect} WHERE client_account_id = ? ORDER BY CASE WHEN status = 'scheduled' THEN 0 ELSE 1 END, scheduled_at ASC, created_at DESC`,
+    [clientAccountId],
+  );
+  return rows.map(mapScheduledPublication);
+}
+
+export async function listDueScheduledPublications(db: Pool, limit = 10) {
+  const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
+  const [rows] = await db.query<ScheduledPublicationRow[]>(
+    `${scheduledPublicationSelect} WHERE status = 'scheduled' AND scheduled_at <= UTC_TIMESTAMP(3) ORDER BY scheduled_at ASC LIMIT ${safeLimit}`,
+  );
+  return rows.map(mapScheduledPublication);
+}
+
+export async function cancelScheduledPublication(db: Pool, id: string, clientAccountId: string) {
+  const [result] = await db.query<ResultSetHeader>(
+    "UPDATE meta_scheduled_publications SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND client_account_id = ? AND status IN ('scheduled', 'failed')",
+    [id, clientAccountId],
+  );
+  return result.affectedRows === 1;
+}
+
+export async function markPublicationPublishing(db: Pool, id: string) {
+  const [result] = await db.query<ResultSetHeader>(
+    "UPDATE meta_scheduled_publications SET status = 'publishing', last_error = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'scheduled'",
+    [id],
+  );
+  return result.affectedRows === 1;
+}
+
+export async function markPublicationPublished(db: Pool, id: string, input: { publishedMetaId: string; publishedPermalink: string | null }) {
+  const [result] = await db.query<ResultSetHeader>(
+    "UPDATE meta_scheduled_publications SET status = 'published', published_meta_id = ?, published_permalink = ?, published_at = CURRENT_TIMESTAMP, last_error = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'publishing'",
+    [input.publishedMetaId, input.publishedPermalink, id],
+  );
+  return result.affectedRows === 1;
+}
+
+export async function markPublicationFailed(db: Pool, id: string, lastError: string) {
+  const [result] = await db.query<ResultSetHeader>(
+    "UPDATE meta_scheduled_publications SET status = 'failed', attempt_count = attempt_count + 1, last_error = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'publishing'",
+    [lastError.slice(0, 4000), id],
+  );
+  return result.affectedRows === 1;
 }

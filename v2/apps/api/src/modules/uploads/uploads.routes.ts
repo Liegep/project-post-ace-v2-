@@ -169,7 +169,17 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
 
     try {
       const file = await readFile(path.join(getUploadDirectory(app.appEnv.UPLOAD_DIR), params.fileName));
-      const query = request.query as { download?: string };
+      const query = request.query as { download?: string; format?: string };
+      if (query.format === "jpeg") {
+        if (!contentType.startsWith("image/") || contentType === "image/svg+xml") {
+          throw app.httpErrors.badRequest("Apenas imagens podem ser convertidas em JPEG.");
+        }
+        const jpeg = await sharp(file).flatten({ background: "#ffffff" }).jpeg({ quality: 92 }).toBuffer();
+        return reply
+          .header("Cache-Control", "public, max-age=86400")
+          .type("image/jpeg")
+          .send(jpeg);
+      }
       if (query.download === "png") {
         if (!contentType.startsWith("image/") || contentType === "image/svg+xml") {
           throw app.httpErrors.badRequest("Apenas imagens podem ser baixadas em PNG.");

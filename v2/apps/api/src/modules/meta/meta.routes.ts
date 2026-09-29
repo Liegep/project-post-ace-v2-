@@ -1,8 +1,9 @@
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { findClientAccountById } from "../clients/clients.repository.js";
-import { clientMetaAssetsSchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema } from "./meta.schemas.js";
-import { consumeMetaOAuthState, findClientMetaAssets, upsertClientMetaAssets } from "./meta.repository.js";
-import { completeMetaAuthorization, createMetaAuthorizationUrl, getMetaAdsInsights, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets } from "./meta.service.js";
+import { findCardById } from "../cards/cards.repository.js";
+import { clientMetaAssetsSchema, createMetaPublicationSchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema } from "./meta.schemas.js";
+import { cancelScheduledPublication, consumeMetaOAuthState, findClientMetaAssets, findScheduledPublication, listScheduledPublicationsForClient, upsertClientMetaAssets } from "./meta.repository.js";
+import { completeMetaAuthorization, createMetaAuthorizationUrl, getMetaAdsInsights, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets, scheduleInstagramCardPublication } from "./meta.service.js";
 
 function assertSuperAdmin(request: FastifyRequest) {
   if (!request.auth) throw request.server.httpErrors.unauthorized("Sessão obrigatória.");
@@ -16,6 +17,24 @@ function callbackLocation(appUrl: string, returnPath: string, status: "connected
   const base = appUrl.replace(/\/$/, "");
   const separator = returnPath.includes("?") ? "&" : "?";
   return `${base}/${returnPath}${separator}meta=${status}`;
+}
+
+function publicationResponse(publication: NonNullable<Awaited<ReturnType<typeof findScheduledPublication>>>) {
+  return {
+    id: publication.id,
+    cardId: publication.cardId,
+    platform: publication.platform,
+    scheduledAt: publication.scheduledAt,
+    timezone: publication.timezone,
+    status: publication.status,
+    attemptCount: publication.attemptCount,
+    publishedMetaId: publication.publishedMetaId,
+    publishedPermalink: publication.publishedPermalink,
+    lastError: publication.lastError,
+    createdAt: publication.createdAt,
+    updatedAt: publication.updatedAt,
+    publishedAt: publication.publishedAt,
+  };
 }
 
 export const metaRoutes: FastifyPluginAsync = async (app) => {
@@ -111,6 +130,53 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
       request.log.error({ err: error, clientAccountId, durationMs: Date.now() - startedAt }, "Meta Ads Insights request failed");
       throw error;
     }
+  });
+
+  app.get("/clients/:clientAccountId/meta-publications", async (request) => {
+    assertSuperAdmin(request);
+    const { clientAccountId } = request.params as { clientAccountId: string };
+    if (!await findClientAccountById(app.db, clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
+    const publications = await listScheduledPublicationsForClient(app.db, clientAccountId);
+    return { publications: publications.map(publicationResponse) };
+  });
+
+  app.post("/clients/:clientAccountId/meta-publications", async (request, reply) => {
+    const auth = assertSuperAdmin(request);
+    const { clientAccountId } = request.params as { clientAccountId: string };
+    if (!await findClientAccountById(app.db, clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
+    const parsed = createMetaPublicationSchema.safeParse(request.body);
+    if (!parsed.success) throw app.httpErrors.badRequest(parsed.error.issues[0]?.message ?? "Agendamento inválido.");
+    const assets = await findClientMetaAssets(app.db, clientAccountId);
+    if (!assets?.instagramAccountId) throw app.httpErrors.badRequest("Vincule uma conta do Instagram a este cliente antes de agendar.");
+    const card = await findCardById(app.db, parsed.data.cardId);
+    if (!card) throw app.httpErrors.notFound("Card não encontrado.");
+    const result = await scheduleInstagramCardPublication(app, {
+      userId: auth.user.id,
+      clientAccountId,
+      instagramAccountId: assets.instagramAccountId,
+      card,
+      scheduledAt: parsed.data.scheduledAt,
+      timezone: parsed.data.timezone,
+    });
+    if (!result.publication) throw new Error("O agendamento foi salvo, mas não pôde ser carregado.");
+    return reply.code(result.created ? 201 : 200).send({ publication: publicationResponse(result.publication), created: result.created });
+  });
+
+  app.post("/clients/:clientAccountId/meta-publications/:publicationId/cancel", async (request) => {
+    assertSuperAdmin(request);
+    const { clientAccountId, publicationId } = request.params as { clientAccountId: string; publicationId: string };
+    if (!await findClientAccountById(app.db, clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
+    const publication = await findScheduledPublication(app.db, publicationId, clientAccountId);
+    if (!publication) throw app.httpErrors.notFound("Agendamento Meta não encontrado.");
+    if (!(["scheduled", "failed"] as const).includes(publication.status as "scheduled" | "failed")) {
+      throw app.httpErrors.badRequest("Somente publicações agendadas ou com falha podem ser canceladas.");
+    }
+    if (!await cancelScheduledPublication(app.db, publicationId, clientAccountId)) {
+      throw app.httpErrors.conflict("O status da publicação mudou. Atualize a tela e tente novamente.");
+    }
+    const cancelled = await findScheduledPublication(app.db, publicationId, clientAccountId);
+    if (!cancelled) throw app.httpErrors.notFound("Agendamento Meta não encontrado.");
+    return { publication: publicationResponse(cancelled) };
   });
 
   app.put("/clients/:clientAccountId/meta-assets", async (request) => {

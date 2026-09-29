@@ -62,3 +62,22 @@ export const clientMetaAssetsSchema = z.object({
 });
 
 export type ClientMetaAssetsInput = z.infer<typeof clientMetaAssetsSchema>;
+
+const isoDateTimeSchema = z.string().trim().refine((value) => {
+  if (!/[zZ]|[+-]\d{2}:\d{2}$/.test(value)) return false;
+  return !Number.isNaN(new Date(value).getTime());
+}, "Use uma data e hora ISO com fuso horário.");
+
+export const createMetaPublicationSchema = z.object({
+  cardId: z.string().trim().min(1).max(190),
+  platform: z.literal("instagram"),
+  scheduledAt: isoDateTimeSchema,
+  timezone: z.string().trim().min(1).max(100).refine((value) => {
+    try {
+      new Intl.DateTimeFormat("pt-BR", { timeZone: value });
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Timezone inválido."),
+});

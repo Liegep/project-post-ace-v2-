@@ -450,6 +450,21 @@ export type ClientMetaAssets = {
   metaAdAccountName: string | null;
   updatedAt?: string;
 };
+export type MetaScheduledPublication = {
+  id: string;
+  cardId: string | null;
+  platform: "instagram" | "facebook";
+  scheduledAt: string;
+  timezone: string;
+  status: "scheduled" | "publishing" | "published" | "failed" | "cancelled";
+  attemptCount: number;
+  publishedMetaId: string | null;
+  publishedPermalink: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
+};
 
 type ApiCardDetailResponse = {
   card: ApiBoardCard;
@@ -1316,6 +1331,26 @@ export async function saveClientMetaAssetsBySlug(slug: string, assets: ClientMet
   return sendJson<{ assets: ClientMetaAssets }>(`/api/clients/${client.id}/meta-assets`, {
     method: "PUT",
     body: JSON.stringify(assets),
+  });
+}
+
+export async function listMetaPublicationsBySlug(slug: string) {
+  const client = await findAdminClientBySlug(slug);
+  return fetchJson<{ publications: MetaScheduledPublication[] }>(`/api/clients/${client.id}/meta-publications`);
+}
+
+export async function createMetaPublicationBySlug(slug: string, input: { cardId: string; platform: "instagram"; scheduledAt: string; timezone: string }) {
+  const client = await findAdminClientBySlug(slug);
+  return sendJson<{ publication: MetaScheduledPublication; created: boolean }>(`/api/clients/${client.id}/meta-publications`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function cancelMetaPublicationBySlug(slug: string, publicationId: string) {
+  const client = await findAdminClientBySlug(slug);
+  return sendJson<{ publication: MetaScheduledPublication }>(`/api/clients/${client.id}/meta-publications/${publicationId}/cancel`, {
+    method: "POST",
   });
 }
 

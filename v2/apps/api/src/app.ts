@@ -41,6 +41,7 @@ import { scheduledCardArchiverPluginRegistered } from "./plugins/scheduled-card-
 import { ensureMetaStorage } from "./modules/meta/meta.storage.js";
 import { metaRoutes } from "./modules/meta/meta.routes.js";
 import { ensureCardTimeZoneStorage } from "./modules/cards/cards.storage.js";
+import { metaPublicationWorkerRegistered } from "./plugins/meta-publication-worker.js";
 
 export async function buildApp() {
   const appEnv = loadEnv();
@@ -157,6 +158,7 @@ export async function buildApp() {
     await app.register(dashboardNotesRoutes, { prefix: "/api" });
     await app.register(metaRoutes, { prefix: "/api" });
     await app.register(scheduledCardArchiverPluginRegistered);
+    await app.register(metaPublicationWorkerRegistered);
 
     if (databaseAvailableAtStartup) {
       try {

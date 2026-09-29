@@ -1,6 +1,17 @@
 import crypto from "node:crypto";
+import net from "node:net";
 import type { FastifyInstance } from "fastify";
-import { findMetaConnection, saveMetaOAuthState, upsertMetaConnection } from "./meta.repository.js";
+import {
+  createScheduledPublication,
+  findClientMetaAssets,
+  findMetaConnection,
+  listDueScheduledPublications,
+  markPublicationFailed,
+  markPublicationPublished,
+  markPublicationPublishing,
+  saveMetaOAuthState,
+  upsertMetaConnection,
+} from "./meta.repository.js";
 import type { MetaInsightsPeriod } from "./meta.schemas.js";
 
 const GRAPH_VERSION = "v26.0";
@@ -12,6 +23,7 @@ const META_SCOPES = [
   "instagram_manage_insights",
   "business_management",
   "ads_read",
+  "instagram_content_publish",
 ];
 
 type MetaTokenResponse = { access_token?: string; token_type?: string; expires_in?: number; error?: { message?: string } };
@@ -197,6 +209,7 @@ async function fetchMetaResult<T extends MetaApiError>(input: {
   params?: Record<string, string>;
   metricOrOperation: string;
   nextUrl?: string;
+  method?: "GET" | "POST";
 }): Promise<{ payload: T | null; warning: MetaInsightsWarning | null }> {
   const url = input.nextUrl ? new URL(input.nextUrl) : new URL(`https://graph.facebook.com/${GRAPH_VERSION}${input.path}`);
   for (const [key, value] of Object.entries(input.params ?? {})) url.searchParams.set(key, value);
@@ -206,6 +219,7 @@ async function fetchMetaResult<T extends MetaApiError>(input: {
   const startedAt = Date.now();
   try {
     const response = await fetch(url, {
+      method: input.method ?? "GET",
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(META_INSIGHTS_REQUEST_TIMEOUT_MS),
     });
@@ -904,4 +918,172 @@ export async function getMetaInsights(
       : linkedStatuses.every((source) => source === "empty") ? "empty"
         : "complete";
   return { period, status, sources, instagram, facebook, warnings };
+}
+
+type SchedulableCard = {
+  id: string;
+  clientAccountId: string;
+  caption: string | null;
+  mediaType: string | null;
+  primaryMediaUrl: string | null;
+  mediaUrls: string[];
+  artType: string | null;
+};
+
+function isPrivateHostname(hostname: string) {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (normalized === "localhost" || normalized.endsWith(".localhost") || normalized === "::1") return true;
+  if (net.isIP(normalized) === 4) {
+    const [a, b] = normalized.split(".").map(Number);
+    return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+  }
+  return net.isIP(normalized) === 6 && (normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe80:"));
+}
+
+function assertPublicHttpUrl(app: FastifyInstance, rawUrl: string) {
+  let url: URL;
+  try {
+    url = rawUrl.startsWith("/api/uploads/") ? new URL(rawUrl, app.appEnv.API_URL) : new URL(rawUrl);
+  } catch {
+    throw app.httpErrors.badRequest("A imagem precisa ter uma URL pública HTTP/HTTPS para que a Meta consiga acessá-la.");
+  }
+  if (!["http:", "https:"].includes(url.protocol) || isPrivateHostname(url.hostname)) {
+    throw app.httpErrors.badRequest("A imagem precisa estar disponível em uma URL pública HTTP/HTTPS; URLs locais, blob e data não são aceitas.");
+  }
+  if (rawUrl.startsWith("/api/uploads/")) {
+    // Uploads are already public. Convert the stored WebP on demand because
+    // Instagram Content Publishing accepts JPEG images, not WebP.
+    url.searchParams.set("format", "jpeg");
+  } else if (!/\.jpe?g$/i.test(url.pathname)) {
+    throw app.httpErrors.badRequest("Esta primeira versão publica somente uma imagem JPEG acessível por URL pública.");
+  }
+  return url.toString();
+}
+
+async function getPublishingContext(app: FastifyInstance, userId: string) {
+  const config = requireMetaConfig(app);
+  const connection = await findMetaConnection(app.db, userId);
+  if (!connection) throw app.httpErrors.badRequest("Conecte novamente a conta Meta antes de agendar uma publicação.");
+  if (connection.expiresAt && new Date(connection.expiresAt).getTime() <= Date.now()) {
+    throw app.httpErrors.badRequest("A conexão Meta expirou. Reconecte a conta antes de publicar.");
+  }
+  return { token: decryptToken(connection.encryptedToken, config.encryptionKey), appSecret: config.appSecret };
+}
+
+function singleImageFromCard(app: FastifyInstance, card: SchedulableCard) {
+  const media = [...new Set((card.mediaUrls.length ? card.mediaUrls : card.primaryMediaUrl ? [card.primaryMediaUrl] : []).filter(Boolean))];
+  const unsupportedType = /video|reel|story|carousel/i.test(`${card.mediaType ?? ""} ${card.artType ?? ""}`);
+  if (media.length !== 1 || unsupportedType) {
+    throw app.httpErrors.badRequest("Esta primeira versão aceita somente um card com uma única imagem.");
+  }
+  return assertPublicHttpUrl(app, media[0]);
+}
+
+export async function scheduleInstagramCardPublication(app: FastifyInstance, input: {
+  userId: string;
+  clientAccountId: string;
+  instagramAccountId: string;
+  card: SchedulableCard;
+  scheduledAt: string;
+  timezone: string;
+}) {
+  await getPublishingContext(app, input.userId);
+  if (input.card.clientAccountId !== input.clientAccountId) throw app.httpErrors.badRequest("O card não pertence a este cliente.");
+  const mediaUrl = singleImageFromCard(app, input.card);
+  const scheduledAt = new Date(input.scheduledAt).toISOString();
+  const idempotencyKey = crypto.createHash("sha256")
+    .update([input.clientAccountId, input.card.id, "instagram", scheduledAt].join(":"))
+    .digest("hex");
+  return createScheduledPublication(app.db, {
+    clientAccountId: input.clientAccountId,
+    cardId: input.card.id,
+    platform: "instagram",
+    metaAssetId: input.instagramAccountId,
+    scheduledAt,
+    timezone: input.timezone,
+    caption: input.card.caption?.trim() || null,
+    mediaUrl,
+    mediaUrls: [mediaUrl],
+    mediaType: "image",
+    createdByUserId: input.userId,
+    idempotencyKey,
+  });
+}
+
+async function publishInstagramImage(app: FastifyInstance, input: {
+  userId: string;
+  instagramAccountId: string;
+  imageUrl: string;
+  caption: string | null;
+}) {
+  const context = await getPublishingContext(app, input.userId);
+  const create = await fetchMetaResult<MetaApiError & { id?: string }>({
+    app,
+    path: `/${input.instagramAccountId}/media`,
+    token: context.token,
+    appSecret: context.appSecret,
+    params: { image_url: input.imageUrl, ...(input.caption ? { caption: input.caption } : {}) },
+    metricOrOperation: "instagram.publish.createContainer",
+    method: "POST",
+  });
+  if (!create.payload?.id) throw new Error(create.warning?.message || "A Meta não criou o container da publicação.");
+  const publish = await fetchMetaResult<MetaApiError & { id?: string }>({
+    app,
+    path: `/${input.instagramAccountId}/media_publish`,
+    token: context.token,
+    appSecret: context.appSecret,
+    params: { creation_id: create.payload.id },
+    metricOrOperation: "instagram.publish.media",
+    method: "POST",
+  });
+  if (!publish.payload?.id) throw new Error(publish.warning?.message || "A Meta não confirmou a publicação no Instagram.");
+  const permalink = await fetchMetaResult<MetaApiError & { permalink?: string }>({
+    app,
+    path: `/${publish.payload.id}`,
+    token: context.token,
+    appSecret: context.appSecret,
+    params: { fields: "permalink" },
+    metricOrOperation: "instagram.publish.permalink",
+  });
+  return { publishedMetaId: publish.payload.id, publishedPermalink: permalink.payload?.permalink ?? null };
+}
+
+function safePublicationError(error: unknown) {
+  const message = error instanceof Error ? error.message : "Falha inesperada ao publicar no Instagram.";
+  return message
+    .replace(/(access_token|appsecret_proof)=([^&\s]+)/gi, "$1=[REDACTED]")
+    .replace(/EA[A-Za-z0-9_-]{20,}/g, "[REDACTED]")
+    .slice(0, 4000);
+}
+
+export async function processDueMetaPublications(app: FastifyInstance, limit = 10) {
+  const due = await listDueScheduledPublications(app.db, limit);
+  let published = 0;
+  let failed = 0;
+  for (const publication of due) {
+    if (!await markPublicationPublishing(app.db, publication.id)) continue;
+    try {
+      if (publication.platform !== "instagram" || !publication.mediaUrl || !publication.createdByUserId) {
+        throw new Error("O agendamento não possui todos os dados necessários para publicação.");
+      }
+      const assets = await findClientMetaAssets(app.db, publication.clientAccountId);
+      if (!assets?.instagramAccountId || assets.instagramAccountId !== publication.metaAssetId) {
+        throw new Error("A conta do Instagram vinculada ao cliente mudou desde o agendamento.");
+      }
+      const result = await publishInstagramImage(app, {
+        userId: publication.createdByUserId,
+        instagramAccountId: publication.metaAssetId,
+        imageUrl: publication.mediaUrl,
+        caption: publication.caption,
+      });
+      await markPublicationPublished(app.db, publication.id, result);
+      published += 1;
+    } catch (error) {
+      const message = safePublicationError(error);
+      await markPublicationFailed(app.db, publication.id, message);
+      app.log.error({ publicationId: publication.id, clientAccountId: publication.clientAccountId, message }, "Instagram scheduled publication failed");
+      failed += 1;
+    }
+  }
+  return { examined: due.length, published, failed };
 }

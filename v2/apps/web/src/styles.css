@@ -5022,6 +5022,26 @@ button {
 .editor-field { display: grid; gap: 11px; margin-bottom: 28px; color: #c7c7c9; font-size: 14px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; }
 .editor-field > span { display: flex; align-items: center; gap: 10px; }
 .editor-field-hint { color: #9ba2ae; font-size: 12px; font-weight: 600; letter-spacing: normal; line-height: 1.4; text-transform: none; }
+.meta-publication-panel { display: grid; gap: 10px; padding: 16px; border: 1px solid rgba(205, 139, 255, .34); border-radius: 12px; background: linear-gradient(135deg, rgba(113, 73, 209, .22), rgba(210, 63, 139, .14)); }
+.meta-publication-panel > span { color: #dcbcff; font-size: 10px; font-weight: 800; letter-spacing: .13em; }
+.meta-publication-panel > strong { font-size: 14px; line-height: 1.4; }
+.meta-publication-panel details { color: #ffd1d7; font-size: 12px; }
+.meta-publication-panel details p { margin: 8px 0 0; overflow-wrap: anywhere; }
+.meta-publication-panel a { color: #d9ccff; font-size: 13px; font-weight: 700; }
+.instagram-schedule-button { min-height: 44px; color: #fff; border: 0; border-radius: 9px; background: linear-gradient(120deg, #7652dc, #d13e8c); font: inherit; font-weight: 750; cursor: pointer; }
+.meta-schedule-backdrop { position: fixed; inset: 0; z-index: 190; display: grid; place-items: center; padding: 20px; background: rgba(9, 10, 16, .82); }
+.meta-schedule-modal { display: grid; width: min(480px, 100%); gap: 18px; padding: 24px; color: #f8f8fb; border: 1px solid rgba(255,255,255,.22); border-radius: 18px; background: #24252b; box-shadow: 0 28px 80px rgba(0,0,0,.55); }
+.meta-schedule-modal header, .meta-schedule-modal footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.meta-schedule-modal header span { color: #c8b8ff; font-size: 10px; font-weight: 800; letter-spacing: .15em; }
+.meta-schedule-modal h3 { margin: 4px 0 0; }
+.meta-schedule-modal header > button { color: #fff; border: 0; background: transparent; font-size: 28px; cursor: pointer; }
+.meta-schedule-preview { display: grid; grid-template-columns: 112px minmax(0,1fr); gap: 16px; align-items: center; }
+.meta-schedule-preview img { width: 112px; height: 112px; object-fit: cover; border-radius: 12px; }
+.meta-schedule-preview p { display: -webkit-box; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 5; line-height: 1.45; }
+.meta-schedule-modal label { display: grid; gap: 8px; font-size: 13px; font-weight: 700; }
+.meta-schedule-modal input { box-sizing: border-box; width: 100%; padding: 13px; border: 0; border-radius: 9px; font: inherit; }
+.meta-schedule-modal > small { color: #aeb3c2; }
+.meta-schedule-modal footer { justify-content: flex-end; }
 .editor-field em { margin-left: auto; font-style: normal; }
 .editor-field em button { padding: 5px 10px; color: #30343b; background: #fff; border: 0; border-radius: 5px; cursor: pointer; }
 .editor-field input, .editor-field select, .editor-field textarea { width: 100%; box-sizing: border-box; padding: 17px 20px; color: #111318; background: #fbfbfc; border: 1px solid rgba(255,255,255,.7); border-radius: 8px; font: inherit; font-size: 17px; font-weight: 500; letter-spacing: normal; text-transform: none; }

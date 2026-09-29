@@ -169,7 +169,11 @@ import {
   loadMetaStatus,
   loadClientMetaAssetsBySlug,
   saveClientMetaAssetsBySlug,
+  listMetaPublicationsBySlug,
+  createMetaPublicationBySlug,
+  cancelMetaPublicationBySlug,
   type ClientMetaAssets,
+  type MetaScheduledPublication,
   type MetaAdAccount,
   type MetaAssetPage,
 } from "./api";
@@ -4124,7 +4128,7 @@ function AdminWorkspacePage({
         }
         onRefresh={() => setRefreshKey((value) => value + 1)}
         onClose={() => { setSelectedCardId(null); if (location.search) navigate(`/admin/${slug}`, { replace: true }); }}
-        adminContext={{ slug, columns: data.columns, onCardUpdated: (updated) => resource.setData((current) => ({
+        adminContext={{ slug, columns: data.columns, canScheduleMeta: session.role === "super_admin", onCardUpdated: (updated) => resource.setData((current) => ({
           ...current,
           columns: current.columns.map((column) => ({ ...column, cards: column.cards.map((item) => item.id === updated.id ? { ...item, ...updated } : item) })),
           withoutColumn: current.withoutColumn.map((item) => item.id === updated.id ? { ...item, ...updated } : item),
@@ -6700,7 +6704,7 @@ function CardDetailModal({
   onUpdateTags?: (cardId: string, tags: string[]) => Promise<unknown>;
   onRefresh: () => void;
   onClose: () => void;
-  adminContext?: { slug: string; columns: BoardColumn[]; onCardUpdated?: (card: BoardCard) => void };
+  adminContext?: { slug: string; columns: BoardColumn[]; canScheduleMeta?: boolean; onCardUpdated?: (card: BoardCard) => void };
 }) {
   const { t, localeTag } = usePortalTranslation();
   const [commentDraft, setCommentDraft] = useState("");
@@ -6763,6 +6767,7 @@ function CardDetailModal({
         detail={detail}
         columns={adminContext.columns}
         slug={adminContext.slug}
+        canScheduleMeta={Boolean(adminContext.canScheduleMeta)}
         onCardUpdated={adminContext.onCardUpdated}
         onAddComment={onAddComment}
         onRefresh={onRefresh}
@@ -7093,6 +7098,7 @@ function AdminCardEditor({
   detail,
   columns,
   slug,
+  canScheduleMeta,
   onAddComment,
   onCardUpdated,
   onRefresh,
@@ -7101,6 +7107,7 @@ function AdminCardEditor({
   detail: CardDetail;
   columns: BoardColumn[];
   slug: string;
+  canScheduleMeta: boolean;
   onAddComment: (cardId: string, commentText: string) => Promise<unknown>;
   onCardUpdated?: (card: BoardCard) => void;
   onRefresh: () => void;
@@ -7158,6 +7165,10 @@ function AdminCardEditor({
   const [mediaUrls, setMediaUrls] = useState(initialDraft.mediaUrls);
   const [commentDraft, setCommentDraft] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [metaInstagramLinked, setMetaInstagramLinked] = useState(false);
+  const [metaPublications, setMetaPublications] = useState<MetaScheduledPublication[]>([]);
+  const [metaScheduleOpen, setMetaScheduleOpen] = useState(false);
+  const [metaScheduling, setMetaScheduling] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [approvalLinkCopied, setApprovalLinkCopied] = useState(false);
@@ -7202,6 +7213,26 @@ function AdminCardEditor({
     listAdminHashtagGroupsBySlug(slug).then((result) => setHashtagGroups(result.items)).catch(() => undefined);
     listManagedUsers().then((result) => setInternalUsers(result.items.filter((user) => user.isActive && user.globalRole !== "cliente"))).catch(() => setInternalUsers([]));
   }, [slug]);
+
+  const refreshMetaPublications = useCallback(async () => {
+    if (!canScheduleMeta) return;
+    const [assetsResult, publicationsResult] = await Promise.all([
+      loadClientMetaAssetsBySlug(slug),
+      listMetaPublicationsBySlug(slug),
+    ]);
+    setMetaInstagramLinked(Boolean(assetsResult.assets?.instagramAccountId));
+    setMetaPublications(publicationsResult.publications);
+  }, [canScheduleMeta, slug]);
+
+  useEffect(() => {
+    if (!canScheduleMeta) return;
+    void refreshMetaPublications().catch(() => {
+      setMetaInstagramLinked(false);
+      setMetaPublications([]);
+    });
+    const timer = window.setInterval(() => void refreshMetaPublications().catch(() => undefined), 60_000);
+    return () => window.clearInterval(timer);
+  }, [canScheduleMeta, refreshMetaPublications]);
 
   useEffect(() => {
     const draftJson = JSON.stringify(draft);
@@ -7398,6 +7429,42 @@ ${internalMessage.trim()}`, isInternal: true });
     } finally {
       saveInFlightRef.current = false;
       setSaving(false);
+    }
+  }
+
+  const currentMetaPublication = metaPublications.find((publication) => publication.cardId === card.id && publication.status !== "cancelled") ?? null;
+  const metaCompatibleImage = mediaUrls.length === 1 && !/\.(mp4|webm|mov)(\?|$)/i.test(mediaUrls[0]) && !/video|reel|story|carousel/i.test(artType);
+
+  async function scheduleMetaPublication(localDateTime: string, timezone: string) {
+    setMetaScheduling(true);
+    setFeedback(null);
+    try {
+      if (!await persistCard(false)) return;
+      const date = new Date(localDateTime);
+      if (Number.isNaN(date.getTime())) throw new Error("Informe uma data e hora válidas.");
+      const result = await createMetaPublicationBySlug(slug, {
+        cardId: card.id,
+        platform: "instagram",
+        scheduledAt: date.toISOString(),
+        timezone,
+      });
+      await refreshMetaPublications();
+      setMetaScheduleOpen(false);
+      setFeedback(result.created ? "Publicação no Instagram agendada." : "Este mesmo agendamento já existia e foi mantido.");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Não foi possível agendar a publicação no Instagram.");
+    } finally {
+      setMetaScheduling(false);
+    }
+  }
+
+  async function cancelMetaPublication(publicationId: string) {
+    try {
+      await cancelMetaPublicationBySlug(slug, publicationId);
+      await refreshMetaPublications();
+      setFeedback("Agendamento Meta cancelado.");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Não foi possível cancelar o agendamento.");
     }
   }
 
@@ -7674,6 +7741,15 @@ ${internalMessage.trim()}`, isInternal: true });
           {approvalRevision > 0 ? <div className="editor-field client-feedback-field"><span>Retorno do cliente</span><span className={`client-feedback-badge ${clientFeedbackToneClass(clientLabel)}`}><i aria-hidden="true" />{clientLabel === "Pendente" ? "Aguardando aprovação" : clientLabel}</span></div> : <EditorSelect label="Feedback do cliente" value={clientLabel} onChange={setClientLabel} options={["Pendente", "Aprovado", "Alteração solicitada"]} />}
           {newApprovalUrl ? <section className="approval-resubmit-panel" aria-label="Novo link de aprovação"><small>O novo link é válido por 7 dias. Os links anteriores foram encerrados.</small><input aria-label="Novo link de aprovação" readOnly value={newApprovalUrl} onFocus={(event) => event.target.select()} /><button type="button" className="ghost-button" onClick={() => { void navigator.clipboard.writeText(newApprovalUrl).then(() => setApprovalLinkCopied(true)).catch(() => setFeedback("O reenvio foi concluído. Selecione o link acima para copiá-lo manualmente.")); }}>{approvalLinkCopied ? "Link copiado" : "Copiar novo link"}</button></section> : null}
           <EditorField label="Agendamento"><input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /><small className="editor-field-hint">Na data e hora informadas, o card será movido para Arquivados.</small></EditorField>
+          {canScheduleMeta && (currentMetaPublication || (metaInstagramLinked && metaCompatibleImage)) ? <section className="meta-publication-panel">
+            <span>PUBLICAÇÃO META REAL</span>
+            {currentMetaPublication ? <>
+              <strong>{currentMetaPublication.status === "scheduled" ? `Instagram agendado · ${new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(currentMetaPublication.scheduledAt))}` : currentMetaPublication.status === "publishing" ? "Publicando no Instagram…" : currentMetaPublication.status === "published" ? "Publicado no Instagram" : currentMetaPublication.status === "failed" ? "Falhou ao publicar" : "Agendamento cancelado"}</strong>
+              {currentMetaPublication.status === "failed" && currentMetaPublication.lastError ? <details><summary>Ver erro</summary><p>{currentMetaPublication.lastError}</p></details> : null}
+              {currentMetaPublication.publishedPermalink ? <a href={currentMetaPublication.publishedPermalink} target="_blank" rel="noreferrer">Abrir publicação ↗</a> : null}
+              {currentMetaPublication.status === "scheduled" || currentMetaPublication.status === "failed" ? <button type="button" className="ghost-button" onClick={() => void cancelMetaPublication(currentMetaPublication.id)}>Cancelar publicação Meta</button> : null}
+            </> : <button type="button" className="instagram-schedule-button" onClick={() => setMetaScheduleOpen(true)}>Agendar no Instagram</button>}
+          </section> : null}
           <label className="editor-field"><span>Coluna</span><select value={columnId} onChange={(event) => setColumnId(event.target.value)}><option value="">Sem coluna</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select></label>
           <section className="tag-library">
             <div className="tag-library-head"><span>Etiquetas</span></div>
@@ -7725,10 +7801,41 @@ ${internalMessage.trim()}`, isInternal: true });
           <button type="button" className="send-client-button" onClick={() => void sendToClientAndClose()} disabled={saving || uploading || resubmitting || approvalConflict}>{saving ? "Salvando..." : "Enviar para cliente"}</button>
           <button className="gradient-button editor-save" onClick={() => void persistCard(true)} disabled={saving || uploading || resubmitting}>{saving ? "Salvando..." : "Salvar e fechar"}</button>
         </footer>
+        {metaScheduleOpen ? <MetaScheduleModal
+          imageUrl={mediaUrls[0]}
+          caption={caption}
+          suggestedAt={scheduledAt}
+          submitting={metaScheduling}
+          onClose={() => { if (!metaScheduling) setMetaScheduleOpen(false); }}
+          onSubmit={scheduleMetaPublication}
+        /> : null}
       </section>
     </div>,
     document.body,
   );
+}
+
+function MetaScheduleModal({ imageUrl, caption, suggestedAt, submitting, onClose, onSubmit }: {
+  imageUrl: string;
+  caption: string;
+  suggestedAt: string;
+  submitting: boolean;
+  onClose: () => void;
+  onSubmit: (localDateTime: string, timezone: string) => Promise<void>;
+}) {
+  const fallback = new Date(Date.now() + 60 * 60_000);
+  fallback.setSeconds(0, 0);
+  const [localDateTime, setLocalDateTime] = useState(suggestedAt || toDateTimeLocal(fallback.toISOString()));
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  return <div className="meta-schedule-backdrop" onClick={onClose}>
+    <section className="meta-schedule-modal" role="dialog" aria-modal="true" aria-labelledby="meta-schedule-title" onClick={(event) => event.stopPropagation()}>
+      <header><div><span>INSTAGRAM</span><h3 id="meta-schedule-title">Agendar publicação</h3></div><button type="button" onClick={onClose} aria-label="Fechar">×</button></header>
+      <div className="meta-schedule-preview"><img src={imageUrl} alt="Prévia da publicação" /><p>{caption.trim() || "Sem legenda"}</p></div>
+      <label><span>Data e hora</span><input type="datetime-local" value={localDateTime} onChange={(event) => setLocalDateTime(event.target.value)} /></label>
+      <small>Fuso horário: {timezone}</small>
+      <footer><button type="button" className="ghost-button" disabled={submitting} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || !localDateTime} onClick={() => void onSubmit(localDateTime, timezone)}>{submitting ? "Agendando…" : "Agendar publicação"}</button></footer>
+    </section>
+  </div>;
 }
 
 function EditorField({ label, action, children }: { label: string; action?: ReactNode; children: ReactNode }) {
