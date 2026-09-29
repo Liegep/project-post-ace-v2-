@@ -4,8 +4,15 @@ import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "mysql2/promise";
-import { markStalePublishingFailed } from "./meta.repository.js";
+import { canArchiveScheduledPublicationCard, markStalePublishingFailed } from "./meta.repository.js";
 import {
+  META_FACEBOOK_REEL_COVER_FETCH_TIMEOUT_MS,
+  META_FACEBOOK_REEL_COVER_UPLOAD_TIMEOUT_MS,
+  META_FACEBOOK_REEL_FINISH_TIMEOUT_MS,
+  META_FACEBOOK_REEL_PERMALINK_TIMEOUT_MS,
+  META_FACEBOOK_REEL_START_TIMEOUT_MS,
+  META_FACEBOOK_REEL_STATUS_TIMEOUT_MS,
+  META_FACEBOOK_REEL_UPLOAD_TIMEOUT_MS,
   META_INSTAGRAM_CREATE_TIMEOUT_MS,
   META_INSTAGRAM_REEL_CREATE_TIMEOUT_MS,
   META_INSTAGRAM_PERMALINK_TIMEOUT_MS,
@@ -32,6 +39,7 @@ function metaResponse(payload: unknown) {
 }
 
 function publishingHarness(fetchImpl: typeof fetch, overrides: {
+  platform?: "instagram" | "facebook";
   mediaType?: "image" | "reel";
   mediaUrl?: string;
   caption?: string | null;
@@ -45,8 +53,8 @@ function publishingHarness(fetchImpl: typeof fetch, overrides: {
     id: "publication-1",
     client_account_id: "client-1",
     card_id: null,
-    platform: "instagram",
-    meta_asset_id: "instagram-1",
+    platform: overrides.platform ?? "instagram",
+    meta_asset_id: overrides.platform === "facebook" ? "facebook-1" : "instagram-1",
     scheduled_at: "2026-09-29T16:00:00.000000Z",
     timezone: "Europe/Stockholm",
     caption: overrides.caption === undefined ? "Legenda" : overrides.caption,
@@ -79,7 +87,7 @@ function publishingHarness(fetchImpl: typeof fetch, overrides: {
         return [{ affectedRows: 1 }, []];
       }
       if (sql.includes("FROM client_meta_assets")) {
-        return [[{ facebook_page_id: null, facebook_page_name: null, instagram_account_id: "instagram-1", instagram_username: "designhub", meta_ad_account_id: null, meta_ad_account_name: null, updated_at: new Date() }], []];
+        return [[{ facebook_page_id: "facebook-1", facebook_page_name: "Design Hub", instagram_account_id: "instagram-1", instagram_username: "designhub", meta_ad_account_id: null, meta_ad_account_name: null, updated_at: new Date() }], []];
       }
       if (sql.includes("FROM meta_connections")) {
         return [[{ access_token_encrypted: encryptToken("test-token", encryptionKey), token_expires_at: null, meta_user_id: "meta-user-1", meta_account_name: "Test" }], []];
@@ -131,6 +139,16 @@ test("Instagram publishing uses operation-specific timeouts", () => {
   assert.equal(META_INSTAGRAM_STATUS_TIMEOUT_MS, 15_000);
   assert.equal(META_INSTAGRAM_PUBLISH_TIMEOUT_MS, 45_000);
   assert.equal(META_INSTAGRAM_PERMALINK_TIMEOUT_MS, 15_000);
+});
+
+test("Facebook Reel publishing uses operation-specific timeouts", () => {
+  assert.equal(META_FACEBOOK_REEL_START_TIMEOUT_MS, 30_000);
+  assert.equal(META_FACEBOOK_REEL_UPLOAD_TIMEOUT_MS, 60_000);
+  assert.equal(META_FACEBOOK_REEL_STATUS_TIMEOUT_MS, 15_000);
+  assert.equal(META_FACEBOOK_REEL_FINISH_TIMEOUT_MS, 45_000);
+  assert.equal(META_FACEBOOK_REEL_PERMALINK_TIMEOUT_MS, 15_000);
+  assert.equal(META_FACEBOOK_REEL_COVER_FETCH_TIMEOUT_MS, 30_000);
+  assert.equal(META_FACEBOOK_REEL_COVER_UPLOAD_TIMEOUT_MS, 45_000);
 });
 
 test("create-container timeout marks the job failed without retry", async () => {
@@ -296,6 +314,143 @@ test("a Reel tolerates multiple IN_PROGRESS cycles before FINISHED", async () =>
   assert.equal(statusChecks, 4);
 });
 
+test("a Facebook Reel completes start, hosted upload, status polling, finish and permalink", async () => {
+  const requests: Array<{ url: URL; init?: RequestInit }> = [];
+  let statusChecks = 0;
+  const harness = publishingHarness(async (input, init) => {
+    const url = new URL(String(input));
+    requests.push({ url, init });
+    if (url.hostname === "rupload.facebook.com") return metaResponse({ success: true });
+    if (url.pathname.endsWith("/facebook-1") && url.searchParams.get("fields")?.includes("access_token")) {
+      return metaResponse({ id: "facebook-1", name: "Design Hub", access_token: "page-token" });
+    }
+    if (url.pathname.endsWith("/facebook-1/video_reels") && url.searchParams.get("upload_phase") === "start") {
+      return metaResponse({ video_id: "fb-video-1", upload_url: "https://rupload.facebook.com/video-upload/v26.0/fb-video-1" });
+    }
+    if (url.pathname.endsWith("/fb-video-1") && url.searchParams.get("fields") === "status") {
+      statusChecks += 1;
+      return metaResponse({ status: { video_status: statusChecks === 1 ? "processing" : "ready", processing_phase: { status: statusChecks === 1 ? "in_progress" : "completed" } } });
+    }
+    if (url.pathname.endsWith("/facebook-1/video_reels") && url.searchParams.get("upload_phase") === "finish") {
+      return metaResponse({ success: true, post_id: "facebook-1_42" });
+    }
+    if (url.pathname.endsWith("/fb-video-1") && url.searchParams.get("fields") === "permalink_url") {
+      return metaResponse({ permalink_url: "https://www.facebook.com/reel/42" });
+    }
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, {
+    platform: "facebook",
+    mediaType: "reel",
+    mediaUrl: "https://cdn.example.com/reel.mp4",
+    caption: "Legenda do Facebook Reel",
+    locationId: "123456789",
+  });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { facebookReelPollIntervalMs: 1, facebookReelMaxWaitMs: 30 }));
+  assert.equal(result.published, 1);
+  assert.equal(harness.state.status, "published");
+  assert.equal(statusChecks, 2);
+  const upload = requests.find(({ url }) => url.hostname === "rupload.facebook.com");
+  assert.equal(new Headers(upload?.init?.headers).get("authorization"), "OAuth page-token");
+  assert.equal(new Headers(upload?.init?.headers).get("file_url"), "https://cdn.example.com/reel.mp4");
+  const finish = requests.find(({ url }) => url.pathname.endsWith("/facebook-1/video_reels") && url.searchParams.get("upload_phase") === "finish")?.url;
+  assert.equal(finish?.searchParams.get("video_state"), "PUBLISHED");
+  assert.equal(finish?.searchParams.get("description"), "Legenda do Facebook Reel");
+  assert.equal(finish?.searchParams.get("place"), "123456789");
+  assert.equal(finish?.searchParams.get("access_token"), "page-token");
+  const finishIndex = requests.findIndex(({ url }) => url.pathname.endsWith("/facebook-1/video_reels") && url.searchParams.get("upload_phase") === "finish");
+  const statusIndex = requests.findIndex(({ url }) => url.pathname.endsWith("/fb-video-1") && url.searchParams.get("fields") === "status");
+  assert.ok(finishIndex >= 0 && statusIndex > finishIndex);
+  assert.equal(requests.some(({ url }) => url.pathname.endsWith("/thumbnails")), false);
+});
+
+test("the existing Facebook single-image flow remains unchanged", async () => {
+  const requests: URL[] = [];
+  const harness = publishingHarness(async (input, init) => {
+    const url = new URL(String(input));
+    requests.push(url);
+    if (url.pathname.endsWith("/facebook-1") && url.searchParams.get("fields")?.includes("access_token")) return metaResponse({ id: "facebook-1", access_token: "page-token" });
+    if (init?.method === "POST" && url.pathname.endsWith("/facebook-1/photos")) return metaResponse({ post_id: "facebook-1_10" });
+    if (url.pathname.endsWith("/facebook-1_10")) return metaResponse({ permalink_url: "https://www.facebook.com/designhub/posts/10" });
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, { platform: "facebook", mediaType: "image", mediaUrl: "https://cdn.example.com/image.jpg", caption: "Imagem única" });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10));
+  assert.equal(result.published, 1);
+  assert.equal(harness.state.status, "published");
+  assert.equal(requests.some((url) => url.pathname.endsWith("/facebook-1/photos")), true);
+  assert.equal(requests.some((url) => url.pathname.endsWith("/facebook-1/video_reels")), false);
+});
+
+test("a Facebook Reel uploads an optional custom cover through the official thumbnails endpoint", async () => {
+  let thumbnailBody: FormData | null = null;
+  const harness = publishingHarness(async (input, init) => {
+    const url = new URL(String(input));
+    if (url.href.startsWith("https://cdn.example.com/cover.jpg")) {
+      return new Response(new Uint8Array([255, 216, 255, 217]), { status: 200, headers: { "content-type": "image/jpeg" } });
+    }
+    if (url.hostname === "rupload.facebook.com") return metaResponse({ success: true });
+    if (url.pathname.endsWith("/facebook-1") && url.searchParams.get("fields")?.includes("access_token")) return metaResponse({ id: "facebook-1", access_token: "page-token" });
+    if (url.pathname.endsWith("/facebook-1/video_reels") && url.searchParams.get("upload_phase") === "start") return metaResponse({ video_id: "fb-video-1", upload_url: "https://rupload.facebook.com/video-upload/v26.0/fb-video-1" });
+    if (url.pathname.endsWith("/fb-video-1") && url.searchParams.get("fields") === "status") return metaResponse({ status: { video_status: "ready", processing_phase: { status: "completed" } } });
+    if (url.pathname.endsWith("/fb-video-1/thumbnails")) {
+      thumbnailBody = init?.body as FormData;
+      return metaResponse({ success: true });
+    }
+    if (url.pathname.endsWith("/facebook-1/video_reels") && url.searchParams.get("upload_phase") === "finish") return metaResponse({ success: true });
+    if (url.pathname.endsWith("/fb-video-1") && url.searchParams.get("fields") === "permalink_url") return metaResponse({});
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, {
+    platform: "facebook",
+    mediaType: "reel",
+    mediaUrl: "https://cdn.example.com/reel.mp4",
+    reelCoverUrl: "https://cdn.example.com/cover.jpg",
+  });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { facebookReelPollIntervalMs: 1, facebookReelMaxWaitMs: 20 }));
+  assert.equal(result.published, 1);
+  assert.equal((thumbnailBody as FormData | null)?.get("is_preferred"), "true");
+  assert.ok((thumbnailBody as FormData | null)?.get("source") instanceof Blob);
+});
+
+test("a Facebook Reel processing error after finish is marked failed", async () => {
+  let finishCalls = 0;
+  const harness = publishingHarness(async (input) => {
+    const url = new URL(String(input));
+    if (url.hostname === "rupload.facebook.com") return metaResponse({ success: true });
+    if (url.pathname.endsWith("/facebook-1") && url.searchParams.get("fields")?.includes("access_token")) return metaResponse({ id: "facebook-1", access_token: "page-token" });
+    if (url.pathname.endsWith("/facebook-1/video_reels") && url.searchParams.get("upload_phase") === "start") return metaResponse({ video_id: "fb-video-1", upload_url: "https://rupload.facebook.com/video-upload/v26.0/fb-video-1" });
+    if (url.pathname.endsWith("/fb-video-1") && url.searchParams.get("fields") === "status") return metaResponse({ status: { video_status: "error", processing_phase: { status: "error", errors: [{ error_message: "Unsupported video codec" }] } } });
+    if (url.pathname.endsWith("/facebook-1/video_reels") && url.searchParams.get("upload_phase") === "finish") {
+      finishCalls += 1;
+      return metaResponse({ success: true });
+    }
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, { platform: "facebook", mediaType: "reel", mediaUrl: "https://cdn.example.com/reel.mp4" });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { facebookReelPollIntervalMs: 1, facebookReelMaxWaitMs: 20 }));
+  assert.equal(result.failed, 1);
+  assert.equal(harness.state.status, "failed");
+  assert.equal(finishCalls, 1);
+  assert.match(harness.state.lastError ?? "", /Unsupported video codec/i);
+});
+
+test("a Facebook Reel finish timeout is not retried blindly", async () => {
+  let finishCalls = 0;
+  const harness = publishingHarness(async (input) => {
+    const url = new URL(String(input));
+    if (url.hostname === "rupload.facebook.com") return metaResponse({ success: true });
+    if (url.pathname.endsWith("/facebook-1") && url.searchParams.get("fields")?.includes("access_token")) return metaResponse({ id: "facebook-1", access_token: "page-token" });
+    if (url.pathname.endsWith("/facebook-1/video_reels") && url.searchParams.get("upload_phase") === "start") return metaResponse({ video_id: "fb-video-1", upload_url: "https://rupload.facebook.com/video-upload/v26.0/fb-video-1" });
+    if (url.pathname.endsWith("/fb-video-1") && url.searchParams.get("fields") === "status") return metaResponse({ status: { video_status: "ready" } });
+    if (url.pathname.endsWith("/facebook-1/video_reels") && url.searchParams.get("upload_phase") === "finish") {
+      finishCalls += 1;
+      throw timeoutError();
+    }
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, { platform: "facebook", mediaType: "reel", mediaUrl: "https://cdn.example.com/reel.mp4" });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { facebookReelPollIntervalMs: 1, facebookReelMaxWaitMs: 20 }));
+  assert.equal(result.failed, 1);
+  assert.equal(finishCalls, 1);
+  assert.match(harness.state.lastError ?? "", /Verifique a Página/i);
+});
+
 test("only stale publishing rows are recovered as failed", async () => {
   const sqlite = new DatabaseSync(":memory:");
   sqlite.exec("CREATE TABLE meta_scheduled_publications (id TEXT PRIMARY KEY, status TEXT NOT NULL, attempt_count INTEGER NOT NULL, last_error TEXT, updated_at TEXT NOT NULL)");
@@ -318,4 +473,18 @@ test("only stale publishing rows are recovered as failed", async () => {
     { id: "stale", status: "failed", attempt_count: 1, last_error: "stale publishing" },
   ]);
   sqlite.close();
+});
+
+test("a simultaneous Instagram and Facebook schedule archives only after both publish", async () => {
+  let publishedCount = 1;
+  const db = {
+    async query(sql: string) {
+      assert.match(sql, /status <> 'cancelled'/);
+      return [[{ publication_count: 2, published_count: publishedCount }], []];
+    },
+  } as unknown as Pool;
+  const input = { clientAccountId: "client-1", cardId: "card-1", scheduledAt: "2026-09-29T16:00:00.000Z" };
+  assert.equal(await canArchiveScheduledPublicationCard(db, input), false);
+  publishedCount = 2;
+  assert.equal(await canArchiveScheduledPublicationCard(db, input), true);
 });

@@ -24,6 +24,7 @@ const META_SCOPES = [
   "pages_read_engagement",
   "pages_read_user_content",
   "pages_manage_posts",
+  "pages_manage_engagement",
   "instagram_basic",
   "instagram_manage_insights",
   "business_management",
@@ -155,16 +156,32 @@ type FacebookPost = {
 
 type FacebookPostsPayload = MetaApiError & { data?: FacebookPost[]; paging?: { next?: string } };
 
+type FacebookReelStatusPayload = MetaApiError & {
+  status?: {
+    video_status?: string;
+    uploading_phase?: { status?: string; errors?: Array<{ error_code?: number; error_message?: string }> };
+    processing_phase?: { status?: string; errors?: Array<{ error_code?: number; error_message?: string }> };
+    publishing_phase?: { status?: string; errors?: Array<{ error_code?: number; error_message?: string }> };
+  };
+};
+
 const META_INSIGHTS_REQUEST_TIMEOUT_MS = 7_000;
 const META_FACEBOOK_PAGE_ACCESS_TIMEOUT_MS = 15_000;
 const META_FACEBOOK_PUBLISH_TIMEOUT_MS = 45_000;
+export const META_FACEBOOK_REEL_START_TIMEOUT_MS = 30_000;
+export const META_FACEBOOK_REEL_UPLOAD_TIMEOUT_MS = 60_000;
+export const META_FACEBOOK_REEL_STATUS_TIMEOUT_MS = 15_000;
+export const META_FACEBOOK_REEL_FINISH_TIMEOUT_MS = 45_000;
+export const META_FACEBOOK_REEL_PERMALINK_TIMEOUT_MS = 15_000;
+export const META_FACEBOOK_REEL_COVER_FETCH_TIMEOUT_MS = 30_000;
+export const META_FACEBOOK_REEL_COVER_UPLOAD_TIMEOUT_MS = 45_000;
 export const META_INSTAGRAM_CREATE_TIMEOUT_MS = 30_000;
 export const META_INSTAGRAM_REEL_CREATE_TIMEOUT_MS = 45_000;
 export const META_INSTAGRAM_STATUS_TIMEOUT_MS = 15_000;
 export const META_INSTAGRAM_PUBLISH_TIMEOUT_MS = 45_000;
 export const META_INSTAGRAM_PERMALINK_TIMEOUT_MS = 15_000;
 export const META_PUBLISHING_STALE_MS = 10 * 60_000;
-const META_STALE_PUBLISHING_ERROR = "A publicação ficou sem confirmação da Meta por tempo excessivo. Verifique o Instagram antes de tentar novamente.";
+const META_STALE_PUBLISHING_ERROR = "A publicação ficou sem confirmação da Meta por tempo excessivo. Verifique a plataforma antes de tentar novamente.";
 
 function requireMetaConfig(app: FastifyInstance) {
   const { META_APP_ID, META_APP_SECRET, META_REDIRECT_URI, META_TOKEN_ENCRYPTION_KEY } = app.appEnv;
@@ -1335,6 +1352,251 @@ async function publishInstagramReel(app: FastifyInstance, input: {
   });
 }
 
+function facebookReelStatusError(payload: FacebookReelStatusPayload) {
+  const phases = [payload.status?.uploading_phase, payload.status?.processing_phase, payload.status?.publishing_phase];
+  return phases.flatMap((phase) => phase?.errors ?? []).find((error) => error.error_message)?.error_message ?? null;
+}
+
+async function uploadFacebookReelFromUrl(app: FastifyInstance, input: {
+  publicationId: string;
+  videoId: string;
+  uploadUrl: string;
+  videoUrl: string;
+  pageToken: string;
+  appSecret: string;
+}) {
+  let uploadUrl: URL;
+  try {
+    uploadUrl = new URL(input.uploadUrl);
+  } catch {
+    throw new Error("A Meta retornou um endereço inválido para o envio do Reel.");
+  }
+  if (uploadUrl.protocol !== "https:" || uploadUrl.hostname !== "rupload.facebook.com") {
+    throw new Error("A Meta retornou um endereço de upload inesperado para o Reel.");
+  }
+  const startedAt = Date.now();
+  try {
+    const response = await fetch(uploadUrl, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `OAuth ${input.pageToken}`,
+        file_url: input.videoUrl,
+      },
+      signal: AbortSignal.timeout(META_FACEBOOK_REEL_UPLOAD_TIMEOUT_MS),
+    });
+    const payload = await response.json().catch(() => ({})) as MetaApiError & { success?: boolean };
+    const durationMs = Date.now() - startedAt;
+    if (!response.ok || payload.error || payload.success !== true) {
+      const message = redactMetaSecrets(payload.error?.message || `Meta Reel upload respondeu com HTTP ${response.status}`, input.pageToken, input.appSecret);
+      app.log.warn({ publicationId: input.publicationId, videoId: input.videoId, operation: "facebook.publish.reel.upload", durationMs, httpStatus: response.status, metaCode: payload.error?.code ?? null }, "Facebook Reel upload failed");
+      throw new Error(message);
+    }
+    app.log.info({ publicationId: input.publicationId, videoId: input.videoId, operation: "facebook.publish.reel.upload", durationMs, httpStatus: response.status }, "Facebook Reel upload completed");
+  } catch (error) {
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    if (timedOut) {
+      app.log.warn({ publicationId: input.publicationId, videoId: input.videoId, operation: "facebook.publish.reel.upload", durationMs: Date.now() - startedAt, timedOut: true }, "Facebook Reel upload did not complete");
+      throw new Error("A Meta demorou mais que o esperado para receber o vídeo do Reel. Verifique a Página antes de tentar novamente.");
+    }
+    throw error;
+  }
+}
+
+async function waitForFacebookReel(app: FastifyInstance, input: {
+  publicationId: string;
+  videoId: string;
+  pageToken: string;
+  appSecret: string;
+  pollIntervalMs?: number;
+  maxWaitMs?: number;
+}) {
+  const pollIntervalMs = input.pollIntervalMs ?? 5_000;
+  const maxWaitMs = input.maxWaitMs ?? 5 * 60_000;
+  const deadline = Date.now() + maxWaitMs;
+  for (let attempt = 1; Date.now() < deadline; attempt += 1) {
+    await wait(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
+    const result = await fetchMetaResult<FacebookReelStatusPayload>({
+      app,
+      path: `/${input.videoId}`,
+      token: input.pageToken,
+      appSecret: input.appSecret,
+      params: { fields: "status" },
+      metricOrOperation: "facebook.publish.reel.status",
+      timeoutMs: META_FACEBOOK_REEL_STATUS_TIMEOUT_MS,
+    });
+    if (!result.payload) {
+      throw new Error(result.warning?.kind === "timeout"
+        ? "A Meta demorou demais para responder ao consultar o processamento do Reel do Facebook."
+        : result.warning?.message || "Não foi possível consultar o processamento do Reel do Facebook.");
+    }
+    const status = result.payload.status;
+    const videoStatus = status?.video_status?.trim().toLowerCase() || "unknown";
+    const phaseStatuses = {
+      uploading: status?.uploading_phase?.status?.trim().toLowerCase() || null,
+      processing: status?.processing_phase?.status?.trim().toLowerCase() || null,
+      publishing: status?.publishing_phase?.status?.trim().toLowerCase() || null,
+    };
+    app.log.info({ publicationId: input.publicationId, videoId: input.videoId, attempt, video_status: videoStatus, phases: phaseStatuses }, "Facebook Reel status checked");
+    if (videoStatus === "ready" || phaseStatuses.publishing === "complete" || phaseStatuses.publishing === "completed") return;
+    const phaseError = Object.values(phaseStatuses).some((phase) => phase === "error");
+    if (["error", "expired", "upload_failed"].includes(videoStatus) || phaseError) {
+      throw new Error(facebookReelStatusError(result.payload) || `A Meta não conseguiu processar o Reel do Facebook (${videoStatus}).`);
+    }
+    if (!["uploading", "upload_complete", "processing"].includes(videoStatus)) {
+      throw new Error(`A Meta retornou um status inesperado para o Reel do Facebook: ${videoStatus}.`);
+    }
+  }
+  throw new Error("A Meta ainda não concluiu o processamento do Reel do Facebook. Verifique a Página antes de tentar novamente.");
+}
+
+async function uploadFacebookReelCover(app: FastifyInstance, input: {
+  publicationId: string;
+  videoId: string;
+  coverUrl: string;
+  pageToken: string;
+  appSecret: string;
+}) {
+  const coverResponse = await fetch(input.coverUrl, {
+    headers: { Accept: "image/jpeg,image/png" },
+    signal: AbortSignal.timeout(META_FACEBOOK_REEL_COVER_FETCH_TIMEOUT_MS),
+  }).catch((error: unknown) => {
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    throw new Error(timedOut ? "A capa do Reel demorou demais para ser carregada." : "Não foi possível carregar a capa do Reel para publicação.");
+  });
+  if (!coverResponse.ok) throw new Error(`Não foi possível carregar a capa do Reel (HTTP ${coverResponse.status}).`);
+  const contentType = coverResponse.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() || "";
+  if (!["image/jpeg", "image/png"].includes(contentType)) throw new Error("A capa do Reel precisa ser uma imagem JPG, JPEG ou PNG válida.");
+  const bytes = await coverResponse.arrayBuffer();
+  if (bytes.byteLength === 0 || bytes.byteLength > 10 * 1024 * 1024) throw new Error("A capa do Reel precisa ter até 10 MB.");
+
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${input.videoId}/thumbnails`);
+  url.searchParams.set("access_token", input.pageToken);
+  url.searchParams.set("appsecret_proof", appSecretProof(input.pageToken, input.appSecret));
+  const form = new FormData();
+  form.set("source", new Blob([bytes], { type: contentType }), contentType === "image/png" ? "cover.png" : "cover.jpg");
+  form.set("is_preferred", "true");
+  const startedAt = Date.now();
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { Accept: "application/json" },
+      body: form,
+      signal: AbortSignal.timeout(META_FACEBOOK_REEL_COVER_UPLOAD_TIMEOUT_MS),
+    });
+    const payload = await response.json().catch(() => ({})) as MetaApiError & { success?: boolean };
+    const durationMs = Date.now() - startedAt;
+    if (!response.ok || payload.error || payload.success !== true) {
+      const message = redactMetaSecrets(payload.error?.message || `Meta Reel thumbnail respondeu com HTTP ${response.status}`, input.pageToken, input.appSecret);
+      app.log.warn({ publicationId: input.publicationId, videoId: input.videoId, operation: "facebook.publish.reel.cover", durationMs, httpStatus: response.status, metaCode: payload.error?.code ?? null }, "Facebook Reel cover upload failed");
+      throw new Error(message);
+    }
+    app.log.info({ publicationId: input.publicationId, videoId: input.videoId, operation: "facebook.publish.reel.cover", durationMs, httpStatus: response.status }, "Facebook Reel cover uploaded");
+  } catch (error) {
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    if (timedOut) throw new Error("A Meta demorou demais para receber a capa personalizada do Reel.");
+    throw error;
+  }
+}
+
+async function publishFacebookReel(app: FastifyInstance, input: {
+  publicationId: string;
+  userId: string;
+  pageId: string;
+  videoUrl: string;
+  reelCoverUrl: string | null;
+  caption: string | null;
+  locationId: string | null;
+  pollIntervalMs?: number;
+  maxWaitMs?: number;
+}) {
+  const context = await getPublishingContext(app, input.userId);
+  const pageAccess = await getFacebookPageAccessContext({
+    app,
+    pageId: input.pageId,
+    userToken: context.token,
+    appSecret: context.appSecret,
+    timeoutMs: META_FACEBOOK_PAGE_ACCESS_TIMEOUT_MS,
+  });
+  if (!pageAccess.page || pageAccess.page.id !== input.pageId) {
+    throw new Error(pageAccess.warning?.message || "A Página do Facebook vinculada não está disponível na conexão Meta.");
+  }
+  if (pageAccess.tokenSource !== "page") {
+    throw new Error("A Meta não forneceu um Page Access Token para a Página do Facebook vinculada.");
+  }
+  const start = await fetchMetaResult<MetaApiError & { video_id?: string; upload_url?: string }>({
+    app,
+    path: `/${input.pageId}/video_reels`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: { upload_phase: "start" },
+    metricOrOperation: "facebook.publish.reel.start",
+    method: "POST",
+    timeoutMs: META_FACEBOOK_REEL_START_TIMEOUT_MS,
+  });
+  if (!start.payload?.video_id || !start.payload.upload_url) throw new Error(start.warning?.kind === "timeout"
+    ? "A Meta demorou demais para iniciar o envio do Reel do Facebook."
+    : start.warning?.message || "A Meta não iniciou o envio do Reel do Facebook.");
+  const videoId = start.payload.video_id;
+  await uploadFacebookReelFromUrl(app, {
+    publicationId: input.publicationId,
+    videoId,
+    uploadUrl: start.payload.upload_url,
+    videoUrl: input.videoUrl,
+    pageToken: pageAccess.pageToken,
+    appSecret: context.appSecret,
+  });
+  if (input.reelCoverUrl) {
+    await uploadFacebookReelCover(app, {
+      publicationId: input.publicationId,
+      videoId,
+      coverUrl: input.reelCoverUrl,
+      pageToken: pageAccess.pageToken,
+      appSecret: context.appSecret,
+    });
+  }
+  const finish = await fetchMetaResult<MetaApiError & { success?: boolean; post_id?: string }>({
+    app,
+    path: `/${input.pageId}/video_reels`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: {
+      video_id: videoId,
+      upload_phase: "finish",
+      video_state: "PUBLISHED",
+      ...(input.caption ? { description: input.caption } : {}),
+      ...(input.locationId ? { place: input.locationId } : {}),
+    },
+    metricOrOperation: "facebook.publish.reel.finish",
+    method: "POST",
+    timeoutMs: META_FACEBOOK_REEL_FINISH_TIMEOUT_MS,
+  });
+  if (finish.warning?.kind === "timeout") {
+    throw new Error("A Meta demorou mais que o esperado para confirmar o Reel. Verifique a Página antes de tentar novamente.");
+  }
+  if (!finish.payload || finish.payload.success !== true) {
+    throw new Error(finish.warning?.message || "A Meta não confirmou a publicação do Reel na Página do Facebook.");
+  }
+  await waitForFacebookReel(app, {
+    publicationId: input.publicationId,
+    videoId,
+    pageToken: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    pollIntervalMs: input.pollIntervalMs,
+    maxWaitMs: input.maxWaitMs,
+  });
+  const permalink = await fetchMetaResult<MetaApiError & { permalink_url?: string }>({
+    app,
+    path: `/${videoId}`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: { fields: "permalink_url" },
+    metricOrOperation: "facebook.publish.reel.permalink",
+    timeoutMs: META_FACEBOOK_REEL_PERMALINK_TIMEOUT_MS,
+  });
+  return { publishedMetaId: finish.payload.post_id ?? videoId, publishedPermalink: permalink.payload?.permalink_url ?? null };
+}
+
 async function publishFacebookImage(app: FastifyInstance, input: {
   userId: string;
   pageId: string;
@@ -1400,6 +1662,8 @@ function safePublicationError(error: unknown) {
 export async function processDueMetaPublications(app: FastifyInstance, limit = 10, options?: {
   reelPollIntervalMs?: number;
   reelMaxWaitMs?: number;
+  facebookReelPollIntervalMs?: number;
+  facebookReelMaxWaitMs?: number;
 }) {
   const recoveredStalePublishing = await markStalePublishingFailed(app.db, {
     updatedBefore: new Date(Date.now() - META_PUBLISHING_STALE_MS).toISOString(),
@@ -1433,9 +1697,6 @@ export async function processDueMetaPublications(app: FastifyInstance, limit = 1
       if (publication.platform === "facebook" && publication.mediaType === "carousel") {
         throw new Error("Carrossel ainda não está disponível para publicação no Facebook.");
       }
-      if (publication.platform === "facebook" && publication.mediaType === "reel") {
-        throw new Error("Reels ainda não estão disponíveis para publicação no Facebook.");
-      }
       const result = publication.platform === "instagram" && publication.mediaType === "reel"
         ? await publishInstagramReel(app, {
           publicationId: publication.id,
@@ -1458,7 +1719,19 @@ export async function processDueMetaPublications(app: FastifyInstance, limit = 1
         })
         : publication.platform === "instagram"
           ? await publishInstagramImage(app, { ...commonInput, instagramUserTags: publication.instagramUserTags, publicationId: publication.id, instagramAccountId: publication.metaAssetId })
-          : await publishFacebookImage(app, { ...commonInput, pageId: publication.metaAssetId });
+          : publication.mediaType === "reel"
+            ? await publishFacebookReel(app, {
+              publicationId: publication.id,
+              userId: publication.createdByUserId,
+              pageId: publication.metaAssetId,
+              videoUrl: publication.mediaUrl,
+              reelCoverUrl: publication.reelCoverUrl,
+              caption: publication.caption,
+              locationId: publication.locationId,
+              pollIntervalMs: options?.facebookReelPollIntervalMs,
+              maxWaitMs: options?.facebookReelMaxWaitMs,
+            })
+            : await publishFacebookImage(app, { ...commonInput, pageId: publication.metaAssetId });
       const markedPublished = await markPublicationPublished(app.db, publication.id, result);
       if (!markedPublished) throw new Error("O status do agendamento mudou antes da confirmação da publicação.");
       if (publication.cardId) {

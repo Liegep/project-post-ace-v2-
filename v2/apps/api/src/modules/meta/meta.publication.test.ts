@@ -92,9 +92,29 @@ test("image and carousel plans never receive a Reel cover", () => {
   assert.equal(carousel.plans?.[0]?.reelCoverUrl, null);
 });
 
-test("Reel cannot be scheduled for Facebook", () => {
-  const result = planMetaCardPublications({ platforms: ["facebook"], mediaUrls: ["https://cdn.example.com/reel.mov"], mediaType: "video", artType: "Reels", locationId: null, instagramUserTags: [] });
-  assert.match(result.error ?? "", /somente no Instagram/i);
+test("a Reel can be scheduled for Facebook with its location", () => {
+  const result = planMetaCardPublications({ platforms: ["facebook"], mediaUrls: ["https://cdn.example.com/reel.mov"], mediaType: "video", artType: "Reels", locationId: "123456789", instagramUserTags: [] });
+  assert.equal(result.error, null);
+  assert.equal(result.plans?.[0]?.mediaType, "reel");
+  assert.equal(result.plans?.[0]?.locationId, "123456789");
+});
+
+test("one Reel creates independent Instagram and Facebook plans", () => {
+  const result = planMetaCardPublications({
+    platforms: ["instagram", "facebook"],
+    mediaUrls: ["https://cdn.example.com/reel.mp4"],
+    mediaType: "video",
+    artType: "Reels",
+    reelCoverUrl: "/api/uploads/cover.webp",
+    locationId: "123456789",
+    instagramUserTags: [],
+  });
+  assert.equal(result.error, null);
+  assert.equal(result.plans?.length, 2);
+  assert.deepEqual(result.plans?.map((plan) => ({ platform: plan.platform, mediaType: plan.mediaType, cover: plan.reelCoverUrl, location: plan.locationId })), [
+    { platform: "instagram", mediaType: "reel", cover: "/api/uploads/cover.webp", location: null },
+    { platform: "facebook", mediaType: "reel", cover: "/api/uploads/cover.webp", location: "123456789" },
+  ]);
 });
 
 test("multiple videos are rejected", () => {

@@ -35,9 +35,6 @@ export function planMetaCardPublications(input: {
   if (/story/i.test(input.artType ?? "")) {
     return { plans: null, error: "Stories ainda não estão disponíveis para publicação Meta." };
   }
-  if (isReel && input.platforms.includes("facebook")) {
-    return { plans: null, error: "Nesta etapa, Reels está disponível somente no Instagram. Remova o Facebook para continuar." };
-  }
   const reelCoverUrl = input.reelCoverUrl?.trim() || null;
   if (isReel && reelCoverUrl) {
     const isInternalUpload = reelCoverUrl.startsWith("/api/uploads/");
@@ -67,7 +64,7 @@ export function planMetaCardPublications(input: {
       mediaUrl: mediaUrls[0],
       mediaUrls,
       reelCoverUrl: isReel ? reelCoverUrl : null,
-      locationId: isReel ? null : input.locationId,
+      locationId: isReel && platform === "instagram" ? null : input.locationId,
       instagramUserTags: platform === "instagram" && !isCarousel && !isReel ? input.instagramUserTags : [],
     })),
     error: null,
