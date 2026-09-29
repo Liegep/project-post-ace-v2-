@@ -41,3 +41,33 @@ test("carousel keeps location on its main publication plan", () => {
   assert.equal(result.plans?.[0]?.locationId, "123456789");
   assert.deepEqual(result.plans?.[0]?.instagramUserTags, []);
 });
+
+test("one MP4 is classified as an Instagram Reel", () => {
+  const result = planMetaCardPublications({
+    platforms: ["instagram"],
+    mediaUrls: ["https://cdn.example.com/reel.mp4"],
+    mediaType: "video",
+    artType: "Reels",
+    locationId: "123456789",
+    instagramUserTags: [tag],
+  });
+  assert.equal(result.error, null);
+  assert.equal(result.plans?.[0]?.mediaType, "reel");
+  assert.equal(result.plans?.[0]?.locationId, null);
+  assert.deepEqual(result.plans?.[0]?.instagramUserTags, []);
+});
+
+test("Reel cannot be scheduled for Facebook", () => {
+  const result = planMetaCardPublications({ platforms: ["facebook"], mediaUrls: ["https://cdn.example.com/reel.mov"], mediaType: "video", artType: "Reels", locationId: null, instagramUserTags: [] });
+  assert.match(result.error ?? "", /somente no Instagram/i);
+});
+
+test("multiple videos are rejected", () => {
+  const result = planMetaCardPublications({ platforms: ["instagram"], mediaUrls: ["https://cdn.example.com/one.mp4", "https://cdn.example.com/two.mp4"], mediaType: "video", artType: "Reels", locationId: null, instagramUserTags: [] });
+  assert.match(result.error ?? "", /somente um vídeo/i);
+});
+
+test("mixed video and image media are rejected", () => {
+  const result = planMetaCardPublications({ platforms: ["instagram"], mediaUrls: ["https://cdn.example.com/reel.mp4", ...imageUrls(1)], mediaType: "video", artType: "Reels", locationId: null, instagramUserTags: [] });
+  assert.match(result.error ?? "", /não misture vídeo com imagens/i);
+});

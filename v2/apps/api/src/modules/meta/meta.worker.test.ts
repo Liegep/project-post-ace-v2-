@@ -7,6 +7,7 @@ import type { Pool } from "mysql2/promise";
 import { markStalePublishingFailed } from "./meta.repository.js";
 import {
   META_INSTAGRAM_CREATE_TIMEOUT_MS,
+  META_INSTAGRAM_REEL_CREATE_TIMEOUT_MS,
   META_INSTAGRAM_PERMALINK_TIMEOUT_MS,
   META_INSTAGRAM_PUBLISH_TIMEOUT_MS,
   META_INSTAGRAM_STATUS_TIMEOUT_MS,
@@ -30,7 +31,13 @@ function metaResponse(payload: unknown) {
   return new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
 }
 
-function publishingHarness(fetchImpl: typeof fetch) {
+function publishingHarness(fetchImpl: typeof fetch, overrides: {
+  mediaType?: "image" | "reel";
+  mediaUrl?: string;
+  caption?: string | null;
+  locationId?: string | null;
+  instagramUserTags?: Array<{ username: string; x: number; y: number }>;
+} = {}) {
   const encryptionKey = Buffer.alloc(32, 7);
   const state = { status: "scheduled", lastError: null as string | null, attemptCount: 0, fetchCalls: 0 };
   const publicationRow = {
@@ -41,12 +48,12 @@ function publishingHarness(fetchImpl: typeof fetch) {
     meta_asset_id: "instagram-1",
     scheduled_at: "2026-09-29T16:00:00.000000Z",
     timezone: "Europe/Stockholm",
-    caption: "Legenda",
-    media_url: "https://cdn.example.com/image.jpg",
-    media_urls_json: ["https://cdn.example.com/image.jpg"],
-    media_type: "image",
-    location_id: null,
-    instagram_user_tags_json: [],
+    caption: overrides.caption === undefined ? "Legenda" : overrides.caption,
+    media_url: overrides.mediaUrl ?? "https://cdn.example.com/image.jpg",
+    media_urls_json: [overrides.mediaUrl ?? "https://cdn.example.com/image.jpg"],
+    media_type: overrides.mediaType ?? "image",
+    location_id: overrides.locationId ?? null,
+    instagram_user_tags_json: overrides.instagramUserTags ?? [],
     status: "scheduled",
     attempt_count: 0,
     idempotency_key: "key-1",
@@ -118,6 +125,7 @@ async function withFetch<T>(fetchImpl: typeof fetch, run: () => Promise<T>) {
 
 test("Instagram publishing uses operation-specific timeouts", () => {
   assert.equal(META_INSTAGRAM_CREATE_TIMEOUT_MS, 30_000);
+  assert.equal(META_INSTAGRAM_REEL_CREATE_TIMEOUT_MS, 45_000);
   assert.equal(META_INSTAGRAM_STATUS_TIMEOUT_MS, 15_000);
   assert.equal(META_INSTAGRAM_PUBLISH_TIMEOUT_MS, 45_000);
   assert.equal(META_INSTAGRAM_PERMALINK_TIMEOUT_MS, 15_000);
@@ -173,6 +181,94 @@ test("a scheduled Instagram publication still completes normally", async () => {
   assert.equal(result.published, 1);
   assert.equal(harness.state.status, "published");
   assert.equal(harness.state.fetchCalls, 4);
+});
+
+test("a finished Reel container publishes with its caption and without image-only fields", async () => {
+  const requests: URL[] = [];
+  const harness = publishingHarness(async (input, init) => {
+    const url = new URL(String(input));
+    requests.push(url);
+    if (init?.method === "POST" && url.pathname.endsWith("/media_publish")) return metaResponse({ id: "reel-media-1" });
+    if (init?.method === "POST" && url.pathname.endsWith("/media")) return metaResponse({ id: "reel-container-1" });
+    if (url.pathname.endsWith("/reel-container-1")) return metaResponse({ status_code: "FINISHED" });
+    if (url.pathname.endsWith("/reel-media-1")) return metaResponse({ permalink: "https://instagram.com/reel/test" });
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, {
+    mediaType: "reel",
+    mediaUrl: "https://cdn.example.com/reel.mp4",
+    caption: "Legenda original do Reel",
+    locationId: "123456",
+    instagramUserTags: [{ username: "designhub", x: 0.5, y: 0.5 }],
+  });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { reelPollIntervalMs: 1, reelMaxWaitMs: 20 }));
+  assert.equal(result.published, 1);
+  const create = requests.find((url) => url.pathname.endsWith("/media"));
+  assert.equal(create?.searchParams.get("media_type"), "REELS");
+  assert.equal(create?.searchParams.get("video_url"), "https://cdn.example.com/reel.mp4");
+  assert.equal(create?.searchParams.get("caption"), "Legenda original do Reel");
+  assert.equal(create?.searchParams.has("user_tags"), false);
+  assert.equal(create?.searchParams.has("location_id"), false);
+});
+
+test("a Reel container ERROR marks the publication failed", async () => {
+  const harness = publishingHarness(async (input, init) => {
+    const url = String(input);
+    if (init?.method === "POST" && url.includes("/media?")) return metaResponse({ id: "reel-container-1" });
+    if (url.includes("/reel-container-1?")) return metaResponse({ status_code: "ERROR", error_message: "Video processing failed" });
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, { mediaType: "reel", mediaUrl: "https://cdn.example.com/reel.mp4" });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { reelPollIntervalMs: 1, reelMaxWaitMs: 20 }));
+  assert.equal(result.failed, 1);
+  assert.equal(harness.state.status, "failed");
+  assert.match(harness.state.lastError ?? "", /Video processing failed/i);
+});
+
+test("a Reel status request timeout marks the publication failed", async () => {
+  const harness = publishingHarness(async (input, init) => {
+    const url = String(input);
+    if (init?.method === "POST" && url.includes("/media?")) return metaResponse({ id: "reel-container-1" });
+    throw timeoutError();
+  }, { mediaType: "reel", mediaUrl: "https://cdn.example.com/reel.mp4" });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { reelPollIntervalMs: 1, reelMaxWaitMs: 20 }));
+  assert.equal(result.failed, 1);
+  assert.equal(harness.state.status, "failed");
+  assert.match(harness.state.lastError ?? "", /processamento do Reel/i);
+});
+
+test("a Reel that stays IN_PROGRESS until the polling deadline is marked failed", async () => {
+  let statusChecks = 0;
+  const harness = publishingHarness(async (input, init) => {
+    const url = String(input);
+    if (init?.method === "POST" && url.includes("/media?")) return metaResponse({ id: "reel-container-1" });
+    if (url.includes("/reel-container-1?")) {
+      statusChecks += 1;
+      return metaResponse({ status_code: "IN_PROGRESS" });
+    }
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, { mediaType: "reel", mediaUrl: "https://cdn.example.com/reel.mp4" });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { reelPollIntervalMs: 1, reelMaxWaitMs: 5 }));
+  assert.equal(result.failed, 1);
+  assert.equal(harness.state.status, "failed");
+  assert.ok(statusChecks >= 1);
+  assert.match(harness.state.lastError ?? "", /ainda não concluiu/i);
+});
+
+test("a Reel tolerates multiple IN_PROGRESS cycles before FINISHED", async () => {
+  let statusChecks = 0;
+  const harness = publishingHarness(async (input, init) => {
+    const url = String(input);
+    if (init?.method === "POST" && url.includes("/media_publish?")) return metaResponse({ id: "reel-media-1" });
+    if (init?.method === "POST" && url.includes("/media?")) return metaResponse({ id: "reel-container-1" });
+    if (url.includes("/reel-container-1?")) {
+      statusChecks += 1;
+      return metaResponse({ status_code: statusChecks < 4 ? "IN_PROGRESS" : "FINISHED" });
+    }
+    if (url.includes("/reel-media-1?")) return metaResponse({ permalink: "https://instagram.com/reel/test" });
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, { mediaType: "reel", mediaUrl: "https://cdn.example.com/reel.mp4" });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { reelPollIntervalMs: 1, reelMaxWaitMs: 30 }));
+  assert.equal(result.published, 1);
+  assert.equal(statusChecks, 4);
 });
 
 test("only stale publishing rows are recovered as failed", async () => {

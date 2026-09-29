@@ -159,6 +159,7 @@ const META_INSIGHTS_REQUEST_TIMEOUT_MS = 7_000;
 const META_FACEBOOK_PAGE_ACCESS_TIMEOUT_MS = 15_000;
 const META_FACEBOOK_PUBLISH_TIMEOUT_MS = 45_000;
 export const META_INSTAGRAM_CREATE_TIMEOUT_MS = 30_000;
+export const META_INSTAGRAM_REEL_CREATE_TIMEOUT_MS = 45_000;
 export const META_INSTAGRAM_STATUS_TIMEOUT_MS = 15_000;
 export const META_INSTAGRAM_PUBLISH_TIMEOUT_MS = 45_000;
 export const META_INSTAGRAM_PERMALINK_TIMEOUT_MS = 15_000;
@@ -956,22 +957,25 @@ function isPrivateHostname(hostname: string) {
   return net.isIP(normalized) === 6 && (normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe80:"));
 }
 
-function assertPublicHttpUrl(app: FastifyInstance, rawUrl: string) {
+function assertPublicHttpUrl(app: FastifyInstance, rawUrl: string, mediaType: "image" | "carousel" | "reel") {
   let url: URL;
   try {
     url = rawUrl.startsWith("/api/uploads/") ? new URL(rawUrl, app.appEnv.API_URL) : new URL(rawUrl);
   } catch {
-    throw app.httpErrors.badRequest("A imagem precisa ter uma URL pública HTTP/HTTPS para que a Meta consiga acessá-la.");
+    throw app.httpErrors.badRequest("A mídia precisa ter uma URL pública HTTP/HTTPS para que a Meta consiga acessá-la.");
   }
   if (!["http:", "https:"].includes(url.protocol) || isPrivateHostname(url.hostname)) {
-    throw app.httpErrors.badRequest("A imagem precisa estar disponível em uma URL pública HTTP/HTTPS; URLs locais, blob e data não são aceitas.");
+    throw app.httpErrors.badRequest("A mídia precisa estar disponível em uma URL pública HTTP/HTTPS; URLs locais, blob e data não são aceitas.");
   }
   if (rawUrl.startsWith("/api/uploads/")) {
-    // Uploads are already public. Convert the stored WebP on demand because
-    // Instagram Content Publishing accepts JPEG images, not WebP.
-    url.searchParams.set("format", "jpeg");
-  } else if (!/\.jpe?g$/i.test(url.pathname)) {
-    throw app.httpErrors.badRequest("Esta primeira versão publica somente uma imagem JPEG acessível por URL pública.");
+    if (mediaType !== "reel") {
+      // Image uploads are converted because Instagram Content Publishing accepts JPEG, not WebP.
+      url.searchParams.set("format", "jpeg");
+    }
+  } else if (mediaType === "reel" ? !/\.(mp4|mov)$/i.test(url.pathname) : !/\.jpe?g$/i.test(url.pathname)) {
+    throw app.httpErrors.badRequest(mediaType === "reel"
+      ? "Esta primeira versão de Reels aceita somente vídeo MP4 ou MOV acessível por URL pública."
+      : "Esta primeira versão publica somente uma imagem JPEG acessível por URL pública.");
   }
   return url.toString();
 }
@@ -1007,7 +1011,8 @@ export async function scheduleMetaCardPublications(app: FastifyInstance, input: 
     instagramUserTags: input.instagramUserTags ?? [],
   });
   if (!planned.plans) throw app.httpErrors.badRequest(planned.error);
-  const validatedUrls = new Map(planned.plans[0]?.mediaUrls.map((url) => [url, assertPublicHttpUrl(app, url)]) ?? []);
+  const mediaType = planned.plans[0]?.mediaType ?? "image";
+  const validatedUrls = new Map(planned.plans[0]?.mediaUrls.map((url) => [url, assertPublicHttpUrl(app, url, mediaType)]) ?? []);
   const scheduledAt = new Date(input.scheduledAt).toISOString();
   return createScheduledPublications(app.db, planned.plans.map((plan) => ({
     clientAccountId: input.clientAccountId,
@@ -1055,9 +1060,14 @@ async function waitForInstagramContainer(app: FastifyInstance, input: {
   containerId: string;
   token: string;
   appSecret: string;
+  pollIntervalMs?: number;
+  maxWaitMs?: number;
 }) {
-  for (let attempt = 1; attempt <= INSTAGRAM_CONTAINER_POLL_ATTEMPTS; attempt += 1) {
-    await wait(INSTAGRAM_CONTAINER_POLL_INTERVAL_MS);
+  const pollIntervalMs = input.pollIntervalMs ?? INSTAGRAM_CONTAINER_POLL_INTERVAL_MS;
+  const maxWaitMs = input.maxWaitMs ?? INSTAGRAM_CONTAINER_POLL_ATTEMPTS * INSTAGRAM_CONTAINER_POLL_INTERVAL_MS;
+  const deadline = Date.now() + maxWaitMs;
+  for (let attempt = 1; Date.now() < deadline; attempt += 1) {
+    await wait(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
     const result = await fetchMetaResult<MetaApiError & { status_code?: string; error_message?: string }>({
       app,
       path: `/${input.containerId}`,
@@ -1069,8 +1079,8 @@ async function waitForInstagramContainer(app: FastifyInstance, input: {
     });
     if (!result.payload) {
       throw new Error(result.warning?.kind === "timeout"
-        ? "A Meta demorou demais para responder ao consultar o processamento da imagem. Verifique o Instagram antes de tentar novamente."
-        : result.warning?.message || "Não foi possível consultar o processamento da imagem na Meta.");
+        ? "A Meta demorou demais para responder ao consultar o processamento da mídia. Verifique o Instagram antes de tentar novamente."
+        : result.warning?.message || "Não foi possível consultar o processamento da mídia na Meta.");
     }
     const statusCode = result.payload.status_code?.trim().toUpperCase() || "UNKNOWN";
     app.log.info({
@@ -1081,19 +1091,19 @@ async function waitForInstagramContainer(app: FastifyInstance, input: {
     }, "Instagram media container status checked");
     if (statusCode === "FINISHED") return;
     if (statusCode === "ERROR" || result.payload.error_message) {
-      throw new Error(result.payload.error_message || "A Meta encontrou um erro ao processar a imagem.");
+      throw new Error(result.payload.error_message || "A Meta encontrou um erro ao processar a mídia.");
     }
     if (statusCode === "EXPIRED") {
-      throw new Error("O container da imagem expirou antes da publicação.");
+      throw new Error("O container da mídia expirou antes da publicação.");
     }
     if (statusCode === "PUBLISHED") {
       throw new Error("A Meta informou que este container já foi publicado.");
     }
     if (statusCode !== "IN_PROGRESS") {
-      throw new Error(`A Meta retornou um status inesperado ao processar a imagem: ${statusCode}.`);
+      throw new Error(`A Meta retornou um status inesperado ao processar a mídia: ${statusCode}.`);
     }
   }
-  throw new Error("A Meta ainda não concluiu o processamento da imagem. Tente publicar novamente.");
+  throw new Error("A Meta ainda não concluiu o processamento da mídia. Tente publicar novamente.");
 }
 
 async function publishInstagramContainer(app: FastifyInstance, input: {
@@ -1251,6 +1261,54 @@ async function publishInstagramCarousel(app: FastifyInstance, input: {
   });
 }
 
+async function publishInstagramReel(app: FastifyInstance, input: {
+  publicationId: string;
+  userId: string;
+  instagramAccountId: string;
+  videoUrl: string;
+  caption: string | null;
+  pollIntervalMs?: number;
+  maxWaitMs?: number;
+}) {
+  const context = await getPublishingContext(app, input.userId);
+  const create = await fetchMetaResult<MetaApiError & { id?: string }>({
+    app,
+    path: `/${input.instagramAccountId}/media`,
+    token: context.token,
+    appSecret: context.appSecret,
+    params: {
+      media_type: "REELS",
+      video_url: input.videoUrl,
+      ...(input.caption ? { caption: input.caption } : {}),
+    },
+    metricOrOperation: "instagram.publish.reel.createContainer",
+    method: "POST",
+    timeoutMs: META_INSTAGRAM_REEL_CREATE_TIMEOUT_MS,
+  });
+  if (!create.payload?.id) throw new Error(create.warning?.kind === "timeout"
+    ? "A Meta demorou demais para criar o container do Reel. Verifique o Instagram antes de tentar novamente."
+    : create.warning?.message || "A Meta não criou o container do Reel.");
+  try {
+    await waitForInstagramContainer(app, {
+      publicationId: input.publicationId,
+      containerId: create.payload.id,
+      token: context.token,
+      appSecret: context.appSecret,
+      pollIntervalMs: input.pollIntervalMs ?? 5_000,
+      maxWaitMs: input.maxWaitMs ?? 5 * 60_000,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Erro desconhecido.";
+    throw new Error(`A Meta não concluiu o processamento do Reel: ${message}`);
+  }
+  return publishInstagramContainer(app, {
+    instagramAccountId: input.instagramAccountId,
+    creationId: create.payload.id,
+    token: context.token,
+    appSecret: context.appSecret,
+  });
+}
+
 async function publishFacebookImage(app: FastifyInstance, input: {
   userId: string;
   pageId: string;
@@ -1313,7 +1371,10 @@ function safePublicationError(error: unknown) {
     .slice(0, 4000);
 }
 
-export async function processDueMetaPublications(app: FastifyInstance, limit = 10) {
+export async function processDueMetaPublications(app: FastifyInstance, limit = 10, options?: {
+  reelPollIntervalMs?: number;
+  reelMaxWaitMs?: number;
+}) {
   const recoveredStalePublishing = await markStalePublishingFailed(app.db, {
     updatedBefore: new Date(Date.now() - META_PUBLISHING_STALE_MS).toISOString(),
     lastError: META_STALE_PUBLISHING_ERROR,
@@ -1346,7 +1407,20 @@ export async function processDueMetaPublications(app: FastifyInstance, limit = 1
       if (publication.platform === "facebook" && publication.mediaType === "carousel") {
         throw new Error("Carrossel ainda não está disponível para publicação no Facebook.");
       }
-      const result = publication.platform === "instagram" && publication.mediaType === "carousel"
+      if (publication.platform === "facebook" && publication.mediaType === "reel") {
+        throw new Error("Reels ainda não estão disponíveis para publicação no Facebook.");
+      }
+      const result = publication.platform === "instagram" && publication.mediaType === "reel"
+        ? await publishInstagramReel(app, {
+          publicationId: publication.id,
+          userId: publication.createdByUserId,
+          instagramAccountId: publication.metaAssetId,
+          videoUrl: publication.mediaUrl,
+          caption: publication.caption,
+          pollIntervalMs: options?.reelPollIntervalMs,
+          maxWaitMs: options?.reelMaxWaitMs,
+        })
+        : publication.platform === "instagram" && publication.mediaType === "carousel"
         ? await publishInstagramCarousel(app, {
           publicationId: publication.id,
           userId: publication.createdByUserId,

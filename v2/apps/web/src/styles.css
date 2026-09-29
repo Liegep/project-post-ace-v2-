@@ -5054,7 +5054,7 @@ button {
 .meta-schedule-modal header > button { color: #fff; border: 0; background: transparent; font-size: 28px; cursor: pointer; }
 .meta-schedule-preview { display: grid; grid-template-columns: 112px minmax(0,1fr); gap: 16px; align-items: center; }
 .meta-schedule-preview-media { position: relative; width: 112px; height: 112px; }
-.meta-schedule-preview-media > img { width: 112px; height: 112px; object-fit: cover; border-radius: 12px; }
+.meta-schedule-preview-media > img, .meta-schedule-preview-media > video { width: 112px; height: 112px; object-fit: cover; border-radius: 12px; background: #090b12; }
 .meta-schedule-preview-media > span { position: absolute; right: 7px; bottom: 7px; padding: 4px 7px; color: #fff; border-radius: 999px; background: rgba(17,18,23,.82); font-size: 9px; font-weight: 800; }
 .meta-schedule-preview p { display: -webkit-box; margin: 0; overflow: hidden; -webkit-box-orient: vertical; -webkit-line-clamp: 5; line-height: 1.45; }
 .meta-carousel-thumbnails { display: flex; align-items: center; gap: 5px; margin-top: 9px; }
@@ -5098,7 +5098,7 @@ button {
 .meta-platform-options .facebook i { border-radius: 50%; background: #3478d4; color: #fff; border-color: #3478d4; font-family: Arial, sans-serif; }
 .meta-platform-options span { display: grid; min-width: 0; gap: 3px; }
 .meta-platform-options small { overflow: hidden; color: #aeb3c2; font-size: 10px; line-height: 1.2; text-overflow: ellipsis; }
-@media (max-width: 480px) { .meta-platform-options { grid-template-columns: 1fr; }.meta-schedule-preview { grid-template-columns: 88px minmax(0,1fr); }.meta-schedule-preview-media, .meta-schedule-preview-media > img { width: 88px; height: 88px; }.meta-tag-input-row { grid-template-columns: 1fr; } }
+@media (max-width: 480px) { .meta-platform-options { grid-template-columns: 1fr; }.meta-schedule-preview { grid-template-columns: 88px minmax(0,1fr); }.meta-schedule-preview-media, .meta-schedule-preview-media > img, .meta-schedule-preview-media > video { width: 88px; height: 88px; }.meta-tag-input-row { grid-template-columns: 1fr; } }
 .editor-field em { margin-left: auto; font-style: normal; }
 .editor-field em button { padding: 5px 10px; color: #30343b; background: #fff; border: 0; border-radius: 5px; cursor: pointer; }
 .editor-field input, .editor-field select, .editor-field textarea { width: 100%; box-sizing: border-box; padding: 17px 20px; color: #111318; background: #fbfbfc; border: 1px solid rgba(255,255,255,.7); border-radius: 8px; font: inherit; font-size: 17px; font-weight: 500; letter-spacing: normal; text-transform: none; }
