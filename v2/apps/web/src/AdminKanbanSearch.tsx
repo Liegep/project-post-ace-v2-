@@ -193,14 +193,14 @@ export function AdminKanbanSearch() {
     <>
       <style>{toolbarPolish}</style>
       <div style={shellStyle} onFocus={() => { if (trimmedQuery.length >= 2) setOpen(true); }}>
-        <span aria-hidden="true" style={{ position: "absolute", left: 13, top: 12, zIndex: 2, opacity: 0.62 }}>⌕</span>
+        <span aria-hidden="true" style={{ position: "absolute", left: 13, top: 11, zIndex: 2, opacity: 0.62, fontSize: 20, lineHeight: "22px", fontWeight: 600 }}>⌕</span>
         <input
           type="search"
           value={query}
           onChange={(event) => { setQuery(event.target.value); setOpen(true); }}
           onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}
-          placeholder="Buscar card no Kanban..."
-          aria-label="Buscar card no Kanban administrativo"
+          placeholder="Buscar..."
+          aria-label="Buscar cards"
           style={inputStyle}
         />
         {query ? <button type="button" onClick={() => { setQuery(""); setResults([]); setOpen(false); }} aria-label="Limpar busca" style={{ position: "absolute", right: 11, top: 9, zIndex: 2, border: 0, background: "transparent", fontSize: 20, cursor: "pointer", color: "#6d6488" }}>×</button> : null}
