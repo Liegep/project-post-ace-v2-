@@ -170,11 +170,14 @@ const META_FACEBOOK_PAGE_ACCESS_TIMEOUT_MS = 15_000;
 const META_FACEBOOK_PUBLISH_TIMEOUT_MS = 45_000;
 export const META_FACEBOOK_REEL_START_TIMEOUT_MS = 30_000;
 export const META_FACEBOOK_REEL_UPLOAD_TIMEOUT_MS = 60_000;
+export const META_FACEBOOK_REEL_DOWNLOAD_TIMEOUT_MS = 60_000;
+export const META_FACEBOOK_REEL_BINARY_UPLOAD_TIMEOUT_MS = 120_000;
 export const META_FACEBOOK_REEL_STATUS_TIMEOUT_MS = 15_000;
 export const META_FACEBOOK_REEL_FINISH_TIMEOUT_MS = 45_000;
 export const META_FACEBOOK_REEL_PERMALINK_TIMEOUT_MS = 15_000;
 export const META_FACEBOOK_REEL_COVER_FETCH_TIMEOUT_MS = 30_000;
 export const META_FACEBOOK_REEL_COVER_UPLOAD_TIMEOUT_MS = 45_000;
+export const META_FACEBOOK_REEL_MAX_DOWNLOAD_BYTES = 250 * 1024 * 1024;
 export const META_INSTAGRAM_CREATE_TIMEOUT_MS = 30_000;
 export const META_INSTAGRAM_REEL_CREATE_TIMEOUT_MS = 45_000;
 export const META_INSTAGRAM_STATUS_TIMEOUT_MS = 15_000;
@@ -228,6 +231,7 @@ function redactMetaSecrets(message: string, accessToken: string, appSecret: stri
   const proof = appSecretProof(accessToken, appSecret);
   return message
     .split(accessToken).join("[REDACTED]")
+    .split(appSecret).join("[REDACTED]")
     .split(proof).join("[REDACTED]")
     .replace(/(access_token|appsecret_proof)=([^&\s]+)/gi, "$1=[REDACTED]");
 }
@@ -1357,6 +1361,138 @@ function facebookReelStatusError(payload: FacebookReelStatusPayload) {
   return phases.flatMap((phase) => phase?.errors ?? []).find((error) => error.error_message)?.error_message ?? null;
 }
 
+function parseFacebookReelUploadResponse(responseText: string, pageToken: string, appSecret: string) {
+  let payload: MetaApiError & { success?: boolean } = {};
+  try {
+    const parsed = JSON.parse(responseText) as unknown;
+    if (parsed && typeof parsed === "object") payload = parsed as MetaApiError & { success?: boolean };
+  } catch {
+    // The rupload endpoint sometimes returns a plain-text error body.
+  }
+  const rawDetail = payload.error?.message || responseText.trim() || null;
+  const detail = rawDetail
+    ? redactMetaSecrets(rawDetail, pageToken, appSecret).replace(/\s+/g, " ").slice(0, 700)
+    : null;
+  return { payload, detail };
+}
+
+async function readResponseBodyWithLimit(response: Response, maxBytes: number) {
+  if (!response.body) return new ArrayBuffer(0);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      throw new Error("O vídeo excede o limite de segurança de 250 MB para envio direto.");
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes.buffer;
+}
+
+async function uploadFacebookReelBinaryFallback(app: FastifyInstance, input: {
+  publicationId: string;
+  videoId: string;
+  uploadUrl: URL;
+  videoUrl: string;
+  pageToken: string;
+  appSecret: string;
+}) {
+  const downloadStartedAt = Date.now();
+  let videoResponse: Response;
+  try {
+    videoResponse = await fetch(input.videoUrl, {
+      headers: { Accept: "video/*" },
+      signal: AbortSignal.timeout(META_FACEBOOK_REEL_DOWNLOAD_TIMEOUT_MS),
+    });
+  } catch (error) {
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    throw new Error(timedOut ? "O download do vídeo excedeu o tempo limite." : "O backend não conseguiu baixar o vídeo para o envio direto.");
+  }
+  if (!videoResponse.ok) throw new Error(`O backend não conseguiu baixar o vídeo (HTTP ${videoResponse.status}).`);
+  const contentType = videoResponse.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() || "";
+  if (!contentType.startsWith("video/")) throw new Error(`O arquivo remoto não foi identificado como vídeo (${contentType || "content-type ausente"}).`);
+  const declaredLength = Number(videoResponse.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > META_FACEBOOK_REEL_MAX_DOWNLOAD_BYTES) {
+    throw new Error("O vídeo excede o limite de segurança de 250 MB para envio direto.");
+  }
+  let bytes: ArrayBuffer;
+  try {
+    bytes = await readResponseBodyWithLimit(videoResponse, META_FACEBOOK_REEL_MAX_DOWNLOAD_BYTES);
+  } catch (error) {
+    if (error instanceof Error && /limite de segurança/.test(error.message)) throw error;
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    throw new Error(timedOut ? "O download do vídeo excedeu o tempo limite." : "Não foi possível ler o vídeo baixado.");
+  }
+  if (bytes.byteLength === 0) throw new Error("O vídeo baixado está vazio.");
+  if (bytes.byteLength > META_FACEBOOK_REEL_MAX_DOWNLOAD_BYTES) throw new Error("O vídeo excede o limite de segurança de 250 MB para envio direto.");
+  app.log.info({
+    publicationId: input.publicationId,
+    videoId: input.videoId,
+    operation: "facebook.publish.reel.binaryDownload",
+    sizeBytes: bytes.byteLength,
+    contentType,
+    durationMs: Date.now() - downloadStartedAt,
+    httpStatus: videoResponse.status,
+  }, "Facebook Reel video downloaded for binary fallback");
+
+  const uploadStartedAt = Date.now();
+  let response: Response;
+  try {
+    response = await fetch(input.uploadUrl, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `OAuth ${input.pageToken}`,
+        offset: "0",
+        file_size: String(bytes.byteLength),
+        "Content-Type": "application/octet-stream",
+      },
+      body: bytes,
+      signal: AbortSignal.timeout(META_FACEBOOK_REEL_BINARY_UPLOAD_TIMEOUT_MS),
+    });
+  } catch (error) {
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    throw new Error(timedOut ? "O upload direto do vídeo para a Meta excedeu o tempo limite." : "Falha de rede no upload direto do vídeo para a Meta.");
+  }
+  const responseText = await response.text().catch(() => "");
+  const { payload, detail } = parseFacebookReelUploadResponse(responseText, input.pageToken, input.appSecret);
+  const durationMs = Date.now() - uploadStartedAt;
+  if (!response.ok || payload.error || payload.success !== true) {
+    app.log.warn({
+      publicationId: input.publicationId,
+      videoId: input.videoId,
+      operation: "facebook.publish.reel.binaryUpload",
+      sizeBytes: bytes.byteLength,
+      contentType,
+      durationMs,
+      httpStatus: response.status,
+      metaCode: payload.error?.code ?? null,
+      detail,
+    }, "Facebook Reel binary upload failed");
+    throw new Error(detail || `Upload direto do Reel respondeu com HTTP ${response.status}.`);
+  }
+  app.log.info({
+    publicationId: input.publicationId,
+    videoId: input.videoId,
+    operation: "facebook.publish.reel.binaryUpload",
+    sizeBytes: bytes.byteLength,
+    contentType,
+    durationMs,
+    httpStatus: response.status,
+  }, "Facebook Reel binary upload completed");
+}
+
 async function uploadFacebookReelFromUrl(app: FastifyInstance, input: {
   publicationId: string;
   videoId: string;
@@ -1375,8 +1511,9 @@ async function uploadFacebookReelFromUrl(app: FastifyInstance, input: {
     throw new Error("A Meta retornou um endereço de upload inesperado para o Reel.");
   }
   const startedAt = Date.now();
+  let response: Response;
   try {
-    const response = await fetch(uploadUrl, {
+    response = await fetch(uploadUrl, {
       method: "POST",
       headers: {
         Accept: "application/json",
@@ -1385,14 +1522,6 @@ async function uploadFacebookReelFromUrl(app: FastifyInstance, input: {
       },
       signal: AbortSignal.timeout(META_FACEBOOK_REEL_UPLOAD_TIMEOUT_MS),
     });
-    const payload = await response.json().catch(() => ({})) as MetaApiError & { success?: boolean };
-    const durationMs = Date.now() - startedAt;
-    if (!response.ok || payload.error || payload.success !== true) {
-      const message = redactMetaSecrets(payload.error?.message || `Meta Reel upload respondeu com HTTP ${response.status}`, input.pageToken, input.appSecret);
-      app.log.warn({ publicationId: input.publicationId, videoId: input.videoId, operation: "facebook.publish.reel.upload", durationMs, httpStatus: response.status, metaCode: payload.error?.code ?? null }, "Facebook Reel upload failed");
-      throw new Error(message);
-    }
-    app.log.info({ publicationId: input.publicationId, videoId: input.videoId, operation: "facebook.publish.reel.upload", durationMs, httpStatus: response.status }, "Facebook Reel upload completed");
   } catch (error) {
     const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
     if (timedOut) {
@@ -1401,6 +1530,38 @@ async function uploadFacebookReelFromUrl(app: FastifyInstance, input: {
     }
     throw error;
   }
+  const responseText = await response.text().catch(() => "");
+  const { payload, detail } = parseFacebookReelUploadResponse(responseText, input.pageToken, input.appSecret);
+  const durationMs = Date.now() - startedAt;
+  if (response.ok && !payload.error && payload.success === true) {
+    app.log.info({ publicationId: input.publicationId, videoId: input.videoId, operation: "facebook.publish.reel.hostedUpload", durationMs, httpStatus: response.status }, "Facebook Reel hosted upload completed");
+    return;
+  }
+  app.log.warn({
+    publicationId: input.publicationId,
+    videoId: input.videoId,
+    operation: "facebook.publish.reel.hostedUpload",
+    durationMs,
+    httpStatus: response.status,
+    metaCode: payload.error?.code ?? null,
+    detail,
+  }, "Facebook Reel hosted upload failed");
+  if (response.status >= 400 && response.status < 500) {
+    app.log.warn({
+      publicationId: input.publicationId,
+      videoId: input.videoId,
+      operation: "facebook.publish.reel.binaryFallback",
+      httpStatus: response.status,
+    }, `Upload hospedado do Reel foi rejeitado pela Meta (HTTP ${response.status}). Tentando envio direto do arquivo.`);
+    try {
+      await uploadFacebookReelBinaryFallback(app, { ...input, uploadUrl });
+      return;
+    } catch (error) {
+      const fallbackMessage = redactMetaSecrets(error instanceof Error ? error.message : "Falha inesperada no envio direto.", input.pageToken, input.appSecret);
+      throw new Error(`A Meta recusou o envio do vídeo tanto por URL quanto por upload direto. ${fallbackMessage}`);
+    }
+  }
+  throw new Error(detail || `Meta Reel upload respondeu com HTTP ${response.status}.`);
 }
 
 async function waitForFacebookReel(app: FastifyInstance, input: {

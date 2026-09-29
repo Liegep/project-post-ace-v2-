@@ -8,11 +8,14 @@ import { canArchiveScheduledPublicationCard, markStalePublishingFailed } from ".
 import {
   META_FACEBOOK_REEL_COVER_FETCH_TIMEOUT_MS,
   META_FACEBOOK_REEL_COVER_UPLOAD_TIMEOUT_MS,
+  META_FACEBOOK_REEL_BINARY_UPLOAD_TIMEOUT_MS,
+  META_FACEBOOK_REEL_DOWNLOAD_TIMEOUT_MS,
   META_FACEBOOK_REEL_FINISH_TIMEOUT_MS,
   META_FACEBOOK_REEL_PERMALINK_TIMEOUT_MS,
   META_FACEBOOK_REEL_START_TIMEOUT_MS,
   META_FACEBOOK_REEL_STATUS_TIMEOUT_MS,
   META_FACEBOOK_REEL_UPLOAD_TIMEOUT_MS,
+  META_FACEBOOK_REEL_MAX_DOWNLOAD_BYTES,
   META_INSTAGRAM_CREATE_TIMEOUT_MS,
   META_INSTAGRAM_REEL_CREATE_TIMEOUT_MS,
   META_INSTAGRAM_PERMALINK_TIMEOUT_MS,
@@ -48,7 +51,7 @@ function publishingHarness(fetchImpl: typeof fetch, overrides: {
   instagramUserTags?: Array<{ username: string; x: number; y: number }>;
 } = {}) {
   const encryptionKey = Buffer.alloc(32, 7);
-  const state = { status: "scheduled", lastError: null as string | null, attemptCount: 0, fetchCalls: 0 };
+  const state = { status: "scheduled", lastError: null as string | null, attemptCount: 0, fetchCalls: 0, logs: [] as unknown[][] };
   const publicationRow = {
     id: "publication-1",
     client_account_id: "client-1",
@@ -114,7 +117,11 @@ function publishingHarness(fetchImpl: typeof fetch, overrides: {
       META_TOKEN_ENCRYPTION_KEY: encryptionKey.toString("base64"),
     },
     httpErrors: { badRequest: (message: string) => new Error(message) },
-    log: { info() {}, warn() {}, error() {} },
+    log: {
+      info(...args: unknown[]) { state.logs.push(args); },
+      warn(...args: unknown[]) { state.logs.push(args); },
+      error(...args: unknown[]) { state.logs.push(args); },
+    },
   } as unknown as FastifyInstance;
   const wrappedFetch: typeof fetch = async (...args) => {
     state.fetchCalls += 1;
@@ -144,6 +151,9 @@ test("Instagram publishing uses operation-specific timeouts", () => {
 test("Facebook Reel publishing uses operation-specific timeouts", () => {
   assert.equal(META_FACEBOOK_REEL_START_TIMEOUT_MS, 30_000);
   assert.equal(META_FACEBOOK_REEL_UPLOAD_TIMEOUT_MS, 60_000);
+  assert.equal(META_FACEBOOK_REEL_DOWNLOAD_TIMEOUT_MS, 60_000);
+  assert.equal(META_FACEBOOK_REEL_BINARY_UPLOAD_TIMEOUT_MS, 120_000);
+  assert.equal(META_FACEBOOK_REEL_MAX_DOWNLOAD_BYTES, 250 * 1024 * 1024);
   assert.equal(META_FACEBOOK_REEL_STATUS_TIMEOUT_MS, 15_000);
   assert.equal(META_FACEBOOK_REEL_FINISH_TIMEOUT_MS, 45_000);
   assert.equal(META_FACEBOOK_REEL_PERMALINK_TIMEOUT_MS, 15_000);
@@ -349,6 +359,8 @@ test("a Facebook Reel completes start, hosted upload, status polling, finish and
   assert.equal(result.published, 1);
   assert.equal(harness.state.status, "published");
   assert.equal(statusChecks, 2);
+  assert.equal(requests.filter(({ url }) => url.hostname === "rupload.facebook.com").length, 1);
+  assert.equal(requests.some(({ url }) => url.href === "https://cdn.example.com/reel.mp4"), false);
   const upload = requests.find(({ url }) => url.hostname === "rupload.facebook.com");
   assert.equal(new Headers(upload?.init?.headers).get("authorization"), "OAuth page-token");
   assert.equal(new Headers(upload?.init?.headers).get("file_url"), "https://cdn.example.com/reel.mp4");
@@ -361,6 +373,93 @@ test("a Facebook Reel completes start, hosted upload, status polling, finish and
   const statusIndex = requests.findIndex(({ url }) => url.pathname.endsWith("/fb-video-1") && url.searchParams.get("fields") === "status");
   assert.ok(finishIndex >= 0 && statusIndex > finishIndex);
   assert.equal(requests.some(({ url }) => url.pathname.endsWith("/thumbnails")), false);
+});
+
+test("Facebook Reel hosted upload 400 or 422 falls back to binary upload in the same session", async (t) => {
+  for (const hostedStatus of [400, 422]) {
+    await t.test(`HTTP ${hostedStatus}`, async () => {
+      const requests: Array<{ url: URL; init?: RequestInit }> = [];
+      let startCalls = 0;
+      let finishCalls = 0;
+      const harness = publishingHarness(async (input, init) => {
+        const url = new URL(String(input));
+        requests.push({ url, init });
+        if (url.href === "https://cdn.example.com/reel.mp4") {
+          return new Response(new Uint8Array([0, 1, 2, 3, 4, 5]), { status: 200, headers: { "content-type": "video/mp4", "content-length": "6" } });
+        }
+        if (url.hostname === "rupload.facebook.com") {
+          const headers = new Headers(init?.headers);
+          if (headers.has("file_url")) {
+            return new Response(`hosted rejected access_token=page-token`, { status: hostedStatus, headers: { "content-type": "text/plain" } });
+          }
+          return metaResponse({ success: true });
+        }
+        if (url.pathname.endsWith("/facebook-1") && url.searchParams.get("fields")?.includes("access_token")) return metaResponse({ id: "facebook-1", access_token: "page-token" });
+        if (url.pathname.endsWith("/facebook-1/video_reels") && url.searchParams.get("upload_phase") === "start") {
+          startCalls += 1;
+          return metaResponse({ video_id: "fb-video-1", upload_url: "https://rupload.facebook.com/video-upload/v26.0/fb-video-1" });
+        }
+        if (url.pathname.endsWith("/facebook-1/video_reels") && url.searchParams.get("upload_phase") === "finish") {
+          finishCalls += 1;
+          return metaResponse({ success: true });
+        }
+        if (url.pathname.endsWith("/fb-video-1") && url.searchParams.get("fields") === "status") return metaResponse({ status: { video_status: "ready" } });
+        if (url.pathname.endsWith("/fb-video-1") && url.searchParams.get("fields") === "permalink_url") return metaResponse({});
+        throw new Error(`Unexpected Meta request: ${url}`);
+      }, { platform: "facebook", mediaType: "reel", mediaUrl: "https://cdn.example.com/reel.mp4" });
+      const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { facebookReelPollIntervalMs: 1, facebookReelMaxWaitMs: 20 }));
+      assert.equal(result.published, 1);
+      assert.equal(startCalls, 1);
+      assert.equal(finishCalls, 1);
+      const uploads = requests.filter(({ url }) => url.hostname === "rupload.facebook.com");
+      assert.equal(uploads.length, 2);
+      const binaryHeaders = new Headers(uploads[1]?.init?.headers);
+      assert.equal(binaryHeaders.get("authorization"), "OAuth page-token");
+      assert.equal(binaryHeaders.get("offset"), "0");
+      assert.equal(binaryHeaders.get("file_size"), "6");
+      assert.equal(binaryHeaders.get("content-type"), "application/octet-stream");
+      assert.ok(uploads[1]?.init?.body instanceof ArrayBuffer);
+      assert.doesNotMatch(JSON.stringify(harness.state.logs), /page-token/);
+    });
+  }
+});
+
+test("Facebook Reel binary fallback failure marks the publication failed without finish or a second start", async () => {
+  let startCalls = 0;
+  let finishCalls = 0;
+  let uploadCalls = 0;
+  const harness = publishingHarness(async (input, init) => {
+    const url = new URL(String(input));
+    if (url.href === "https://cdn.example.com/reel.mp4") {
+      return new Response(new Uint8Array([0, 1, 2]), { status: 200, headers: { "content-type": "video/mp4" } });
+    }
+    if (url.hostname === "rupload.facebook.com") {
+      uploadCalls += 1;
+      const isHosted = new Headers(init?.headers).has("file_url");
+      return new Response(isHosted ? "hosted failed page-token app-secret" : "binary failed Authorization: OAuth page-token app-secret", { status: isHosted ? 422 : 400, headers: { "content-type": "text/plain" } });
+    }
+    if (url.pathname.endsWith("/facebook-1") && url.searchParams.get("fields")?.includes("access_token")) return metaResponse({ id: "facebook-1", access_token: "page-token" });
+    if (url.pathname.endsWith("/facebook-1/video_reels") && url.searchParams.get("upload_phase") === "start") {
+      startCalls += 1;
+      return metaResponse({ video_id: "fb-video-1", upload_url: "https://rupload.facebook.com/video-upload/v26.0/fb-video-1" });
+    }
+    if (url.pathname.endsWith("/facebook-1/video_reels") && url.searchParams.get("upload_phase") === "finish") {
+      finishCalls += 1;
+      return metaResponse({ success: true });
+    }
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, { platform: "facebook", mediaType: "reel", mediaUrl: "https://cdn.example.com/reel.mp4" });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { facebookReelPollIntervalMs: 1, facebookReelMaxWaitMs: 20 }));
+  assert.equal(result.failed, 1);
+  assert.equal(harness.state.status, "failed");
+  assert.equal(startCalls, 1);
+  assert.equal(uploadCalls, 2);
+  assert.equal(finishCalls, 0);
+  assert.match(harness.state.lastError ?? "", /tanto por URL quanto por upload direto/i);
+  assert.doesNotMatch(harness.state.lastError ?? "", /page-token/);
+  assert.doesNotMatch(harness.state.lastError ?? "", /app-secret/);
+  assert.doesNotMatch(JSON.stringify(harness.state.logs), /page-token/);
+  assert.doesNotMatch(JSON.stringify(harness.state.logs), /app-secret/);
 });
 
 test("the existing Facebook single-image flow remains unchanged", async () => {
