@@ -3,7 +3,8 @@ import net from "node:net";
 import type { FastifyInstance } from "fastify";
 import { archiveKanbanCard } from "../cards/cards.service.js";
 import {
-  createScheduledPublication,
+  canArchiveScheduledPublicationCard,
+  createScheduledPublications,
   findClientMetaAssets,
   findMetaConnection,
   listDueScheduledPublications,
@@ -986,11 +987,10 @@ function singleImageFromCard(app: FastifyInstance, card: SchedulableCard) {
   return assertPublicHttpUrl(app, media[0]);
 }
 
-export async function scheduleMetaCardPublication(app: FastifyInstance, input: {
+export async function scheduleMetaCardPublications(app: FastifyInstance, input: {
   userId: string;
   clientAccountId: string;
-  platform: "instagram" | "facebook";
-  metaAssetId: string;
+  platforms: { platform: "instagram" | "facebook"; metaAssetId: string }[];
   card: SchedulableCard;
   scheduledAt: string;
   timezone: string;
@@ -999,14 +999,11 @@ export async function scheduleMetaCardPublication(app: FastifyInstance, input: {
   if (input.card.clientAccountId !== input.clientAccountId) throw app.httpErrors.badRequest("O card não pertence a este cliente.");
   const mediaUrl = singleImageFromCard(app, input.card);
   const scheduledAt = new Date(input.scheduledAt).toISOString();
-  const idempotencyKey = crypto.createHash("sha256")
-    .update([input.clientAccountId, input.card.id, input.platform, scheduledAt].join(":"))
-    .digest("hex");
-  return createScheduledPublication(app.db, {
+  return createScheduledPublications(app.db, input.platforms.map(({ platform, metaAssetId }) => ({
     clientAccountId: input.clientAccountId,
     cardId: input.card.id,
-    platform: input.platform,
-    metaAssetId: input.metaAssetId,
+    platform,
+    metaAssetId,
     scheduledAt,
     timezone: input.timezone,
     caption: input.card.caption?.trim() || null,
@@ -1014,8 +1011,24 @@ export async function scheduleMetaCardPublication(app: FastifyInstance, input: {
     mediaUrls: [mediaUrl],
     mediaType: "image",
     createdByUserId: input.userId,
-    idempotencyKey,
-  });
+    idempotencyKey: crypto.createHash("sha256")
+      .update([input.clientAccountId, input.card.id, platform, scheduledAt].join(":"))
+      .digest("hex"),
+  })));
+}
+
+export async function archiveMetaCardIfPublicationGroupComplete(app: FastifyInstance, publication: {
+  clientAccountId: string;
+  cardId: string | null;
+  scheduledAt: string;
+}) {
+  if (!publication.cardId || !await canArchiveScheduledPublicationCard(app.db, {
+    clientAccountId: publication.clientAccountId,
+    cardId: publication.cardId,
+    scheduledAt: publication.scheduledAt,
+  })) return false;
+  await archiveKanbanCard(app, publication.clientAccountId, publication.cardId, true);
+  return true;
 }
 
 const INSTAGRAM_CONTAINER_POLL_ATTEMPTS = 10;
@@ -1198,7 +1211,7 @@ export async function processDueMetaPublications(app: FastifyInstance, limit = 1
       if (!markedPublished) throw new Error("O status do agendamento mudou antes da confirmação da publicação.");
       if (publication.cardId) {
         try {
-          await archiveKanbanCard(app, publication.clientAccountId, publication.cardId, true);
+          await archiveMetaCardIfPublicationGroupComplete(app, publication);
         } catch (error) {
           app.log.error({ err: error, publicationId: publication.id, cardId: publication.cardId }, "Published Meta card could not be archived");
         }

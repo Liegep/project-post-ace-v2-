@@ -206,35 +206,49 @@ export type CreateScheduledPublicationInput = {
   idempotencyKey: string;
 };
 
-async function findScheduledPublicationByIdempotencyKey(db: Pool, idempotencyKey: string) {
-  const [rows] = await db.query<ScheduledPublicationRow[]>(
-    `${scheduledPublicationSelect} WHERE idempotency_key = ? LIMIT 1`,
-    [idempotencyKey],
-  );
-  return rows[0] ? mapScheduledPublication(rows[0]) : null;
-}
-
-export async function createScheduledPublication(db: Pool, input: CreateScheduledPublicationInput) {
-  const id = crypto.randomUUID();
+export async function createScheduledPublications(db: Pool, inputs: CreateScheduledPublicationInput[]) {
+  const connection = await db.getConnection();
   try {
-    await db.query(
-      [
-        "INSERT INTO meta_scheduled_publications",
-        "(id, client_account_id, card_id, platform, meta_asset_id, scheduled_at, timezone, caption, media_url, media_urls_json, media_type, status, created_by_user_id, idempotency_key)",
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)",
-      ].join(" "),
-      [
-        id, input.clientAccountId, input.cardId, input.platform, input.metaAssetId,
-        mysqlUtcDateTime(input.scheduledAt), input.timezone, input.caption, input.mediaUrl,
-        JSON.stringify(input.mediaUrls), input.mediaType, input.createdByUserId, input.idempotencyKey,
-      ],
-    );
-    return { publication: await findScheduledPublication(db, id), created: true };
+    await connection.beginTransaction();
+    const results = [];
+    for (const input of inputs) {
+      const id = crypto.randomUUID();
+      try {
+        await connection.query(
+          [
+            "INSERT INTO meta_scheduled_publications",
+            "(id, client_account_id, card_id, platform, meta_asset_id, scheduled_at, timezone, caption, media_url, media_urls_json, media_type, status, created_by_user_id, idempotency_key)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)",
+          ].join(" "),
+          [
+            id, input.clientAccountId, input.cardId, input.platform, input.metaAssetId,
+            mysqlUtcDateTime(input.scheduledAt), input.timezone, input.caption, input.mediaUrl,
+            JSON.stringify(input.mediaUrls), input.mediaType, input.createdByUserId, input.idempotencyKey,
+          ],
+        );
+        const [rows] = await connection.query<ScheduledPublicationRow[]>(
+          `${scheduledPublicationSelect} WHERE id = ? LIMIT 1`,
+          [id],
+        );
+        if (!rows[0]) throw new Error("Scheduled Meta publication could not be loaded after insert");
+        results.push({ publication: mapScheduledPublication(rows[0]), created: true });
+      } catch (error) {
+        if ((error as { code?: string }).code !== "ER_DUP_ENTRY") throw error;
+        const [rows] = await connection.query<ScheduledPublicationRow[]>(
+          `${scheduledPublicationSelect} WHERE idempotency_key = ? LIMIT 1`,
+          [input.idempotencyKey],
+        );
+        if (!rows[0]) throw error;
+        results.push({ publication: mapScheduledPublication(rows[0]), created: false });
+      }
+    }
+    await connection.commit();
+    return results;
   } catch (error) {
-    if ((error as { code?: string }).code !== "ER_DUP_ENTRY") throw error;
-    const existing = await findScheduledPublicationByIdempotencyKey(db, input.idempotencyKey);
-    if (!existing) throw error;
-    return { publication: existing, created: false };
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
   }
 }
 
@@ -284,6 +298,19 @@ export async function markPublicationPublished(db: Pool, id: string, input: { pu
     [input.publishedMetaId, input.publishedPermalink, id],
   );
   return result.affectedRows === 1;
+}
+
+export async function canArchiveScheduledPublicationCard(db: Pool, input: { clientAccountId: string; cardId: string; scheduledAt: string }) {
+  const [rows] = await db.query<(RowDataPacket & { publication_count: number | string; published_count: number | string })[]>(
+    [
+      "SELECT COUNT(*) AS publication_count, SUM(status = 'published') AS published_count",
+      "FROM meta_scheduled_publications",
+      "WHERE client_account_id = ? AND card_id = ? AND scheduled_at = ? AND status <> 'cancelled'",
+    ].join(" "),
+    [input.clientAccountId, input.cardId, mysqlUtcDateTime(input.scheduledAt)],
+  );
+  const publicationCount = Number(rows[0]?.publication_count ?? 0);
+  return publicationCount > 0 && Number(rows[0]?.published_count ?? 0) === publicationCount;
 }
 
 export async function markPublicationFailed(db: Pool, id: string, lastError: string) {

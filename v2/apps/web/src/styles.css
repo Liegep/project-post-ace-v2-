@@ -3606,7 +3606,8 @@ button {
   flex-wrap: wrap;
 }
 
-.meta-kanban-badge { display: inline-flex; max-width: 100%; min-height: 27px; box-sizing: border-box; align-items: center; gap: 6px; margin-top: 10px; padding: 5px 9px; overflow: hidden; border: 1px solid transparent; border-radius: 8px; font-size: .7rem; font-weight: 750; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.meta-kanban-badges { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.meta-kanban-badge { display: inline-flex; max-width: 100%; min-height: 27px; box-sizing: border-box; align-items: center; gap: 6px; padding: 5px 9px; overflow: hidden; border: 1px solid transparent; border-radius: 8px; font-size: .7rem; font-weight: 750; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
 .meta-kanban-badge i { display: inline-grid; width: 15px; height: 15px; flex: 0 0 15px; place-items: center; border: 1.5px solid currentColor; border-radius: 5px; font-size: 10px; font-style: normal; line-height: 1; }
 .meta-kanban-badge.scheduled { color: #873faf; border-color: #e4b9ee; background: linear-gradient(110deg, #f5eaff, #ffeaf5); }
 .meta-kanban-badge.facebook.scheduled { color: #2361aa; border-color: #bfd6f1; background: linear-gradient(110deg, #eaf3ff, #f0f2ff); }
@@ -5037,6 +5038,12 @@ button {
 .meta-publication-panel details { color: #ffd1d7; font-size: 12px; }
 .meta-publication-panel details p { margin: 8px 0 0; overflow-wrap: anywhere; }
 .meta-publication-panel a { color: #d9ccff; font-size: 13px; font-weight: 700; }
+.meta-publication-list { display: grid; gap: 10px; }
+.meta-publication-item { display: grid; gap: 7px; padding: 11px; border: 1px solid rgba(210, 115, 218, .28); border-radius: 10px; background: rgba(15, 16, 23, .2); }
+.meta-publication-item.facebook { border-color: rgba(112, 167, 239, .35); }
+.meta-publication-item > small { color: #dcbcff; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.meta-publication-item.facebook > small { color: #9fc8ff; }
+.meta-publication-item > strong { font-size: 13px; line-height: 1.4; }
 .meta-schedule-button { min-height: 44px; color: #fff; border: 0; border-radius: 9px; background: linear-gradient(120deg, #7652dc, #d13e8c); font: inherit; font-weight: 750; cursor: pointer; }
 .meta-schedule-backdrop { position: fixed; inset: 0; z-index: 190; display: grid; place-items: center; padding: 20px; background: rgba(9, 10, 16, .82); }
 .meta-schedule-modal { display: grid; width: min(480px, 100%); gap: 18px; padding: 24px; color: #f8f8fb; border: 1px solid rgba(255,255,255,.22); border-radius: 18px; background: #24252b; box-shadow: 0 28px 80px rgba(0,0,0,.55); }

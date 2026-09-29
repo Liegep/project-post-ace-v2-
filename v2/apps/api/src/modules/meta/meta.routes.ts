@@ -3,7 +3,7 @@ import { findClientAccountById } from "../clients/clients.repository.js";
 import { findCardById } from "../cards/cards.repository.js";
 import { clientMetaAssetsSchema, createMetaPublicationSchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema } from "./meta.schemas.js";
 import { cancelScheduledPublication, consumeMetaOAuthState, findClientMetaAssets, findScheduledPublication, listScheduledPublicationsForClient, upsertClientMetaAssets } from "./meta.repository.js";
-import { completeMetaAuthorization, createMetaAuthorizationUrl, getMetaAdsInsights, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets, scheduleMetaCardPublication } from "./meta.service.js";
+import { archiveMetaCardIfPublicationGroupComplete, completeMetaAuthorization, createMetaAuthorizationUrl, getMetaAdsInsights, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets, scheduleMetaCardPublications } from "./meta.service.js";
 
 function assertSuperAdmin(request: FastifyRequest) {
   if (!request.auth) throw request.server.httpErrors.unauthorized("Sessão obrigatória.");
@@ -147,25 +147,31 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
     const parsed = createMetaPublicationSchema.safeParse(request.body);
     if (!parsed.success) throw app.httpErrors.badRequest(parsed.error.issues[0]?.message ?? "Agendamento inválido.");
     const assets = await findClientMetaAssets(app.db, clientAccountId);
-    const metaAssetId = parsed.data.platform === "instagram" ? assets?.instagramAccountId : assets?.facebookPageId;
-    if (!metaAssetId) {
-      throw app.httpErrors.badRequest(parsed.data.platform === "instagram"
-        ? "Vincule uma conta do Instagram a este cliente antes de agendar."
-        : "Vincule uma Página do Facebook a este cliente antes de agendar.");
-    }
+    const platforms = parsed.data.platforms.map((platform) => ({
+      platform,
+      metaAssetId: platform === "instagram" ? assets?.instagramAccountId : assets?.facebookPageId,
+    }));
+    const unavailable = platforms.find((item) => !item.metaAssetId)?.platform;
+    if (unavailable) throw app.httpErrors.badRequest(unavailable === "instagram"
+      ? "Vincule uma conta do Instagram a este cliente antes de agendar."
+      : "Vincule uma Página do Facebook a este cliente antes de agendar.");
     const card = await findCardById(app.db, parsed.data.cardId);
     if (!card) throw app.httpErrors.notFound("Card não encontrado.");
-    const result = await scheduleMetaCardPublication(app, {
+    const results = await scheduleMetaCardPublications(app, {
       userId: auth.user.id,
       clientAccountId,
-      platform: parsed.data.platform,
-      metaAssetId,
+      platforms: platforms.map((item) => ({ platform: item.platform, metaAssetId: item.metaAssetId! })),
       card,
       scheduledAt: parsed.data.scheduledAt,
       timezone: parsed.data.timezone,
     });
-    if (!result.publication) throw new Error("O agendamento foi salvo, mas não pôde ser carregado.");
-    return reply.code(result.created ? 201 : 200).send({ publication: publicationResponse(result.publication), created: result.created });
+    if (results.some((result) => !result.publication)) throw new Error("O agendamento foi salvo, mas não pôde ser carregado.");
+    const publications = results.map((result) => publicationResponse(result.publication));
+    return reply.code(results.some((result) => result.created) ? 201 : 200).send({
+      publications,
+      publication: publications[0],
+      created: results.some((result) => result.created),
+    });
   });
 
   app.post("/clients/:clientAccountId/meta-publications/:publicationId/cancel", async (request) => {
@@ -182,6 +188,11 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
     }
     const cancelled = await findScheduledPublication(app.db, publicationId, clientAccountId);
     if (!cancelled) throw app.httpErrors.notFound("Agendamento Meta não encontrado.");
+    try {
+      await archiveMetaCardIfPublicationGroupComplete(app, cancelled);
+    } catch (error) {
+      request.log.error({ err: error, publicationId, cardId: cancelled.cardId }, "Meta card could not be archived after sibling publication cancellation");
+    }
     return { publication: publicationResponse(cancelled) };
   });
 

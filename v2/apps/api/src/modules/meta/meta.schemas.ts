@@ -68,9 +68,12 @@ const isoDateTimeSchema = z.string().trim().refine((value) => {
   return !Number.isNaN(new Date(value).getTime());
 }, "Use uma data e hora ISO com fuso horário.");
 
+const metaPublicationPlatformSchema = z.enum(["instagram", "facebook"]);
+
 export const createMetaPublicationSchema = z.object({
   cardId: z.string().trim().min(1).max(190),
-  platform: z.enum(["instagram", "facebook"]),
+  platform: metaPublicationPlatformSchema.optional(),
+  platforms: z.array(metaPublicationPlatformSchema).min(1).max(2).optional(),
   scheduledAt: isoDateTimeSchema,
   timezone: z.string().trim().min(1).max(100).refine((value) => {
     try {
@@ -80,4 +83,11 @@ export const createMetaPublicationSchema = z.object({
       return false;
     }
   }, "Timezone inválido."),
-});
+}).superRefine((value, context) => {
+  if (!value.platform && !value.platforms?.length) {
+    context.addIssue({ code: "custom", message: "Selecione pelo menos uma plataforma.", path: ["platforms"] });
+  }
+}).transform((value) => ({
+  ...value,
+  platforms: [...new Set(value.platforms ?? (value.platform ? [value.platform] : []))],
+}));

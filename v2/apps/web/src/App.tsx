@@ -309,7 +309,7 @@ function formatScheduledCardDate(value: string) {
   }).format(date).replace(",", " às")}`;
 }
 
-function selectMetaPublicationByCard(publications: MetaScheduledPublication[]) {
+function selectMetaPublicationsByCard(publications: MetaScheduledPublication[]) {
   const priority: Record<MetaScheduledPublication["status"], number> = {
     publishing: 0,
     scheduled: 1,
@@ -317,12 +317,13 @@ function selectMetaPublicationByCard(publications: MetaScheduledPublication[]) {
     published: 3,
     cancelled: 4,
   };
-  const selected = new Map<string, MetaScheduledPublication>();
+  const selectedByPlatform = new Map<string, MetaScheduledPublication>();
   for (const publication of publications) {
     if (!publication.cardId || publication.status === "cancelled") continue;
-    const current = selected.get(publication.cardId);
+    const key = `${publication.cardId}:${publication.platform}`;
+    const current = selectedByPlatform.get(key);
     if (!current || priority[publication.status] < priority[current.status]) {
-      selected.set(publication.cardId, publication);
+      selectedByPlatform.set(key, publication);
       continue;
     }
     if (priority[publication.status] !== priority[current.status]) continue;
@@ -333,10 +334,15 @@ function selectMetaPublicationByCard(publications: MetaScheduledPublication[]) {
       ? new Date(current.scheduledAt).getTime()
       : new Date(current.publishedAt ?? current.updatedAt).getTime();
     if (publication.status === "scheduled" ? candidateTime < currentTime : candidateTime > currentTime) {
-      selected.set(publication.cardId, publication);
+      selectedByPlatform.set(key, publication);
     }
   }
-  return selected;
+  const selectedByCard = new Map<string, MetaScheduledPublication[]>();
+  for (const publication of selectedByPlatform.values()) {
+    const cardPublications = selectedByCard.get(publication.cardId!) ?? [];
+    selectedByCard.set(publication.cardId!, [...cardPublications, publication].sort((left, right) => Number(left.platform === "facebook") - Number(right.platform === "facebook")));
+  }
+  return selectedByCard;
 }
 
 function metaPublicationBadgeLabel(publication: MetaScheduledPublication) {
@@ -3411,7 +3417,8 @@ function AdminWorkspacePage({
   const tagFilterButtonRef = useRef<HTMLButtonElement>(null);
   const [clientOptions, setClientOptions] = useState<AdminClientOption[]>([]);
   const [sectionCounts, setSectionCounts] = useState({ archived: 0, texts: 0, pautas: 0 });
-  const metaPublicationByCard = useMemo(() => selectMetaPublicationByCard(metaPublications), [metaPublications]);
+  const metaPublicationsByCard = useMemo(() => selectMetaPublicationsByCard(metaPublications), [metaPublications]);
+  const publishedMetaPublicationsByCard = useMemo(() => selectMetaPublicationsByCard(metaPublications.filter((publication) => publication.status === "published")), [metaPublications]);
   const refreshKanbanMetaPublications = useCallback(async () => {
     if (session.role !== "super_admin") return;
     const result = await listMetaPublicationsBySlug(slug);
@@ -3422,7 +3429,7 @@ function AdminWorkspacePage({
   }, [session.role, slug, visibleKanbanCardIds]);
 
   useEffect(() => {
-    if (session.role !== "super_admin" || boardView !== "board") {
+    if (session.role !== "super_admin" || (boardView !== "board" && boardView !== "archived")) {
       setMetaPublications([]);
       return;
     }
@@ -3840,6 +3847,7 @@ function AdminWorkspacePage({
             <div className="board-layout" style={{ "--kanban-floating-actions-space": `${boardView === "board" ? kanbanDockSpace : 12}px` } as CSSProperties}>
               {boardView === "texts" ? <AdminTextsView clientName={data.clientName} slug={slug} onCountChange={updateTextsCount} /> : boardView === "calendar" ? <ClientKanbanCalendar slug={slug} /> : boardView === "activities" ? <KanbanActivities slug={slug} /> : boardView === "brand" ? <BrandBrainWorkspaceV2 slug={slug} clientName={data.clientName} /> : boardView === "pautas" ? <PautasWorkspace slug={slug} clientName={data.clientName} columns={data.columns} onSent={() => setRefreshKey((value) => value + 1)} onCountChange={updatePautasCount} /> : boardView === "archived" && (workspaceViewChanging || resource.loading) ? <div className="archived-empty">Carregando cards arquivados...</div> : boardView === "archived" ? <ArchivedCardsView
                 cards={archivedCards}
+                metaPublicationsByCard={publishedMetaPublicationsByCard}
                 onOpenCard={setSelectedCardId}
                 onPreviewMedia={openMediaPreview}
                 onRemoveTag={removeTagFromCard}
@@ -3918,7 +3926,7 @@ function AdminWorkspacePage({
                     {columnDropIndex === columnIndex ? <div className="column-drop-indicator"><span>Soltar coluna aqui</span></div> : null}
                     <BoardColumnView
                     column={{ ...column, cards: filterCardsByTags(column.cards) }}
-                    metaPublicationByCard={metaPublicationByCard}
+                    metaPublicationsByCard={metaPublicationsByCard}
                     onOpenCard={setSelectedCardId}
                     onBill={() => { setOpenColumnMenuId(null); setInvoiceLineDialog({ clientName: data.clientName, description: `👉 ${column.name}`, quantity: 1, unitPrice: 0, notes: "" }); }}
                     menuOpen={openColumnMenuId === column.id}
@@ -4052,7 +4060,7 @@ function AdminWorkspacePage({
                           {dropTarget?.columnId === null && dropTarget.index === index ? <div className="card-drop-indicator"><span>Soltar aqui</span></div> : null}
                           <CardView
                             card={card}
-                            metaPublication={metaPublicationByCard.get(card.id)}
+                            metaPublications={metaPublicationsByCard.get(card.id)}
                             onOpen={() => selectionMode ? toggleCardSelection(card.id) : setSelectedCardId(card.id)}
                             onContextMenu={(event) => {
                               event.preventDefault();
@@ -4212,7 +4220,7 @@ function AdminWorkspacePage({
         }
         onRefresh={() => setRefreshKey((value) => value + 1)}
         onClose={() => { setSelectedCardId(null); if (location.search) navigate(`/admin/${slug}`, { replace: true }); }}
-        adminContext={{ slug, columns: data.columns, canScheduleMeta: session.role === "super_admin", onMetaPublicationSaved: (publication) => setMetaPublications((current) => [publication, ...current.filter((item) => item.id !== publication.id)]), onCardUpdated: (updated) => resource.setData((current) => ({
+        adminContext={{ slug, columns: data.columns, canScheduleMeta: session.role === "super_admin", onMetaPublicationsSaved: (publications) => setMetaPublications((current) => [...publications, ...current.filter((item) => !publications.some((publication) => publication.id === item.id))]), onCardUpdated: (updated) => resource.setData((current) => ({
           ...current,
           columns: current.columns.map((column) => ({ ...column, cards: column.cards.map((item) => item.id === updated.id ? { ...item, ...updated } : item) })),
           withoutColumn: current.withoutColumn.map((item) => item.id === updated.id ? { ...item, ...updated } : item),
@@ -4426,7 +4434,7 @@ function BillingLineModal({ request, onChange, onClose, onConfirm }: { request: 
 
 function BoardColumnView({
   column,
-  metaPublicationByCard,
+  metaPublicationsByCard,
   onOpenCard,
   onBill,
   menuOpen,
@@ -4457,7 +4465,7 @@ function BoardColumnView({
   onColumnDragEnd,
 }: {
   column: BoardColumn;
-  metaPublicationByCard: ReadonlyMap<string, MetaScheduledPublication>;
+  metaPublicationsByCard: ReadonlyMap<string, MetaScheduledPublication[]>;
   onOpenCard: (cardId: string) => void;
   onBill: () => void;
   menuOpen: boolean;
@@ -4616,7 +4624,7 @@ function BoardColumnView({
         {column.cards.map((card, index) => (
           <div key={card.id} className={draggedCardId === card.id ? "card-drag-wrap dragging" : "card-drag-wrap"} onDragOver={(event) => { if (!draggedCardId) return; event.preventDefault(); event.stopPropagation(); const cardBounds = event.currentTarget.querySelector<HTMLElement>(".content-card")?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect(); onDragOver(event, event.clientY > cardBounds.top + cardBounds.height / 2 ? index + 1 : index); }} onDrop={(event) => { if (!draggedCardId) return; event.preventDefault(); event.stopPropagation(); const cardBounds = event.currentTarget.querySelector<HTMLElement>(".content-card")?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect(); onDrop(event.clientY > cardBounds.top + cardBounds.height / 2 ? index + 1 : index); }}>
             {dropIndex === index ? <div className="card-drop-indicator"><span>Soltar aqui</span></div> : null}
-            <CardView card={card} metaPublication={metaPublicationByCard.get(card.id)} onOpen={() => selectionMode ? onToggleCardSelection(card.id) : onOpenCard(card.id)} onContextMenu={(event) => onCardContextMenu(event, card)} selectionMode={selectionMode} selected={selectedCardIds.includes(card.id)} onToggleSelection={() => onToggleCardSelection(card.id)} onPreviewMedia={onPreviewMedia} onRemoveTag={onRemoveTag} draggable={dragEnabled && !selectionMode} onDragStart={() => onDragStart(card.id)} onDragEnd={onDragEnd} />
+            <CardView card={card} metaPublications={metaPublicationsByCard.get(card.id)} onOpen={() => selectionMode ? onToggleCardSelection(card.id) : onOpenCard(card.id)} onContextMenu={(event) => onCardContextMenu(event, card)} selectionMode={selectionMode} selected={selectedCardIds.includes(card.id)} onToggleSelection={() => onToggleCardSelection(card.id)} onPreviewMedia={onPreviewMedia} onRemoveTag={onRemoveTag} draggable={dragEnabled && !selectionMode} onDragStart={() => onDragStart(card.id)} onDragEnd={onDragEnd} />
           </div>
         ))}
         {dropIndex === column.cards.length ? <div className="card-drop-indicator"><span>Soltar aqui</span></div> : null}
@@ -5424,7 +5432,7 @@ function AdminTextsView({ clientName, slug, onCountChange }: { clientName: strin
   </section>;
 }
 
-function ArchivedCardsView({ cards, onOpenCard, onPreviewMedia, onRemoveTag, onRestore, onDelete }: { cards: BoardCard[]; onOpenCard: (cardId: string) => void; onPreviewMedia: (card: BoardCard) => void; onRemoveTag: (card: BoardCard, tag: string) => void; onRestore: (card: BoardCard) => void; onDelete: (cardId: string) => void }) {
+function ArchivedCardsView({ cards, metaPublicationsByCard, onOpenCard, onPreviewMedia, onRemoveTag, onRestore, onDelete }: { cards: BoardCard[]; metaPublicationsByCard: ReadonlyMap<string, MetaScheduledPublication[]>; onOpenCard: (cardId: string) => void; onPreviewMedia: (card: BoardCard) => void; onRemoveTag: (card: BoardCard, tag: string) => void; onRestore: (card: BoardCard) => void; onDelete: (cardId: string) => void }) {
   const groups = new Map<string, BoardCard[]>();
   [...cards]
     .sort((left, right) => getArchiveGroupDate(right).getTime() - getArchiveGroupDate(left).getTime())
@@ -5440,7 +5448,7 @@ function ArchivedCardsView({ cards, onOpenCard, onPreviewMedia, onRemoveTag, onR
 
   return <section className="archived-board">
     <header className="archived-board-head"><div><p className="column-kicker">Histórico</p><h3>Arquivados</h3></div><span>{cards.length} {cards.length === 1 ? "card" : "cards"}</span></header>
-    {cards.length === 0 ? <div className="archived-empty">Nenhum card arquivado ainda.</div> : <div className="archive-month-columns">{[...groups.entries()].map(([month, monthCards]) => <section className="archive-month" key={month}><header><h4>{month}</h4><span>({monthCards.length})</span></header><div className="archive-month-cards">{monthCards.map((card) => <article key={card.id} className="archived-card"><CardView card={card} onOpen={() => onOpenCard(card.id)} onPreviewMedia={onPreviewMedia} onRemoveTag={onRemoveTag} /><div className="archived-card-actions"><button className="restore-card-button" onClick={() => onRestore(card)}>↶ <span>Restaurar</span></button><button className="danger" title="Excluir definitivamente" aria-label={`Excluir ${card.title} definitivamente`} onClick={() => onDelete(card.id)}><UiIcon name="trash" /></button></div></article>)}</div></section>)}</div>}
+    {cards.length === 0 ? <div className="archived-empty">Nenhum card arquivado ainda.</div> : <div className="archive-month-columns">{[...groups.entries()].map(([month, monthCards]) => <section className="archive-month" key={month}><header><h4>{month}</h4><span>({monthCards.length})</span></header><div className="archive-month-cards">{monthCards.map((card) => <article key={card.id} className="archived-card"><CardView card={card} metaPublications={metaPublicationsByCard.get(card.id)} onOpen={() => onOpenCard(card.id)} onPreviewMedia={onPreviewMedia} onRemoveTag={onRemoveTag} /><div className="archived-card-actions"><button className="restore-card-button" onClick={() => onRestore(card)}>↶ <span>Restaurar</span></button><button className="danger" title="Excluir definitivamente" aria-label={`Excluir ${card.title} definitivamente`} onClick={() => onDelete(card.id)}><UiIcon name="trash" /></button></div></article>)}</div></section>)}</div>}
   </section>;
 }
 
@@ -5592,7 +5600,7 @@ function MediaPreviewModal({ media, onClose, onNavigate }: { media: { urls: stri
   return <div className="media-preview-backdrop" onMouseDown={onClose} role="presentation"><section className="media-preview-modal" role="dialog" aria-modal="true" aria-label={`Visualização de ${media.title}`} onMouseDown={(event) => event.stopPropagation()}><button className="media-preview-close" onClick={onClose} aria-label="Fechar visualização">×</button><ArtworkCarousel urls={media.urls} title={media.title} activeIndex={media.index} onIndexChange={(next) => { if (next !== media.index) onNavigate(next > media.index ? 1 : -1); }} fullscreen /></section></div>;
 }
 
-function CardView({ card, metaPublication, onOpen, onContextMenu, selectionMode = false, selected = false, onToggleSelection, onPreviewMedia, onRemoveTag, draggable = false, onDragStart, onDragEnd }: { card: BoardCard; metaPublication?: MetaScheduledPublication; onOpen: () => void; onContextMenu?: (event: React.MouseEvent<HTMLButtonElement>) => void; selectionMode?: boolean; selected?: boolean; onToggleSelection?: () => void; onPreviewMedia?: (card: BoardCard) => void; onRemoveTag?: (card: BoardCard, tag: string) => void; draggable?: boolean; onDragStart?: () => void; onDragEnd?: () => void }) {
+function CardView({ card, metaPublications = [], onOpen, onContextMenu, selectionMode = false, selected = false, onToggleSelection, onPreviewMedia, onRemoveTag, draggable = false, onDragStart, onDragEnd }: { card: BoardCard; metaPublications?: MetaScheduledPublication[]; onOpen: () => void; onContextMenu?: (event: React.MouseEvent<HTMLButtonElement>) => void; selectionMode?: boolean; selected?: boolean; onToggleSelection?: () => void; onPreviewMedia?: (card: BoardCard) => void; onRemoveTag?: (card: BoardCard, tag: string) => void; draggable?: boolean; onDragStart?: () => void; onDragEnd?: () => void }) {
   const primaryBadge = card.statusBadges[0] ?? null;
   const isInDevelopment = /^em desenvolvimento$/i.test(primaryBadge?.trim() ?? "");
   const isApprovedBrief = card.isBriefApproval && !isInDevelopment && /aprovad/i.test(`${card.clientLabel} ${card.statusBadges.join(" ")}`);
@@ -5614,7 +5622,7 @@ function CardView({ card, metaPublication, onOpen, onContextMenu, selectionMode 
         ) : null}
       </div>
       <ClosedCardMedia card={card} onPreview={onPreviewMedia ? () => onPreviewMedia(card) : undefined} showOverlay />
-      {metaPublication && metaPublication.status !== "cancelled" ? <span className={`meta-kanban-badge ${metaPublication.status} ${metaPublication.platform}`}><i aria-hidden="true">{metaPublication.platform === "facebook" ? "f" : "◎"}</i>{metaPublicationBadgeLabel(metaPublication)}</span> : null}
+      {metaPublications.length ? <div className="meta-kanban-badges">{metaPublications.map((publication) => <span key={publication.id} className={`meta-kanban-badge ${publication.status} ${publication.platform}`}><i aria-hidden="true">{publication.platform === "facebook" ? "f" : "◎"}</i>{metaPublicationBadgeLabel(publication)}</span>)}</div> : null}
 
       <div className="card-meta">
         <div className="card-inline">
@@ -6791,7 +6799,7 @@ function CardDetailModal({
   onUpdateTags?: (cardId: string, tags: string[]) => Promise<unknown>;
   onRefresh: () => void;
   onClose: () => void;
-  adminContext?: { slug: string; columns: BoardColumn[]; canScheduleMeta?: boolean; onMetaPublicationSaved?: (publication: MetaScheduledPublication) => void; onCardUpdated?: (card: BoardCard) => void };
+  adminContext?: { slug: string; columns: BoardColumn[]; canScheduleMeta?: boolean; onMetaPublicationsSaved?: (publications: MetaScheduledPublication[]) => void; onCardUpdated?: (card: BoardCard) => void };
 }) {
   const { t, localeTag } = usePortalTranslation();
   const [commentDraft, setCommentDraft] = useState("");
@@ -6855,7 +6863,7 @@ function CardDetailModal({
         columns={adminContext.columns}
         slug={adminContext.slug}
         canScheduleMeta={Boolean(adminContext.canScheduleMeta)}
-        onMetaPublicationSaved={adminContext.onMetaPublicationSaved}
+        onMetaPublicationsSaved={adminContext.onMetaPublicationsSaved}
         onCardUpdated={adminContext.onCardUpdated}
         onAddComment={onAddComment}
         onRefresh={onRefresh}
@@ -7187,7 +7195,7 @@ function AdminCardEditor({
   columns,
   slug,
   canScheduleMeta,
-  onMetaPublicationSaved,
+  onMetaPublicationsSaved,
   onAddComment,
   onCardUpdated,
   onRefresh,
@@ -7197,7 +7205,7 @@ function AdminCardEditor({
   columns: BoardColumn[];
   slug: string;
   canScheduleMeta: boolean;
-  onMetaPublicationSaved?: (publication: MetaScheduledPublication) => void;
+  onMetaPublicationsSaved?: (publications: MetaScheduledPublication[]) => void;
   onAddComment: (cardId: string, commentText: string) => Promise<unknown>;
   onCardUpdated?: (card: BoardCard) => void;
   onRefresh: () => void;
@@ -7522,11 +7530,13 @@ ${internalMessage.trim()}`, isInternal: true });
     }
   }
 
-  const currentMetaPublication = selectMetaPublicationByCard(metaPublications).get(card.id) ?? null;
+  const currentMetaPublications = selectMetaPublicationsByCard(card.archived
+    ? metaPublications.filter((publication) => publication.status === "published")
+    : metaPublications).get(card.id) ?? [];
   const metaCompatibleImage = mediaUrls.length === 1 && !/\.(mp4|webm|mov)(\?|$)/i.test(mediaUrls[0]) && !/video|reel|story|carousel/i.test(artType);
   const hasLinkedMetaPlatform = Boolean(metaAssets?.instagramAccountId || metaAssets?.facebookPageId);
 
-  async function scheduleMetaPublication(platform: "instagram" | "facebook", localDateTime: string, timezone: string) {
+  async function scheduleMetaPublication(platforms: ("instagram" | "facebook")[], localDateTime: string, timezone: string) {
     setMetaScheduling(true);
     setFeedback(null);
     try {
@@ -7535,12 +7545,12 @@ ${internalMessage.trim()}`, isInternal: true });
       if (Number.isNaN(date.getTime())) throw new Error("Informe uma data e hora válidas.");
       const result = await createMetaPublicationBySlug(slug, {
         cardId: card.id,
-        platform,
+        platforms,
         scheduledAt: date.toISOString(),
         timezone,
       });
-      setMetaPublications((current) => [result.publication, ...current.filter((item) => item.id !== result.publication.id)]);
-      onMetaPublicationSaved?.(result.publication);
+      setMetaPublications((current) => [...result.publications, ...current.filter((item) => !result.publications.some((publication) => publication.id === item.id))]);
+      onMetaPublicationsSaved?.(result.publications);
       setMetaScheduleOpen(false);
       onClose();
     } catch (error) {
@@ -7833,14 +7843,15 @@ ${internalMessage.trim()}`, isInternal: true });
           {approvalRevision > 0 ? <div className="editor-field client-feedback-field"><span>Retorno do cliente</span><span className={`client-feedback-badge ${clientFeedbackToneClass(clientLabel)}`}><i aria-hidden="true" />{clientLabel === "Pendente" ? "Aguardando aprovação" : clientLabel}</span></div> : <EditorSelect label="Feedback do cliente" value={clientLabel} onChange={setClientLabel} options={["Pendente", "Aprovado", "Alteração solicitada"]} />}
           {newApprovalUrl ? <section className="approval-resubmit-panel" aria-label="Novo link de aprovação"><small>O novo link é válido por 7 dias. Os links anteriores foram encerrados.</small><input aria-label="Novo link de aprovação" readOnly value={newApprovalUrl} onFocus={(event) => event.target.select()} /><button type="button" className="ghost-button" onClick={() => { void navigator.clipboard.writeText(newApprovalUrl).then(() => setApprovalLinkCopied(true)).catch(() => setFeedback("O reenvio foi concluído. Selecione o link acima para copiá-lo manualmente.")); }}>{approvalLinkCopied ? "Link copiado" : "Copiar novo link"}</button></section> : null}
           <EditorField label="Agendamento"><input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /><small className="editor-field-hint">Na data e hora informadas, o card será movido para Arquivados.</small></EditorField>
-          {canScheduleMeta && (currentMetaPublication || (hasLinkedMetaPlatform && metaCompatibleImage)) ? <section className="meta-publication-panel">
+          {canScheduleMeta && (currentMetaPublications.length || (hasLinkedMetaPlatform && metaCompatibleImage)) ? <section className="meta-publication-panel">
             <span>PUBLICAÇÃO META REAL</span>
-            {currentMetaPublication ? <>
-              <strong>{metaPublicationDetailLabel(currentMetaPublication)}</strong>
-              {currentMetaPublication.status === "failed" && currentMetaPublication.lastError ? <details><summary>Ver erro</summary><p>{currentMetaPublication.lastError}</p></details> : null}
-              {currentMetaPublication.publishedPermalink ? <a href={currentMetaPublication.publishedPermalink} target="_blank" rel="noreferrer">Abrir publicação ↗</a> : null}
-              {currentMetaPublication.status === "scheduled" || currentMetaPublication.status === "failed" ? <button type="button" className="ghost-button" onClick={() => void cancelMetaPublication(currentMetaPublication.id)}>Cancelar publicação Meta</button> : null}
-            </> : <button type="button" className="meta-schedule-button" onClick={() => setMetaScheduleOpen(true)}>Agendar publicação Meta</button>}
+            {currentMetaPublications.length ? <div className="meta-publication-list">{currentMetaPublications.map((publication) => <article key={publication.id} className={`meta-publication-item ${publication.platform}`}>
+              <small>{publication.platform === "facebook" ? "Facebook" : "Instagram"}</small>
+              <strong>{metaPublicationDetailLabel(publication)}</strong>
+              {publication.status === "failed" && publication.lastError ? <details><summary>Ver erro</summary><p>{publication.lastError}</p></details> : null}
+              {publication.publishedPermalink ? <a href={publication.publishedPermalink} target="_blank" rel="noreferrer">Abrir publicação ↗</a> : null}
+              {publication.status === "scheduled" || publication.status === "failed" ? <button type="button" className="ghost-button" onClick={() => void cancelMetaPublication(publication.id)}>Cancelar publicação</button> : null}
+            </article>)}</div> : <button type="button" className="meta-schedule-button" onClick={() => setMetaScheduleOpen(true)}>Agendar publicação Meta</button>}
           </section> : null}
           <label className="editor-field"><span>Coluna</span><select value={columnId} onChange={(event) => setColumnId(event.target.value)}><option value="">Sem coluna</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select></label>
           <section className="tag-library">
@@ -7917,24 +7928,27 @@ function MetaScheduleModal({ imageUrl, caption, suggestedAt, instagramAvailable,
   facebookAvailable: boolean;
   submitting: boolean;
   onClose: () => void;
-  onSubmit: (platform: "instagram" | "facebook", localDateTime: string, timezone: string) => Promise<void>;
+  onSubmit: (platforms: ("instagram" | "facebook")[], localDateTime: string, timezone: string) => Promise<void>;
 }) {
   const fallback = new Date(Date.now() + 60 * 60_000);
   fallback.setSeconds(0, 0);
   const [localDateTime, setLocalDateTime] = useState(suggestedAt || toDateTimeLocal(fallback.toISOString()));
-  const [platform, setPlatform] = useState<"instagram" | "facebook">(instagramAvailable ? "instagram" : "facebook");
+  const [platforms, setPlatforms] = useState<("instagram" | "facebook")[]>(instagramAvailable ? ["instagram"] : facebookAvailable ? ["facebook"] : []);
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const togglePlatform = (platform: "instagram" | "facebook") => {
+    setPlatforms((current) => current.includes(platform) ? current.filter((item) => item !== platform) : [...current, platform]);
+  };
   return <div className="meta-schedule-backdrop" onClick={onClose}>
     <section className="meta-schedule-modal" role="dialog" aria-modal="true" aria-labelledby="meta-schedule-title" onClick={(event) => event.stopPropagation()}>
       <header><div><span>PUBLICAÇÃO META</span><h3 id="meta-schedule-title">Agendar publicação</h3></div><button type="button" onClick={onClose} aria-label="Fechar">×</button></header>
-      <div className="meta-platform-options" role="radiogroup" aria-label="Plataforma de publicação">
-        <button type="button" className={platform === "instagram" ? "selected instagram" : "instagram"} disabled={!instagramAvailable} aria-pressed={platform === "instagram"} onClick={() => setPlatform("instagram")}><i aria-hidden="true">◎</i><span><strong>Instagram</strong>{instagramAvailable ? <small>Imagem única</small> : <small>Não vinculado a este cliente</small>}</span></button>
-        <button type="button" className={platform === "facebook" ? "selected facebook" : "facebook"} disabled={!facebookAvailable} aria-pressed={platform === "facebook"} onClick={() => setPlatform("facebook")}><i aria-hidden="true">f</i><span><strong>Facebook</strong>{facebookAvailable ? <small>Imagem única</small> : <small>Não vinculado a este cliente</small>}</span></button>
+      <div className="meta-platform-options" role="group" aria-label="Plataformas de publicação">
+        <button type="button" className={platforms.includes("instagram") ? "selected instagram" : "instagram"} disabled={!instagramAvailable} aria-pressed={platforms.includes("instagram")} onClick={() => togglePlatform("instagram")}><i aria-hidden="true">◎</i><span><strong>Instagram</strong>{instagramAvailable ? <small>Imagem única</small> : <small>Não vinculado a este cliente</small>}</span></button>
+        <button type="button" className={platforms.includes("facebook") ? "selected facebook" : "facebook"} disabled={!facebookAvailable} aria-pressed={platforms.includes("facebook")} onClick={() => togglePlatform("facebook")}><i aria-hidden="true">f</i><span><strong>Facebook</strong>{facebookAvailable ? <small>Imagem única</small> : <small>Não vinculado a este cliente</small>}</span></button>
       </div>
       <div className="meta-schedule-preview"><img src={imageUrl} alt="Prévia da publicação" /><p>{caption.trim() || "Sem legenda"}</p></div>
       <label><span>Data e hora</span><input type="datetime-local" value={localDateTime} onChange={(event) => setLocalDateTime(event.target.value)} /></label>
       <small>Fuso horário: {timezone}</small>
-      <footer><button type="button" className="ghost-button" disabled={submitting} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || !localDateTime || (platform === "instagram" ? !instagramAvailable : !facebookAvailable)} onClick={() => void onSubmit(platform, localDateTime, timezone)}>{submitting ? "Agendando…" : "Agendar publicação"}</button></footer>
+      <footer><button type="button" className="ghost-button" disabled={submitting} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || !localDateTime || platforms.length === 0} onClick={() => void onSubmit(platforms, localDateTime, timezone)}>{submitting ? "Agendando…" : "Agendar publicação"}</button></footer>
     </section>
   </div>;
 }
