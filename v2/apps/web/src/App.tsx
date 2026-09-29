@@ -3423,10 +3423,10 @@ function AdminWorkspacePage({
     if (session.role !== "super_admin") return;
     const result = await listMetaPublicationsBySlug(slug);
     setMetaPublications(result.publications);
-    if (result.publications.some((publication) => publication.status === "published" && publication.cardId && visibleKanbanCardIds.has(publication.cardId))) {
+    if (boardView === "board" && result.publications.some((publication) => publication.status === "published" && publication.cardId && visibleKanbanCardIds.has(publication.cardId))) {
       setRefreshKey((value) => value + 1);
     }
-  }, [session.role, slug, visibleKanbanCardIds]);
+  }, [boardView, session.role, slug, visibleKanbanCardIds]);
 
   useEffect(() => {
     if (session.role !== "super_admin" || (boardView !== "board" && boardView !== "archived")) {
