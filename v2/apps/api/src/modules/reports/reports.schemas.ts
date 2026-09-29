@@ -20,7 +20,14 @@ const metricsSchema = z.object({
   }),
 });
 
-const highlightsSchema = z.array(z.object({ channel: z.enum(["instagram", "facebook"]), title: z.string().trim().max(255), value: z.number().min(0) })).max(8);
+const highlightsSchema = z.array(z.object({
+  channel: z.enum(["instagram", "facebook"]),
+  title: z.string().trim().max(255),
+  value: z.number().min(0),
+  thumbnailUrl: z.string().url().nullable().optional(),
+  permalink: z.string().url().nullable().optional(),
+  metricLabel: z.enum(["interactions"]).optional(),
+})).max(8);
 
 const reportFieldsSchema = z.object({ title: z.string().trim().min(1).max(255), periodStart: z.string().date(), periodEnd: z.string().date(), metrics: metricsSchema, highlights: highlightsSchema.default([]), evidenceUrls: z.array(z.string().url()).max(16).default([]), notes: z.string().max(10_000).nullable().optional() });
 export const createReportSchema = reportFieldsSchema.refine((input) => input.periodStart <= input.periodEnd, { message: "O período inicial deve vir antes do final.", path: ["periodEnd"] });

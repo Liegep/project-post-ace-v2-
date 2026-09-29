@@ -84,24 +84,86 @@ function ReportDocument({ report, clientName, locale = "pt", printable = false }
   </article>;
 }
 
+async function thumbnailDataUrl(url: string | null | undefined) {
+  if (!url) return null;
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), 5_000);
+  try {
+    const response = await fetch(url, { signal: controller.signal, cache: "force-cache" });
+    if (!response.ok) return null;
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/") || blob.size > 10_000_000) return null;
+    const bitmap = await createImageBitmap(blob);
+    const canvas = document.createElement("canvas");
+    canvas.width = 640; canvas.height = 340;
+    const context = canvas.getContext("2d");
+    if (!context) { bitmap.close(); return null; }
+    const scale = Math.max(canvas.width / bitmap.width, canvas.height / bitmap.height);
+    const width = bitmap.width * scale; const height = bitmap.height * scale;
+    context.drawImage(bitmap, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
+    bitmap.close();
+    return canvas.toDataURL("image/jpeg", 0.82);
+  } catch { return null; }
+  finally { window.clearTimeout(timeout); }
+}
+
 async function downloadReportPdf(report: ClientReport, clientName: string, locale = "pt") {
-  const { jsPDF } = await import("jspdf"); const language = reportLocale(locale); const copy = reportText[language]; const pdf = new jsPDF({ unit: "pt", format: "a4" }); const contentX = 42;
-  pdf.setFillColor(29, 39, 73); pdf.rect(0, 0, 595, 842, "F"); pdf.setFillColor(73, 88, 207); pdf.circle(535, 58, 112, "F"); pdf.setFillColor(53, 190, 220); pdf.circle(502, 28, 74, "F");
+  const { jsPDF } = await import("jspdf");
+  const language = reportLocale(locale); const copy = reportText[language];
+  const pdf = new jsPDF({ unit: "pt", format: "a4" }); const contentX = 42;
+  const thumbnails = await Promise.all(report.highlights.map((item) => thumbnailDataUrl(item.thumbnailUrl)));
+  const drawBackground = () => { pdf.setFillColor(29, 39, 73); pdf.rect(0, 0, 595, 842, "F"); pdf.setFillColor(73, 88, 207); pdf.circle(535, 58, 112, "F"); pdf.setFillColor(53, 190, 220); pdf.circle(502, 28, 74, "F"); };
+  const drawFooter = () => { pdf.setTextColor(255, 255, 255); pdf.setFontSize(9); pdf.text(copy.generated, contentX, 820); };
+  const clampLines = (text: string, maxWidth: number, maxLines: number) => {
+    const lines = pdf.splitTextToSize(text.replace(/\s+/g, " ").trim(), maxWidth) as string[];
+    if (lines.length <= maxLines) return lines;
+    const visible = lines.slice(0, maxLines); let last = visible[maxLines - 1].replace(/[.,;:!?\s]+$/, "");
+    while (last.length && pdf.getTextWidth(`${last}…`) > maxWidth) last = last.slice(0, -1).trimEnd();
+    visible[maxLines - 1] = `${last}…`; return visible;
+  };
+  const contentText = (text: string) => {
+    const clean = text.replace(/\s+/g, " ").trim();
+    const sentenceEnd = clean.search(/[.!?](?:\s|$)/);
+    const preferredEnd = sentenceEnd >= 20 && sentenceEnd <= 78 ? sentenceEnd + 1 : Math.min(clean.length, 70);
+    let headline = clean.slice(0, preferredEnd).trim();
+    if (preferredEnd < clean.length && !/[…!?]$/.test(headline)) headline = `${headline.replace(/[.,;:\s]+$/, "")}…`;
+    return { headline, excerpt: clean.slice(preferredEnd).replace(/^[.,;:!?\s]+/, "") };
+  };
+
+  drawBackground();
   pdf.setTextColor(255, 255, 255); pdf.setFontSize(10); pdf.text(copy.performance, contentX, 48); pdf.setFontSize(27); pdf.text(clientName, contentX, 79); pdf.setFontSize(11); pdf.text(`${formatReportDate(report.periodStart, language)} a ${formatReportDate(report.periodEnd, language)}`, contentX, 100);
   pdf.setFillColor(255, 255, 255); pdf.roundedRect(25, 128, 545, 668, 22, 22, "F"); pdf.setTextColor(39, 51, 87); pdf.setFontSize(18); pdf.text(report.title, contentX, 164, { maxWidth: 490 }); pdf.setTextColor(92, 106, 137); pdf.setFontSize(10); pdf.text(reportSummary(report, language), contentX, 190, { maxWidth: 480, lineHeightFactor: 1.4 });
   pdf.setTextColor(79, 91, 122); pdf.setFontSize(9); pdf.text(copy.organic, contentX, 235);
   (["instagram", "facebook"] as const).forEach((channel, channelIndex) => { const x = contentX + channelIndex * 258; pdf.setFillColor(channel === "instagram" ? 252 : 242, channel === "instagram" ? 243 : 247, 255); pdf.roundedRect(x, 252, 246, 300, 14, 14, "F"); pdf.setTextColor(39, 51, 87); pdf.setFontSize(16); pdf.text(channel === "instagram" ? "Instagram" : "Facebook", x + 15, 281); reportPlatformRows(report, channel).forEach(([key, value], rowIndex) => { const y = 312 + rowIndex * 25; if (y > 535) return; pdf.setTextColor(103, 117, 148); pdf.setFontSize(8); pdf.text(metricText[language][key], x + 15, y, { maxWidth: 145 }); pdf.setTextColor(value == null ? 145 : 39, value == null ? 151 : 51, value == null ? 166 : 87); pdf.setFontSize(value == null ? 8 : 11); pdf.text(displayMetric(value, language), x + 230, y, { align: "right" }); }); });
-  if (report.highlights.length) { pdf.setFillColor(247, 249, 253); pdf.roundedRect(contentX, 575, 511, 128, 14, 14, "F"); pdf.setTextColor(79, 91, 122); pdf.setFontSize(9); pdf.text(copy.highlights, contentX + 15, 598); report.highlights.slice(0, 4).forEach((item, index) => { const y = 622 + index * 20; pdf.setTextColor(39, 51, 87); pdf.setFontSize(9); pdf.text(`${index + 1}. ${item.title}`, contentX + 15, y, { maxWidth: 390 }); pdf.setTextColor(103, 117, 148); pdf.text(`${item.channel === "instagram" ? "Instagram" : "Facebook"} · ${number(item.value, language)}`, 535, y, { align: "right" }); }); }
   const notes = visibleReportNotes(report.notes); if (notes) { pdf.setTextColor(79, 91, 122); pdf.setFontSize(9); pdf.text(copy.teamNotes.toUpperCase(), contentX, 735); pdf.setTextColor(82, 94, 122); pdf.text(notes, contentX, 754, { maxWidth: 500 }); }
-  pdf.setTextColor(255, 255, 255); pdf.setFontSize(9); pdf.text(copy.generated, contentX, 820); pdf.save(`${report.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.pdf`);
+  drawFooter();
+
+  for (let pageStart = 0; pageStart < report.highlights.length; pageStart += 4) {
+    pdf.addPage(); drawBackground();
+    pdf.setTextColor(255, 255, 255); pdf.setFontSize(9); pdf.text(copy.performance, contentX, 40); pdf.setFontSize(22); pdf.text(copy.highlights, contentX, 70); pdf.setFontSize(10); pdf.text(`${clientName} · ${formatReportDate(report.periodStart, language)} a ${formatReportDate(report.periodEnd, language)}`, contentX, 91);
+    pdf.setFillColor(255, 255, 255); pdf.roundedRect(25, 112, 545, 684, 22, 22, "F");
+    report.highlights.slice(pageStart, pageStart + 4).forEach((item, localIndex) => {
+      const absoluteIndex = pageStart + localIndex; const column = localIndex % 2; const row = Math.floor(localIndex / 2);
+      const x = 42 + column * 258; const y = 132 + row * 320; const width = 246; const height = 290; const imageX = x + 12; const imageY = y + 12; const imageWidth = 222; const imageHeight = 118;
+      pdf.setFillColor(248, 250, 255); pdf.roundedRect(x, y, width, height, 14, 14, "F");
+      if (thumbnails[absoluteIndex]) pdf.addImage(thumbnails[absoluteIndex]!, "JPEG", imageX, imageY, imageWidth, imageHeight, undefined, "FAST");
+      else { const facebook = item.channel === "facebook"; pdf.setFillColor(facebook ? 53 : 123, facebook ? 112 : 74, facebook ? 224 : 201); pdf.roundedRect(imageX, imageY, imageWidth, imageHeight, 10, 10, "F"); pdf.setFillColor(255, 255, 255); pdf.circle(imageX + imageWidth / 2, imageY + 51, 22, "F"); pdf.setTextColor(facebook ? 53 : 123, facebook ? 112 : 74, facebook ? 224 : 201); pdf.setFontSize(20); pdf.text(facebook ? "f" : "◎", imageX + imageWidth / 2, imageY + 58, { align: "center" }); pdf.setTextColor(255, 255, 255); pdf.setFontSize(8); pdf.text(facebook ? "Facebook" : "Instagram", imageX + imageWidth / 2, imageY + 92, { align: "center" }); }
+      const text = contentText(item.title); pdf.setTextColor(item.channel === "facebook" ? 49 : 167, item.channel === "facebook" ? 103 : 65, item.channel === "facebook" ? 209 : 139); pdf.setFontSize(8); pdf.text((item.channel === "facebook" ? "FACEBOOK" : "INSTAGRAM"), x + 14, y + 151);
+      pdf.setTextColor(38, 49, 82); pdf.setFontSize(11); pdf.setFont("helvetica", "bold"); pdf.text(clampLines(text.headline, 216, 2), x + 14, y + 174, { lineHeightFactor: 1.25 });
+      if (text.excerpt) { pdf.setTextColor(103, 115, 143); pdf.setFontSize(8.5); pdf.setFont("helvetica", "normal"); pdf.text(clampLines(text.excerpt, 216, 2), x + 14, y + 211, { lineHeightFactor: 1.3 }); }
+      pdf.setDrawColor(227, 231, 241); pdf.line(x + 14, y + 252, x + width - 14, y + 252); pdf.setFont("helvetica", "bold"); pdf.setTextColor(42, 54, 88); pdf.setFontSize(10); pdf.text(`${number(item.value, language)} ${metricText[language].engagement.toLocaleLowerCase(browserLocale[language])}`, x + 14, y + 274); pdf.setFont("helvetica", "normal"); pdf.setTextColor(132, 142, 163); pdf.setFontSize(8); pdf.text(`#${absoluteIndex + 1}`, x + width - 14, y + 274, { align: "right" });
+    });
+    drawFooter();
+  }
+  pdf.save(`${report.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.pdf`);
 }
 
 function sumKnown(values: Array<number | null | undefined>, emptyValue: number | null) { const known = values.filter((value): value is number => typeof value === "number"); return known.length ? known.reduce((sum, value) => sum + value, 0) : emptyValue; }
 function metaHighlights(insights: ClientMetaInsights): ClientReport["highlights"] {
   const candidates: Array<ClientReport["highlights"][number] & { identity: string }> = [];
-  for (const item of insights.instagram?.topContent ?? []) candidates.push({ identity: `instagram:${item.id}`, channel: "instagram", title: item.caption?.trim() || "Publicação do Instagram", value: item.totalInteractions ?? sumKnown([item.likes, item.comments, item.shares], 0) ?? 0 });
-  for (const item of insights.facebook?.topContent ?? []) candidates.push({ identity: `facebook:${item.id}`, channel: "facebook", title: item.message?.trim() || "Publicação do Facebook", value: item.interactions ?? sumKnown([item.reactions, item.comments, item.shares], 0) ?? 0 });
-  const seen = new Set<string>(); return candidates.sort((a, b) => b.value - a.value).filter((item) => !seen.has(item.identity) && Boolean(seen.add(item.identity))).slice(0, 8).map(({ channel, title, value }) => ({ channel, title: title.slice(0, 255), value }));
+  for (const item of insights.instagram?.topContent ?? []) candidates.push({ identity: `instagram:${item.id}`, channel: "instagram", title: item.caption?.trim() || "Publicação do Instagram", value: item.totalInteractions ?? sumKnown([item.likes, item.comments, item.shares], 0) ?? 0, thumbnailUrl: item.thumbnailUrl, permalink: item.permalink, metricLabel: "interactions" });
+  for (const item of insights.facebook?.topContent ?? []) candidates.push({ identity: `facebook:${item.id}`, channel: "facebook", title: item.message?.trim() || "Publicação do Facebook", value: item.interactions ?? sumKnown([item.reactions, item.comments, item.shares], 0) ?? 0, thumbnailUrl: item.thumbnailUrl, permalink: item.permalink, metricLabel: "interactions" });
+  const seen = new Set<string>(); return candidates.sort((a, b) => b.value - a.value).filter((item) => !seen.has(item.identity) && Boolean(seen.add(item.identity))).slice(0, 8).map(({ identity: _identity, ...item }) => ({ ...item, title: item.title.slice(0, 255) }));
 }
 function metricsFromMeta(insights: ClientMetaInsights, current: ReportMetrics) {
   const metrics: ReportMetrics = { instagram: { ...current.instagram }, facebook: { ...current.facebook } }; const imported: string[] = [];

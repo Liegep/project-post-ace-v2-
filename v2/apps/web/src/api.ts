@@ -130,7 +130,7 @@ export type ReportMetrics = {
   instagram: ReportChannelMetrics;
   facebook: ReportChannelMetrics & { posts?: number | null; reactions?: number | null; comments?: number | null; shares?: number | null };
 };
-export type ClientReport = { id: string; clientAccountId: string; title: string; periodStart: string; periodEnd: string; status: "draft" | "published"; metrics: ReportMetrics; highlights: Array<{ channel: "instagram" | "facebook"; title: string; value: number }>; evidenceUrls: string[]; notes: string | null; publishedAt: string | null; createdAt: string; updatedAt: string };
+export type ClientReport = { id: string; clientAccountId: string; title: string; periodStart: string; periodEnd: string; status: "draft" | "published"; metrics: ReportMetrics; highlights: Array<{ channel: "instagram" | "facebook"; title: string; value: number; thumbnailUrl?: string | null; permalink?: string | null; metricLabel?: "interactions" }>; evidenceUrls: string[]; notes: string | null; publishedAt: string | null; createdAt: string; updatedAt: string };
 export type ClientMetaInsights = {
   period: { since: string; until: string };
   status: "complete" | "partial" | "empty" | "failed";
@@ -138,12 +138,12 @@ export type ClientMetaInsights = {
   instagram: null | {
     accountId: string; username: string | null;
     metrics: { reach: number | null; views: number | null; followers: number | null; profileViews: number | null; interactions: number | null; linkClicks: number | null; accountsEngaged: number | null };
-    topContent: Array<{ id: string; caption: string | null; timestamp: string | null; permalink: string | null; likes: number | null; comments: number | null; shares: number | null; totalInteractions: number | null }>;
+    topContent: Array<{ id: string; caption: string | null; timestamp: string | null; permalink: string | null; thumbnailUrl: string | null; likes: number | null; comments: number | null; shares: number | null; totalInteractions: number | null }>;
   };
   facebook: null | {
     pageId: string; pageName: string | null;
     metrics: { reach: number | null; views: number | null; impressions: number | null; engagement: number | null; followers: number | null; fans: number | null; pageViews: number | null };
-    topContent: Array<{ id: string; message: string | null; timestamp: string | null; permalink: string | null; reactions: number | null; comments: number | null; shares: number | null; interactions: number | null; reach: number | null; views: number | null; clicks: number | null }>;
+    topContent: Array<{ id: string; message: string | null; timestamp: string | null; permalink: string | null; thumbnailUrl: string | null; reactions: number | null; comments: number | null; shares: number | null; interactions: number | null; reach: number | null; views: number | null; clicks: number | null }>;
   };
   warnings: Array<{ endpoint: string; code: number | null; message: string; metricOrOperation: string; kind: "api_error" | "network_error" | "timeout" | "unavailable"; httpStatus?: number; durationMs?: number }>;
 };

@@ -75,6 +75,8 @@ type InstagramMedia = {
   media_type?: string;
   timestamp?: string;
   permalink?: string;
+  thumbnail_url?: string;
+  media_url?: string;
   like_count?: number;
   comments_count?: number;
 };
@@ -97,6 +99,7 @@ type FacebookPost = {
   message?: string;
   created_time?: string;
   permalink_url?: string;
+  full_picture?: string;
   reactions?: { summary?: { total_count?: number } };
   comments?: { summary?: { total_count?: number } };
   shares?: { count?: number };
@@ -481,7 +484,7 @@ async function getInstagramInsights(input: {
   const [profile, metricValues, mediaResult] = await Promise.all([
     fetchMetaResult<InstagramProfilePayload>({ app: input.app, path: profilePath, token: input.token, appSecret: input.appSecret, params: { fields: "id,username,followers_count" }, metricOrOperation: "instagram.account" }),
     Promise.all(metricNames.map(async (metric) => [metric, await fetchInsightMetric({ app: input.app, objectId: input.accountId, metric, token: input.token, appSecret: input.appSecret, period: input.period, totalValue: true, warnings: input.warnings, operationPrefix: "instagram.account" })] as const)),
-    fetchMetaResult<InstagramMediaPayload>({ app: input.app, path: mediaPath, token: input.token, appSecret: input.appSecret, params: { fields: "id,caption,media_type,timestamp,permalink,like_count,comments_count", since: input.period.since, until: input.period.until, limit: "100" }, metricOrOperation: "instagram.media.list" }),
+    fetchMetaResult<InstagramMediaPayload>({ app: input.app, path: mediaPath, token: input.token, appSecret: input.appSecret, params: { fields: "id,caption,media_type,timestamp,permalink,thumbnail_url,media_url,like_count,comments_count", since: input.period.since, until: input.period.until, limit: "100" }, metricOrOperation: "instagram.media.list" }),
   ]);
   if (profile.warning) input.warnings.push(profile.warning);
   const metrics = Object.fromEntries(metricValues) as Record<typeof metricNames[number], number | null>;
@@ -512,6 +515,7 @@ async function getInstagramInsights(input: {
       mediaType: media.media_type ?? null,
       timestamp: media.timestamp ?? null,
       permalink: media.permalink ?? null,
+      thumbnailUrl: media.thumbnail_url ?? media.media_url ?? null,
       reach: mediaInsight.reach,
       views: mediaInsight.views,
       likes: media.like_count ?? null,
@@ -574,7 +578,7 @@ async function getFacebookInsights(input: {
   const postsPath = `/${input.pageId}/posts`;
   const [metricValues, posts] = await Promise.all([
     Promise.all(metricNames.map(async (metric) => [metric, await fetchInsightMetric({ app: input.app, objectId: input.pageId, metric, token: pageToken, appSecret: input.appSecret, period: input.period, warnings: input.warnings, operationPrefix: "facebook.page" })] as const)),
-    fetchMetaResult<FacebookPostsPayload>({ app: input.app, path: postsPath, token: pageToken, appSecret: input.appSecret, params: { fields: "id,message,created_time,permalink_url,reactions.limit(0).summary(true),comments.limit(0).summary(true),shares", since: input.period.since, until: input.period.until, limit: "100" }, metricOrOperation: "facebook.posts.list" }),
+    fetchMetaResult<FacebookPostsPayload>({ app: input.app, path: postsPath, token: pageToken, appSecret: input.appSecret, params: { fields: "id,message,created_time,permalink_url,full_picture,reactions.limit(0).summary(true),comments.limit(0).summary(true),shares", since: input.period.since, until: input.period.until, limit: "100" }, metricOrOperation: "facebook.posts.list" }),
   ]);
   const metrics = Object.fromEntries(metricValues) as Record<typeof metricNames[number], number | null>;
   input.warnings.push({ endpoint: `/${input.pageId}/insights`, code: null, message: "page_impressions não é uma métrica válida na Graph API v26 e não possui equivalente direto. page_media_view é retornada separadamente como views.", metricOrOperation: "facebook.page.impressions", kind: "unavailable" });
@@ -590,6 +594,7 @@ async function getFacebookInsights(input: {
       message: post.message ?? null,
       timestamp: post.created_time ?? null,
       permalink: post.permalink_url ?? null,
+      thumbnailUrl: post.full_picture ?? null,
       reactions,
       comments,
       shares,
