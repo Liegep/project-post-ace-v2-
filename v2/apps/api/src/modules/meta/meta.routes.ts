@@ -26,6 +26,8 @@ function publicationResponse(publication: NonNullable<Awaited<ReturnType<typeof 
     platform: publication.platform,
     scheduledAt: publication.scheduledAt,
     timezone: publication.timezone,
+    locationId: publication.locationId,
+    instagramUserTags: publication.instagramUserTags,
     status: publication.status,
     attemptCount: publication.attemptCount,
     publishedMetaId: publication.publishedMetaId,
@@ -164,6 +166,8 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
       card,
       scheduledAt: parsed.data.scheduledAt,
       timezone: parsed.data.timezone,
+      locationId: parsed.data.locationId,
+      instagramUserTags: parsed.data.instagramUserTags,
     });
     if (results.some((result) => !result.publication)) throw new Error("O agendamento foi salvo, mas não pôde ser carregado.");
     const publications = results.map((result) => publicationResponse(result.publication));
