@@ -450,12 +450,15 @@ export type ClientMetaAssets = {
   metaAdAccountName: string | null;
   updatedAt?: string;
 };
+export type InstagramUserTag = { username: string; x: number; y: number };
 export type MetaScheduledPublication = {
   id: string;
   cardId: string | null;
   platform: "instagram" | "facebook";
   scheduledAt: string;
   timezone: string;
+  locationId: string | null;
+  instagramUserTags: InstagramUserTag[];
   status: "scheduled" | "publishing" | "published" | "failed" | "cancelled";
   attemptCount: number;
   publishedMetaId: string | null;
@@ -1339,7 +1342,7 @@ export async function listMetaPublicationsBySlug(slug: string) {
   return fetchJson<{ publications: MetaScheduledPublication[] }>(`/api/clients/${client.id}/meta-publications`);
 }
 
-export async function createMetaPublicationBySlug(slug: string, input: { cardId: string; platforms: ("instagram" | "facebook")[]; scheduledAt: string; timezone: string }) {
+export async function createMetaPublicationBySlug(slug: string, input: { cardId: string; platforms: ("instagram" | "facebook")[]; scheduledAt: string; timezone: string; locationId?: string | null; instagramUserTags?: InstagramUserTag[] }) {
   const client = await findAdminClientBySlug(slug);
   return sendJson<{ publications: MetaScheduledPublication[]; created: boolean }>(`/api/clients/${client.id}/meta-publications`, {
     method: "POST",
