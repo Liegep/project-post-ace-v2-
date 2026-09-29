@@ -26,6 +26,21 @@ export async function ensureMetaStorage(db: Pool) {
     "CONSTRAINT fk_client_meta_assets_account FOREIGN KEY (client_account_id) REFERENCES client_accounts (id) ON DELETE CASCADE ON UPDATE CASCADE",
     ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
   ].join(" "));
+  await db.query([
+    "CREATE TABLE IF NOT EXISTS meta_scheduled_publications (",
+    "id CHAR(36) NOT NULL PRIMARY KEY, client_account_id CHAR(36) NOT NULL, card_id CHAR(36) NULL,",
+    "platform ENUM('instagram', 'facebook') NOT NULL, meta_asset_id VARCHAR(190) NOT NULL, scheduled_at DATETIME(3) NOT NULL, timezone VARCHAR(64) NOT NULL,",
+    "caption TEXT NULL, media_url VARCHAR(2048) NULL, media_urls_json JSON NULL, media_type VARCHAR(50) NULL,",
+    "status ENUM('scheduled', 'publishing', 'published', 'failed', 'cancelled') NOT NULL DEFAULT 'scheduled', attempt_count INT UNSIGNED NOT NULL DEFAULT 0,",
+    "idempotency_key CHAR(64) NOT NULL, published_meta_id VARCHAR(190) NULL, published_permalink VARCHAR(2048) NULL, last_error TEXT NULL, created_by_user_id CHAR(36) NULL,",
+    "created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3), published_at DATETIME(3) NULL,",
+    "UNIQUE KEY uq_meta_sched_pub_idempotency (idempotency_key), UNIQUE KEY uq_meta_sched_pub_published (platform, published_meta_id),",
+    "KEY idx_meta_sched_pub_due (status, scheduled_at), KEY idx_meta_sched_pub_client (client_account_id), KEY idx_meta_sched_pub_card (card_id),",
+    "CONSTRAINT fk_meta_sched_pub_client FOREIGN KEY (client_account_id) REFERENCES client_accounts (id) ON DELETE CASCADE ON UPDATE CASCADE,",
+    "CONSTRAINT fk_meta_sched_pub_card FOREIGN KEY (card_id) REFERENCES kanban_cards (id) ON DELETE SET NULL ON UPDATE CASCADE,",
+    "CONSTRAINT fk_meta_sched_pub_creator FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE",
+    ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+  ].join(" "));
   const adAccountColumns = [
     ["meta_ad_account_id", "VARCHAR(190) NULL AFTER instagram_username"],
     ["meta_ad_account_name", "VARCHAR(255) NULL AFTER meta_ad_account_id"],
