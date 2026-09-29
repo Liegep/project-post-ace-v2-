@@ -73,13 +73,18 @@ function PlatformMetrics({ report, channel, locale }: { report: ClientReport; ch
   return <article className={`report-platform ${channel}`}><header><span aria-hidden="true">{channel === "instagram" ? "◎" : "f"}</span><h3>{channel === "instagram" ? "Instagram" : "Facebook"}</h3></header><div>{reportPlatformRows(report, channel).map(([key, value]) => <p className={value == null ? "unavailable" : ""} key={key}><span>{metricText[locale][key]}</span><b>{displayMetric(value, locale)}</b></p>)}</div></article>;
 }
 
+function HighlightThumbnail({ item }: { item: ClientReport["highlights"][number] }) {
+  const platform = item.channel === "instagram" ? "Instagram" : "Facebook";
+  return <div className={`report-highlight-thumbnail ${item.channel}`}><span aria-hidden="true">{item.channel === "instagram" ? "◎" : "f"}</span>{item.thumbnailUrl ? <img src={item.thumbnailUrl} alt={`Publicação do ${platform}`} loading="lazy" onError={(event) => { event.currentTarget.hidden = true; }} /> : null}</div>;
+}
+
 function ReportDocument({ report, clientName, locale = "pt", printable = false }: { report: ClientReport; clientName: string; locale?: string; printable?: boolean }) {
   const language = reportLocale(locale); const copy = reportText[language]; const notes = visibleReportNotes(report.notes);
   return <article className={printable ? "report-document printable-report" : "report-document"}>
     <header><div><span>{copy.performance}</span><h2>{clientName}</h2><p>{formatReportDate(report.periodStart, language)} a {formatReportDate(report.periodEnd, language)}</p></div><b>{report.status === "published" ? copy.published : copy.draft}</b></header>
     <section className="report-summary"><strong>{copy.summary}</strong><p>{reportSummary(report, language)}</p></section>
     <section className="report-organic"><span>{copy.organic}</span><div className="report-platform-grid"><PlatformMetrics report={report} channel="instagram" locale={language} /><PlatformMetrics report={report} channel="facebook" locale={language} /></div></section>
-    {report.highlights.length ? <section className="report-highlights"><span>{copy.highlights}</span>{report.highlights.map((item, index) => <p key={`${item.channel}-${item.title}-${index}`}><b>{index + 1}</b>{item.title}<em>{item.channel === "instagram" ? "Instagram" : "Facebook"} · {number(item.value, language)}</em></p>)}</section> : null}
+    {report.highlights.length ? <section className="report-highlights"><span>{copy.highlights}</span><div className="report-highlight-grid">{report.highlights.map((item, index) => <article className="report-highlight-card" key={`${item.channel}-${item.title}-${index}`}><HighlightThumbnail item={item} /><div><p>{item.title}</p><footer><span>{item.channel === "instagram" ? "Instagram" : "Facebook"}</span><strong>{number(item.value, language)} {metricText[language].engagement.toLocaleLowerCase(browserLocale[language])}</strong></footer></div></article>)}</div></section> : null}
     {notes ? <section className="report-notes"><strong>{copy.teamNotes}</strong><p>{notes}</p></section> : null}
   </article>;
 }
@@ -121,14 +126,6 @@ async function downloadReportPdf(report: ClientReport, clientName: string, local
     while (last.length && pdf.getTextWidth(`${last}…`) > maxWidth) last = last.slice(0, -1).trimEnd();
     visible[maxLines - 1] = `${last}…`; return visible;
   };
-  const contentText = (text: string) => {
-    const clean = text.replace(/\s+/g, " ").trim();
-    const sentenceEnd = clean.search(/[.!?](?:\s|$)/);
-    const preferredEnd = sentenceEnd >= 20 && sentenceEnd <= 78 ? sentenceEnd + 1 : Math.min(clean.length, 70);
-    let headline = clean.slice(0, preferredEnd).trim();
-    if (preferredEnd < clean.length && !/[…!?]$/.test(headline)) headline = `${headline.replace(/[.,;:\s]+$/, "")}…`;
-    return { headline, excerpt: clean.slice(preferredEnd).replace(/^[.,;:!?\s]+/, "") };
-  };
 
   drawBackground();
   pdf.setTextColor(255, 255, 255); pdf.setFontSize(10); pdf.text(copy.performance, contentX, 48); pdf.setFontSize(27); pdf.text(clientName, contentX, 79); pdf.setFontSize(11); pdf.text(`${formatReportDate(report.periodStart, language)} a ${formatReportDate(report.periodEnd, language)}`, contentX, 100);
@@ -148,9 +145,8 @@ async function downloadReportPdf(report: ClientReport, clientName: string, local
       pdf.setFillColor(248, 250, 255); pdf.roundedRect(x, y, width, height, 14, 14, "F");
       if (thumbnails[absoluteIndex]) pdf.addImage(thumbnails[absoluteIndex]!, "JPEG", imageX, imageY, imageWidth, imageHeight, undefined, "FAST");
       else { const facebook = item.channel === "facebook"; pdf.setFillColor(facebook ? 53 : 123, facebook ? 112 : 74, facebook ? 224 : 201); pdf.roundedRect(imageX, imageY, imageWidth, imageHeight, 10, 10, "F"); pdf.setFillColor(255, 255, 255); pdf.circle(imageX + imageWidth / 2, imageY + 51, 22, "F"); pdf.setTextColor(facebook ? 53 : 123, facebook ? 112 : 74, facebook ? 224 : 201); pdf.setFontSize(20); pdf.text(facebook ? "f" : "◎", imageX + imageWidth / 2, imageY + 58, { align: "center" }); pdf.setTextColor(255, 255, 255); pdf.setFontSize(8); pdf.text(facebook ? "Facebook" : "Instagram", imageX + imageWidth / 2, imageY + 92, { align: "center" }); }
-      const text = contentText(item.title); pdf.setTextColor(item.channel === "facebook" ? 49 : 167, item.channel === "facebook" ? 103 : 65, item.channel === "facebook" ? 209 : 139); pdf.setFontSize(8); pdf.text((item.channel === "facebook" ? "FACEBOOK" : "INSTAGRAM"), x + 14, y + 151);
-      pdf.setTextColor(38, 49, 82); pdf.setFontSize(11); pdf.setFont("helvetica", "bold"); pdf.text(clampLines(text.headline, 216, 2), x + 14, y + 174, { lineHeightFactor: 1.25 });
-      if (text.excerpt) { pdf.setTextColor(103, 115, 143); pdf.setFontSize(8.5); pdf.setFont("helvetica", "normal"); pdf.text(clampLines(text.excerpt, 216, 2), x + 14, y + 211, { lineHeightFactor: 1.3 }); }
+      pdf.setTextColor(item.channel === "facebook" ? 49 : 167, item.channel === "facebook" ? 103 : 65, item.channel === "facebook" ? 209 : 139); pdf.setFontSize(8); pdf.text((item.channel === "facebook" ? "FACEBOOK" : "INSTAGRAM"), x + 14, y + 151);
+      pdf.setTextColor(38, 49, 82); pdf.setFontSize(10.5); pdf.setFont("helvetica", "bold"); pdf.text(clampLines(item.title, 216, 3), x + 14, y + 176, { lineHeightFactor: 1.3 });
       pdf.setDrawColor(227, 231, 241); pdf.line(x + 14, y + 252, x + width - 14, y + 252); pdf.setFont("helvetica", "bold"); pdf.setTextColor(42, 54, 88); pdf.setFontSize(10); pdf.text(`${number(item.value, language)} ${metricText[language].engagement.toLocaleLowerCase(browserLocale[language])}`, x + 14, y + 274); pdf.setFont("helvetica", "normal"); pdf.setTextColor(132, 142, 163); pdf.setFontSize(8); pdf.text(`#${absoluteIndex + 1}`, x + width - 14, y + 274, { align: "right" });
     });
     drawFooter();

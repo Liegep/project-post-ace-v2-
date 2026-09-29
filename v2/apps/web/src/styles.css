@@ -5669,9 +5669,19 @@ button {
 .report-platform p span{color:#77839a;font-size:.72rem;font-weight:600}
 .report-platform p b{color:#283552;font-size:1.12rem}
 .report-platform p.unavailable b{color:#9ba4b5;font-size:.76rem;font-weight:600}
+.report-highlight-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px;margin-top:4px}
+.report-highlight-card{display:grid;grid-template-columns:132px minmax(0,1fr);min-height:112px;overflow:hidden;border:1px solid #e4e8f1;border-radius:14px;background:#fff;box-shadow:0 8px 20px rgba(62,76,126,.08)}
+.report-highlight-thumbnail{position:relative;display:grid;place-items:center;min-height:112px;overflow:hidden;color:#fff;background:linear-gradient(135deg,#9c4ed4,#ee669f)}
+.report-highlight-thumbnail.facebook{background:linear-gradient(135deg,#53b8f3,#3868dc)}
+.report-highlight-thumbnail>span{font-size:1.8rem;font-weight:800}
+.report-highlight-thumbnail>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.report-highlight-card>div:last-child{display:grid;grid-template-rows:minmax(0,1fr) auto;gap:8px;min-width:0;padding:13px 14px}
+.report-highlight-card p{display:-webkit-box;overflow:hidden;margin:0;color:#303c5d;font-size:.84rem;font-weight:700;line-height:1.42;-webkit-box-orient:vertical;-webkit-line-clamp:3}
+.report-highlight-card footer{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-top:8px;border-top:1px solid #edf0f5;color:#77839a;font-size:.7rem}
+.report-highlight-card footer strong{color:#3a4665;font-size:.72rem;white-space:nowrap}
 .report-highlights,.report-notes{background:rgba(255,255,255,.78)}
-@media(max-width:900px){.report-meta-import{grid-template-columns:auto minmax(0,1fr)}.report-meta-import button{grid-column:1/-1}.report-platform-grid{grid-template-columns:1fr}}
-@media(max-width:620px){.report-meta-import{grid-template-columns:1fr}.report-meta-import-icon{display:none}.report-platform>div{grid-template-columns:1fr}.report-platform p:nth-last-child(-n+2){border-bottom:1px solid #edf0f5}.report-platform p:last-child{border-bottom:0}}
+@media(max-width:900px){.report-meta-import{grid-template-columns:auto minmax(0,1fr)}.report-meta-import button{grid-column:1/-1}.report-platform-grid,.report-highlight-grid{grid-template-columns:1fr}}
+@media(max-width:620px){.report-meta-import{grid-template-columns:1fr}.report-meta-import-icon{display:none}.report-platform>div{grid-template-columns:1fr}.report-platform p:nth-last-child(-n+2){border-bottom:1px solid #edf0f5}.report-platform p:last-child{border-bottom:0}.report-highlight-card{grid-template-columns:104px minmax(0,1fr)}.report-highlight-thumbnail{min-height:104px}}
 
 /* No desktop, a gaveta fica ancorada abaixo das ações superiores. Como ela é
    renderizada diretamente no body, esta regra não depende da hierarquia do
