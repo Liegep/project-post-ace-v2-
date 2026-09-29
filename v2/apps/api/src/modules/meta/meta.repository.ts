@@ -34,6 +34,8 @@ type ScheduledPublicationRow = RowDataPacket & {
   media_url: string | null;
   media_urls_json: unknown;
   media_type: string | null;
+  location_id: string | null;
+  instagram_user_tags_json: unknown;
   status: MetaScheduledPublicationStatus;
   attempt_count: number;
   idempotency_key: string;
@@ -48,7 +50,7 @@ type ScheduledPublicationRow = RowDataPacket & {
 
 const scheduledPublicationSelect = [
   "SELECT id, client_account_id, card_id, platform, meta_asset_id,",
-  "DATE_FORMAT(scheduled_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS scheduled_at, timezone, caption, media_url, media_urls_json, media_type,",
+  "DATE_FORMAT(scheduled_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS scheduled_at, timezone, caption, media_url, media_urls_json, media_type, location_id, instagram_user_tags_json,",
   "status, attempt_count, idempotency_key, published_meta_id, published_permalink, last_error, created_by_user_id, created_at, updated_at, published_at",
   "FROM meta_scheduled_publications",
 ].join(" ");
@@ -59,6 +61,22 @@ function parseStringArray(value: unknown) {
   try {
     const parsed = JSON.parse(String(value));
     return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseInstagramUserTags(value: unknown) {
+  if (!value) return [];
+  try {
+    const parsed = Array.isArray(value) ? value : JSON.parse(String(value));
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const candidate = item as { username?: unknown; x?: unknown; y?: unknown };
+      if (typeof candidate.username !== "string" || typeof candidate.x !== "number" || typeof candidate.y !== "number") return [];
+      return [{ username: candidate.username, x: candidate.x, y: candidate.y }];
+    });
   } catch {
     return [];
   }
@@ -83,6 +101,8 @@ function mapScheduledPublication(row: ScheduledPublicationRow) {
     mediaUrl: row.media_url,
     mediaUrls: parseStringArray(row.media_urls_json),
     mediaType: row.media_type,
+    locationId: row.location_id,
+    instagramUserTags: parseInstagramUserTags(row.instagram_user_tags_json),
     status: row.status,
     attemptCount: Number(row.attempt_count),
     idempotencyKey: row.idempotency_key,
@@ -202,6 +222,8 @@ export type CreateScheduledPublicationInput = {
   mediaUrl: string;
   mediaUrls: string[];
   mediaType: "image";
+  locationId: string | null;
+  instagramUserTags: Array<{ username: string; x: number; y: number }>;
   createdByUserId: string;
   idempotencyKey: string;
 };
@@ -217,13 +239,14 @@ export async function createScheduledPublications(db: Pool, inputs: CreateSchedu
         await connection.query(
           [
             "INSERT INTO meta_scheduled_publications",
-            "(id, client_account_id, card_id, platform, meta_asset_id, scheduled_at, timezone, caption, media_url, media_urls_json, media_type, status, created_by_user_id, idempotency_key)",
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)",
+            "(id, client_account_id, card_id, platform, meta_asset_id, scheduled_at, timezone, caption, media_url, media_urls_json, media_type, location_id, instagram_user_tags_json, status, created_by_user_id, idempotency_key)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)",
           ].join(" "),
           [
             id, input.clientAccountId, input.cardId, input.platform, input.metaAssetId,
             mysqlUtcDateTime(input.scheduledAt), input.timezone, input.caption, input.mediaUrl,
-            JSON.stringify(input.mediaUrls), input.mediaType, input.createdByUserId, input.idempotencyKey,
+            JSON.stringify(input.mediaUrls), input.mediaType, input.locationId, JSON.stringify(input.instagramUserTags),
+            input.createdByUserId, input.idempotencyKey,
           ],
         );
         const [rows] = await connection.query<ScheduledPublicationRow[]>(
