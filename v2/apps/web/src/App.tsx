@@ -309,6 +309,52 @@ function formatScheduledCardDate(value: string) {
   }).format(date).replace(",", " às")}`;
 }
 
+function selectMetaPublicationByCard(publications: MetaScheduledPublication[]) {
+  const priority: Record<MetaScheduledPublication["status"], number> = {
+    publishing: 0,
+    scheduled: 1,
+    failed: 2,
+    published: 3,
+    cancelled: 4,
+  };
+  const selected = new Map<string, MetaScheduledPublication>();
+  for (const publication of publications) {
+    if (!publication.cardId || publication.status === "cancelled") continue;
+    const current = selected.get(publication.cardId);
+    if (!current || priority[publication.status] < priority[current.status]) {
+      selected.set(publication.cardId, publication);
+      continue;
+    }
+    if (priority[publication.status] !== priority[current.status]) continue;
+    const candidateTime = publication.status === "scheduled"
+      ? new Date(publication.scheduledAt).getTime()
+      : new Date(publication.publishedAt ?? publication.updatedAt).getTime();
+    const currentTime = current.status === "scheduled"
+      ? new Date(current.scheduledAt).getTime()
+      : new Date(current.publishedAt ?? current.updatedAt).getTime();
+    if (publication.status === "scheduled" ? candidateTime < currentTime : candidateTime > currentTime) {
+      selected.set(publication.cardId, publication);
+    }
+  }
+  return selected;
+}
+
+function metaPublicationBadgeLabel(publication: MetaScheduledPublication) {
+  if (publication.status === "publishing") return "Publicando no Instagram…";
+  if (publication.status === "published") return "Publicado no Instagram ✓";
+  if (publication.status === "failed") return "Falha ao publicar";
+  const date = new Date(publication.scheduledAt);
+  if (Number.isNaN(date.getTime())) return "Instagram agendado";
+  const formatted = new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date).replace(",", " às");
+  return `Instagram · ${formatted}`;
+}
+
 function formatCalendarSchedule(date: string, time?: string | null) {
   const parsed = new Date(`${date.slice(0, 10)}T12:00:00`);
   const formattedDate = Number.isNaN(parsed.getTime())
@@ -3326,6 +3372,7 @@ function AdminWorkspacePage({
     return () => { window.clearInterval(interval); window.removeEventListener("focus", refreshScheduledCards); document.removeEventListener("visibilitychange", refreshOnVisibility); };
   }, [boardView]);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(() => new URLSearchParams(location.search).get("card"));
+  const [metaPublications, setMetaPublications] = useState<MetaScheduledPublication[]>([]);
   const [editingColumn, setEditingColumn] = useState<BoardColumn | "new" | null>(null);
   const [invoiceLineDialog, setInvoiceLineDialog] = useState<BillingLineRequest | null>(null);
   const [openColumnMenuId, setOpenColumnMenuId] = useState<string | null>(null);
@@ -3350,6 +3397,24 @@ function AdminWorkspacePage({
   const tagFilterButtonRef = useRef<HTMLButtonElement>(null);
   const [clientOptions, setClientOptions] = useState<AdminClientOption[]>([]);
   const [sectionCounts, setSectionCounts] = useState({ archived: 0, texts: 0, pautas: 0 });
+  const metaPublicationByCard = useMemo(() => selectMetaPublicationByCard(metaPublications), [metaPublications]);
+  const refreshKanbanMetaPublications = useCallback(async () => {
+    if (session.role !== "super_admin") return;
+    const result = await listMetaPublicationsBySlug(slug);
+    setMetaPublications(result.publications);
+  }, [session.role, slug]);
+
+  useEffect(() => {
+    if (session.role !== "super_admin" || boardView !== "board") {
+      setMetaPublications([]);
+      return;
+    }
+    void refreshKanbanMetaPublications().catch(() => setMetaPublications([]));
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshKanbanMetaPublications().catch(() => undefined);
+    }, 60_000);
+    return () => window.clearInterval(interval);
+  }, [boardView, refreshKanbanMetaPublications, session.role]);
   const openCardContextMenu = useCallback((event: React.MouseEvent, card: BoardCard, columnId: string | null) => {
     const viewportGap = 12;
     const menuWidth = Math.min(320, window.innerWidth - viewportGap * 2);
@@ -3836,6 +3901,7 @@ function AdminWorkspacePage({
                     {columnDropIndex === columnIndex ? <div className="column-drop-indicator"><span>Soltar coluna aqui</span></div> : null}
                     <BoardColumnView
                     column={{ ...column, cards: filterCardsByTags(column.cards) }}
+                    metaPublicationByCard={metaPublicationByCard}
                     onOpenCard={setSelectedCardId}
                     onBill={() => { setOpenColumnMenuId(null); setInvoiceLineDialog({ clientName: data.clientName, description: `👉 ${column.name}`, quantity: 1, unitPrice: 0, notes: "" }); }}
                     menuOpen={openColumnMenuId === column.id}
@@ -3969,6 +4035,7 @@ function AdminWorkspacePage({
                           {dropTarget?.columnId === null && dropTarget.index === index ? <div className="card-drop-indicator"><span>Soltar aqui</span></div> : null}
                           <CardView
                             card={card}
+                            metaPublication={metaPublicationByCard.get(card.id)}
                             onOpen={() => selectionMode ? toggleCardSelection(card.id) : setSelectedCardId(card.id)}
                             onContextMenu={(event) => {
                               event.preventDefault();
@@ -4128,7 +4195,7 @@ function AdminWorkspacePage({
         }
         onRefresh={() => setRefreshKey((value) => value + 1)}
         onClose={() => { setSelectedCardId(null); if (location.search) navigate(`/admin/${slug}`, { replace: true }); }}
-        adminContext={{ slug, columns: data.columns, canScheduleMeta: session.role === "super_admin", onCardUpdated: (updated) => resource.setData((current) => ({
+        adminContext={{ slug, columns: data.columns, canScheduleMeta: session.role === "super_admin", onMetaPublicationSaved: (publication) => setMetaPublications((current) => [publication, ...current.filter((item) => item.id !== publication.id)]), onCardUpdated: (updated) => resource.setData((current) => ({
           ...current,
           columns: current.columns.map((column) => ({ ...column, cards: column.cards.map((item) => item.id === updated.id ? { ...item, ...updated } : item) })),
           withoutColumn: current.withoutColumn.map((item) => item.id === updated.id ? { ...item, ...updated } : item),
@@ -4342,6 +4409,7 @@ function BillingLineModal({ request, onChange, onClose, onConfirm }: { request: 
 
 function BoardColumnView({
   column,
+  metaPublicationByCard,
   onOpenCard,
   onBill,
   menuOpen,
@@ -4372,6 +4440,7 @@ function BoardColumnView({
   onColumnDragEnd,
 }: {
   column: BoardColumn;
+  metaPublicationByCard: ReadonlyMap<string, MetaScheduledPublication>;
   onOpenCard: (cardId: string) => void;
   onBill: () => void;
   menuOpen: boolean;
@@ -4530,7 +4599,7 @@ function BoardColumnView({
         {column.cards.map((card, index) => (
           <div key={card.id} className={draggedCardId === card.id ? "card-drag-wrap dragging" : "card-drag-wrap"} onDragOver={(event) => { if (!draggedCardId) return; event.preventDefault(); event.stopPropagation(); const cardBounds = event.currentTarget.querySelector<HTMLElement>(".content-card")?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect(); onDragOver(event, event.clientY > cardBounds.top + cardBounds.height / 2 ? index + 1 : index); }} onDrop={(event) => { if (!draggedCardId) return; event.preventDefault(); event.stopPropagation(); const cardBounds = event.currentTarget.querySelector<HTMLElement>(".content-card")?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect(); onDrop(event.clientY > cardBounds.top + cardBounds.height / 2 ? index + 1 : index); }}>
             {dropIndex === index ? <div className="card-drop-indicator"><span>Soltar aqui</span></div> : null}
-            <CardView card={card} onOpen={() => selectionMode ? onToggleCardSelection(card.id) : onOpenCard(card.id)} onContextMenu={(event) => onCardContextMenu(event, card)} selectionMode={selectionMode} selected={selectedCardIds.includes(card.id)} onToggleSelection={() => onToggleCardSelection(card.id)} onPreviewMedia={onPreviewMedia} onRemoveTag={onRemoveTag} draggable={dragEnabled && !selectionMode} onDragStart={() => onDragStart(card.id)} onDragEnd={onDragEnd} />
+            <CardView card={card} metaPublication={metaPublicationByCard.get(card.id)} onOpen={() => selectionMode ? onToggleCardSelection(card.id) : onOpenCard(card.id)} onContextMenu={(event) => onCardContextMenu(event, card)} selectionMode={selectionMode} selected={selectedCardIds.includes(card.id)} onToggleSelection={() => onToggleCardSelection(card.id)} onPreviewMedia={onPreviewMedia} onRemoveTag={onRemoveTag} draggable={dragEnabled && !selectionMode} onDragStart={() => onDragStart(card.id)} onDragEnd={onDragEnd} />
           </div>
         ))}
         {dropIndex === column.cards.length ? <div className="card-drop-indicator"><span>Soltar aqui</span></div> : null}
@@ -5506,7 +5575,7 @@ function MediaPreviewModal({ media, onClose, onNavigate }: { media: { urls: stri
   return <div className="media-preview-backdrop" onMouseDown={onClose} role="presentation"><section className="media-preview-modal" role="dialog" aria-modal="true" aria-label={`Visualização de ${media.title}`} onMouseDown={(event) => event.stopPropagation()}><button className="media-preview-close" onClick={onClose} aria-label="Fechar visualização">×</button><ArtworkCarousel urls={media.urls} title={media.title} activeIndex={media.index} onIndexChange={(next) => { if (next !== media.index) onNavigate(next > media.index ? 1 : -1); }} fullscreen /></section></div>;
 }
 
-function CardView({ card, onOpen, onContextMenu, selectionMode = false, selected = false, onToggleSelection, onPreviewMedia, onRemoveTag, draggable = false, onDragStart, onDragEnd }: { card: BoardCard; onOpen: () => void; onContextMenu?: (event: React.MouseEvent<HTMLButtonElement>) => void; selectionMode?: boolean; selected?: boolean; onToggleSelection?: () => void; onPreviewMedia?: (card: BoardCard) => void; onRemoveTag?: (card: BoardCard, tag: string) => void; draggable?: boolean; onDragStart?: () => void; onDragEnd?: () => void }) {
+function CardView({ card, metaPublication, onOpen, onContextMenu, selectionMode = false, selected = false, onToggleSelection, onPreviewMedia, onRemoveTag, draggable = false, onDragStart, onDragEnd }: { card: BoardCard; metaPublication?: MetaScheduledPublication; onOpen: () => void; onContextMenu?: (event: React.MouseEvent<HTMLButtonElement>) => void; selectionMode?: boolean; selected?: boolean; onToggleSelection?: () => void; onPreviewMedia?: (card: BoardCard) => void; onRemoveTag?: (card: BoardCard, tag: string) => void; draggable?: boolean; onDragStart?: () => void; onDragEnd?: () => void }) {
   const primaryBadge = card.statusBadges[0] ?? null;
   const isInDevelopment = /^em desenvolvimento$/i.test(primaryBadge?.trim() ?? "");
   const isApprovedBrief = card.isBriefApproval && !isInDevelopment && /aprovad/i.test(`${card.clientLabel} ${card.statusBadges.join(" ")}`);
@@ -5528,6 +5597,7 @@ function CardView({ card, onOpen, onContextMenu, selectionMode = false, selected
         ) : null}
       </div>
       <ClosedCardMedia card={card} onPreview={onPreviewMedia ? () => onPreviewMedia(card) : undefined} showOverlay />
+      {metaPublication && metaPublication.status !== "cancelled" ? <span className={`meta-kanban-badge ${metaPublication.status}`}><i aria-hidden="true">◎</i>{metaPublicationBadgeLabel(metaPublication)}</span> : null}
 
       <div className="card-meta">
         <div className="card-inline">
@@ -6704,7 +6774,7 @@ function CardDetailModal({
   onUpdateTags?: (cardId: string, tags: string[]) => Promise<unknown>;
   onRefresh: () => void;
   onClose: () => void;
-  adminContext?: { slug: string; columns: BoardColumn[]; canScheduleMeta?: boolean; onCardUpdated?: (card: BoardCard) => void };
+  adminContext?: { slug: string; columns: BoardColumn[]; canScheduleMeta?: boolean; onMetaPublicationSaved?: (publication: MetaScheduledPublication) => void; onCardUpdated?: (card: BoardCard) => void };
 }) {
   const { t, localeTag } = usePortalTranslation();
   const [commentDraft, setCommentDraft] = useState("");
@@ -6768,6 +6838,7 @@ function CardDetailModal({
         columns={adminContext.columns}
         slug={adminContext.slug}
         canScheduleMeta={Boolean(adminContext.canScheduleMeta)}
+        onMetaPublicationSaved={adminContext.onMetaPublicationSaved}
         onCardUpdated={adminContext.onCardUpdated}
         onAddComment={onAddComment}
         onRefresh={onRefresh}
@@ -7099,6 +7170,7 @@ function AdminCardEditor({
   columns,
   slug,
   canScheduleMeta,
+  onMetaPublicationSaved,
   onAddComment,
   onCardUpdated,
   onRefresh,
@@ -7108,6 +7180,7 @@ function AdminCardEditor({
   columns: BoardColumn[];
   slug: string;
   canScheduleMeta: boolean;
+  onMetaPublicationSaved?: (publication: MetaScheduledPublication) => void;
   onAddComment: (cardId: string, commentText: string) => Promise<unknown>;
   onCardUpdated?: (card: BoardCard) => void;
   onRefresh: () => void;
@@ -7448,9 +7521,10 @@ ${internalMessage.trim()}`, isInternal: true });
         scheduledAt: date.toISOString(),
         timezone,
       });
-      await refreshMetaPublications();
+      setMetaPublications((current) => [result.publication, ...current.filter((item) => item.id !== result.publication.id)]);
+      onMetaPublicationSaved?.(result.publication);
       setMetaScheduleOpen(false);
-      setFeedback(result.created ? "Publicação no Instagram agendada." : "Este mesmo agendamento já existia e foi mantido.");
+      onClose();
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "Não foi possível agendar a publicação no Instagram.");
     } finally {

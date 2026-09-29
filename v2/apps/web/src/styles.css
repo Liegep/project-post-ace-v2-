@@ -3606,6 +3606,13 @@ button {
   flex-wrap: wrap;
 }
 
+.meta-kanban-badge { display: inline-flex; max-width: 100%; min-height: 27px; box-sizing: border-box; align-items: center; gap: 6px; margin-top: 10px; padding: 5px 9px; overflow: hidden; border: 1px solid transparent; border-radius: 8px; font-size: .7rem; font-weight: 750; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.meta-kanban-badge i { display: inline-grid; width: 15px; height: 15px; flex: 0 0 15px; place-items: center; border: 1.5px solid currentColor; border-radius: 5px; font-size: 10px; font-style: normal; line-height: 1; }
+.meta-kanban-badge.scheduled { color: #873faf; border-color: #e4b9ee; background: linear-gradient(110deg, #f5eaff, #ffeaf5); }
+.meta-kanban-badge.publishing { color: #5146c8; border-color: #c9c5f6; background: linear-gradient(110deg, #edf3ff, #f1edff); }
+.meta-kanban-badge.published { color: #197349; border-color: #b7e1cb; background: #eaf8f1; }
+.meta-kanban-badge.failed { color: #bd304b; border-color: #f1bec8; background: #fff0f3; }
+
 .card-comment-count { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 0 9px; border-radius: 8px; background: #f0f3f8; color: #29354f; font-size: .78rem; font-weight: 650; }.card-comment-count svg { width: 15px; height: 15px; }
 
 .status-chip {
