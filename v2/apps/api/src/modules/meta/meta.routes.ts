@@ -2,7 +2,7 @@ import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { findClientAccountById } from "../clients/clients.repository.js";
 import { clientMetaAssetsSchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema } from "./meta.schemas.js";
 import { consumeMetaOAuthState, findClientMetaAssets, upsertClientMetaAssets } from "./meta.repository.js";
-import { completeMetaAuthorization, createMetaAuthorizationUrl, getMetaInsights, getMetaStatus, listMetaAssets } from "./meta.service.js";
+import { completeMetaAuthorization, createMetaAuthorizationUrl, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets } from "./meta.service.js";
 
 function assertSuperAdmin(request: FastifyRequest) {
   if (!request.auth) throw request.server.httpErrors.unauthorized("Sessão obrigatória.");
@@ -52,6 +52,11 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
   app.get("/meta/assets", async (request) => {
     const auth = assertSuperAdmin(request);
     return listMetaAssets(app, auth.user.id);
+  });
+
+  app.get("/meta/ad-accounts", async (request) => {
+    const auth = assertSuperAdmin(request);
+    return listMetaAdAccounts(app, auth.user.id);
   });
 
   app.get("/clients/:clientAccountId/meta-assets", async (request) => {

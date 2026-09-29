@@ -11,6 +11,7 @@ const META_SCOPES = [
   "instagram_basic",
   "instagram_manage_insights",
   "business_management",
+  "ads_read",
 ];
 
 type MetaTokenResponse = { access_token?: string; token_type?: string; expires_in?: number; error?: { message?: string } };
@@ -19,6 +20,21 @@ type MetaAccountsResponse = {
   data?: Array<{ id?: string; name?: string; instagram_business_account?: { id?: string; username?: string } | null }>;
   paging?: { next?: string };
   error?: { message?: string };
+};
+
+type MetaAdAccount = {
+  id?: string;
+  account_id?: string;
+  name?: string;
+  account_status?: number;
+  currency?: string;
+  timezone_name?: string;
+  business?: { id?: string; name?: string } | null;
+};
+
+type MetaAdAccountsResponse = MetaApiError & {
+  data?: MetaAdAccount[];
+  paging?: { next?: string };
 };
 
 type MetaInsightsAssets = {
@@ -328,6 +344,96 @@ export async function listMetaAssets(app: FastifyInstance, userId: string) {
     next = response.paging?.next;
   } while (next);
   return { pages };
+}
+
+export async function listMetaAdAccounts(app: FastifyInstance, userId: string) {
+  const config = requireMetaConfig(app);
+  const connection = await findMetaConnection(app.db, userId);
+  if (!connection) throw app.httpErrors.badRequest("Conecte uma conta Meta antes de listar as contas de anúncios.");
+  if (connection.expiresAt && new Date(connection.expiresAt).getTime() <= Date.now()) {
+    throw app.httpErrors.badRequest("A conexão Meta expirou. Atualize a conexão.");
+  }
+
+  const token = decryptToken(connection.encryptedToken, config.encryptionKey);
+  const adAccounts: Array<{
+    id: string;
+    account_id: string | null;
+    name: string | null;
+    account_status: number | null;
+    currency: string | null;
+    timezone_name: string | null;
+    business: { id: string | null; name: string | null } | null;
+  }> = [];
+  let next: string | undefined;
+  let pagesFetched = 0;
+
+  do {
+    const path = "/me/adaccounts";
+    const url = next ? new URL(next) : new URL(`https://graph.facebook.com/${GRAPH_VERSION}${path}`);
+    if (!next) {
+      url.searchParams.set("fields", "id,account_id,name,account_status,currency,timezone_name,business{id,name}");
+      url.searchParams.set("limit", "100");
+      url.searchParams.set("access_token", token);
+    }
+    url.searchParams.set("appsecret_proof", appSecretProof(token, config.appSecret));
+
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(15_000),
+      });
+      const payload = await response.json().catch(() => ({})) as MetaAdAccountsResponse;
+      if (!response.ok || payload.error) {
+        return {
+          adAccounts,
+          totalCount: adAccounts.length,
+          pagesFetched,
+          error: {
+            endpoint: path,
+            code: payload.error?.code ?? null,
+            message: redactMetaSecrets(
+              payload.error?.message ?? `Meta Graph API respondeu com HTTP ${response.status}`,
+              token,
+              config.appSecret,
+            ),
+            requiredPermission: "ads_read",
+          },
+        };
+      }
+
+      pagesFetched += 1;
+      for (const account of payload.data ?? []) {
+        if (!account.id) continue;
+        adAccounts.push({
+          id: account.id,
+          account_id: account.account_id ?? null,
+          name: account.name ?? null,
+          account_status: account.account_status ?? null,
+          currency: account.currency ?? null,
+          timezone_name: account.timezone_name ?? null,
+          business: account.business ? {
+            id: account.business.id ?? null,
+            name: account.business.name ?? null,
+          } : null,
+        });
+      }
+      next = payload.paging?.next;
+    } catch {
+      return {
+        adAccounts,
+        totalCount: adAccounts.length,
+        pagesFetched,
+        error: {
+          endpoint: path,
+          code: null,
+          message: "Falha de rede ao consultar as contas de anúncios na Meta Graph API.",
+          requiredPermission: "ads_read",
+        },
+      };
+    }
+  } while (next);
+
+  return { adAccounts, totalCount: adAccounts.length, pagesFetched, error: null };
 }
 
 async function getInstagramInsights(input: {
