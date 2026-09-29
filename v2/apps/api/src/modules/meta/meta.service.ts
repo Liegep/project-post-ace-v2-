@@ -994,6 +994,8 @@ export async function scheduleMetaCardPublications(app: FastifyInstance, input: 
   card: SchedulableCard;
   scheduledAt: string;
   timezone: string;
+  locationId?: string | null;
+  instagramUserTags?: Array<{ username: string; x: number; y: number }>;
 }) {
   await getPublishingContext(app, input.userId);
   if (input.card.clientAccountId !== input.clientAccountId) throw app.httpErrors.badRequest("O card não pertence a este cliente.");
@@ -1010,6 +1012,8 @@ export async function scheduleMetaCardPublications(app: FastifyInstance, input: 
     mediaUrl,
     mediaUrls: [mediaUrl],
     mediaType: "image",
+    locationId: input.locationId ?? null,
+    instagramUserTags: platform === "instagram" ? (input.instagramUserTags ?? []) : [],
     createdByUserId: input.userId,
     idempotencyKey: crypto.createHash("sha256")
       .update([input.clientAccountId, input.card.id, platform, scheduledAt].join(":"))
@@ -1087,6 +1091,8 @@ async function publishInstagramImage(app: FastifyInstance, input: {
   instagramAccountId: string;
   imageUrl: string;
   caption: string | null;
+  locationId: string | null;
+  instagramUserTags: Array<{ username: string; x: number; y: number }>;
 }) {
   const context = await getPublishingContext(app, input.userId);
   const create = await fetchMetaResult<MetaApiError & { id?: string }>({
@@ -1094,7 +1100,12 @@ async function publishInstagramImage(app: FastifyInstance, input: {
     path: `/${input.instagramAccountId}/media`,
     token: context.token,
     appSecret: context.appSecret,
-    params: { image_url: input.imageUrl, ...(input.caption ? { caption: input.caption } : {}) },
+    params: {
+      image_url: input.imageUrl,
+      ...(input.caption ? { caption: input.caption } : {}),
+      ...(input.locationId ? { location_id: input.locationId } : {}),
+      ...(input.instagramUserTags.length ? { user_tags: JSON.stringify(input.instagramUserTags) } : {}),
+    },
     metricOrOperation: "instagram.publish.createContainer",
     method: "POST",
   });
@@ -1131,6 +1142,7 @@ async function publishFacebookImage(app: FastifyInstance, input: {
   pageId: string;
   imageUrl: string;
   caption: string | null;
+  locationId: string | null;
 }) {
   const context = await getPublishingContext(app, input.userId);
   const pageAccess = await getFacebookPageAccessContext({
@@ -1151,7 +1163,12 @@ async function publishFacebookImage(app: FastifyInstance, input: {
     path: `/${input.pageId}/photos`,
     token: pageAccess.pageToken,
     appSecret: context.appSecret,
-    params: { url: input.imageUrl, published: "true", ...(input.caption ? { caption: input.caption } : {}) },
+    params: {
+      url: input.imageUrl,
+      published: "true",
+      ...(input.caption ? { caption: input.caption } : {}),
+      ...(input.locationId ? { place: input.locationId } : {}),
+    },
     metricOrOperation: "facebook.publish.photo",
     method: "POST",
     timeoutMs: META_FACEBOOK_PUBLISH_TIMEOUT_MS,
@@ -1203,9 +1220,10 @@ export async function processDueMetaPublications(app: FastifyInstance, limit = 1
         userId: publication.createdByUserId,
         imageUrl: publication.mediaUrl,
         caption: publication.caption,
+        locationId: publication.locationId,
       };
       const result = publication.platform === "instagram"
-        ? await publishInstagramImage(app, { ...commonInput, publicationId: publication.id, instagramAccountId: publication.metaAssetId })
+        ? await publishInstagramImage(app, { ...commonInput, instagramUserTags: publication.instagramUserTags, publicationId: publication.id, instagramAccountId: publication.metaAssetId })
         : await publishFacebookImage(app, { ...commonInput, pageId: publication.metaAssetId });
       const markedPublished = await markPublicationPublished(app.db, publication.id, result);
       if (!markedPublished) throw new Error("O status do agendamento mudou antes da confirmação da publicação.");
