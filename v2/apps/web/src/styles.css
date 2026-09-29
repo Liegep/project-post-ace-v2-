@@ -3584,6 +3584,47 @@ button {
   object-fit: contain;
 }
 
+/* Vídeos no Kanban não podem usar o tamanho nativo do arquivo: isso fazia
+   Reels verticais transbordarem e serem cortados pelas margens do card. */
+.content-card .closed-card-media.video {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  min-height: 180px;
+  max-height: 420px;
+  overflow: hidden;
+  background: #eef1f7;
+}
+
+.content-card .closed-card-media.video .media-frame {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  max-height: 420px;
+  overflow: hidden;
+  background: #eef1f7;
+}
+
+.content-card .closed-card-media.video .media-frame video {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  max-height: 420px;
+  margin: 0 auto;
+  object-fit: contain;
+  object-position: center;
+  background: #111827;
+}
+
+@media (max-width: 720px) {
+  .content-card .closed-card-media.video,
+  .content-card .closed-card-media.video .media-frame,
+  .content-card .closed-card-media.video .media-frame video {
+    max-height: 340px;
+  }
+}
+
 /* Modal grande de detalhe do card: a imagem inteira deve sempre ficar visível, sem cortes. */
 .modal-media .media-frame {
   aspect-ratio: auto;
