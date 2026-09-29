@@ -124,8 +124,27 @@ export type BrandBrain = {
 export type BrandBrainRevision = { id: string; status: "pending" | "approved" | "rejected"; summary: string | null; data: BrandBrain; authorName: string; authorRole: string; reviewerName: string | null; createdAt: string; reviewedAt: string | null };
 export type BrandBrainComment = { id: string; revisionId: string | null; sectionKey: string; commentText: string; authorName: string; authorRole: string; isInternal: boolean; createdAt: string };
 export type BrandBrainSnapshot = { data: BrandBrain | null; meta: { version: number; updatedAt: string | null; updatedBy: string | null }; revisions: BrandBrainRevision[]; history: Array<{ id: string; version: number; authorName: string; createdAt: string }>; comments: BrandBrainComment[] };
-export type ReportMetrics = Record<"instagram" | "facebook", Record<"reach" | "impressions" | "engagement" | "followers" | "visits" | "clicks", number>>;
+export type ReportMetricKey = "reach" | "impressions" | "engagement" | "followers" | "visits" | "clicks";
+export type ReportChannelMetrics = Record<ReportMetricKey, number | null>;
+export type ReportMetrics = {
+  instagram: ReportChannelMetrics;
+  facebook: ReportChannelMetrics & { posts?: number | null; reactions?: number | null; comments?: number | null; shares?: number | null };
+};
 export type ClientReport = { id: string; clientAccountId: string; title: string; periodStart: string; periodEnd: string; status: "draft" | "published"; metrics: ReportMetrics; highlights: Array<{ channel: "instagram" | "facebook"; title: string; value: number }>; evidenceUrls: string[]; notes: string | null; publishedAt: string | null; createdAt: string; updatedAt: string };
+export type ClientMetaInsights = {
+  period: { since: string; until: string };
+  instagram: null | {
+    accountId: string; username: string | null;
+    metrics: { reach: number | null; views: number | null; followers: number | null; profileViews: number | null; interactions: number | null; linkClicks: number | null; accountsEngaged: number | null };
+    topContent: Array<{ id: string; caption: string | null; timestamp: string | null; permalink: string | null; likes: number | null; comments: number | null; shares: number | null; totalInteractions: number | null }>;
+  };
+  facebook: null | {
+    pageId: string; pageName: string | null;
+    metrics: { reach: number | null; views: number | null; impressions: number | null; engagement: number | null; followers: number | null; fans: number | null; pageViews: number | null };
+    topContent: Array<{ id: string; message: string | null; timestamp: string | null; permalink: string | null; reactions: number | null; comments: number | null; shares: number | null; interactions: number | null; reach: number | null; views: number | null; clicks: number | null }>;
+  };
+  warnings: Array<{ endpoint: string; code: number | null; message: string; metricOrOperation: string }>;
+};
 export type BillingCurrency = "BRL" | "EUR" | "USD" | "SEK";
 export type BillingInvoiceStatus = "open" | "paid" | "overdue" | "cancelled";
 export type BillingInvoice = {
@@ -1205,6 +1224,15 @@ export async function loadMetaAdAccounts() {
 export async function loadClientMetaAssetsBySlug(slug: string) {
   const client = await findAdminClientBySlug(slug);
   return fetchJson<{ assets: ClientMetaAssets | null }>(`/api/clients/${client.id}/meta-assets`);
+}
+
+export async function loadClientMetaAssets(clientAccountId: string) {
+  return fetchJson<{ assets: ClientMetaAssets | null }>(`/api/clients/${clientAccountId}/meta-assets`);
+}
+
+export async function loadClientMetaInsights(clientAccountId: string, since: string, until: string) {
+  const query = new URLSearchParams({ since, until });
+  return fetchJson<ClientMetaInsights>(`/api/clients/${clientAccountId}/meta-insights?${query.toString()}`);
 }
 
 export async function saveClientMetaAssetsBySlug(slug: string, assets: ClientMetaAssets) {

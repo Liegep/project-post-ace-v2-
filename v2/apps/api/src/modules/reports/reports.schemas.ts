@@ -1,8 +1,23 @@
 import { z } from "zod";
 
+const metricValueSchema = z.number().min(0).nullable();
+const channelMetricsSchema = z.object({
+  reach: metricValueSchema,
+  impressions: metricValueSchema,
+  engagement: metricValueSchema,
+  followers: metricValueSchema,
+  visits: metricValueSchema,
+  clicks: metricValueSchema,
+});
+
 const metricsSchema = z.object({
-  instagram: z.object({ reach: z.number().min(0), impressions: z.number().min(0), engagement: z.number().min(0), followers: z.number().min(0), visits: z.number().min(0), clicks: z.number().min(0) }),
-  facebook: z.object({ reach: z.number().min(0), impressions: z.number().min(0), engagement: z.number().min(0), followers: z.number().min(0), visits: z.number().min(0), clicks: z.number().min(0) }),
+  instagram: channelMetricsSchema,
+  facebook: channelMetricsSchema.extend({
+    posts: metricValueSchema.optional(),
+    reactions: metricValueSchema.optional(),
+    comments: metricValueSchema.optional(),
+    shares: metricValueSchema.optional(),
+  }),
 });
 
 const highlightsSchema = z.array(z.object({ channel: z.enum(["instagram", "facebook"]), title: z.string().trim().max(255), value: z.number().min(0) })).max(8);

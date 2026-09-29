@@ -1,213 +1,141 @@
 import { useEffect, useState } from "react";
-import { createAdminReport, deleteAdminReport, extractAdminReportMetrics, listAdminClients, listAdminReports, listPortalReportsBySlug, publishAdminReport, updateAdminReport, uploadAdminMedia, type AdminClientOption, type ClientReport, type ReportMetrics } from "./api";
+import {
+  createAdminReport, deleteAdminReport, extractAdminReportMetrics, listAdminClients, listAdminReports,
+  listPortalReportsBySlug, loadClientMetaAssets, loadClientMetaInsights, loadMetaStatus,
+  publishAdminReport, updateAdminReport, uploadAdminMedia,
+  type AdminClientOption, type ClientMetaAssets, type ClientMetaInsights, type ClientReport,
+  type MetaStatus, type ReportMetricKey, type ReportMetrics,
+} from "./api";
 
-const METRICS = [
-  ["reach", "Alcance", ["alcance", "accounts reached", "contas alcançadas", "pessoas alcançadas"]],
-  ["impressions", "Impressões", ["impressões", "impressions", "visualizações", "visualizacoes", "views"]],
-  ["engagement", "Engajamento", ["engajamento", "interações", "interacoes", "interactions", "envolvimento"]],
-  ["followers", "Seguidores", ["seguidores", "followers", "total followers", "novos seguidores"]],
-  ["visits", "Visitas", ["visitas ao perfil", "visitas", "profile visits", "acessos ao perfil"]],
-  ["clicks", "Cliques", ["cliques", "clicks", "link clicks", "toques no link"]],
-] as const;
+const METRICS: Array<[ReportMetricKey, string]> = [["reach", "Alcance"], ["impressions", "Visualizações"], ["engagement", "Interações"], ["followers", "Seguidores"], ["visits", "Visitas ao perfil"], ["clicks", "Cliques no link"]];
+const FACEBOOK_EXTRAS = [["posts", "Publicações em destaque"], ["reactions", "Reações nos destaques"], ["comments", "Comentários nos destaques"], ["shares", "Compartilhamentos nos destaques"]] as const;
 const CHECKLIST = ["Visão geral", "Melhores conteúdos"];
-const emptyMetrics = (): ReportMetrics => ({ instagram: { reach: 0, impressions: 0, engagement: 0, followers: 0, visits: 0, clicks: 0 }, facebook: { reach: 0, impressions: 0, engagement: 0, followers: 0, visits: 0, clicks: 0 } });
+const emptyChannel = () => ({ reach: null, impressions: null, engagement: null, followers: null, visits: null, clicks: null });
+const emptyMetrics = (): ReportMetrics => ({ instagram: emptyChannel(), facebook: { ...emptyChannel(), posts: null, reactions: null, comments: null, shares: null } });
 const fallbackClients: AdminClientOption[] = [{ id: "demo-aplikasi", name: "Aplikasi", slug: "aplikasi" }, { id: "demo-minas-home", name: "Minas Home ADS", slug: "minas-home-ads" }, { id: "demo-podcast", name: "Podcast Líder de Elite", slug: "podcast-lider-de-elite" }];
 const dateValue = (date: Date) => date.toISOString().slice(0, 10);
 type ReportLocale = "pt" | "en" | "es" | "it" | "sv";
 const reportLocale = (locale?: string): ReportLocale => ["en", "es", "it", "sv"].includes(locale ?? "") ? locale as ReportLocale : "pt";
 const browserLocale: Record<ReportLocale, string> = { pt: "pt-BR", en: "en-US", es: "es-ES", it: "it-IT", sv: "sv-SE" };
-const reportDateValue = (value: unknown) => {
-  const raw = String(value ?? "");
-  const datePart = raw.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? "";
-  if (datePart) return datePart;
-  const parsed = new Date(raw);
-  return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10);
-};
-const formatReportDate = (value: unknown, locale: ReportLocale = "pt") => {
-  const datePart = reportDateValue(value);
-  if (!datePart) return "—";
-  return new Date(`${datePart}T12:00:00`).toLocaleDateString(browserLocale[locale]);
-};
+const reportDateValue = (value: unknown) => { const raw = String(value ?? ""); const datePart = raw.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? ""; if (datePart) return datePart; const parsed = new Date(raw); return Number.isNaN(parsed.getTime()) ? "" : parsed.toISOString().slice(0, 10); };
+const formatReportDate = (value: unknown, locale: ReportLocale = "pt") => { const datePart = reportDateValue(value); return datePart ? new Date(`${datePart}T12:00:00`).toLocaleDateString(browserLocale[locale]) : "—"; };
+
 const reportText = {
-  pt: { performance: "RELATÓRIO DE PERFORMANCE", published: "Publicado", draft: "Rascunho", summary: "Resumo geral", combined: "Instagram + Facebook", reachByChannel: "ALCANCE POR CANAL", comparison: "Comparativo de performance", highlights: "CONTEÚDOS EM DESTAQUE", teamNotes: "Notas da equipe", results: "RESULTADOS", reports: "Relatórios", portalIntro: "Acompanhe a performance das suas redes e baixe cada período em PDF.", download: "Baixar PDF", empty: "Nenhum relatório publicado ainda.", periodView: "VISÃO DO PERÍODO", reached: "contas alcançadas", consolidated: "Dados consolidados de Instagram e Facebook.", topContent: "CONTEÚDO EM DESTAQUE", generated: "Relatório gerado pela DesignHub", inPeriod: "no período, somando", acrossChannels: "contas alcançadas entre os canais.", bestContent: "O conteúdo em destaque foi" },
-  en: { performance: "PERFORMANCE REPORT", published: "Published", draft: "Draft", summary: "Overview", combined: "Instagram + Facebook", reachByChannel: "REACH BY CHANNEL", comparison: "Performance comparison", highlights: "HIGHLIGHTED CONTENT", teamNotes: "Team notes", results: "RESULTS", reports: "Reports", portalIntro: "Track your social media performance and download each period as a PDF.", download: "Download PDF", empty: "No reports have been published yet.", periodView: "PERIOD OVERVIEW", reached: "accounts reached", consolidated: "Consolidated Instagram and Facebook data.", topContent: "TOP CONTENT", generated: "Report generated by DesignHub", inPeriod: "led reach in the period, totaling", acrossChannels: "accounts reached across channels.", bestContent: "The highlighted content was" },
-  es: { performance: "INFORME DE RENDIMIENTO", published: "Publicado", draft: "Borrador", summary: "Resumen general", combined: "Instagram + Facebook", reachByChannel: "ALCANCE POR CANAL", comparison: "Comparativa de rendimiento", highlights: "CONTENIDO DESTACADO", teamNotes: "Notas del equipo", results: "RESULTADOS", reports: "Informes", portalIntro: "Sigue el rendimiento de tus redes y descarga cada período en PDF.", download: "Descargar PDF", empty: "Aún no hay informes publicados.", periodView: "RESUMEN DEL PERÍODO", reached: "cuentas alcanzadas", consolidated: "Datos consolidados de Instagram y Facebook.", topContent: "CONTENIDO DESTACADO", generated: "Informe generado por DesignHub", inPeriod: "lideró el alcance en el período, sumando", acrossChannels: "cuentas alcanzadas entre los canales.", bestContent: "El contenido destacado fue" },
-  it: { performance: "REPORT DELLE PERFORMANCE", published: "Pubblicato", draft: "Bozza", summary: "Riepilogo generale", combined: "Instagram + Facebook", reachByChannel: "COPERTURA PER CANALE", comparison: "Confronto delle performance", highlights: "CONTENUTI IN EVIDENZA", teamNotes: "Note del team", results: "RISULTATI", reports: "Report", portalIntro: "Segui le performance dei tuoi social e scarica ogni periodo in PDF.", download: "Scarica PDF", empty: "Nessun report pubblicato.", periodView: "PANORAMICA DEL PERIODO", reached: "account raggiunti", consolidated: "Dati consolidati di Instagram e Facebook.", topContent: "CONTENUTO IN EVIDENZA", generated: "Report generato da DesignHub", inPeriod: "ha guidato la copertura nel periodo, per un totale di", acrossChannels: "account raggiunti sui canali.", bestContent: "Il contenuto in evidenza è stato" },
-  sv: { performance: "PRESTANDARAPPORT", published: "Publicerad", draft: "Utkast", summary: "Sammanfattning", combined: "Instagram + Facebook", reachByChannel: "RÄCKVIDD PER KANAL", comparison: "Jämförelse av resultat", highlights: "UTVALT INNEHÅLL", teamNotes: "Teamets anteckningar", results: "RESULTAT", reports: "Rapporter", portalIntro: "Följ resultatet för dina sociala medier och ladda ner varje period som PDF.", download: "Ladda ner PDF", empty: "Inga rapporter har publicerats ännu.", periodView: "PERIODÖVERSIKT", reached: "nådda konton", consolidated: "Sammanställda data från Instagram och Facebook.", topContent: "BÄSTA INNEHÅLL", generated: "Rapport genererad av DesignHub", inPeriod: "hade högst räckvidd under perioden, totalt", acrossChannels: "nådda konton över kanalerna.", bestContent: "Det utvalda innehållet var" },
+  pt: { performance: "RELATÓRIO DE PERFORMANCE", published: "Publicado", draft: "Rascunho", summary: "Resumo geral", organic: "PERFORMANCE ORGÂNICA", highlights: "CONTEÚDOS EM DESTAQUE", teamNotes: "Notas da equipe", results: "RESULTADOS", reports: "Relatórios", portalIntro: "Acompanhe a performance das suas redes e baixe cada período em PDF.", download: "Baixar PDF", empty: "Nenhum relatório publicado ainda.", generated: "Relatório gerado pela DesignHub", unavailable: "Não disponível", noMetrics: "A Meta não disponibilizou métricas para este período.", bestContent: "Conteúdo em destaque" },
+  en: { performance: "PERFORMANCE REPORT", published: "Published", draft: "Draft", summary: "Overview", organic: "ORGANIC PERFORMANCE", highlights: "HIGHLIGHTED CONTENT", teamNotes: "Team notes", results: "RESULTS", reports: "Reports", portalIntro: "Track your social media performance and download each period as a PDF.", download: "Download PDF", empty: "No reports have been published yet.", generated: "Report generated by DesignHub", unavailable: "Not available", noMetrics: "Meta did not provide metrics for this period.", bestContent: "Highlighted content" },
+  es: { performance: "INFORME DE RENDIMIENTO", published: "Publicado", draft: "Borrador", summary: "Resumen general", organic: "RENDIMIENTO ORGÁNICO", highlights: "CONTENIDO DESTACADO", teamNotes: "Notas del equipo", results: "RESULTADOS", reports: "Informes", portalIntro: "Sigue el rendimiento de tus redes y descarga cada período en PDF.", download: "Descargar PDF", empty: "Aún no hay informes publicados.", generated: "Informe generado por DesignHub", unavailable: "No disponible", noMetrics: "Meta no proporcionó métricas para este período.", bestContent: "Contenido destacado" },
+  it: { performance: "REPORT DELLE PERFORMANCE", published: "Pubblicato", draft: "Bozza", summary: "Riepilogo generale", organic: "PERFORMANCE ORGANICA", highlights: "CONTENUTI IN EVIDENZA", teamNotes: "Note del team", results: "RISULTATI", reports: "Report", portalIntro: "Segui le performance dei tuoi social e scarica ogni periodo in PDF.", download: "Scarica PDF", empty: "Nessun report pubblicato.", generated: "Report generato da DesignHub", unavailable: "Non disponibile", noMetrics: "Meta non ha fornito metriche per questo periodo.", bestContent: "Contenuto in evidenza" },
+  sv: { performance: "PRESTANDARAPPORT", published: "Publicerad", draft: "Utkast", summary: "Sammanfattning", organic: "ORGANISK PRESTANDA", highlights: "UTVALT INNEHÅLL", teamNotes: "Teamets anteckningar", results: "RESULTAT", reports: "Rapporter", portalIntro: "Följ resultatet för dina sociala medier och ladda ner varje period som PDF.", download: "Ladda ner PDF", empty: "Inga rapporter har publicerats ännu.", generated: "Rapport genererad av DesignHub", unavailable: "Inte tillgängligt", noMetrics: "Meta tillhandahöll inga mätvärden för perioden.", bestContent: "Utvalt innehåll" },
 } as const;
-const metricText: Record<ReportLocale, Record<string, string>> = { pt: { reach: "Alcance", impressions: "Impressões", engagement: "Engajamento", followers: "Seguidores", visits: "Visitas", clicks: "Cliques" }, en: { reach: "Reach", impressions: "Impressions", engagement: "Engagement", followers: "Followers", visits: "Visits", clicks: "Clicks" }, es: { reach: "Alcance", impressions: "Impresiones", engagement: "Interacción", followers: "Seguidores", visits: "Visitas", clicks: "Clics" }, it: { reach: "Copertura", impressions: "Impression", engagement: "Coinvolgimento", followers: "Follower", visits: "Visite", clicks: "Clic" }, sv: { reach: "Räckvidd", impressions: "Visningar", engagement: "Engagemang", followers: "Följare", visits: "Besök", clicks: "Klick" } };
-const number = (value: number, locale: ReportLocale = "pt") => new Intl.NumberFormat(browserLocale[locale], { notation: value >= 10_000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(value || 0);
+const metricText: Record<ReportLocale, Record<string, string>> = {
+  pt: { reach: "Alcance", impressions: "Visualizações", engagement: "Interações", followers: "Seguidores", visits: "Visitas ao perfil", clicks: "Cliques no link", posts: "Publicações em destaque", reactions: "Reações nos destaques", comments: "Comentários nos destaques", shares: "Compartilhamentos nos destaques" },
+  en: { reach: "Reach", impressions: "Views", engagement: "Interactions", followers: "Followers", visits: "Profile visits", clicks: "Link clicks", posts: "Highlighted posts", reactions: "Reactions on highlights", comments: "Comments on highlights", shares: "Shares on highlights" },
+  es: { reach: "Alcance", impressions: "Visualizaciones", engagement: "Interacciones", followers: "Seguidores", visits: "Visitas al perfil", clicks: "Clics en enlaces", posts: "Publicaciones destacadas", reactions: "Reacciones destacadas", comments: "Comentarios destacados", shares: "Compartidos destacados" },
+  it: { reach: "Copertura", impressions: "Visualizzazioni", engagement: "Interazioni", followers: "Follower", visits: "Visite al profilo", clicks: "Clic sul link", posts: "Post in evidenza", reactions: "Reazioni in evidenza", comments: "Commenti in evidenza", shares: "Condivisioni in evidenza" },
+  sv: { reach: "Räckvidd", impressions: "Visningar", engagement: "Interaktioner", followers: "Följare", visits: "Profilbesök", clicks: "Länkklick", posts: "Utvalda inlägg", reactions: "Reaktioner på utvalda", comments: "Kommentarer på utvalda", shares: "Delningar av utvalda" },
+};
+const number = (value: number, locale: ReportLocale = "pt") => new Intl.NumberFormat(browserLocale[locale], { notation: value >= 10_000 ? "compact" : "standard", maximumFractionDigits: 1 }).format(value);
+const displayMetric = (value: number | null | undefined, locale: ReportLocale) => value == null ? reportText[locale].unavailable : number(value, locale);
 const localReportKey = (clientId: string) => `designhub-v2-local-reports:${clientId}`;
 const readLocalReports = (clientId: string): ClientReport[] => { try { return JSON.parse(window.localStorage.getItem(localReportKey(clientId)) ?? "[]") as ClientReport[]; } catch { return []; } };
 const writeLocalReports = (clientId: string, reports: ClientReport[]) => window.localStorage.setItem(localReportKey(clientId), JSON.stringify(reports));
 
 function reportSummary(report: Pick<ClientReport, "metrics" | "highlights">, locale: ReportLocale = "pt") {
-  const instagram = report.metrics.instagram; const facebook = report.metrics.facebook;
-  const winner = instagram.reach >= facebook.reach ? "Instagram" : "Facebook";
-  const totalReach = instagram.reach + facebook.reach;
+  const statements: string[] = [];
+  const { instagram, facebook } = report.metrics;
+  const instagramAvailable = [["reach", instagram.reach], ["engagement", instagram.engagement]] as const;
+  const facebookAvailable = [["reach", facebook.reach], ["followers", facebook.followers], ["engagement", facebook.engagement]] as const;
+  const describe = (channel: string, values: ReadonlyArray<readonly [string, number | null]>) => {
+    const parts = values.filter((entry): entry is readonly [string, number] => entry[1] != null).map(([key, value]) => `${number(value, locale)} ${metricText[locale][key].toLocaleLowerCase(browserLocale[locale])}`);
+    if (parts.length) statements.push(`${channel}: ${parts.join(" · ")}`);
+  };
+  describe("Instagram", instagramAvailable);
+  describe("Facebook", facebookAvailable);
   const best = [...report.highlights].sort((a, b) => b.value - a.value)[0];
-  const copy = reportText[locale];
-  return `${winner} ${copy.inPeriod} ${number(totalReach, locale)} ${copy.acrossChannels}${best ? ` ${copy.bestContent} “${best.title}”.` : ""}`;
+  if (best) statements.push(`${reportText[locale].bestContent}: “${best.title}”`);
+  return statements.length ? `${statements.join(". ")}.` : reportText[locale].noMetrics;
 }
 
 function visibleReportNotes(value: string | null) {
   const raw = value?.trim() ?? "";
   if (!raw.startsWith("Observações:\n{")) return raw;
-  const jsonStart = raw.indexOf("{");
-  const jsonEnd = raw.indexOf("\n\n", jsonStart);
-  const candidate = raw.slice(jsonStart, jsonEnd < 0 ? undefined : jsonEnd);
-  try {
-    const parsed = JSON.parse(candidate) as { text?: unknown };
-    const observation = typeof parsed.text === "string" ? parsed.text.trim() : "";
-    const remainder = jsonEnd < 0 ? "" : raw.slice(jsonEnd + 2).trim();
-    return [observation ? `Observações:\n${observation}` : "", remainder].filter(Boolean).join("\n\n");
-  } catch {
-    return raw;
-  }
+  const jsonStart = raw.indexOf("{"); const jsonEnd = raw.indexOf("\n\n", jsonStart);
+  try { const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd < 0 ? undefined : jsonEnd)) as { text?: unknown }; const observation = typeof parsed.text === "string" ? parsed.text.trim() : ""; const remainder = jsonEnd < 0 ? "" : raw.slice(jsonEnd + 2).trim(); return [observation ? `Observações:\n${observation}` : "", remainder].filter(Boolean).join("\n\n"); } catch { return raw; }
 }
 
-function metricFromText(text: string, aliases: readonly string[]) {
-  const lines = text.toLocaleLowerCase("pt-BR").split("\n");
-  for (let index = 0; index < lines.length; index += 1) {
-    if (!aliases.some((alias) => lines[index].includes(alias))) continue;
-    // Meta often places the label and its value on separate lines in a screenshot.
-    const nearbyLines = lines.slice(Math.max(0, index - 1), index + 4);
-    for (const line of nearbyLines) {
-      const hit = line.match(/(?:\d{1,3}(?:[.\s]\d{3})+|\d+)(?:,\d+)?\s*(?:mil|k)?/i);
-      if (!hit) continue;
-      const raw = hit[0].toLocaleLowerCase().replace(/\s/g, "");
-      const multiplier = /mil|k/.test(raw) ? 1_000 : 1;
-      return Math.round(Number(raw.replace(/mil|k|\./g, "").replace(",", ".")) * multiplier);
-    }
-  }
-  return null;
+function reportPlatformRows(report: Pick<ClientReport, "metrics">, channel: "instagram" | "facebook") {
+  if (channel === "instagram") return METRICS.map(([key]) => [key, report.metrics.instagram[key]] as const);
+  return [...METRICS.map(([key]) => [key, report.metrics.facebook[key]] as const), ...FACEBOOK_EXTRAS.map(([key]) => [key, report.metrics.facebook[key]] as const)];
+}
+
+function PlatformMetrics({ report, channel, locale }: { report: ClientReport; channel: "instagram" | "facebook"; locale: ReportLocale }) {
+  return <article className={`report-platform ${channel}`}><header><span aria-hidden="true">{channel === "instagram" ? "◎" : "f"}</span><h3>{channel === "instagram" ? "Instagram" : "Facebook"}</h3></header><div>{reportPlatformRows(report, channel).map(([key, value]) => <p className={value == null ? "unavailable" : ""} key={key}><span>{metricText[locale][key]}</span><b>{displayMetric(value, locale)}</b></p>)}</div></article>;
 }
 
 function ReportDocument({ report, clientName, locale = "pt", printable = false }: { report: ClientReport; clientName: string; locale?: string; printable?: boolean }) {
-  const language = reportLocale(locale); const copy = reportText[language];
-  const maxReach = Math.max(report.metrics.instagram.reach, report.metrics.facebook.reach, 1);
-  const notes = visibleReportNotes(report.notes);
-  return <article className={printable ? "report-document printable-report" : "report-document"}><header><div><span>{copy.performance}</span><h2>{clientName}</h2><p>{formatReportDate(report.periodStart, language)} a {formatReportDate(report.periodEnd, language)}</p></div><b>{report.status === "published" ? copy.published : copy.draft}</b></header><section className="report-summary"><strong>{copy.summary}</strong><p>{reportSummary(report, language)}</p></section><section className="report-kpis">{METRICS.slice(0, 4).map(([key]) => <article key={key}><span>{metricText[language][key]}</span><strong>{number(report.metrics.instagram[key] + report.metrics.facebook[key], language)}</strong><small>{copy.combined}</small></article>)}</section><section className="report-chart"><header><div><span>{copy.reachByChannel}</span><h3>{copy.comparison}</h3></div></header>{(["instagram", "facebook"] as const).map((channel) => <div className={`report-bar ${channel}`} key={channel}><span>{channel === "instagram" ? "Instagram" : "Facebook"}</span><i><b style={{ width: `${(report.metrics[channel].reach / maxReach) * 100}%` }} /></i><strong>{number(report.metrics[channel].reach, language)}</strong></div>)}</section><section className="report-detail-grid">{(["instagram", "facebook"] as const).map((channel) => <article key={channel}><h3>{channel === "instagram" ? "Instagram" : "Facebook"}</h3>{METRICS.slice(2).map(([key]) => <p key={key}><span>{metricText[language][key]}</span><b>{number(report.metrics[channel][key], language)}</b></p>)}</article>)}</section>{report.highlights.length ? <section className="report-highlights"><span>{copy.highlights}</span>{report.highlights.map((item, index) => <p key={`${item.title}-${index}`}><b>{index + 1}</b>{item.title}<em>{item.channel === "instagram" ? "Instagram" : "Facebook"} · {number(item.value, language)}</em></p>)}</section> : null}{notes ? <section className="report-notes"><strong>{copy.teamNotes}</strong><p>{notes}</p></section> : null}</article>;
+  const language = reportLocale(locale); const copy = reportText[language]; const notes = visibleReportNotes(report.notes);
+  return <article className={printable ? "report-document printable-report" : "report-document"}>
+    <header><div><span>{copy.performance}</span><h2>{clientName}</h2><p>{formatReportDate(report.periodStart, language)} a {formatReportDate(report.periodEnd, language)}</p></div><b>{report.status === "published" ? copy.published : copy.draft}</b></header>
+    <section className="report-summary"><strong>{copy.summary}</strong><p>{reportSummary(report, language)}</p></section>
+    <section className="report-organic"><span>{copy.organic}</span><div className="report-platform-grid"><PlatformMetrics report={report} channel="instagram" locale={language} /><PlatformMetrics report={report} channel="facebook" locale={language} /></div></section>
+    {report.highlights.length ? <section className="report-highlights"><span>{copy.highlights}</span>{report.highlights.map((item, index) => <p key={`${item.channel}-${item.title}-${index}`}><b>{index + 1}</b>{item.title}<em>{item.channel === "instagram" ? "Instagram" : "Facebook"} · {number(item.value, language)}</em></p>)}</section> : null}
+    {notes ? <section className="report-notes"><strong>{copy.teamNotes}</strong><p>{notes}</p></section> : null}
+  </article>;
 }
 
 async function downloadReportPdf(report: ClientReport, clientName: string, locale = "pt") {
-  const { jsPDF } = await import("jspdf");
-  const language = reportLocale(locale); const copy = reportText[language];
-  const pdf = new jsPDF({ unit: "pt", format: "a4" });
-  const width = 595;
-  const contentX = 42;
-  const cardWidth = 246;
-  const totalReach = report.metrics.instagram.reach + report.metrics.facebook.reach;
-  const maxReach = Math.max(report.metrics.instagram.reach, report.metrics.facebook.reach, 1);
+  const { jsPDF } = await import("jspdf"); const language = reportLocale(locale); const copy = reportText[language]; const pdf = new jsPDF({ unit: "pt", format: "a4" }); const contentX = 42;
+  pdf.setFillColor(29, 39, 73); pdf.rect(0, 0, 595, 842, "F"); pdf.setFillColor(73, 88, 207); pdf.circle(535, 58, 112, "F"); pdf.setFillColor(53, 190, 220); pdf.circle(502, 28, 74, "F");
+  pdf.setTextColor(255, 255, 255); pdf.setFontSize(10); pdf.text(copy.performance, contentX, 48); pdf.setFontSize(27); pdf.text(clientName, contentX, 79); pdf.setFontSize(11); pdf.text(`${formatReportDate(report.periodStart, language)} a ${formatReportDate(report.periodEnd, language)}`, contentX, 100);
+  pdf.setFillColor(255, 255, 255); pdf.roundedRect(25, 128, 545, 668, 22, 22, "F"); pdf.setTextColor(39, 51, 87); pdf.setFontSize(18); pdf.text(report.title, contentX, 164, { maxWidth: 490 }); pdf.setTextColor(92, 106, 137); pdf.setFontSize(10); pdf.text(reportSummary(report, language), contentX, 190, { maxWidth: 480, lineHeightFactor: 1.4 });
+  pdf.setTextColor(79, 91, 122); pdf.setFontSize(9); pdf.text(copy.organic, contentX, 235);
+  (["instagram", "facebook"] as const).forEach((channel, channelIndex) => { const x = contentX + channelIndex * 258; pdf.setFillColor(channel === "instagram" ? 252 : 242, channel === "instagram" ? 243 : 247, 255); pdf.roundedRect(x, 252, 246, 300, 14, 14, "F"); pdf.setTextColor(39, 51, 87); pdf.setFontSize(16); pdf.text(channel === "instagram" ? "Instagram" : "Facebook", x + 15, 281); reportPlatformRows(report, channel).forEach(([key, value], rowIndex) => { const y = 312 + rowIndex * 25; if (y > 535) return; pdf.setTextColor(103, 117, 148); pdf.setFontSize(8); pdf.text(metricText[language][key], x + 15, y, { maxWidth: 145 }); pdf.setTextColor(value == null ? 145 : 39, value == null ? 151 : 51, value == null ? 166 : 87); pdf.setFontSize(value == null ? 8 : 11); pdf.text(displayMetric(value, language), x + 230, y, { align: "right" }); }); });
+  if (report.highlights.length) { pdf.setFillColor(247, 249, 253); pdf.roundedRect(contentX, 575, 511, 128, 14, 14, "F"); pdf.setTextColor(79, 91, 122); pdf.setFontSize(9); pdf.text(copy.highlights, contentX + 15, 598); report.highlights.slice(0, 4).forEach((item, index) => { const y = 622 + index * 20; pdf.setTextColor(39, 51, 87); pdf.setFontSize(9); pdf.text(`${index + 1}. ${item.title}`, contentX + 15, y, { maxWidth: 390 }); pdf.setTextColor(103, 117, 148); pdf.text(`${item.channel === "instagram" ? "Instagram" : "Facebook"} · ${number(item.value, language)}`, 535, y, { align: "right" }); }); }
+  const notes = visibleReportNotes(report.notes); if (notes) { pdf.setTextColor(79, 91, 122); pdf.setFontSize(9); pdf.text(copy.teamNotes.toUpperCase(), contentX, 735); pdf.setTextColor(82, 94, 122); pdf.text(notes, contentX, 754, { maxWidth: 500 }); }
+  pdf.setTextColor(255, 255, 255); pdf.setFontSize(9); pdf.text(copy.generated, contentX, 820); pdf.save(`${report.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.pdf`);
+}
 
-  pdf.setFillColor(29, 39, 73);
-  pdf.rect(0, 0, width, 842, "F");
-  pdf.setFillColor(73, 88, 207);
-  pdf.circle(535, 58, 112, "F");
-  pdf.setFillColor(53, 190, 220);
-  pdf.circle(502, 28, 74, "F");
-  pdf.setTextColor(255, 255, 255);
-  pdf.setFontSize(10);
-  pdf.text(copy.performance, contentX, 48);
-  pdf.setFontSize(27);
-  pdf.text(clientName, contentX, 79);
-  pdf.setFontSize(11);
-  pdf.text(`${formatReportDate(report.periodStart, language)} a ${formatReportDate(report.periodEnd, language)}`, contentX, 100);
-
-  pdf.setFillColor(255, 255, 255);
-  pdf.roundedRect(25, 128, 545, 668, 22, 22, "F");
-  pdf.setTextColor(39, 51, 87);
-  pdf.setFontSize(18);
-  pdf.text(report.title, contentX, 164, { maxWidth: 490 });
-  pdf.setTextColor(92, 106, 137);
-  pdf.setFontSize(10);
-  pdf.text(reportSummary(report, language), contentX, 192, { maxWidth: 475, lineHeightFactor: 1.45 });
-
-  const kpis = METRICS.slice(0, 4);
-  kpis.forEach(([key], index) => {
-    const x = contentX + (index % 2) * 258;
-    const y = 244 + Math.floor(index / 2) * 72;
-    pdf.setFillColor(index % 2 ? 241 : 237, index % 2 ? 244 : 240, index % 2 ? 255 : 255);
-    pdf.roundedRect(x, y, cardWidth, 57, 12, 12, "F");
-    pdf.setTextColor(103, 117, 148);
-    pdf.setFontSize(9);
-    pdf.text(metricText[language][key].toUpperCase(), x + 13, y + 19);
-    pdf.setTextColor(43, 54, 88);
-    pdf.setFontSize(17);
-    pdf.text(number(report.metrics.instagram[key] + report.metrics.facebook[key], language), x + 13, y + 43);
-  });
-
-  pdf.setTextColor(79, 91, 122);
-  pdf.setFontSize(9);
-  pdf.text(copy.reachByChannel, contentX, 397);
-  pdf.setTextColor(39, 51, 87);
-  pdf.setFontSize(16);
-  pdf.text(copy.comparison, contentX, 420);
-  (["instagram", "facebook"] as const).forEach((channel, index) => {
-    const y = 461 + index * 42;
-    const value = report.metrics[channel].reach;
-    const fill = channel === "instagram" ? [229, 83, 153] : [54, 133, 233];
-    pdf.setTextColor(84, 97, 128);
-    pdf.setFontSize(11);
-    pdf.text(channel === "instagram" ? "Instagram" : "Facebook", contentX, y);
-    pdf.setFillColor(229, 233, 242);
-    pdf.roundedRect(contentX + 92, y - 10, 300, 12, 6, 6, "F");
-    pdf.setFillColor(fill[0], fill[1], fill[2]);
-    pdf.roundedRect(contentX + 92, y - 10, Math.max(6, 300 * value / maxReach), 12, 6, 6, "F");
-    pdf.setTextColor(39, 51, 87);
-    pdf.setFontSize(11);
-    pdf.text(number(value, language), 515, y, { align: "right" });
-  });
-
-  pdf.setFillColor(247, 249, 253);
-  pdf.roundedRect(contentX, 545, 511, 142, 14, 14, "F");
-  pdf.setTextColor(79, 91, 122);
-  pdf.setFontSize(9);
-  pdf.text(copy.periodView, contentX + 15, 569);
-  pdf.setTextColor(39, 51, 87);
-  pdf.setFontSize(17);
-  pdf.text(`${number(totalReach, language)} ${copy.reached}`, contentX + 15, 595);
-  pdf.setTextColor(100, 113, 143);
-  pdf.setFontSize(10);
-  pdf.text(copy.consolidated, contentX + 15, 616);
-  if (report.highlights[0]) {
-    pdf.setTextColor(79, 91, 122);
-    pdf.setFontSize(9);
-    pdf.text(copy.topContent, contentX + 15, 648);
-    pdf.setTextColor(39, 51, 87);
-    pdf.setFontSize(11);
-    pdf.text(report.highlights[0].title, contentX + 15, 669, { maxWidth: 430 });
-  }
-
-  pdf.setTextColor(255, 255, 255);
-  pdf.setFontSize(9);
-  pdf.text(copy.generated, contentX, 820);
-  pdf.save(`${report.title.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.pdf`);
+function sumKnown(values: Array<number | null | undefined>, emptyValue: number | null) { const known = values.filter((value): value is number => typeof value === "number"); return known.length ? known.reduce((sum, value) => sum + value, 0) : emptyValue; }
+function metaHighlights(insights: ClientMetaInsights): ClientReport["highlights"] {
+  const candidates: Array<ClientReport["highlights"][number] & { identity: string }> = [];
+  for (const item of insights.instagram?.topContent ?? []) candidates.push({ identity: `instagram:${item.id}`, channel: "instagram", title: item.caption?.trim() || "Publicação do Instagram", value: item.totalInteractions ?? sumKnown([item.likes, item.comments, item.shares], 0) ?? 0 });
+  for (const item of insights.facebook?.topContent ?? []) candidates.push({ identity: `facebook:${item.id}`, channel: "facebook", title: item.message?.trim() || "Publicação do Facebook", value: item.interactions ?? sumKnown([item.reactions, item.comments, item.shares], 0) ?? 0 });
+  const seen = new Set<string>(); return candidates.sort((a, b) => b.value - a.value).filter((item) => !seen.has(item.identity) && Boolean(seen.add(item.identity))).slice(0, 8).map(({ channel, title, value }) => ({ channel, title: title.slice(0, 255), value }));
+}
+function metricsFromMeta(insights: ClientMetaInsights, current: ReportMetrics) {
+  const metrics: ReportMetrics = { instagram: { ...current.instagram }, facebook: { ...current.facebook } }; const imported: string[] = [];
+  if (insights.instagram) { const values = insights.instagram.metrics; metrics.instagram = { reach: values.reach, impressions: values.views, engagement: values.interactions, followers: values.followers, visits: values.profileViews, clicks: values.linkClicks }; for (const [key] of METRICS) if (metrics.instagram[key] != null) imported.push(`instagram.${key}`); }
+  if (insights.facebook) { const values = insights.facebook.metrics; const postListFailed = insights.warnings.some((warning) => warning.metricOrOperation === "facebook.posts.list"); const emptyAggregate = postListFailed ? null : 0; metrics.facebook = { reach: values.reach, impressions: values.views ?? values.impressions, engagement: values.engagement, followers: values.followers ?? values.fans, visits: values.pageViews, clicks: null, posts: postListFailed ? null : insights.facebook.topContent.length, reactions: sumKnown(insights.facebook.topContent.map((item) => item.reactions), emptyAggregate), comments: sumKnown(insights.facebook.topContent.map((item) => item.comments), emptyAggregate), shares: sumKnown(insights.facebook.topContent.map((item) => item.shares), emptyAggregate) }; for (const [key, value] of reportPlatformRows({ metrics }, "facebook")) if (value != null) imported.push(`facebook.${key}`); }
+  return { metrics, imported };
 }
 
 export function ReportsWorkspace({ newReportSignal = 0 }: { newReportSignal?: number }) {
-  const [clients, setClients] = useState<AdminClientOption[]>(fallbackClients); const [clientId, setClientId] = useState(fallbackClients[0].id); const [reports, setReports] = useState<ClientReport[]>([]); const [editing, setEditing] = useState<ClientReport | null>(null); const [files, setFiles] = useState<Record<string, File>>({}); const [reading, setReading] = useState(false); const [message, setMessage] = useState(""); const [localMode, setLocalMode] = useState(false); const [ocrText, setOcrText] = useState(""); const [ocrProgress, setOcrProgress] = useState("");
+  const [clients, setClients] = useState<AdminClientOption[]>(fallbackClients); const [clientId, setClientId] = useState(fallbackClients[0].id); const [reports, setReports] = useState<ClientReport[]>([]); const [editing, setEditing] = useState<ClientReport | null>(null); const [files, setFiles] = useState<Record<string, File>>({}); const [reading, setReading] = useState(false); const [importingMeta, setImportingMeta] = useState(false); const [message, setMessage] = useState(""); const [localMode, setLocalMode] = useState(false); const [importedFields, setImportedFields] = useState<string[]>([]); const [metaStatus, setMetaStatus] = useState<MetaStatus | null>(null); const [metaAssets, setMetaAssets] = useState<ClientMetaAssets | null>(null);
   const selectedClient = clients.find((client) => client.id === clientId);
   const refresh = async (id = clientId) => { if (!id) return; try { const response = await listAdminReports(id); setReports(response.items); setLocalMode(false); } catch { setLocalMode(true); setReports(readLocalReports(id)); } };
+  const refreshMetaContext = async (id: string) => { try { const [status, assets] = await Promise.all([loadMetaStatus(), loadClientMetaAssets(id)]); setMetaStatus(status); setMetaAssets(assets.assets); } catch { setMetaStatus(null); setMetaAssets(null); } };
   useEffect(() => { void listAdminClients().then((result) => { if (result.items.length) { setClients(result.items); setClientId(result.items[0].id); } }).catch(() => setLocalMode(true)); }, []);
-  useEffect(() => {
-    setEditing((current) => current?.clientAccountId === clientId ? current : null);
-    setFiles({});
-    setMessage("");
-    void refresh(clientId);
-  }, [clientId]);
-  const newReport = () => { const end = new Date(); const start = new Date(); start.setDate(end.getDate() - 30); setFiles({}); setEditing({ id: "", clientAccountId: clientId, title: `Relatório ${selectedClient?.name ?? ""}`, periodStart: dateValue(start), periodEnd: dateValue(end), status: "draft", metrics: emptyMetrics(), highlights: [], evidenceUrls: [], notes: null, publishedAt: null, createdAt: "", updatedAt: "" }); };
+  useEffect(() => { setEditing((current) => current?.clientAccountId === clientId ? current : null); setFiles({}); setMessage(""); setImportedFields([]); void refresh(clientId); void refreshMetaContext(clientId); }, [clientId]);
+  const newReport = () => { const end = new Date(); const start = new Date(); start.setDate(end.getDate() - 30); setFiles({}); setImportedFields([]); setEditing({ id: "", clientAccountId: clientId, title: `Relatório ${selectedClient?.name ?? ""}`, periodStart: dateValue(start), periodEnd: dateValue(end), status: "draft", metrics: emptyMetrics(), highlights: [], evidenceUrls: [], notes: null, publishedAt: null, createdAt: "", updatedAt: "" }); };
   useEffect(() => { if (newReportSignal > 0) newReport(); }, [newReportSignal]);
-  const readScreenshots = async () => { if (!editing || !Object.keys(files).length) return; setReading(true); setOcrProgress("Enviando capturas para análise..."); setMessage(""); try { const evidenceUrls = await Promise.all(Object.values(files).map(uploadAdminMedia)); setOcrProgress("Extraindo métricas com IA..."); const extracted = await extractAdminReportMetrics(clientId, evidenceUrls); setEditing({ ...editing, metrics: extracted.metrics, highlights: extracted.highlights, evidenceUrls: [...editing.evidenceUrls, ...evidenceUrls] }); setMessage("Análise concluída. Revise os números e os conteúdos em destaque antes de salvar."); } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível analisar as capturas. Você pode preencher os campos manualmente."); } finally { setReading(false); setOcrProgress(""); } };
-  const save = async () => { if (!editing || !clientId || !editing.title.trim()) return; const payload = { title: editing.title.trim(), periodStart: reportDateValue(editing.periodStart), periodEnd: reportDateValue(editing.periodEnd), metrics: editing.metrics, highlights: editing.highlights, evidenceUrls: editing.evidenceUrls, notes: editing.notes }; try { const response = editing.id ? await updateAdminReport(clientId, editing.id, payload) : await createAdminReport(clientId, payload); setEditing(response.report); await refresh(); } catch { const now = new Date().toISOString(); const localReport: ClientReport = editing.id ? { ...editing, ...payload, updatedAt: now } : { ...editing, ...payload, id: crypto.randomUUID(), clientAccountId: clientId, createdAt: now, updatedAt: now }; const next = [localReport, ...reports.filter((report) => report.id !== localReport.id)]; writeLocalReports(clientId, next); setReports(next); setEditing(localReport); setLocalMode(true); } setMessage(localMode ? "Rascunho salvo neste navegador." : "Relatório salvo como rascunho."); };
+  const importMeta = async () => { if (!editing) return; setImportingMeta(true); setMessage(""); try { const insights = await loadClientMetaInsights(clientId, reportDateValue(editing.periodStart), reportDateValue(editing.periodEnd)); const mapped = metricsFromMeta(insights, editing.metrics); const highlights = metaHighlights(insights); setEditing({ ...editing, metrics: mapped.metrics, highlights: highlights.length ? highlights : editing.highlights }); setImportedFields(mapped.imported); const available = mapped.imported.length; const warningText = insights.warnings.length ? ` A Meta não disponibilizou ${insights.warnings.length} leitura${insights.warnings.length === 1 ? "" : "s"}; esses campos permanecem como “Não disponível”.` : ""; setMessage(`${available} campo${available === 1 ? "" : "s"} importado${available === 1 ? "" : "s"} da Meta.${warningText}`); } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível importar os dados da Meta para este período."); } finally { setImportingMeta(false); } };
+  const readScreenshots = async () => { if (!editing || !Object.keys(files).length) return; setReading(true); setMessage(""); try { const evidenceUrls = await Promise.all(Object.values(files).map(uploadAdminMedia)); const extracted = await extractAdminReportMetrics(clientId, evidenceUrls); setEditing({ ...editing, metrics: extracted.metrics, highlights: extracted.highlights, evidenceUrls: [...editing.evidenceUrls, ...evidenceUrls] }); setImportedFields([]); setMessage("Análise concluída. Revise os números e os conteúdos em destaque antes de salvar."); } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível analisar as capturas. Você pode preencher os campos manualmente."); } finally { setReading(false); } };
+  const changeMetric = (channel: "instagram" | "facebook", key: string, raw: string) => { if (!editing) return; const value = raw === "" ? null : Math.max(0, Number(raw) || 0); setEditing({ ...editing, metrics: { ...editing.metrics, [channel]: { ...editing.metrics[channel], [key]: value } } }); setImportedFields((current) => current.filter((field) => field !== `${channel}.${key}`)); };
+  const save = async () => { if (!editing || !clientId || !editing.title.trim()) return; const payload = { title: editing.title.trim(), periodStart: reportDateValue(editing.periodStart), periodEnd: reportDateValue(editing.periodEnd), metrics: editing.metrics, highlights: editing.highlights, evidenceUrls: editing.evidenceUrls, notes: editing.notes }; try { const response = editing.id ? await updateAdminReport(clientId, editing.id, payload) : await createAdminReport(clientId, payload); setEditing(response.report); await refresh(); setMessage("Relatório salvo como rascunho."); } catch { const now = new Date().toISOString(); const localReport: ClientReport = editing.id ? { ...editing, ...payload, updatedAt: now } : { ...editing, ...payload, id: crypto.randomUUID(), clientAccountId: clientId, createdAt: now, updatedAt: now }; const next = [localReport, ...reports.filter((report) => report.id !== localReport.id)]; writeLocalReports(clientId, next); setReports(next); setEditing(localReport); setLocalMode(true); setMessage("Rascunho salvo neste navegador."); } };
   const publish = async () => { if (!editing?.id) return; try { const response = await publishAdminReport(clientId, editing.id); setEditing(response.report); await refresh(); setMessage("Relatório publicado no portal do cliente."); } catch { const report = { ...editing, status: "published" as const, publishedAt: new Date().toISOString(), updatedAt: new Date().toISOString() }; const next = reports.map((item) => item.id === report.id ? report : item); writeLocalReports(clientId, next); setReports(next); setEditing(report); setLocalMode(true); setMessage("Relatório publicado nesta demonstração."); } };
-  return <section className="reports-workspace"><div className="reports-client-picker"><label>Cliente<select value={clientId} onChange={(event) => setClientId(event.target.value)}>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label><span>{reports.length} relatório{reports.length === 1 ? "" : "s"} neste cliente</span></div><div className="reports-layout"><aside className="reports-history"><h3>Histórico</h3>{reports.map((report) => <button key={report.id} className={editing?.id === report.id ? "selected" : ""} onClick={() => { setEditing(report); setFiles({}); setMessage(""); }}><small>{report.status === "published" ? "Publicado" : "Rascunho"}</small><strong>{report.title}</strong><span>{formatReportDate(report.periodEnd)}</span></button>)}{!reports.length ? <p>Crie o primeiro relatório deste cliente.</p> : null}</aside><main>{editing ? <div className="report-editor"><div className="report-form-top"><label>Título<input value={editing.title} onChange={(event) => setEditing({ ...editing, title: event.target.value })} /></label><label>De<input type="date" value={reportDateValue(editing.periodStart)} onChange={(event) => setEditing({ ...editing, periodStart: event.target.value })} /></label><label>Até<input type="date" value={reportDateValue(editing.periodEnd)} onChange={(event) => setEditing({ ...editing, periodEnd: event.target.value })} /></label></div><section className="report-checklist"><header><div><span>IMPORTAÇÃO GRATUITA</span><h3>Checklist de capturas</h3><p>Envie as telas do Instagram e Facebook. A leitura ocorre somente neste navegador.</p></div><button className="ghost-button" disabled={reading || !Object.keys(files).length} onClick={() => void readScreenshots()}>{reading ? "Lendo capturas..." : "Ler capturas"}</button></header>{(["instagram", "facebook"] as const).map((channel) => <div className="report-checklist-channel" key={channel}><strong>{channel === "instagram" ? "Instagram" : "Facebook"}</strong>{CHECKLIST.map((item) => { const key = `${channel}-${item}`; return <label key={key}><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) setFiles({ ...files, [key]: file }); }} /><span>{files[key] ? "✓" : "+"}</span>{item}</label>; })}</div>)}</section><section className="report-metrics-editor">{(["instagram", "facebook"] as const).map((channel) => <article key={channel}><h3>{channel === "instagram" ? "Instagram" : "Facebook"}</h3>{METRICS.map(([key, label]) => <label key={key}>{label}<input type="number" min="0" value={editing.metrics[channel][key]} onChange={(event) => setEditing({ ...editing, metrics: { ...editing.metrics, [channel]: { ...editing.metrics[channel], [key]: Number(event.target.value) || 0 } } })} /></label>)}</article>)}</section><label className="report-notes-editor">Observações da equipe<textarea value={editing.notes ?? ""} onChange={(event) => setEditing({ ...editing, notes: event.target.value || null })} placeholder="Contexto, campanhas ou pontos a destacar para o cliente." /></label><div className="report-actions"><button className="ghost-button" onClick={() => setEditing(null)}>Fechar</button>{editing.id ? <button className="danger-button" onClick={() => { if (window.confirm("Excluir este relatório?")) void deleteAdminReport(clientId, editing.id).then(() => { setEditing(null); void refresh(); }).catch(() => { const next = reports.filter((report) => report.id !== editing.id); writeLocalReports(clientId, next); setReports(next); setEditing(null); }); }}>Excluir</button> : null}<button className="gradient-button" onClick={() => void save()}>Salvar rascunho</button>{editing.id && editing.status !== "published" ? <button className="gradient-button" onClick={() => void publish()}>Publicar para cliente</button> : null}</div>{message ? <p className="report-message">{message}</p> : null}<ReportDocument report={editing} clientName={selectedClient?.name ?? "Cliente"} /></div> : <div className="reports-empty">Escolha um relatório ou crie um novo para começar.</div>}</main></div></section>;
+  const linkedAccounts = [metaAssets?.instagramUsername ? `Instagram @${metaAssets.instagramUsername}` : null, metaAssets?.facebookPageName ? `Facebook ${metaAssets.facebookPageName}` : null].filter(Boolean);
+  return <section className="reports-workspace"><div className="reports-client-picker"><label>Cliente<select value={clientId} onChange={(event) => setClientId(event.target.value)}>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label><span>{reports.length} relatório{reports.length === 1 ? "" : "s"} neste cliente</span></div><div className="reports-layout"><aside className="reports-history"><h3>Histórico</h3>{reports.map((report) => <button key={report.id} className={editing?.id === report.id ? "selected" : ""} onClick={() => { setEditing(report); setFiles({}); setMessage(""); setImportedFields([]); }}><small>{report.status === "published" ? "Publicado" : "Rascunho"}</small><strong>{report.title}</strong><span>{formatReportDate(report.periodEnd)}</span></button>)}{!reports.length ? <p>Crie o primeiro relatório deste cliente.</p> : null}</aside><main>{editing ? <div className="report-editor">
+    <div className="report-form-top"><label>Título<input value={editing.title} onChange={(event) => setEditing({ ...editing, title: event.target.value })} /></label><label>De<input type="date" value={reportDateValue(editing.periodStart)} onChange={(event) => setEditing({ ...editing, periodStart: event.target.value })} /></label><label>Até<input type="date" value={reportDateValue(editing.periodEnd)} onChange={(event) => setEditing({ ...editing, periodEnd: event.target.value })} /></label></div>
+    <section className="report-meta-import"><div className="report-meta-import-icon" aria-hidden="true">M</div><div><span>DADOS DA META</span><h3>Importar Insights do período <small className={metaStatus?.connected ? "connected" : ""}>{metaStatus?.connected ? "Conectada" : "Não conectada"}</small></h3><p>{formatReportDate(editing.periodStart)} – {formatReportDate(editing.periodEnd)} · {metaStatus?.connected ? linkedAccounts.length ? linkedAccounts.join(" · ") : "Nenhum Instagram ou Facebook vinculado a este cliente." : "Conecte a Meta e vincule os ativos deste cliente para importar dados automaticamente."}</p></div><button className="gradient-button" disabled={importingMeta || !metaStatus?.connected || !linkedAccounts.length} onClick={() => void importMeta()}>{importingMeta ? "Importando..." : "Importar dados da Meta"}</button></section>
+    <section className="report-metrics-editor">{(["instagram", "facebook"] as const).map((channel) => <article key={channel}><h3>{channel === "instagram" ? "Instagram" : "Facebook"}</h3>{METRICS.map(([key, label]) => <label className={importedFields.includes(`${channel}.${key}`) ? "meta-imported" : ""} key={key}><span>{label}{importedFields.includes(`${channel}.${key}`) ? <small>Meta</small> : null}</span><input type="number" min="0" value={editing.metrics[channel][key] ?? ""} placeholder="Não disponível" onChange={(event) => changeMetric(channel, key, event.target.value)} /></label>)}{channel === "facebook" ? FACEBOOK_EXTRAS.map(([key, label]) => <label className={importedFields.includes(`facebook.${key}`) ? "meta-imported" : ""} key={key}><span>{label}{importedFields.includes(`facebook.${key}`) ? <small>Meta</small> : null}</span><input type="number" min="0" value={editing.metrics.facebook[key] ?? ""} placeholder="Não disponível" onChange={(event) => changeMetric("facebook", key, event.target.value)} /></label>) : null}</article>)}</section>
+    <details className="report-advanced"><summary>Opções avançadas · importar por screenshots</summary><section className="report-checklist"><header><div><span>FALLBACK POR IMAGEM</span><h3>Checklist de capturas</h3><p>Use esta opção quando os dados da Meta não estiverem disponíveis.</p></div><button className="ghost-button" disabled={reading || !Object.keys(files).length} onClick={() => void readScreenshots()}>{reading ? "Lendo capturas..." : "Analisar com IA"}</button></header>{(["instagram", "facebook"] as const).map((channel) => <div className="report-checklist-channel" key={channel}><strong>{channel === "instagram" ? "Instagram" : "Facebook"}</strong>{CHECKLIST.map((item) => { const key = `${channel}-${item}`; return <label key={key}><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) setFiles({ ...files, [key]: file }); }} /><span>{files[key] ? "✓" : "+"}</span>{item}</label>; })}</div>)}</section></details>
+    <label className="report-notes-editor">Observações da equipe<textarea value={editing.notes ?? ""} onChange={(event) => setEditing({ ...editing, notes: event.target.value || null })} placeholder="Contexto, campanhas ou pontos a destacar para o cliente." /></label>
+    <div className="report-actions"><button className="ghost-button" onClick={() => setEditing(null)}>Fechar</button>{editing.id ? <button className="danger-button" onClick={() => { if (window.confirm("Excluir este relatório?")) void deleteAdminReport(clientId, editing.id).then(() => { setEditing(null); void refresh(); }).catch(() => { const next = reports.filter((report) => report.id !== editing.id); writeLocalReports(clientId, next); setReports(next); setEditing(null); }); }}>Excluir</button> : null}<button className="gradient-button" onClick={() => void save()}>Salvar rascunho</button>{editing.id && editing.status !== "published" ? <button className="gradient-button" onClick={() => void publish()}>Publicar para cliente</button> : null}</div>{message ? <p className="report-message">{message}</p> : null}<ReportDocument report={editing} clientName={selectedClient?.name ?? "Cliente"} />
+  </div> : <div className="reports-empty">Escolha um relatório ou crie um novo para começar.</div>}</main></div></section>;
 }
 
 export function PortalReports({ slug, clientName, locale = "pt" }: { slug: string; clientName: string; locale?: string }) {
-  const language = reportLocale(locale); const copy = reportText[language];
-  const [reports, setReports] = useState<ClientReport[]>([]); const [selected, setSelected] = useState<ClientReport | null>(null);
+  const language = reportLocale(locale); const copy = reportText[language]; const [reports, setReports] = useState<ClientReport[]>([]); const [selected, setSelected] = useState<ClientReport | null>(null);
   useEffect(() => { void listPortalReportsBySlug(slug).then((response) => { setReports(response.items); setSelected(response.items[0] ?? null); }).catch(() => setReports([])); }, [slug]);
-  const download = () => { if (selected) void downloadReportPdf(selected, clientName, language); };
-  return <section className="portal-reports"><header><div><span>{copy.results}</span><h1>{copy.reports}</h1><p>{copy.portalIntro}</p></div></header><div className="portal-reports-layout"><aside>{reports.map((report) => <button className={selected?.id === report.id ? "selected" : ""} key={report.id} onClick={() => setSelected(report)}><strong>{report.title}</strong><span>{formatReportDate(report.periodStart, language)} - {formatReportDate(report.periodEnd, language)}</span></button>)}{!reports.length ? <p>{copy.empty}</p> : null}</aside><main>{selected ? <><ReportDocument report={selected} clientName={clientName} locale={language} /><footer className="portal-report-download"><span aria-hidden="true">PDF</span><div><strong>{copy.download}</strong><p>{selected.title}</p></div><button className="gradient-button" onClick={download}>⇩ {copy.download}</button></footer></> : null}</main></div></section>;
+  return <section className="portal-reports"><header><div><span>{copy.results}</span><h1>{copy.reports}</h1><p>{copy.portalIntro}</p></div></header><div className="portal-reports-layout"><aside>{reports.map((report) => <button className={selected?.id === report.id ? "selected" : ""} key={report.id} onClick={() => setSelected(report)}><strong>{report.title}</strong><span>{formatReportDate(report.periodStart, language)} - {formatReportDate(report.periodEnd, language)}</span></button>)}{!reports.length ? <p>{copy.empty}</p> : null}</aside><main>{selected ? <><ReportDocument report={selected} clientName={clientName} locale={language} /><footer className="portal-report-download"><span aria-hidden="true">PDF</span><div><strong>{copy.download}</strong><p>{selected.title}</p></div><button className="gradient-button" onClick={() => void downloadReportPdf(selected, clientName, language)}>⇩ {copy.download}</button></footer></> : null}</main></div></section>;
 }
