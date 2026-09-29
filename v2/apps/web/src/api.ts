@@ -1339,7 +1339,7 @@ export async function listMetaPublicationsBySlug(slug: string) {
   return fetchJson<{ publications: MetaScheduledPublication[] }>(`/api/clients/${client.id}/meta-publications`);
 }
 
-export async function createMetaPublicationBySlug(slug: string, input: { cardId: string; platform: "instagram"; scheduledAt: string; timezone: string }) {
+export async function createMetaPublicationBySlug(slug: string, input: { cardId: string; platform: "instagram" | "facebook"; scheduledAt: string; timezone: string }) {
   const client = await findAdminClientBySlug(slug);
   return sendJson<{ publication: MetaScheduledPublication; created: boolean }>(`/api/clients/${client.id}/meta-publications`, {
     method: "POST",

@@ -3609,6 +3609,8 @@ button {
 .meta-kanban-badge { display: inline-flex; max-width: 100%; min-height: 27px; box-sizing: border-box; align-items: center; gap: 6px; margin-top: 10px; padding: 5px 9px; overflow: hidden; border: 1px solid transparent; border-radius: 8px; font-size: .7rem; font-weight: 750; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
 .meta-kanban-badge i { display: inline-grid; width: 15px; height: 15px; flex: 0 0 15px; place-items: center; border: 1.5px solid currentColor; border-radius: 5px; font-size: 10px; font-style: normal; line-height: 1; }
 .meta-kanban-badge.scheduled { color: #873faf; border-color: #e4b9ee; background: linear-gradient(110deg, #f5eaff, #ffeaf5); }
+.meta-kanban-badge.facebook.scheduled { color: #2361aa; border-color: #bfd6f1; background: linear-gradient(110deg, #eaf3ff, #f0f2ff); }
+.meta-kanban-badge.facebook i { border-color: #3478d4; border-radius: 50%; background: #3478d4; color: #fff; font-family: Arial, sans-serif; font-weight: 800; }
 .meta-kanban-badge.publishing { color: #5146c8; border-color: #c9c5f6; background: linear-gradient(110deg, #edf3ff, #f1edff); }
 .meta-kanban-badge.published { color: #197349; border-color: #b7e1cb; background: #eaf8f1; }
 .meta-kanban-badge.failed { color: #bd304b; border-color: #f1bec8; background: #fff0f3; }
@@ -5035,7 +5037,7 @@ button {
 .meta-publication-panel details { color: #ffd1d7; font-size: 12px; }
 .meta-publication-panel details p { margin: 8px 0 0; overflow-wrap: anywhere; }
 .meta-publication-panel a { color: #d9ccff; font-size: 13px; font-weight: 700; }
-.instagram-schedule-button { min-height: 44px; color: #fff; border: 0; border-radius: 9px; background: linear-gradient(120deg, #7652dc, #d13e8c); font: inherit; font-weight: 750; cursor: pointer; }
+.meta-schedule-button { min-height: 44px; color: #fff; border: 0; border-radius: 9px; background: linear-gradient(120deg, #7652dc, #d13e8c); font: inherit; font-weight: 750; cursor: pointer; }
 .meta-schedule-backdrop { position: fixed; inset: 0; z-index: 190; display: grid; place-items: center; padding: 20px; background: rgba(9, 10, 16, .82); }
 .meta-schedule-modal { display: grid; width: min(480px, 100%); gap: 18px; padding: 24px; color: #f8f8fb; border: 1px solid rgba(255,255,255,.22); border-radius: 18px; background: #24252b; box-shadow: 0 28px 80px rgba(0,0,0,.55); }
 .meta-schedule-modal header, .meta-schedule-modal footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -5049,6 +5051,16 @@ button {
 .meta-schedule-modal input { box-sizing: border-box; width: 100%; padding: 13px; border: 0; border-radius: 9px; font: inherit; }
 .meta-schedule-modal > small { color: #aeb3c2; }
 .meta-schedule-modal footer { justify-content: flex-end; }
+.meta-platform-options { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.meta-platform-options button { display: flex; min-width: 0; min-height: 68px; align-items: center; gap: 11px; padding: 11px 13px; color: #e8eaf2; border: 1px solid rgba(255,255,255,.16); border-radius: 12px; background: rgba(255,255,255,.06); font: inherit; text-align: left; cursor: pointer; }
+.meta-platform-options button.selected.instagram { border-color: #d273da; background: linear-gradient(135deg, rgba(132,73,218,.36), rgba(218,64,139,.28)); }
+.meta-platform-options button.selected.facebook { border-color: #70a7ef; background: linear-gradient(135deg, rgba(48,111,207,.38), rgba(94,81,205,.28)); }
+.meta-platform-options button:disabled { opacity: .48; cursor: not-allowed; }
+.meta-platform-options i { display: grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; border: 1.5px solid currentColor; border-radius: 9px; font-style: normal; font-weight: 800; }
+.meta-platform-options .facebook i { border-radius: 50%; background: #3478d4; color: #fff; border-color: #3478d4; font-family: Arial, sans-serif; }
+.meta-platform-options span { display: grid; min-width: 0; gap: 3px; }
+.meta-platform-options small { overflow: hidden; color: #aeb3c2; font-size: 10px; line-height: 1.2; text-overflow: ellipsis; }
+@media (max-width: 480px) { .meta-platform-options { grid-template-columns: 1fr; }.meta-schedule-preview { grid-template-columns: 88px minmax(0,1fr); }.meta-schedule-preview img { width: 88px; height: 88px; } }
 .editor-field em { margin-left: auto; font-style: normal; }
 .editor-field em button { padding: 5px 10px; color: #30343b; background: #fff; border: 0; border-radius: 5px; cursor: pointer; }
 .editor-field input, .editor-field select, .editor-field textarea { width: 100%; box-sizing: border-box; padding: 17px 20px; color: #111318; background: #fbfbfc; border: 1px solid rgba(255,255,255,.7); border-radius: 8px; font: inherit; font-size: 17px; font-weight: 500; letter-spacing: normal; text-transform: none; }

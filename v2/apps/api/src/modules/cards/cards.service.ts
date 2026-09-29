@@ -464,6 +464,7 @@ export async function archiveKanbanCard(
   if (!card || card.clientAccountId !== clientAccountId) {
     throw app.httpErrors.notFound("Card não encontrado nesta conta.");
   }
+  if (card.archived === archived) return card;
 
   const updated = await setCardArchived(app.db, cardId, archived);
   if (!updated) {

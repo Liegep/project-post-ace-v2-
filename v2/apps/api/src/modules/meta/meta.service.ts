@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import net from "node:net";
 import type { FastifyInstance } from "fastify";
+import { archiveKanbanCard } from "../cards/cards.service.js";
 import {
   createScheduledPublication,
   findClientMetaAssets,
@@ -19,6 +20,7 @@ const META_SCOPES = [
   "pages_show_list",
   "pages_read_engagement",
   "pages_read_user_content",
+  "pages_manage_posts",
   "instagram_basic",
   "instagram_manage_insights",
   "business_management",
@@ -979,10 +981,11 @@ function singleImageFromCard(app: FastifyInstance, card: SchedulableCard) {
   return assertPublicHttpUrl(app, media[0]);
 }
 
-export async function scheduleInstagramCardPublication(app: FastifyInstance, input: {
+export async function scheduleMetaCardPublication(app: FastifyInstance, input: {
   userId: string;
   clientAccountId: string;
-  instagramAccountId: string;
+  platform: "instagram" | "facebook";
+  metaAssetId: string;
   card: SchedulableCard;
   scheduledAt: string;
   timezone: string;
@@ -992,13 +995,13 @@ export async function scheduleInstagramCardPublication(app: FastifyInstance, inp
   const mediaUrl = singleImageFromCard(app, input.card);
   const scheduledAt = new Date(input.scheduledAt).toISOString();
   const idempotencyKey = crypto.createHash("sha256")
-    .update([input.clientAccountId, input.card.id, "instagram", scheduledAt].join(":"))
+    .update([input.clientAccountId, input.card.id, input.platform, scheduledAt].join(":"))
     .digest("hex");
   return createScheduledPublication(app.db, {
     clientAccountId: input.clientAccountId,
     cardId: input.card.id,
-    platform: "instagram",
-    metaAssetId: input.instagramAccountId,
+    platform: input.platform,
+    metaAssetId: input.metaAssetId,
     scheduledAt,
     timezone: input.timezone,
     caption: input.card.caption?.trim() || null,
@@ -1105,8 +1108,49 @@ async function publishInstagramImage(app: FastifyInstance, input: {
   return { publishedMetaId: publish.payload.id, publishedPermalink: permalink.payload?.permalink ?? null };
 }
 
+async function publishFacebookImage(app: FastifyInstance, input: {
+  userId: string;
+  pageId: string;
+  imageUrl: string;
+  caption: string | null;
+}) {
+  const context = await getPublishingContext(app, input.userId);
+  const pageAccess = await getFacebookPageAccessContext({
+    app,
+    pageId: input.pageId,
+    userToken: context.token,
+    appSecret: context.appSecret,
+  });
+  if (!pageAccess.page || pageAccess.page.id !== input.pageId) {
+    throw new Error(pageAccess.warning?.message || "A Página do Facebook vinculada não está disponível na conexão Meta.");
+  }
+  if (pageAccess.tokenSource !== "page") {
+    throw new Error("A Meta não forneceu um Page Access Token para a Página do Facebook vinculada.");
+  }
+  const published = await fetchMetaResult<MetaApiError & { id?: string; post_id?: string }>({
+    app,
+    path: `/${input.pageId}/photos`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: { url: input.imageUrl, published: "true", ...(input.caption ? { caption: input.caption } : {}) },
+    metricOrOperation: "facebook.publish.photo",
+    method: "POST",
+  });
+  const publishedMetaId = published.payload?.post_id ?? published.payload?.id;
+  if (!publishedMetaId) throw new Error(published.warning?.message || "A Meta não confirmou a publicação na Página do Facebook.");
+  const permalink = await fetchMetaResult<MetaApiError & { permalink_url?: string }>({
+    app,
+    path: `/${publishedMetaId}`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: { fields: "permalink_url" },
+    metricOrOperation: "facebook.publish.permalink",
+  });
+  return { publishedMetaId, publishedPermalink: permalink.payload?.permalink_url ?? null };
+}
+
 function safePublicationError(error: unknown) {
-  const message = error instanceof Error ? error.message : "Falha inesperada ao publicar no Instagram.";
+  const message = error instanceof Error ? error.message : "Falha inesperada ao publicar na Meta.";
   return message
     .replace(/(access_token|appsecret_proof)=([^&\s]+)/gi, "$1=[REDACTED]")
     .replace(/EA[A-Za-z0-9_-]{20,}/g, "[REDACTED]")
@@ -1120,26 +1164,38 @@ export async function processDueMetaPublications(app: FastifyInstance, limit = 1
   for (const publication of due) {
     if (!await markPublicationPublishing(app.db, publication.id)) continue;
     try {
-      if (publication.platform !== "instagram" || !publication.mediaUrl || !publication.createdByUserId) {
+      if (!publication.mediaUrl || !publication.createdByUserId) {
         throw new Error("O agendamento não possui todos os dados necessários para publicação.");
       }
       const assets = await findClientMetaAssets(app.db, publication.clientAccountId);
-      if (!assets?.instagramAccountId || assets.instagramAccountId !== publication.metaAssetId) {
-        throw new Error("A conta do Instagram vinculada ao cliente mudou desde o agendamento.");
+      const linkedAssetId = publication.platform === "instagram" ? assets?.instagramAccountId : assets?.facebookPageId;
+      if (!linkedAssetId || linkedAssetId !== publication.metaAssetId) {
+        throw new Error(publication.platform === "instagram"
+          ? "A conta do Instagram vinculada ao cliente mudou desde o agendamento."
+          : "A Página do Facebook vinculada ao cliente mudou desde o agendamento.");
       }
-      const result = await publishInstagramImage(app, {
-        publicationId: publication.id,
+      const commonInput = {
         userId: publication.createdByUserId,
-        instagramAccountId: publication.metaAssetId,
         imageUrl: publication.mediaUrl,
         caption: publication.caption,
-      });
-      await markPublicationPublished(app.db, publication.id, result);
+      };
+      const result = publication.platform === "instagram"
+        ? await publishInstagramImage(app, { ...commonInput, publicationId: publication.id, instagramAccountId: publication.metaAssetId })
+        : await publishFacebookImage(app, { ...commonInput, pageId: publication.metaAssetId });
+      const markedPublished = await markPublicationPublished(app.db, publication.id, result);
+      if (!markedPublished) throw new Error("O status do agendamento mudou antes da confirmação da publicação.");
+      if (publication.cardId) {
+        try {
+          await archiveKanbanCard(app, publication.clientAccountId, publication.cardId, true);
+        } catch (error) {
+          app.log.error({ err: error, publicationId: publication.id, cardId: publication.cardId }, "Published Meta card could not be archived");
+        }
+      }
       published += 1;
     } catch (error) {
       const message = safePublicationError(error);
       await markPublicationFailed(app.db, publication.id, message);
-      app.log.error({ publicationId: publication.id, clientAccountId: publication.clientAccountId, message }, "Instagram scheduled publication failed");
+      app.log.error({ publicationId: publication.id, clientAccountId: publication.clientAccountId, platform: publication.platform, message }, "Meta scheduled publication failed");
       failed += 1;
     }
   }

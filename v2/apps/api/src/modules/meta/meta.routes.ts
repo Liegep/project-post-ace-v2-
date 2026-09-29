@@ -3,7 +3,7 @@ import { findClientAccountById } from "../clients/clients.repository.js";
 import { findCardById } from "../cards/cards.repository.js";
 import { clientMetaAssetsSchema, createMetaPublicationSchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema } from "./meta.schemas.js";
 import { cancelScheduledPublication, consumeMetaOAuthState, findClientMetaAssets, findScheduledPublication, listScheduledPublicationsForClient, upsertClientMetaAssets } from "./meta.repository.js";
-import { completeMetaAuthorization, createMetaAuthorizationUrl, getMetaAdsInsights, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets, scheduleInstagramCardPublication } from "./meta.service.js";
+import { completeMetaAuthorization, createMetaAuthorizationUrl, getMetaAdsInsights, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets, scheduleMetaCardPublication } from "./meta.service.js";
 
 function assertSuperAdmin(request: FastifyRequest) {
   if (!request.auth) throw request.server.httpErrors.unauthorized("Sessão obrigatória.");
@@ -147,13 +147,19 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
     const parsed = createMetaPublicationSchema.safeParse(request.body);
     if (!parsed.success) throw app.httpErrors.badRequest(parsed.error.issues[0]?.message ?? "Agendamento inválido.");
     const assets = await findClientMetaAssets(app.db, clientAccountId);
-    if (!assets?.instagramAccountId) throw app.httpErrors.badRequest("Vincule uma conta do Instagram a este cliente antes de agendar.");
+    const metaAssetId = parsed.data.platform === "instagram" ? assets?.instagramAccountId : assets?.facebookPageId;
+    if (!metaAssetId) {
+      throw app.httpErrors.badRequest(parsed.data.platform === "instagram"
+        ? "Vincule uma conta do Instagram a este cliente antes de agendar."
+        : "Vincule uma Página do Facebook a este cliente antes de agendar.");
+    }
     const card = await findCardById(app.db, parsed.data.cardId);
     if (!card) throw app.httpErrors.notFound("Card não encontrado.");
-    const result = await scheduleInstagramCardPublication(app, {
+    const result = await scheduleMetaCardPublication(app, {
       userId: auth.user.id,
       clientAccountId,
-      instagramAccountId: assets.instagramAccountId,
+      platform: parsed.data.platform,
+      metaAssetId,
       card,
       scheduledAt: parsed.data.scheduledAt,
       timezone: parsed.data.timezone,

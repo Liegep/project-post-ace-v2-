@@ -194,7 +194,7 @@ export async function upsertClientMetaAssets(db: Pool, clientAccountId: string, 
 export type CreateScheduledPublicationInput = {
   clientAccountId: string;
   cardId: string | null;
-  platform: "instagram";
+  platform: "instagram" | "facebook";
   metaAssetId: string;
   scheduledAt: string;
   timezone: string;

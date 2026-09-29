@@ -70,7 +70,7 @@ const isoDateTimeSchema = z.string().trim().refine((value) => {
 
 export const createMetaPublicationSchema = z.object({
   cardId: z.string().trim().min(1).max(190),
-  platform: z.literal("instagram"),
+  platform: z.enum(["instagram", "facebook"]),
   scheduledAt: isoDateTimeSchema,
   timezone: z.string().trim().min(1).max(100).refine((value) => {
     try {
