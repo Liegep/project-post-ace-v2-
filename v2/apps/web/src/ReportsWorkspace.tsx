@@ -100,9 +100,11 @@ async function thumbnailDataUrl(url: string | null | undefined) {
     if (!blob.type.startsWith("image/") || blob.size > 10_000_000) return null;
     const bitmap = await createImageBitmap(blob);
     const canvas = document.createElement("canvas");
-    canvas.width = 640; canvas.height = 340;
+    canvas.width = 480; canvas.height = 360;
     const context = canvas.getContext("2d");
     if (!context) { bitmap.close(); return null; }
+    context.fillStyle = "#f8faff"; context.fillRect(0, 0, canvas.width, canvas.height);
+    context.beginPath(); context.roundRect(0, 0, canvas.width, canvas.height, 28); context.clip();
     const scale = Math.max(canvas.width / bitmap.width, canvas.height / bitmap.height);
     const width = bitmap.width * scale; const height = bitmap.height * scale;
     context.drawImage(bitmap, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
@@ -116,7 +118,8 @@ async function downloadReportPdf(report: ClientReport, clientName: string, local
   const { jsPDF } = await import("jspdf");
   const language = reportLocale(locale); const copy = reportText[language];
   const pdf = new jsPDF({ unit: "pt", format: "a4" }); const contentX = 42;
-  const thumbnails = await Promise.all(report.highlights.map((item) => thumbnailDataUrl(item.thumbnailUrl)));
+  const pdfHighlights = report.highlights.map((item, index) => ({ item, index })).sort((a, b) => b.item.value - a.item.value || a.index - b.index).slice(0, 4).map(({ item }) => item);
+  const thumbnails = await Promise.all(pdfHighlights.map((item) => thumbnailDataUrl(item.thumbnailUrl)));
   const drawBackground = () => { pdf.setFillColor(29, 39, 73); pdf.rect(0, 0, 595, 842, "F"); pdf.setFillColor(73, 88, 207); pdf.circle(535, 58, 112, "F"); pdf.setFillColor(53, 190, 220); pdf.circle(502, 28, 74, "F"); };
   const drawFooter = () => { pdf.setTextColor(255, 255, 255); pdf.setFontSize(9); pdf.text(copy.generated, contentX, 820); };
   const clampLines = (text: string, maxWidth: number, maxLines: number) => {
@@ -135,19 +138,19 @@ async function downloadReportPdf(report: ClientReport, clientName: string, local
   const notes = visibleReportNotes(report.notes); if (notes) { pdf.setTextColor(79, 91, 122); pdf.setFontSize(9); pdf.text(copy.teamNotes.toUpperCase(), contentX, 735); pdf.setTextColor(82, 94, 122); pdf.text(notes, contentX, 754, { maxWidth: 500 }); }
   drawFooter();
 
-  for (let pageStart = 0; pageStart < report.highlights.length; pageStart += 4) {
+  if (pdfHighlights.length) {
     pdf.addPage(); drawBackground();
     pdf.setTextColor(255, 255, 255); pdf.setFontSize(9); pdf.text(copy.performance, contentX, 40); pdf.setFontSize(22); pdf.text(copy.highlights, contentX, 70); pdf.setFontSize(10); pdf.text(`${clientName} · ${formatReportDate(report.periodStart, language)} a ${formatReportDate(report.periodEnd, language)}`, contentX, 91);
     pdf.setFillColor(255, 255, 255); pdf.roundedRect(25, 112, 545, 684, 22, 22, "F");
-    report.highlights.slice(pageStart, pageStart + 4).forEach((item, localIndex) => {
-      const absoluteIndex = pageStart + localIndex; const column = localIndex % 2; const row = Math.floor(localIndex / 2);
-      const x = 42 + column * 258; const y = 132 + row * 320; const width = 246; const height = 290; const imageX = x + 12; const imageY = y + 12; const imageWidth = 222; const imageHeight = 118;
+    pdfHighlights.forEach((item, index) => {
+      const x = 42; const y = 132 + index * 154; const width = 511; const height = 138; const imageX = x + 11; const imageY = y + 11; const imageWidth = 158; const imageHeight = 116; const textX = imageX + imageWidth + 17; const textWidth = x + width - 14 - textX;
       pdf.setFillColor(248, 250, 255); pdf.roundedRect(x, y, width, height, 14, 14, "F");
-      if (thumbnails[absoluteIndex]) pdf.addImage(thumbnails[absoluteIndex]!, "JPEG", imageX, imageY, imageWidth, imageHeight, undefined, "FAST");
-      else { const facebook = item.channel === "facebook"; pdf.setFillColor(facebook ? 53 : 123, facebook ? 112 : 74, facebook ? 224 : 201); pdf.roundedRect(imageX, imageY, imageWidth, imageHeight, 10, 10, "F"); pdf.setFillColor(255, 255, 255); pdf.circle(imageX + imageWidth / 2, imageY + 51, 22, "F"); pdf.setTextColor(facebook ? 53 : 123, facebook ? 112 : 74, facebook ? 224 : 201); pdf.setFontSize(20); pdf.text(facebook ? "f" : "◎", imageX + imageWidth / 2, imageY + 58, { align: "center" }); pdf.setTextColor(255, 255, 255); pdf.setFontSize(8); pdf.text(facebook ? "Facebook" : "Instagram", imageX + imageWidth / 2, imageY + 92, { align: "center" }); }
-      pdf.setTextColor(item.channel === "facebook" ? 49 : 167, item.channel === "facebook" ? 103 : 65, item.channel === "facebook" ? 209 : 139); pdf.setFontSize(8); pdf.text((item.channel === "facebook" ? "FACEBOOK" : "INSTAGRAM"), x + 14, y + 151);
-      pdf.setTextColor(38, 49, 82); pdf.setFontSize(10.5); pdf.setFont("helvetica", "bold"); pdf.text(clampLines(item.title, 216, 3), x + 14, y + 176, { lineHeightFactor: 1.3 });
-      pdf.setDrawColor(227, 231, 241); pdf.line(x + 14, y + 252, x + width - 14, y + 252); pdf.setFont("helvetica", "bold"); pdf.setTextColor(42, 54, 88); pdf.setFontSize(10); pdf.text(`${number(item.value, language)} ${metricText[language].engagement.toLocaleLowerCase(browserLocale[language])}`, x + 14, y + 274); pdf.setFont("helvetica", "normal"); pdf.setTextColor(132, 142, 163); pdf.setFontSize(8); pdf.text(`#${absoluteIndex + 1}`, x + width - 14, y + 274, { align: "right" });
+      if (thumbnails[index]) pdf.addImage(thumbnails[index]!, "JPEG", imageX, imageY, imageWidth, imageHeight, undefined, "FAST");
+      else { const facebook = item.channel === "facebook"; pdf.setFillColor(facebook ? 53 : 123, facebook ? 112 : 74, facebook ? 224 : 201); pdf.roundedRect(imageX, imageY, imageWidth, imageHeight, 10, 10, "F"); pdf.setFillColor(255, 255, 255); pdf.circle(imageX + imageWidth / 2, imageY + 47, 20, "F"); pdf.setTextColor(facebook ? 53 : 123, facebook ? 112 : 74, facebook ? 224 : 201); pdf.setFontSize(18); pdf.text(facebook ? "f" : "◎", imageX + imageWidth / 2, imageY + 53, { align: "center" }); pdf.setTextColor(255, 255, 255); pdf.setFontSize(8); pdf.text(facebook ? "Facebook" : "Instagram", imageX + imageWidth / 2, imageY + 86, { align: "center" }); }
+      pdf.setTextColor(item.channel === "facebook" ? 49 : 167, item.channel === "facebook" ? 103 : 65, item.channel === "facebook" ? 209 : 139); pdf.setFont("helvetica", "bold"); pdf.setFontSize(8); pdf.text(item.channel === "facebook" ? "FACEBOOK" : "INSTAGRAM", textX, y + 24);
+      pdf.setTextColor(38, 49, 82); pdf.setFontSize(9.5); pdf.text(clampLines(item.title, textWidth, 3), textX, y + 49, { lineHeightFactor: 1.35 });
+      if (Number.isFinite(item.value) && item.value > 0) { pdf.setTextColor(42, 54, 88); pdf.setFontSize(10); pdf.text(`${number(item.value, language)} ${metricText[language].engagement.toLocaleLowerCase(browserLocale[language])}`, x + width - 14, y + height - 16, { align: "right" }); }
+      pdf.setFont("helvetica", "normal");
     });
     drawFooter();
   }
