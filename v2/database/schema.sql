@@ -324,6 +324,8 @@ CREATE TABLE IF NOT EXISTS meta_scheduled_publications (
   media_url VARCHAR(2048) NULL,
   media_urls_json JSON NULL,
   media_type VARCHAR(50) NULL,
+  location_id VARCHAR(190) NULL,
+  instagram_user_tags_json JSON NULL,
   status ENUM('scheduled', 'publishing', 'published', 'failed', 'cancelled') NOT NULL DEFAULT 'scheduled',
   attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
   idempotency_key CHAR(64) NOT NULL,
