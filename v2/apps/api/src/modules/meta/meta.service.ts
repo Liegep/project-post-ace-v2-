@@ -37,6 +37,37 @@ type MetaAdAccountsResponse = MetaApiError & {
   paging?: { next?: string };
 };
 
+type MetaAdsActionValue = { action_type?: string; value?: string | number };
+type MetaAdsInsightsRow = {
+  spend?: string | number;
+  reach?: string | number;
+  impressions?: string | number;
+  frequency?: string | number;
+  clicks?: string | number;
+  inline_link_clicks?: string | number;
+  ctr?: string | number;
+  cpc?: string | number;
+  cpm?: string | number;
+  cpp?: string | number;
+  unique_clicks?: string | number;
+  unique_ctr?: string | number;
+  actions?: MetaAdsActionValue[];
+  action_values?: MetaAdsActionValue[];
+  cost_per_action_type?: MetaAdsActionValue[];
+  campaign_id?: string;
+  campaign_name?: string;
+  objective?: string;
+  ad_id?: string;
+  ad_name?: string;
+  adset_id?: string;
+  adset_name?: string;
+};
+
+type MetaAdsInsightsPayload = MetaApiError & {
+  data?: MetaAdsInsightsRow[];
+  paging?: { next?: string };
+};
+
 type MetaInsightsAssets = {
   facebookPageId: string | null;
   facebookPageName: string | null;
@@ -165,8 +196,9 @@ async function fetchMetaResult<T extends MetaApiError>(input: {
   appSecret: string;
   params?: Record<string, string>;
   metricOrOperation: string;
+  nextUrl?: string;
 }): Promise<{ payload: T | null; warning: MetaInsightsWarning | null }> {
-  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}${input.path}`);
+  const url = input.nextUrl ? new URL(input.nextUrl) : new URL(`https://graph.facebook.com/${GRAPH_VERSION}${input.path}`);
   for (const [key, value] of Object.entries(input.params ?? {})) url.searchParams.set(key, value);
   url.searchParams.set("access_token", input.token);
   url.searchParams.set("appsecret_proof", appSecretProof(input.token, input.appSecret));
@@ -467,6 +499,198 @@ export async function listMetaAdAccounts(app: FastifyInstance, userId: string) {
   } while (next);
 
   return { adAccounts, totalCount: adAccounts.length, pagesFetched, error: null };
+}
+
+function metaAdsNumber(value: unknown) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeMetaAdsActions(values: MetaAdsActionValue[] | undefined) {
+  return (values ?? []).flatMap((item) => {
+    const value = metaAdsNumber(item.value);
+    return item.action_type && value !== null ? [{ actionType: item.action_type, value }] : [];
+  });
+}
+
+function normalizeMetaAdsMetrics(row: MetaAdsInsightsRow | undefined) {
+  return {
+    spend: metaAdsNumber(row?.spend),
+    reach: metaAdsNumber(row?.reach),
+    impressions: metaAdsNumber(row?.impressions),
+    frequency: metaAdsNumber(row?.frequency),
+    clicks: metaAdsNumber(row?.clicks),
+    inlineLinkClicks: metaAdsNumber(row?.inline_link_clicks),
+    ctr: metaAdsNumber(row?.ctr),
+    cpc: metaAdsNumber(row?.cpc),
+    cpm: metaAdsNumber(row?.cpm),
+  };
+}
+
+function normalizeMetaAdsSummary(row: MetaAdsInsightsRow | undefined) {
+  return {
+    ...normalizeMetaAdsMetrics(row),
+    cpp: metaAdsNumber(row?.cpp),
+    uniqueClicks: metaAdsNumber(row?.unique_clicks),
+    uniqueCtr: metaAdsNumber(row?.unique_ctr),
+  };
+}
+
+async function fetchMetaAdsInsightRows(input: {
+  app: FastifyInstance;
+  adAccountId: string;
+  token: string;
+  appSecret: string;
+  period: MetaInsightsPeriod;
+  level: "account" | "campaign" | "ad";
+  fields: readonly string[];
+  operation: string;
+  warnings: MetaInsightsWarning[];
+}) {
+  const path = `/${input.adAccountId}/insights`;
+  const rows: MetaAdsInsightsRow[] = [];
+  let nextUrl: string | undefined;
+  do {
+    const result = await fetchMetaResult<MetaAdsInsightsPayload>({
+      app: input.app,
+      path,
+      token: input.token,
+      appSecret: input.appSecret,
+      params: nextUrl ? undefined : {
+        fields: input.fields.join(","),
+        level: input.level,
+        time_range: JSON.stringify(input.period),
+        limit: "100",
+      },
+      metricOrOperation: input.operation,
+      nextUrl,
+    });
+    if (result.warning) {
+      input.warnings.push(result.warning);
+      break;
+    }
+    rows.push(...(result.payload?.data ?? []));
+    nextUrl = result.payload?.paging?.next;
+  } while (nextUrl);
+  return rows;
+}
+
+export async function getMetaAdsInsights(
+  app: FastifyInstance,
+  userId: string,
+  asset: { metaAdAccountId: string; metaAdAccountName: string | null },
+  period: MetaInsightsPeriod,
+) {
+  const config = requireMetaConfig(app);
+  const connection = await findMetaConnection(app.db, userId);
+  if (!connection) throw app.httpErrors.badRequest("Conecte uma conta Meta antes de consultar os anúncios.");
+  if (connection.expiresAt && new Date(connection.expiresAt).getTime() <= Date.now()) {
+    throw app.httpErrors.badRequest("A conexão Meta expirou. Atualize a conexão antes de consultar os anúncios.");
+  }
+
+  const token = decryptToken(connection.encryptedToken, config.encryptionKey);
+  const adAccountId = `act_${asset.metaAdAccountId.replace(/^act_/i, "")}`;
+  const warnings: MetaInsightsWarning[] = [];
+  const commonFields = ["spend", "reach", "impressions", "frequency", "clicks", "inline_link_clicks", "ctr", "cpc", "cpm", "actions", "action_values", "cost_per_action_type"] as const;
+  const accountPath = `/${adAccountId}`;
+
+  const [accountResult, summaryRows, campaignRows, adRows] = await Promise.all([
+    fetchMetaResult<MetaApiError & MetaAdAccount>({
+      app,
+      path: accountPath,
+      token,
+      appSecret: config.appSecret,
+      params: { fields: "id,name,currency,timezone_name" },
+      metricOrOperation: "ads.account",
+    }),
+    fetchMetaAdsInsightRows({
+      app,
+      adAccountId,
+      token,
+      appSecret: config.appSecret,
+      period,
+      level: "account",
+      fields: [...commonFields, "cpp", "unique_clicks", "unique_ctr"],
+      operation: "ads.insights.summary",
+      warnings,
+    }),
+    fetchMetaAdsInsightRows({
+      app,
+      adAccountId,
+      token,
+      appSecret: config.appSecret,
+      period,
+      level: "campaign",
+      fields: ["campaign_id", "campaign_name", "objective", ...commonFields],
+      operation: "ads.insights.campaigns",
+      warnings,
+    }),
+    fetchMetaAdsInsightRows({
+      app,
+      adAccountId,
+      token,
+      appSecret: config.appSecret,
+      period,
+      level: "ad",
+      fields: ["ad_id", "ad_name", "adset_id", "adset_name", "campaign_id", "campaign_name", ...commonFields],
+      operation: "ads.insights.ads",
+      warnings,
+    }),
+  ]);
+  if (accountResult.warning) warnings.push(accountResult.warning);
+
+  const summaryRow = summaryRows[0];
+  const campaigns = campaignRows
+    .filter((row) => (metaAdsNumber(row.spend) ?? 0) > 0 || (metaAdsNumber(row.impressions) ?? 0) > 0)
+    .map((row) => ({
+      campaignId: row.campaign_id ?? null,
+      campaignName: row.campaign_name ?? null,
+      objective: row.objective ?? null,
+      ...normalizeMetaAdsMetrics(row),
+      actions: normalizeMetaAdsActions(row.actions),
+      costPerAction: normalizeMetaAdsActions(row.cost_per_action_type),
+      actionValues: normalizeMetaAdsActions(row.action_values),
+    }))
+    .sort((left, right) => (right.spend ?? -1) - (left.spend ?? -1));
+
+  const topAds = adRows
+    .filter((row) => (metaAdsNumber(row.spend) ?? 0) > 0 || (metaAdsNumber(row.impressions) ?? 0) > 0)
+    .map((row) => ({
+      adId: row.ad_id ?? null,
+      adName: row.ad_name ?? null,
+      adsetId: row.adset_id ?? null,
+      adsetName: row.adset_name ?? null,
+      campaignId: row.campaign_id ?? null,
+      campaignName: row.campaign_name ?? null,
+      ...normalizeMetaAdsMetrics(row),
+      actions: normalizeMetaAdsActions(row.actions),
+      costPerAction: normalizeMetaAdsActions(row.cost_per_action_type),
+    }))
+    .sort((left, right) => (right.spend ?? -1) - (left.spend ?? -1))
+    .slice(0, 10);
+
+  return {
+    period,
+    adAccount: {
+      id: accountResult.payload?.id ?? adAccountId,
+      name: accountResult.payload?.name ?? asset.metaAdAccountName,
+      currency: accountResult.payload?.currency ?? null,
+      timezoneName: accountResult.payload?.timezone_name ?? null,
+    },
+    summary: normalizeMetaAdsSummary(summaryRow),
+    actions: normalizeMetaAdsActions(summaryRow?.actions),
+    costPerAction: normalizeMetaAdsActions(summaryRow?.cost_per_action_type),
+    actionValues: normalizeMetaAdsActions(summaryRow?.action_values),
+    campaigns,
+    topAds,
+    warnings: warnings.map((warning) => ({
+      operation: warning.metricOrOperation,
+      code: warning.code,
+      message: warning.message,
+    })),
+  };
 }
 
 async function getInstagramInsights(input: {

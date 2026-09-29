@@ -2,7 +2,7 @@ import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { findClientAccountById } from "../clients/clients.repository.js";
 import { clientMetaAssetsSchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema } from "./meta.schemas.js";
 import { consumeMetaOAuthState, findClientMetaAssets, upsertClientMetaAssets } from "./meta.repository.js";
-import { completeMetaAuthorization, createMetaAuthorizationUrl, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets } from "./meta.service.js";
+import { completeMetaAuthorization, createMetaAuthorizationUrl, getMetaAdsInsights, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets } from "./meta.service.js";
 
 function assertSuperAdmin(request: FastifyRequest) {
   if (!request.auth) throw request.server.httpErrors.unauthorized("Sessão obrigatória.");
@@ -84,6 +84,31 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
       return result;
     } catch (error) {
       request.log.error({ err: error, clientAccountId, durationMs: Date.now() - startedAt }, "Meta Insights import failed");
+      throw error;
+    }
+  });
+
+  app.get("/clients/:clientAccountId/meta-ads-insights", async (request) => {
+    const auth = assertSuperAdmin(request);
+    const { clientAccountId } = request.params as { clientAccountId: string };
+    if (!await findClientAccountById(app.db, clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
+    const parsed = metaInsightsQuerySchema.safeParse(request.query);
+    if (!parsed.success) throw app.httpErrors.badRequest(parsed.error.issues[0]?.message ?? "Período inválido.");
+    const assets = await findClientMetaAssets(app.db, clientAccountId);
+    if (!assets?.metaAdAccountId) {
+      throw app.httpErrors.badRequest("O cliente ainda não possui uma Conta de anúncios Meta vinculada.");
+    }
+    const startedAt = Date.now();
+    request.log.info({ clientAccountId, since: parsed.data.since, until: parsed.data.until, adAccountId: assets.metaAdAccountId }, "Meta Ads Insights request started");
+    try {
+      const result = await getMetaAdsInsights(app, auth.user.id, {
+        metaAdAccountId: assets.metaAdAccountId,
+        metaAdAccountName: assets.metaAdAccountName,
+      }, parsed.data);
+      request.log.info({ clientAccountId, durationMs: Date.now() - startedAt, campaignCount: result.campaigns.length, adCount: result.topAds.length, warningCount: result.warnings.length }, "Meta Ads Insights request completed");
+      return result;
+    } catch (error) {
+      request.log.error({ err: error, clientAccountId, durationMs: Date.now() - startedAt }, "Meta Ads Insights request failed");
       throw error;
     }
   });
