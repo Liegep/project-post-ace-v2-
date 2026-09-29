@@ -164,11 +164,13 @@ import {
   type TextDocument,
   type TextTag,
   beginMetaConnection,
+  loadMetaAdAccounts,
   loadMetaAssets,
   loadMetaStatus,
   loadClientMetaAssetsBySlug,
   saveClientMetaAssetsBySlug,
   type ClientMetaAssets,
+  type MetaAdAccount,
   type MetaAssetPage,
 } from "./api";
 import { ACCESS_TOKEN_KEY, completePasswordResetWithApi, loginWithApi, requestPasswordResetWithApi, restoreApiSession } from "./authApi";
@@ -1303,14 +1305,18 @@ const EMPTY_CLIENT_META_ASSETS: ClientMetaAssets = {
   facebookPageName: null,
   instagramAccountId: null,
   instagramUsername: null,
+  metaAdAccountId: null,
+  metaAdAccountName: null,
 };
 
 function ClientMetaIntegrationPanel({ slug }: { slug: string }) {
   const [status, setStatus] = useState<Awaited<ReturnType<typeof loadMetaStatus>> | null>(null);
   const [pages, setPages] = useState<MetaAssetPage[]>([]);
+  const [adAccounts, setAdAccounts] = useState<MetaAdAccount[]>([]);
   const [selection, setSelection] = useState<ClientMetaAssets>(EMPTY_CLIENT_META_ASSETS);
   const [loading, setLoading] = useState(true);
   const [loadingAssets, setLoadingAssets] = useState(false);
+  const [assetsLoaded, setAssetsLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -1342,9 +1348,14 @@ function ClientMetaIntegrationPanel({ slug }: { slug: string }) {
   const revealAssets = async () => {
     setLoadingAssets(true); setError(""); setMessage("");
     try {
-      const result = await loadMetaAssets();
-      setPages(result.pages);
-      if (result.pages.length === 0) setMessage("Nenhuma Página foi disponibilizada por esta conta Meta.");
+      const [pageResult, adAccountResult] = await Promise.all([loadMetaAssets(), loadMetaAdAccounts()]);
+      setPages(pageResult.pages);
+      setAdAccounts(adAccountResult.adAccounts);
+      setAssetsLoaded(true);
+      if (adAccountResult.error) setError(adAccountResult.error.message);
+      if (pageResult.pages.length === 0 && adAccountResult.adAccounts.length === 0) {
+        setMessage("Nenhuma Página ou Conta de anúncios foi disponibilizada por esta conta Meta.");
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Não foi possível listar os ativos Meta.");
     } finally { setLoadingAssets(false); }
@@ -1352,12 +1363,22 @@ function ClientMetaIntegrationPanel({ slug }: { slug: string }) {
 
   const choosePage = (pageId: string) => {
     const page = pages.find((item) => item.id === pageId);
-    setSelection(page ? {
-      facebookPageId: page.id,
-      facebookPageName: page.name,
-      instagramAccountId: page.instagramAccount?.id ?? null,
-      instagramUsername: page.instagramAccount?.username ?? null,
-    } : EMPTY_CLIENT_META_ASSETS);
+    setSelection((current) => ({
+      ...current,
+      facebookPageId: page?.id ?? null,
+      facebookPageName: page?.name ?? null,
+      instagramAccountId: page?.instagramAccount?.id ?? null,
+      instagramUsername: page?.instagramAccount?.username ?? null,
+    }));
+  };
+
+  const chooseAdAccount = (adAccountId: string) => {
+    const adAccount = adAccounts.find((item) => item.id === adAccountId);
+    setSelection((current) => ({
+      ...current,
+      metaAdAccountId: adAccount?.id ?? null,
+      metaAdAccountName: adAccount ? (adAccount.name ?? adAccount.account_id ?? adAccount.id) : null,
+    }));
   };
 
   const save = async () => {
@@ -1380,15 +1401,16 @@ function ClientMetaIntegrationPanel({ slug }: { slug: string }) {
     {status?.expiresAt ? <small className="meta-expiration">Token válido até {new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(new Date(status.expiresAt))}.</small> : null}
     {status?.connected ? <>
       <button className="drawer-secondary-action meta-assets-button" type="button" disabled={loadingAssets} onClick={() => void revealAssets()}>{loadingAssets ? "Buscando ativos..." : "Ver ativos disponíveis"}</button>
-      {pages.length ? <div className="meta-assets-form">
+      {assetsLoaded ? <div className="meta-assets-form">
         <label>Facebook<select value={selection.facebookPageId ?? ""} onChange={(event) => choosePage(event.target.value)}><option value="">Selecione uma Página</option>{pages.map((page) => <option key={page.id} value={page.id}>{page.name}</option>)}</select></label>
         <label>Instagram<select value={selection.instagramAccountId ?? ""} disabled={!selection.facebookPageId} onChange={(event) => {
           const page = pages.find((item) => item.id === selection.facebookPageId);
           const instagram = page?.instagramAccount?.id === event.target.value ? page.instagramAccount : null;
           setSelection((current) => ({ ...current, instagramAccountId: instagram?.id ?? null, instagramUsername: instagram?.username ?? null }));
         }}><option value="">{selection.facebookPageId ? "Sem conta profissional conectada" : "Selecione uma Página primeiro"}</option>{pages.filter((page) => page.id === selection.facebookPageId && page.instagramAccount).map((page) => <option key={page.instagramAccount!.id} value={page.instagramAccount!.id}>@{page.instagramAccount!.username}</option>)}</select></label>
+        <label>Conta de anúncios<select value={selection.metaAdAccountId ?? ""} onChange={(event) => chooseAdAccount(event.target.value)}><option value="">Sem Conta de anúncios vinculada</option>{selection.metaAdAccountId && !adAccounts.some((account) => account.id === selection.metaAdAccountId) ? <option value={selection.metaAdAccountId}>{selection.metaAdAccountName ?? selection.metaAdAccountId} · vínculo atual</option> : null}{adAccounts.map((account) => <option key={account.id} value={account.id}>{[account.name ?? account.account_id ?? account.id, account.currency, account.business?.name].filter(Boolean).join(" · ")}</option>)}</select></label>
         <button className="gradient-button" type="button" disabled={saving} onClick={() => void save()}>{saving ? "Salvando..." : "Salvar integração"}</button>
-      </div> : selection.facebookPageId ? <p className="meta-current-assets">Vínculo atual: {selection.facebookPageName}{selection.instagramUsername ? ` · @${selection.instagramUsername}` : " · sem Instagram"}</p> : null}
+      </div> : selection.facebookPageId || selection.metaAdAccountId ? <p className="meta-current-assets">Vínculo atual: {selection.facebookPageName ?? "sem Página"}{selection.instagramUsername ? ` · @${selection.instagramUsername}` : " · sem Instagram"}{selection.metaAdAccountName ? ` · Ads: ${selection.metaAdAccountName}` : " · sem Conta de anúncios"}</p> : null}
     </> : <p className="drawer-helper">Conecte a conta corporativa da Liege Studio para selecionar as Páginas e contas profissionais dos clientes.</p>}
     {message ? <p className="client-access-message">{message}</p> : null}
     {error ? <p className="tracker-error">{error}</p> : null}

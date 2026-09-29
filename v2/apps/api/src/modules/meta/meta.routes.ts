@@ -96,6 +96,15 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
     )) {
       throw app.httpErrors.badRequest("A conta do Instagram não pertence à Página selecionada.");
     }
+    if (parsed.data.metaAdAccountId) {
+      const availableAdAccounts = await listMetaAdAccounts(app, auth.user.id);
+      if (availableAdAccounts.error) throw app.httpErrors.badRequest(availableAdAccounts.error.message);
+      const adAccount = availableAdAccounts.adAccounts.find((item) => item.id === parsed.data.metaAdAccountId);
+      const adAccountName = adAccount ? (adAccount.name ?? adAccount.account_id ?? adAccount.id) : null;
+      if (!adAccount || adAccountName !== parsed.data.metaAdAccountName) {
+        throw app.httpErrors.badRequest("A Conta de anúncios selecionada não está disponível na conexão Meta.");
+      }
+    }
     return { assets: await upsertClientMetaAssets(app.db, clientAccountId, parsed.data) };
   });
 };

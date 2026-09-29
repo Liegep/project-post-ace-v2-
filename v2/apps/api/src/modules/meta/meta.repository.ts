@@ -15,6 +15,8 @@ type AssetsRow = RowDataPacket & {
   facebook_page_name: string | null;
   instagram_account_id: string | null;
   instagram_username: string | null;
+  meta_ad_account_id: string | null;
+  meta_ad_account_name: string | null;
   updated_at: Date | string;
 };
 
@@ -79,7 +81,7 @@ export async function findMetaConnection(db: Pool, userId: string) {
 
 export async function findClientMetaAssets(db: Pool, clientAccountId: string) {
   const [rows] = await db.query<AssetsRow[]>(
-    "SELECT facebook_page_id, facebook_page_name, instagram_account_id, instagram_username, updated_at FROM client_meta_assets WHERE client_account_id = ? LIMIT 1",
+    "SELECT facebook_page_id, facebook_page_name, instagram_account_id, instagram_username, meta_ad_account_id, meta_ad_account_name, updated_at FROM client_meta_assets WHERE client_account_id = ? LIMIT 1",
     [clientAccountId],
   );
   const row = rows[0];
@@ -88,19 +90,23 @@ export async function findClientMetaAssets(db: Pool, clientAccountId: string) {
     facebookPageName: row.facebook_page_name,
     instagramAccountId: row.instagram_account_id,
     instagramUsername: row.instagram_username,
+    metaAdAccountId: row.meta_ad_account_id,
+    metaAdAccountName: row.meta_ad_account_name,
     updatedAt: row.updated_at,
   } : null;
 }
 
 export async function upsertClientMetaAssets(db: Pool, clientAccountId: string, input: ClientMetaAssetsInput) {
   await db.query([
-    "INSERT INTO client_meta_assets (id, client_account_id, facebook_page_id, facebook_page_name, instagram_account_id, instagram_username)",
-    "VALUES (?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE facebook_page_id = VALUES(facebook_page_id), facebook_page_name = VALUES(facebook_page_name),",
-    "instagram_account_id = VALUES(instagram_account_id), instagram_username = VALUES(instagram_username), updated_at = CURRENT_TIMESTAMP",
+    "INSERT INTO client_meta_assets (id, client_account_id, facebook_page_id, facebook_page_name, instagram_account_id, instagram_username, meta_ad_account_id, meta_ad_account_name)",
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE facebook_page_id = VALUES(facebook_page_id), facebook_page_name = VALUES(facebook_page_name),",
+    "instagram_account_id = VALUES(instagram_account_id), instagram_username = VALUES(instagram_username),",
+    "meta_ad_account_id = VALUES(meta_ad_account_id), meta_ad_account_name = VALUES(meta_ad_account_name), updated_at = CURRENT_TIMESTAMP",
   ].join(" "), [
     crypto.randomUUID(), clientAccountId,
     input.facebookPageId ?? null, input.facebookPageName ?? null,
     input.instagramAccountId ?? null, input.instagramUsername ?? null,
+    input.metaAdAccountId ?? null, input.metaAdAccountName ?? null,
   ]);
   return findClientMetaAssets(db, clientAccountId);
 }

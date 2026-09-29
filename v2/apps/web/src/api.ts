@@ -351,11 +351,22 @@ export type AgendaRecurrence = "none" | "weekdays" | "weekly" | "monthly_nth_wee
 export type AgendaEvent = { id: string; sourceEventId?: string; title: string; taskDescription?: string | null; startsAt: string; endsAt?: string | null; recurrenceType?: AgendaRecurrence; repeatUntil?: string | null; color: string; isCompleted: boolean; clientAccountId?: string | null; clientName?: string | null; labelId?: string | null; labelName?: string | null; meetLink?: string | null };
 export type MetaStatus = { connected: boolean; expiresAt: string | null; accountName: string | null; metaUserId: string | null };
 export type MetaAssetPage = { id: string; name: string; instagramAccount: { id: string; username: string } | null };
+export type MetaAdAccount = {
+  id: string;
+  account_id: string | null;
+  name: string | null;
+  account_status: number | null;
+  currency: string | null;
+  timezone_name: string | null;
+  business: { id: string | null; name: string | null } | null;
+};
 export type ClientMetaAssets = {
   facebookPageId: string | null;
   facebookPageName: string | null;
   instagramAccountId: string | null;
   instagramUsername: string | null;
+  metaAdAccountId: string | null;
+  metaAdAccountName: string | null;
   updatedAt?: string;
 };
 
@@ -1180,6 +1191,15 @@ export async function beginMetaConnection(returnTo: string) {
 
 export async function loadMetaAssets() {
   return fetchJson<{ pages: MetaAssetPage[] }>("/api/meta/assets");
+}
+
+export async function loadMetaAdAccounts() {
+  return fetchJson<{
+    adAccounts: MetaAdAccount[];
+    totalCount: number;
+    pagesFetched: number;
+    error: { endpoint: string; code: number | null; message: string; requiredPermission: string } | null;
+  }>("/api/meta/ad-accounts");
 }
 
 export async function loadClientMetaAssetsBySlug(slug: string) {

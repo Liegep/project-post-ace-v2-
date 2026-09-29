@@ -44,6 +44,8 @@ export const clientMetaAssetsSchema = z.object({
   facebookPageName: nullableMetaLabel,
   instagramAccountId: nullableMetaIdentifier,
   instagramUsername: nullableMetaLabel,
+  metaAdAccountId: nullableMetaIdentifier,
+  metaAdAccountName: nullableMetaLabel,
 }).superRefine((value, context) => {
   if (Boolean(value.facebookPageId) !== Boolean(value.facebookPageName)) {
     context.addIssue({ code: "custom", message: "A Página do Facebook deve ter id e nome.", path: ["facebookPageId"] });
@@ -53,6 +55,9 @@ export const clientMetaAssetsSchema = z.object({
   }
   if (value.instagramAccountId && !value.facebookPageId) {
     context.addIssue({ code: "custom", message: "A conta do Instagram deve pertencer a uma Página selecionada.", path: ["instagramAccountId"] });
+  }
+  if (Boolean(value.metaAdAccountId) !== Boolean(value.metaAdAccountName)) {
+    context.addIssue({ code: "custom", message: "A Conta de anúncios deve ter id e nome.", path: ["metaAdAccountId"] });
   }
 });
 

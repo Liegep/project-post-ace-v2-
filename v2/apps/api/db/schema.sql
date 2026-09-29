@@ -729,6 +729,8 @@ CREATE TABLE IF NOT EXISTS client_meta_assets (
   facebook_page_name VARCHAR(255) NULL,
   instagram_account_id VARCHAR(190) NULL,
   instagram_username VARCHAR(255) NULL,
+  meta_ad_account_id VARCHAR(190) NULL,
+  meta_ad_account_name VARCHAR(255) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_client_meta_assets_account (client_account_id),
