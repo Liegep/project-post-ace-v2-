@@ -142,9 +142,14 @@ async function downloadReportPdf(report: ClientReport, clientName: string, local
   const pdfHighlights = report.highlights.map((item, index) => ({ item, index })).sort((a, b) => b.item.value - a.item.value || a.index - b.index).slice(0, 4).map(({ item }) => item);
   const thumbnails = await Promise.all(pdfHighlights.map((item) => thumbnailDataUrl(item.thumbnailUrl)));
   const drawBackground = () => { pdf.setFillColor(29, 39, 73); pdf.rect(0, 0, 595, 842, "F"); pdf.setFillColor(73, 88, 207); pdf.circle(535, 58, 112, "F"); pdf.setFillColor(53, 190, 220); pdf.circle(502, 28, 74, "F"); };
-  const drawFooter = () => { pdf.setTextColor(255, 255, 255); pdf.setFontSize(9); pdf.text(copy.generated, contentX, 820); };
+  const pdfSafeText = (value: string) => Array.from(value.normalize("NFC")).map((char) => {
+    const code = char.codePointAt(0) ?? 0;
+    if (code > 0xffff || (code >= 0x2600 && code <= 0x27bf)) return " ";
+    return char;
+  }).join("").replace(/\s+/g, " ").trim();
+  const drawFooter = () => { pdf.setTextColor(255, 255, 255); pdf.setFontSize(9); pdf.text(pdfSafeText(copy.generated), contentX, 820); };
   const clampLines = (text: string, maxWidth: number, maxLines: number) => {
-    const lines = pdf.splitTextToSize(text.replace(/\s+/g, " ").trim(), maxWidth) as string[];
+    const lines = pdf.splitTextToSize(pdfSafeText(text), maxWidth) as string[];
     if (lines.length <= maxLines) return lines;
     const visible = lines.slice(0, maxLines); let last = visible[maxLines - 1].replace(/[.,;:!?\s]+$/, "");
     while (last.length && pdf.getTextWidth(`${last}…`) > maxWidth) last = last.slice(0, -1).trimEnd();
@@ -152,20 +157,20 @@ async function downloadReportPdf(report: ClientReport, clientName: string, local
   };
 
   drawBackground();
-  pdf.setTextColor(255, 255, 255); pdf.setFontSize(10); pdf.text(copy.performance, contentX, 48); pdf.setFontSize(27); pdf.text(clientName, contentX, 79); pdf.setFontSize(11); pdf.text(`${formatReportDate(report.periodStart, language)} a ${formatReportDate(report.periodEnd, language)}`, contentX, 100);
-  pdf.setFillColor(255, 255, 255); pdf.roundedRect(25, 128, 545, 668, 22, 22, "F"); pdf.setTextColor(39, 51, 87); pdf.setFontSize(18); pdf.text(report.title, contentX, 164, { maxWidth: 490 }); pdf.setTextColor(92, 106, 137); pdf.setFontSize(10); pdf.text(reportSummary(report, language), contentX, 190, { maxWidth: 480, lineHeightFactor: 1.4 });
+  pdf.setTextColor(255, 255, 255); pdf.setFontSize(10); pdf.text(pdfSafeText(copy.performance), contentX, 48); pdf.setFontSize(27); pdf.text(pdfSafeText(clientName), contentX, 79); pdf.setFontSize(11); pdf.text(`${formatReportDate(report.periodStart, language)} a ${formatReportDate(report.periodEnd, language)}`, contentX, 100);
+  pdf.setFillColor(255, 255, 255); pdf.roundedRect(25, 128, 545, 668, 22, 22, "F"); pdf.setTextColor(39, 51, 87); pdf.setFontSize(18); pdf.text(clampLines(report.title, 490, 2), contentX, 164, { lineHeightFactor: 1.2 }); pdf.setTextColor(92, 106, 137); pdf.setFontSize(10); pdf.text(clampLines(reportSummary(report, language), 480, 3), contentX, 190, { lineHeightFactor: 1.35 });
   pdf.setTextColor(79, 91, 122); pdf.setFontSize(9); pdf.text(copy.organic, contentX, 235);
   (["instagram", "facebook"] as const).forEach((channel, channelIndex) => { const x = contentX + channelIndex * 258; pdf.setFillColor(channel === "instagram" ? 252 : 242, channel === "instagram" ? 243 : 247, 255); pdf.roundedRect(x, 252, 246, 300, 14, 14, "F"); pdf.setTextColor(39, 51, 87); pdf.setFontSize(16); pdf.text(channel === "instagram" ? "Instagram" : "Facebook", x + 15, 281); reportPlatformRows(report, channel).forEach(([key, value], rowIndex) => { const y = 312 + rowIndex * 25; if (y > 535) return; pdf.setTextColor(103, 117, 148); pdf.setFontSize(8); pdf.text(metricText[language][key], x + 15, y, { maxWidth: 145 }); pdf.setTextColor(value == null ? 145 : 39, value == null ? 151 : 51, value == null ? 166 : 87); pdf.setFontSize(value == null ? 8 : 11); pdf.text(displayMetric(value, language), x + 230, y, { align: "right" }); }); });
-  const notes = visibleReportNotes(report.notes); if (notes) { pdf.setTextColor(79, 91, 122); pdf.setFontSize(9); pdf.text(copy.teamNotes.toUpperCase(), contentX, 735); pdf.setTextColor(82, 94, 122); pdf.text(notes, contentX, 754, { maxWidth: 500 }); }
+  const notes = visibleReportNotes(report.notes); if (notes) { pdf.setTextColor(79, 91, 122); pdf.setFontSize(9); pdf.text(pdfSafeText(copy.teamNotes.toUpperCase()), contentX, 735); pdf.setTextColor(82, 94, 122); pdf.text(clampLines(notes, 500, 3), contentX, 754, { lineHeightFactor: 1.3 }); }
   drawFooter();
 
   if (report.metrics.ads) {
     const ads = report.metrics.ads;
     pdf.addPage(); drawBackground();
-    pdf.setTextColor(255, 255, 255); pdf.setFontSize(9); pdf.text(copy.performance, contentX, 40); pdf.setFontSize(22); pdf.text("META ADS", contentX, 70); pdf.setFontSize(10); pdf.text(`${clientName} · ${formatReportDate(report.periodStart, language)} a ${formatReportDate(report.periodEnd, language)}`, contentX, 91);
+    pdf.setTextColor(255, 255, 255); pdf.setFontSize(9); pdf.text(copy.performance, contentX, 40); pdf.setFontSize(22); pdf.text("META ADS", contentX, 70); pdf.setFontSize(10); pdf.text(pdfSafeText(`${clientName} · ${formatReportDate(report.periodStart, language)} a ${formatReportDate(report.periodEnd, language)}`), contentX, 91);
     pdf.setFillColor(255, 255, 255); pdf.roundedRect(25, 112, 545, 684, 22, 22, "F");
     pdf.setTextColor(39, 51, 87); pdf.setFontSize(17); pdf.text("Performance de anúncios", contentX, 150);
-    pdf.setTextColor(103, 117, 148); pdf.setFontSize(9); pdf.text(`${ads.accountName || "Conta de anúncios"}${ads.currency ? ` · ${ads.currency}` : ""}`, contentX, 169);
+    pdf.setTextColor(103, 117, 148); pdf.setFontSize(9); pdf.text(pdfSafeText(`${ads.accountName || "Conta de anúncios"}${ads.currency ? ` · ${ads.currency}` : ""}`), contentX, 169);
     const adCards = [
       ["Investimento", currency(ads.spend, ads.currency, language)],
       ["Alcance pago", displayMetric(ads.reach, language)],
@@ -196,7 +201,7 @@ async function downloadReportPdf(report: ClientReport, clientName: string, local
 
   if (pdfHighlights.length) {
     pdf.addPage(); drawBackground();
-    pdf.setTextColor(255, 255, 255); pdf.setFontSize(9); pdf.text(copy.performance, contentX, 40); pdf.setFontSize(22); pdf.text(copy.highlights, contentX, 70); pdf.setFontSize(10); pdf.text(`${clientName} · ${formatReportDate(report.periodStart, language)} a ${formatReportDate(report.periodEnd, language)}`, contentX, 91);
+    pdf.setTextColor(255, 255, 255); pdf.setFontSize(9); pdf.text(copy.performance, contentX, 40); pdf.setFontSize(22); pdf.text(copy.highlights, contentX, 70); pdf.setFontSize(10); pdf.text(pdfSafeText(`${clientName} · ${formatReportDate(report.periodStart, language)} a ${formatReportDate(report.periodEnd, language)}`), contentX, 91);
     pdf.setFillColor(255, 255, 255); pdf.roundedRect(25, 112, 545, 684, 22, 22, "F");
     pdfHighlights.forEach((item, index) => {
       const x = 42; const y = 132 + index * 154; const width = 511; const height = 138; const imageX = x + 11; const imageY = y + 11; const imageWidth = 158; const imageHeight = 116; const textX = imageX + imageWidth + 17; const textWidth = x + width - 14 - textX;
