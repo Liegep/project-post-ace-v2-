@@ -7536,7 +7536,12 @@ ${internalMessage.trim()}`, isInternal: true });
   const metaCompatibleImage = mediaUrls.length === 1 && !/\.(mp4|webm|mov)(\?|$)/i.test(mediaUrls[0]) && !/video|reel|story|carousel/i.test(artType);
   const hasLinkedMetaPlatform = Boolean(metaAssets?.instagramAccountId || metaAssets?.facebookPageId);
 
-  async function scheduleMetaPublication(platforms: ("instagram" | "facebook")[], localDateTime: string, timezone: string) {
+  async function scheduleMetaPublication(
+    platforms: ("instagram" | "facebook")[],
+    localDateTime: string,
+    timezone: string,
+    options: { locationId: string | null; instagramUserTags: Array<{ username: string; x: number; y: number }> },
+  ) {
     setMetaScheduling(true);
     setFeedback(null);
     try {
@@ -7548,6 +7553,8 @@ ${internalMessage.trim()}`, isInternal: true });
         platforms,
         scheduledAt: date.toISOString(),
         timezone,
+        locationId: options.locationId,
+        instagramUserTags: options.instagramUserTags,
       });
       setMetaPublications((current) => [...result.publications, ...current.filter((item) => !result.publications.some((publication) => publication.id === item.id))]);
       onMetaPublicationsSaved?.(result.publications);
@@ -7928,16 +7935,64 @@ function MetaScheduleModal({ imageUrl, caption, suggestedAt, instagramAvailable,
   facebookAvailable: boolean;
   submitting: boolean;
   onClose: () => void;
-  onSubmit: (platforms: ("instagram" | "facebook")[], localDateTime: string, timezone: string) => Promise<void>;
+  onSubmit: (
+    platforms: ("instagram" | "facebook")[],
+    localDateTime: string,
+    timezone: string,
+    options: { locationId: string | null; instagramUserTags: Array<{ username: string; x: number; y: number }> },
+  ) => Promise<void>;
 }) {
   const fallback = new Date(Date.now() + 60 * 60_000);
   fallback.setSeconds(0, 0);
   const [localDateTime, setLocalDateTime] = useState(suggestedAt || toDateTimeLocal(fallback.toISOString()));
   const [platforms, setPlatforms] = useState<("instagram" | "facebook")[]>(instagramAvailable ? ["instagram"] : facebookAvailable ? ["facebook"] : []);
+  const [locationId, setLocationId] = useState("");
+  const [tagUsername, setTagUsername] = useState("");
+  const [pendingTagUsername, setPendingTagUsername] = useState<string | null>(null);
+  const [instagramUserTags, setInstagramUserTags] = useState<Array<{ username: string; x: number; y: number }>>([]);
+  const [tagError, setTagError] = useState("");
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  const instagramSelected = platforms.includes("instagram");
+
   const togglePlatform = (platform: "instagram" | "facebook") => {
     setPlatforms((current) => current.includes(platform) ? current.filter((item) => item !== platform) : [...current, platform]);
+    if (platform === "instagram" && instagramSelected) {
+      setPendingTagUsername(null);
+      setTagError("");
+    }
   };
+
+  const prepareTag = () => {
+    const username = tagUsername.trim().replace(/^@+/, "");
+    if (!/^[A-Za-z0-9._]{1,30}$/.test(username)) {
+      setTagError("Digite um @username válido do Instagram.");
+      return;
+    }
+    if (instagramUserTags.length >= 20 && !instagramUserTags.some((tag) => tag.username.toLowerCase() === username.toLowerCase())) {
+      setTagError("O Instagram aceita no máximo 20 marcações por publicação.");
+      return;
+    }
+    setPendingTagUsername(username);
+    setTagError("");
+  };
+
+  const placeTag = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (!pendingTagUsername) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    const y = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
+    const tag = { username: pendingTagUsername, x: Number(x.toFixed(4)), y: Number(y.toFixed(4)) };
+    setInstagramUserTags((current) => [
+      ...current.filter((item) => item.username.toLowerCase() !== pendingTagUsername.toLowerCase()),
+      tag,
+    ]);
+    setPendingTagUsername(null);
+    setTagUsername("");
+  };
+
+  const normalizedLocationId = locationId.trim();
+  const locationInvalid = Boolean(normalizedLocationId && !/^\d+$/.test(normalizedLocationId));
+
   return <div className="meta-schedule-backdrop" onClick={onClose}>
     <section className="meta-schedule-modal" role="dialog" aria-modal="true" aria-labelledby="meta-schedule-title" onClick={(event) => event.stopPropagation()}>
       <header><div><span>PUBLICAÇÃO META</span><h3 id="meta-schedule-title">Agendar publicação</h3></div><button type="button" onClick={onClose} aria-label="Fechar">×</button></header>
@@ -7945,10 +8000,42 @@ function MetaScheduleModal({ imageUrl, caption, suggestedAt, instagramAvailable,
         <button type="button" className={platforms.includes("instagram") ? "selected instagram" : "instagram"} disabled={!instagramAvailable} aria-pressed={platforms.includes("instagram")} onClick={() => togglePlatform("instagram")}><i aria-hidden="true">◎</i><span><strong>Instagram</strong>{instagramAvailable ? <small>Imagem única</small> : <small>Não vinculado a este cliente</small>}</span></button>
         <button type="button" className={platforms.includes("facebook") ? "selected facebook" : "facebook"} disabled={!facebookAvailable} aria-pressed={platforms.includes("facebook")} onClick={() => togglePlatform("facebook")}><i aria-hidden="true">f</i><span><strong>Facebook</strong>{facebookAvailable ? <small>Imagem única</small> : <small>Não vinculado a este cliente</small>}</span></button>
       </div>
+
       <div className="meta-schedule-preview"><img src={imageUrl} alt="Prévia da publicação" /><p>{caption.trim() || "Sem legenda"}</p></div>
+
+      <section className="meta-publish-options">
+        <label>
+          <span>Localização <small>opcional · Instagram e Facebook</small></span>
+          <input
+            value={locationId}
+            inputMode="numeric"
+            placeholder="ID do local na Meta"
+            onChange={(event) => setLocationId(event.target.value.replace(/\s+/g, ""))}
+            aria-invalid={locationInvalid}
+          />
+          <small>Use o ID numérico de uma localização/Place da Meta. O mesmo local será aplicado às plataformas selecionadas.</small>
+          {locationInvalid ? <em>O ID da localização deve conter somente números.</em> : null}
+        </label>
+
+        {instagramSelected ? <div className="meta-instagram-tags">
+          <div className="meta-option-heading"><div><strong>Marcar pessoas no Instagram</strong><small>Opcional · até 20 contas públicas</small></div><span>{instagramUserTags.length}/20</span></div>
+          <div className="meta-tag-input-row">
+            <input value={tagUsername} placeholder="@usuario" onChange={(event) => { setTagUsername(event.target.value); setTagError(""); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); prepareTag(); } }} />
+            <button type="button" disabled={!tagUsername.trim() || submitting} onClick={prepareTag}>{pendingTagUsername ? "Trocar usuário" : "Marcar na imagem"}</button>
+          </div>
+          {pendingTagUsername ? <div className="meta-tag-placement-note">Clique na imagem onde <strong>@{pendingTagUsername}</strong> deve aparecer.</div> : null}
+          {tagError ? <div className="meta-tag-error">{tagError}</div> : null}
+          {(pendingTagUsername || instagramUserTags.length > 0) ? <button type="button" className={pendingTagUsername ? "meta-tag-canvas is-placing" : "meta-tag-canvas"} onClick={placeTag} aria-label={pendingTagUsername ? `Clique para posicionar @${pendingTagUsername}` : "Prévia das marcações"} disabled={!pendingTagUsername}>
+            <img src={imageUrl} alt="Imagem para posicionar marcações do Instagram" />
+            {instagramUserTags.map((tag) => <span key={tag.username} className="meta-tag-marker" style={{ left: `${tag.x * 100}%`, top: `${tag.y * 100}%` }}>@{tag.username}</span>)}
+          </button> : null}
+          {instagramUserTags.length ? <div className="meta-tag-list">{instagramUserTags.map((tag) => <span key={tag.username}>@{tag.username}<button type="button" aria-label={`Remover @${tag.username}`} onClick={() => setInstagramUserTags((current) => current.filter((item) => item.username !== tag.username))}>×</button></span>)}</div> : null}
+        </div> : null}
+      </section>
+
       <label><span>Data e hora</span><input type="datetime-local" value={localDateTime} onChange={(event) => setLocalDateTime(event.target.value)} /></label>
       <small>Fuso horário: {timezone}</small>
-      <footer><button type="button" className="ghost-button" disabled={submitting} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || !localDateTime || platforms.length === 0} onClick={() => void onSubmit(platforms, localDateTime, timezone)}>{submitting ? "Agendando…" : "Agendar publicação"}</button></footer>
+      <footer><button type="button" className="ghost-button" disabled={submitting} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || !localDateTime || platforms.length === 0 || locationInvalid || Boolean(pendingTagUsername)} onClick={() => void onSubmit(platforms, localDateTime, timezone, { locationId: normalizedLocationId || null, instagramUserTags })}>{submitting ? "Agendando…" : "Agendar publicação"}</button></footer>
     </section>
   </div>;
 }
