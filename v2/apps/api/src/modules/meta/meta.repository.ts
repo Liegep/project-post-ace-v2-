@@ -343,3 +343,15 @@ export async function markPublicationFailed(db: Pool, id: string, lastError: str
   );
   return result.affectedRows === 1;
 }
+
+export async function markStalePublishingFailed(db: Pool, input: { updatedBefore: string; lastError: string }) {
+  const [result] = await db.query<ResultSetHeader>(
+    [
+      "UPDATE meta_scheduled_publications",
+      "SET status = 'failed', attempt_count = attempt_count + 1, last_error = ?, updated_at = CURRENT_TIMESTAMP",
+      "WHERE status = 'publishing' AND updated_at < ?",
+    ].join(" "),
+    [input.lastError.slice(0, 4000), mysqlUtcDateTime(input.updatedBefore)],
+  );
+  return result.affectedRows;
+}

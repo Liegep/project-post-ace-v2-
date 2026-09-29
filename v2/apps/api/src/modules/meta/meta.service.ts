@@ -11,6 +11,7 @@ import {
   markPublicationFailed,
   markPublicationPublished,
   markPublicationPublishing,
+  markStalePublishingFailed,
   saveMetaOAuthState,
   upsertMetaConnection,
 } from "./meta.repository.js";
@@ -157,6 +158,12 @@ type FacebookPostsPayload = MetaApiError & { data?: FacebookPost[]; paging?: { n
 const META_INSIGHTS_REQUEST_TIMEOUT_MS = 7_000;
 const META_FACEBOOK_PAGE_ACCESS_TIMEOUT_MS = 15_000;
 const META_FACEBOOK_PUBLISH_TIMEOUT_MS = 45_000;
+export const META_INSTAGRAM_CREATE_TIMEOUT_MS = 30_000;
+export const META_INSTAGRAM_STATUS_TIMEOUT_MS = 15_000;
+export const META_INSTAGRAM_PUBLISH_TIMEOUT_MS = 45_000;
+export const META_INSTAGRAM_PERMALINK_TIMEOUT_MS = 15_000;
+export const META_PUBLISHING_STALE_MS = 10 * 60_000;
+const META_STALE_PUBLISHING_ERROR = "A publicação ficou sem confirmação da Meta por tempo excessivo. Verifique o Instagram antes de tentar novamente.";
 
 function requireMetaConfig(app: FastifyInstance) {
   const { META_APP_ID, META_APP_SECRET, META_REDIRECT_URI, META_TOKEN_ENCRYPTION_KEY } = app.appEnv;
@@ -1058,9 +1065,12 @@ async function waitForInstagramContainer(app: FastifyInstance, input: {
       appSecret: input.appSecret,
       params: { fields: "status_code" },
       metricOrOperation: "instagram.publish.containerStatus",
+      timeoutMs: META_INSTAGRAM_STATUS_TIMEOUT_MS,
     });
     if (!result.payload) {
-      throw new Error(result.warning?.message || "Não foi possível consultar o processamento da imagem na Meta.");
+      throw new Error(result.warning?.kind === "timeout"
+        ? "A Meta demorou demais para responder ao consultar o processamento da imagem. Verifique o Instagram antes de tentar novamente."
+        : result.warning?.message || "Não foi possível consultar o processamento da imagem na Meta.");
     }
     const statusCode = result.payload.status_code?.trim().toUpperCase() || "UNKNOWN";
     app.log.info({
@@ -1100,8 +1110,11 @@ async function publishInstagramContainer(app: FastifyInstance, input: {
     params: { creation_id: input.creationId },
     metricOrOperation: "instagram.publish.media",
     method: "POST",
+    timeoutMs: META_INSTAGRAM_PUBLISH_TIMEOUT_MS,
   });
-  if (!publish.payload?.id) throw new Error(publish.warning?.message || "A Meta não confirmou a publicação no Instagram.");
+  if (!publish.payload?.id) throw new Error(publish.warning?.kind === "timeout"
+    ? "A Meta demorou demais para confirmar a publicação final. Verifique o Instagram antes de tentar novamente."
+    : publish.warning?.message || "A Meta não confirmou a publicação no Instagram.");
   const permalink = await fetchMetaResult<MetaApiError & { permalink?: string }>({
     app,
     path: `/${publish.payload.id}`,
@@ -1109,6 +1122,7 @@ async function publishInstagramContainer(app: FastifyInstance, input: {
     appSecret: input.appSecret,
     params: { fields: "permalink" },
     metricOrOperation: "instagram.publish.permalink",
+    timeoutMs: META_INSTAGRAM_PERMALINK_TIMEOUT_MS,
   });
   return { publishedMetaId: publish.payload.id, publishedPermalink: permalink.payload?.permalink ?? null };
 }
@@ -1136,8 +1150,11 @@ async function publishInstagramImage(app: FastifyInstance, input: {
     },
     metricOrOperation: "instagram.publish.createContainer",
     method: "POST",
+    timeoutMs: META_INSTAGRAM_CREATE_TIMEOUT_MS,
   });
-  if (!create.payload?.id) throw new Error(create.warning?.message || "A Meta não criou o container da publicação.");
+  if (!create.payload?.id) throw new Error(create.warning?.kind === "timeout"
+    ? "A Meta demorou demais para criar o container da publicação. Verifique o Instagram antes de tentar novamente."
+    : create.warning?.message || "A Meta não criou o container da publicação.");
   await waitForInstagramContainer(app, {
     publicationId: input.publicationId,
     containerId: create.payload.id,
@@ -1173,9 +1190,12 @@ async function publishInstagramCarousel(app: FastifyInstance, input: {
       params: { image_url: imageUrl, is_carousel_item: "true" },
       metricOrOperation: `instagram.publish.carouselItem.${index + 1}.createContainer`,
       method: "POST",
+      timeoutMs: META_INSTAGRAM_CREATE_TIMEOUT_MS,
     });
     if (!child.payload?.id) {
-      const detail = child.warning?.message ? ` ${child.warning.message}` : "";
+      const detail = child.warning?.kind === "timeout"
+        ? " A Meta demorou demais para criar o container. Verifique o Instagram antes de tentar novamente."
+        : child.warning?.message ? ` ${child.warning.message}` : "";
       throw new Error(`A Meta não criou o container da imagem ${index + 1} do carrossel.${detail}`);
     }
     try {
@@ -1204,9 +1224,12 @@ async function publishInstagramCarousel(app: FastifyInstance, input: {
     },
     metricOrOperation: "instagram.publish.carousel.createContainer",
     method: "POST",
+    timeoutMs: META_INSTAGRAM_CREATE_TIMEOUT_MS,
   });
   if (!carousel.payload?.id) {
-    const detail = carousel.warning?.message ? ` ${carousel.warning.message}` : "";
+    const detail = carousel.warning?.kind === "timeout"
+      ? " A Meta demorou demais para criar o container principal. Verifique o Instagram antes de tentar novamente."
+      : carousel.warning?.message ? ` ${carousel.warning.message}` : "";
     throw new Error(`A Meta não criou o container principal do carrossel.${detail}`);
   }
   try {
@@ -1291,6 +1314,13 @@ function safePublicationError(error: unknown) {
 }
 
 export async function processDueMetaPublications(app: FastifyInstance, limit = 10) {
+  const recoveredStalePublishing = await markStalePublishingFailed(app.db, {
+    updatedBefore: new Date(Date.now() - META_PUBLISHING_STALE_MS).toISOString(),
+    lastError: META_STALE_PUBLISHING_ERROR,
+  });
+  if (recoveredStalePublishing > 0) {
+    app.log.warn({ recoveredStalePublishing }, "Stale Meta publishing jobs marked as failed");
+  }
   const due = await listDueScheduledPublications(app.db, limit);
   let published = 0;
   let failed = 0;
@@ -1345,5 +1375,5 @@ export async function processDueMetaPublications(app: FastifyInstance, limit = 1
       failed += 1;
     }
   }
-  return { examined: due.length, published, failed };
+  return { examined: due.length, published, failed, recoveredStalePublishing };
 }
