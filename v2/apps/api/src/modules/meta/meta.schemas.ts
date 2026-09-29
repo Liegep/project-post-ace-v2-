@@ -70,11 +70,22 @@ const isoDateTimeSchema = z.string().trim().refine((value) => {
 
 const metaPublicationPlatformSchema = z.enum(["instagram", "facebook"]);
 
+const instagramUserTagSchema = z.object({
+  username: z.string().trim().transform((value) => value.replace(/^@+/, "")).refine(
+    (value) => /^[A-Za-z0-9._]{1,30}$/.test(value),
+    "Use um @username válido do Instagram.",
+  ),
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+});
+
 export const createMetaPublicationSchema = z.object({
   cardId: z.string().trim().min(1).max(190),
   platform: metaPublicationPlatformSchema.optional(),
   platforms: z.array(metaPublicationPlatformSchema).min(1).max(2).optional(),
   scheduledAt: isoDateTimeSchema,
+  locationId: z.union([z.string().trim().regex(/^\d+$/, "O ID da localização deve ser numérico.").max(190), z.null()]).optional(),
+  instagramUserTags: z.array(instagramUserTagSchema).max(20, "O Instagram aceita no máximo 20 marcações por publicação.").optional(),
   timezone: z.string().trim().min(1).max(100).refine((value) => {
     try {
       new Intl.DateTimeFormat("pt-BR", { timeZone: value });
@@ -87,7 +98,13 @@ export const createMetaPublicationSchema = z.object({
   if (!value.platform && !value.platforms?.length) {
     context.addIssue({ code: "custom", message: "Selecione pelo menos uma plataforma.", path: ["platforms"] });
   }
+  const selectedPlatforms = value.platforms ?? (value.platform ? [value.platform] : []);
+  if (value.instagramUserTags?.length && !selectedPlatforms.includes("instagram")) {
+    context.addIssue({ code: "custom", message: "Marcações de pessoas estão disponíveis somente para Instagram nesta versão.", path: ["instagramUserTags"] });
+  }
 }).transform((value) => ({
   ...value,
   platforms: [...new Set(value.platforms ?? (value.platform ? [value.platform] : []))],
+  locationId: value.locationId || null,
+  instagramUserTags: value.instagramUserTags ?? [],
 }));
