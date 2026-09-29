@@ -153,6 +153,8 @@ type FacebookPost = {
 type FacebookPostsPayload = MetaApiError & { data?: FacebookPost[]; paging?: { next?: string } };
 
 const META_INSIGHTS_REQUEST_TIMEOUT_MS = 7_000;
+const META_FACEBOOK_PAGE_ACCESS_TIMEOUT_MS = 15_000;
+const META_FACEBOOK_PUBLISH_TIMEOUT_MS = 45_000;
 
 function requireMetaConfig(app: FastifyInstance) {
   const { META_APP_ID, META_APP_SECRET, META_REDIRECT_URI, META_TOKEN_ENCRYPTION_KEY } = app.appEnv;
@@ -212,6 +214,7 @@ async function fetchMetaResult<T extends MetaApiError>(input: {
   metricOrOperation: string;
   nextUrl?: string;
   method?: "GET" | "POST";
+  timeoutMs?: number;
 }): Promise<{ payload: T | null; warning: MetaInsightsWarning | null }> {
   const url = input.nextUrl ? new URL(input.nextUrl) : new URL(`https://graph.facebook.com/${GRAPH_VERSION}${input.path}`);
   for (const [key, value] of Object.entries(input.params ?? {})) url.searchParams.set(key, value);
@@ -223,7 +226,7 @@ async function fetchMetaResult<T extends MetaApiError>(input: {
     const response = await fetch(url, {
       method: input.method ?? "GET",
       headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(META_INSIGHTS_REQUEST_TIMEOUT_MS),
+      signal: AbortSignal.timeout(input.timeoutMs ?? META_INSIGHTS_REQUEST_TIMEOUT_MS),
     });
     const payload = await response.json().catch(() => ({})) as T;
     const durationMs = Date.now() - startedAt;
@@ -272,6 +275,7 @@ async function getFacebookPageAccessContext(input: {
   pageId: string;
   userToken: string;
   appSecret: string;
+  timeoutMs?: number;
 }) {
   const path = `/${input.pageId}`;
   const result = await fetchMetaResult<FacebookPagePayload>({
@@ -281,6 +285,7 @@ async function getFacebookPageAccessContext(input: {
     appSecret: input.appSecret,
     params: { fields: "id,name,access_token,followers_count,fan_count" },
     metricOrOperation: "facebook.page",
+    timeoutMs: input.timeoutMs,
   });
   return {
     path,
@@ -1120,6 +1125,7 @@ async function publishFacebookImage(app: FastifyInstance, input: {
     pageId: input.pageId,
     userToken: context.token,
     appSecret: context.appSecret,
+    timeoutMs: META_FACEBOOK_PAGE_ACCESS_TIMEOUT_MS,
   });
   if (!pageAccess.page || pageAccess.page.id !== input.pageId) {
     throw new Error(pageAccess.warning?.message || "A Página do Facebook vinculada não está disponível na conexão Meta.");
@@ -1135,9 +1141,15 @@ async function publishFacebookImage(app: FastifyInstance, input: {
     params: { url: input.imageUrl, published: "true", ...(input.caption ? { caption: input.caption } : {}) },
     metricOrOperation: "facebook.publish.photo",
     method: "POST",
+    timeoutMs: META_FACEBOOK_PUBLISH_TIMEOUT_MS,
   });
   const publishedMetaId = published.payload?.post_id ?? published.payload?.id;
-  if (!publishedMetaId) throw new Error(published.warning?.message || "A Meta não confirmou a publicação na Página do Facebook.");
+  if (!publishedMetaId) {
+    if (published.warning?.kind === "timeout") {
+      throw new Error("A Meta demorou mais que o esperado para confirmar a publicação. Verifique a Página antes de tentar novamente.");
+    }
+    throw new Error(published.warning?.message || "A Meta não confirmou a publicação na Página do Facebook.");
+  }
   const permalink = await fetchMetaResult<MetaApiError & { permalink_url?: string }>({
     app,
     path: `/${publishedMetaId}`,
