@@ -5642,6 +5642,9 @@ button {
 .report-meta-import h3 small.connected{color:#187551;background:#e5f8ee}
 .report-meta-import p{margin:0;color:#71809a;font-size:.82rem;line-height:1.45}
 .report-meta-import button:disabled{cursor:not-allowed;opacity:.5}
+.report-message.warning{color:#815b13;background:#fff5d8}
+.report-message.error{color:#a33a45;background:#ffebee}
+.report-message.timeout{color:#8b4b20;background:#fff0e4}
 .report-metrics-editor label>span{display:flex;align-items:center;justify-content:space-between;gap:8px}
 .report-metrics-editor label small{padding:2px 6px;border-radius:999px;color:#3567c9;background:#e7efff;font-size:.62rem;letter-spacing:.03em}
 .report-metrics-editor label.meta-imported input{border-color:#8fb6ef;background:#f5f9ff;box-shadow:0 0 0 2px rgba(76,133,222,.08)}

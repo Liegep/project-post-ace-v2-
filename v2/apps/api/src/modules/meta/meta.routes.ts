@@ -76,7 +76,16 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
     if (!assets || (!assets.facebookPageId && !assets.instagramAccountId)) {
       throw app.httpErrors.badRequest("O cliente ainda não possui ativos Meta vinculados.");
     }
-    return getMetaInsights(app, auth.user.id, assets, parsed.data);
+    const startedAt = Date.now();
+    request.log.info({ clientAccountId, since: parsed.data.since, until: parsed.data.until, hasInstagram: Boolean(assets.instagramAccountId), hasFacebook: Boolean(assets.facebookPageId) }, "Meta Insights import started");
+    try {
+      const result = await getMetaInsights(app, auth.user.id, assets, parsed.data);
+      request.log.info({ clientAccountId, durationMs: Date.now() - startedAt, status: result.status, sources: result.sources, warningCount: result.warnings.length }, "Meta Insights import completed");
+      return result;
+    } catch (error) {
+      request.log.error({ err: error, clientAccountId, durationMs: Date.now() - startedAt }, "Meta Insights import failed");
+      throw error;
+    }
   });
 
   app.put("/clients/:clientAccountId/meta-assets", async (request) => {

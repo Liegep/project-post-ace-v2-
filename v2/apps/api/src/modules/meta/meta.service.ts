@@ -49,6 +49,9 @@ type MetaInsightsWarning = {
   code: number | null;
   message: string;
   metricOrOperation: string;
+  kind: "api_error" | "network_error" | "timeout" | "unavailable";
+  httpStatus?: number;
+  durationMs?: number;
 };
 
 type MetaApiError = { error?: { code?: number; message?: string } };
@@ -99,7 +102,9 @@ type FacebookPost = {
   shares?: { count?: number };
 };
 
-type FacebookPostsPayload = MetaApiError & { data?: FacebookPost[] };
+type FacebookPostsPayload = MetaApiError & { data?: FacebookPost[]; paging?: { next?: string } };
+
+const META_INSIGHTS_REQUEST_TIMEOUT_MS = 7_000;
 
 function requireMetaConfig(app: FastifyInstance) {
   const { META_APP_ID, META_APP_SECRET, META_REDIRECT_URI, META_TOKEN_ENCRYPTION_KEY } = app.appEnv;
@@ -151,6 +156,7 @@ function redactMetaSecrets(message: string, accessToken: string, appSecret: stri
 }
 
 async function fetchMetaResult<T extends MetaApiError>(input: {
+  app: FastifyInstance;
   path: string;
   token: string;
   appSecret: string;
@@ -162,48 +168,63 @@ async function fetchMetaResult<T extends MetaApiError>(input: {
   url.searchParams.set("access_token", input.token);
   url.searchParams.set("appsecret_proof", appSecretProof(input.token, input.appSecret));
 
+  const startedAt = Date.now();
   try {
     const response = await fetch(url, {
       headers: { Accept: "application/json" },
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(META_INSIGHTS_REQUEST_TIMEOUT_MS),
     });
     const payload = await response.json().catch(() => ({})) as T;
+    const durationMs = Date.now() - startedAt;
     if (!response.ok || payload.error) {
+      const message = redactMetaSecrets(
+        payload.error?.message ?? `Meta Graph API respondeu com HTTP ${response.status}`,
+        input.token,
+        input.appSecret,
+      );
+      input.app.log.warn({ endpoint: input.path, operation: input.metricOrOperation, durationMs, httpStatus: response.status, metaCode: payload.error?.code ?? null }, "Meta Graph request failed");
       return {
         payload: null,
         warning: {
           endpoint: input.path,
           code: payload.error?.code ?? null,
-          message: redactMetaSecrets(
-            payload.error?.message ?? `Meta Graph API respondeu com HTTP ${response.status}`,
-            input.token,
-            input.appSecret,
-          ),
+          message,
           metricOrOperation: input.metricOrOperation,
+          kind: "api_error",
+          httpStatus: response.status,
+          durationMs,
         },
       };
     }
+    input.app.log.info({ endpoint: input.path, operation: input.metricOrOperation, durationMs, httpStatus: response.status }, "Meta Graph request completed");
     return { payload, warning: null };
-  } catch {
+  } catch (error) {
+    const durationMs = Date.now() - startedAt;
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    input.app.log.warn({ endpoint: input.path, operation: input.metricOrOperation, durationMs, timedOut }, "Meta Graph request did not complete");
     return {
       payload: null,
       warning: {
         endpoint: input.path,
         code: null,
-        message: "Falha de rede ao consultar a Meta Graph API.",
+        message: timedOut ? "A consulta à Meta Graph API excedeu o tempo limite." : "Falha de rede ao consultar a Meta Graph API.",
         metricOrOperation: input.metricOrOperation,
+        kind: timedOut ? "timeout" : "network_error",
+        durationMs,
       },
     };
   }
 }
 
 async function getFacebookPageAccessContext(input: {
+  app: FastifyInstance;
   pageId: string;
   userToken: string;
   appSecret: string;
 }) {
   const path = `/${input.pageId}`;
   const result = await fetchMetaResult<FacebookPagePayload>({
+    app: input.app,
     path,
     token: input.userToken,
     appSecret: input.appSecret,
@@ -226,7 +247,15 @@ function insightNumber(payload: MetaInsightsPayload | null) {
   return values.length ? values.reduce((total, value) => total + value, 0) : null;
 }
 
+function insightNumbers<T extends string>(payload: MetaInsightsPayload | null, metrics: readonly T[]) {
+  return Object.fromEntries(metrics.map((metric) => {
+    const insight = payload?.data?.find((item) => item.name === metric);
+    return [metric, insightNumber(insight ? { data: [insight] } : null)];
+  })) as Record<T, number | null>;
+}
+
 async function fetchInsightMetric(input: {
+  app: FastifyInstance;
   objectId: string;
   metric: string;
   token: string;
@@ -238,6 +267,7 @@ async function fetchInsightMetric(input: {
 }) {
   const path = `/${input.objectId}/insights`;
   const result = await fetchMetaResult<MetaInsightsPayload>({
+    app: input.app,
     path,
     token: input.token,
     appSecret: input.appSecret,
@@ -437,6 +467,7 @@ export async function listMetaAdAccounts(app: FastifyInstance, userId: string) {
 }
 
 async function getInstagramInsights(input: {
+  app: FastifyInstance;
   accountId: string;
   savedUsername: string | null;
   token: string;
@@ -445,44 +476,15 @@ async function getInstagramInsights(input: {
   warnings: MetaInsightsWarning[];
 }) {
   const profilePath = `/${input.accountId}`;
-  const profile = await fetchMetaResult<InstagramProfilePayload>({
-    path: profilePath,
-    token: input.token,
-    appSecret: input.appSecret,
-    params: { fields: "id,username,followers_count" },
-    metricOrOperation: "instagram.account",
-  });
-  if (profile.warning) input.warnings.push(profile.warning);
-
   const metricNames = ["reach", "views", "profile_views", "profile_links_taps", "total_interactions", "accounts_engaged"] as const;
-  const metricValues = await Promise.all(metricNames.map(async (metric) => [
-    metric,
-    await fetchInsightMetric({
-      objectId: input.accountId,
-      metric,
-      token: input.token,
-      appSecret: input.appSecret,
-      period: input.period,
-      totalValue: true,
-      warnings: input.warnings,
-      operationPrefix: "instagram.account",
-    }),
-  ] as const));
-  const metrics = Object.fromEntries(metricValues) as Record<typeof metricNames[number], number | null>;
-
   const mediaPath = `/${input.accountId}/media`;
-  const mediaResult = await fetchMetaResult<InstagramMediaPayload>({
-    path: mediaPath,
-    token: input.token,
-    appSecret: input.appSecret,
-    params: {
-      fields: "id,caption,media_type,timestamp,permalink,like_count,comments_count",
-      since: input.period.since,
-      until: input.period.until,
-      limit: "100",
-    },
-    metricOrOperation: "instagram.media.list",
-  });
+  const [profile, metricValues, mediaResult] = await Promise.all([
+    fetchMetaResult<InstagramProfilePayload>({ app: input.app, path: profilePath, token: input.token, appSecret: input.appSecret, params: { fields: "id,username,followers_count" }, metricOrOperation: "instagram.account" }),
+    Promise.all(metricNames.map(async (metric) => [metric, await fetchInsightMetric({ app: input.app, objectId: input.accountId, metric, token: input.token, appSecret: input.appSecret, period: input.period, totalValue: true, warnings: input.warnings, operationPrefix: "instagram.account" })] as const)),
+    fetchMetaResult<InstagramMediaPayload>({ app: input.app, path: mediaPath, token: input.token, appSecret: input.appSecret, params: { fields: "id,caption,media_type,timestamp,permalink,like_count,comments_count", since: input.period.since, until: input.period.until, limit: "100" }, metricOrOperation: "instagram.media.list" }),
+  ]);
+  if (profile.warning) input.warnings.push(profile.warning);
+  const metrics = Object.fromEntries(metricValues) as Record<typeof metricNames[number], number | null>;
   if (mediaResult.warning) input.warnings.push(mediaResult.warning);
   if (mediaResult.payload?.paging?.next) {
     input.warnings.push({
@@ -490,6 +492,7 @@ async function getInstagramInsights(input: {
       code: null,
       message: "O período possui mais de 100 mídias; o ranking considera as 100 primeiras retornadas pela Meta.",
       metricOrOperation: "instagram.media.pagination",
+      kind: "unavailable",
     });
   }
 
@@ -497,23 +500,13 @@ async function getInstagramInsights(input: {
     .filter((media) => media.id)
     .sort((left, right) => ((right.like_count ?? 0) + (right.comments_count ?? 0)) - ((left.like_count ?? 0) + (left.comments_count ?? 0)))
     .slice(0, 10);
-  const topContent = [];
-  for (const media of candidates) {
+  const topContent = await Promise.all(candidates.map(async (media) => {
     const mediaMetrics = ["reach", "views", "saved", "shares", "total_interactions"] as const;
-    const values = await Promise.all(mediaMetrics.map(async (metric) => {
-      const path = `/${media.id}/insights`;
-      const result = await fetchMetaResult<MetaInsightsPayload>({
-        path,
-        token: input.token,
-        appSecret: input.appSecret,
-        params: { metric },
-        metricOrOperation: `instagram.media.${media.id}.${metric}`,
-      });
-      if (result.warning) input.warnings.push(result.warning);
-      return [metric, insightNumber(result.payload)] as const;
-    }));
-    const mediaInsight = Object.fromEntries(values) as Record<typeof mediaMetrics[number], number | null>;
-    topContent.push({
+    const path = `/${media.id}/insights`;
+    const result = await fetchMetaResult<MetaInsightsPayload>({ app: input.app, path, token: input.token, appSecret: input.appSecret, params: { metric: mediaMetrics.join(",") }, metricOrOperation: `instagram.media.${media.id}.insights` });
+    if (result.warning) input.warnings.push(result.warning);
+    const mediaInsight = insightNumbers(result.payload, mediaMetrics);
+    return {
       id: media.id,
       caption: media.caption ?? null,
       mediaType: media.media_type ?? null,
@@ -526,8 +519,8 @@ async function getInstagramInsights(input: {
       saved: mediaInsight.saved,
       shares: mediaInsight.shares,
       totalInteractions: mediaInsight.total_interactions,
-    });
-  }
+    };
+  }));
   topContent.sort((left, right) => (
     (right.totalInteractions ?? ((right.likes ?? 0) + (right.comments ?? 0))) -
     (left.totalInteractions ?? ((left.likes ?? 0) + (left.comments ?? 0)))
@@ -550,6 +543,7 @@ async function getInstagramInsights(input: {
 }
 
 async function getFacebookInsights(input: {
+  app: FastifyInstance;
   pageId: string;
   savedPageName: string | null;
   userToken: string;
@@ -558,6 +552,7 @@ async function getFacebookInsights(input: {
   warnings: MetaInsightsWarning[];
 }) {
   const pageAccess = await getFacebookPageAccessContext({
+    app: input.app,
     pageId: input.pageId,
     userToken: input.userToken,
     appSecret: input.appSecret,
@@ -571,55 +566,21 @@ async function getFacebookInsights(input: {
       code: null,
       message: "A Meta não retornou um Page Access Token; as leituras da Página serão tentadas com o token atual.",
       metricOrOperation: "facebook.pageAccessToken",
+      kind: "unavailable",
     });
   }
 
   const metricNames = ["page_total_media_view_unique", "page_media_view", "page_post_engagements", "page_views_total"] as const;
-  const metricValues = await Promise.all(metricNames.map(async (metric) => [
-    metric,
-    await fetchInsightMetric({
-      objectId: input.pageId,
-      metric,
-      token: pageToken,
-      appSecret: input.appSecret,
-      period: input.period,
-      warnings: input.warnings,
-      operationPrefix: "facebook.page",
-    }),
-  ] as const));
-  const metrics = Object.fromEntries(metricValues) as Record<typeof metricNames[number], number | null>;
-  input.warnings.push({
-    endpoint: `/${input.pageId}/insights`,
-    code: null,
-    message: "page_impressions não é uma métrica válida na Graph API v26 e não possui equivalente direto. page_media_view é retornada separadamente como views.",
-    metricOrOperation: "facebook.page.impressions",
-  });
-  for (const metric of metricNames) {
-    const operation = `facebook.page.${metric}`;
-    if (metrics[metric] === null && !input.warnings.some((warning) => warning.metricOrOperation === operation)) {
-      input.warnings.push({
-        endpoint: `/${input.pageId}/insights`,
-        code: null,
-        message: "A Meta não retornou valor numérico para esta métrica no período informado.",
-        metricOrOperation: operation,
-      });
-    }
-  }
-
   const postsPath = `/${input.pageId}/posts`;
-  const posts = await fetchMetaResult<FacebookPostsPayload>({
-    path: postsPath,
-    token: pageToken,
-    appSecret: input.appSecret,
-    params: {
-      fields: "id,message,created_time,permalink_url,reactions.limit(0).summary(true),comments.limit(0).summary(true),shares",
-      since: input.period.since,
-      until: input.period.until,
-      limit: "100",
-    },
-    metricOrOperation: "facebook.posts.list",
-  });
+  const [metricValues, posts] = await Promise.all([
+    Promise.all(metricNames.map(async (metric) => [metric, await fetchInsightMetric({ app: input.app, objectId: input.pageId, metric, token: pageToken, appSecret: input.appSecret, period: input.period, warnings: input.warnings, operationPrefix: "facebook.page" })] as const)),
+    fetchMetaResult<FacebookPostsPayload>({ app: input.app, path: postsPath, token: pageToken, appSecret: input.appSecret, params: { fields: "id,message,created_time,permalink_url,reactions.limit(0).summary(true),comments.limit(0).summary(true),shares", since: input.period.since, until: input.period.until, limit: "100" }, metricOrOperation: "facebook.posts.list" }),
+  ]);
+  const metrics = Object.fromEntries(metricValues) as Record<typeof metricNames[number], number | null>;
+  input.warnings.push({ endpoint: `/${input.pageId}/insights`, code: null, message: "page_impressions não é uma métrica válida na Graph API v26 e não possui equivalente direto. page_media_view é retornada separadamente como views.", metricOrOperation: "facebook.page.impressions", kind: "unavailable" });
+  for (const metric of metricNames) { const operation = `facebook.page.${metric}`; if (metrics[metric] === null && !input.warnings.some((warning) => warning.metricOrOperation === operation)) input.warnings.push({ endpoint: `/${input.pageId}/insights`, code: null, message: "A Meta não retornou valor numérico para esta métrica no período informado.", metricOrOperation: operation, kind: "unavailable" }); }
   if (posts.warning) input.warnings.push(posts.warning);
+  if (posts.payload?.paging?.next) input.warnings.push({ endpoint: postsPath, code: null, message: "O período possui mais de 100 publicações; o ranking considera as 100 primeiras retornadas pela Meta.", metricOrOperation: "facebook.posts.pagination", kind: "unavailable" });
   const postCandidates = (posts.payload?.data ?? []).filter((post) => post.id).map((post) => {
     const reactions = post.reactions?.summary?.total_count ?? null;
     const comments = post.comments?.summary?.total_count ?? null;
@@ -635,29 +596,19 @@ async function getFacebookInsights(input: {
       interactions: (reactions ?? 0) + (comments ?? 0) + (shares ?? 0),
     };
   }).sort((left, right) => right.interactions - left.interactions).slice(0, 10);
-  const topContent = [];
-  for (const post of postCandidates) {
+  const topContent = await Promise.all(postCandidates.map(async (post) => {
     const postMetrics = ["post_total_media_view_unique", "post_media_view", "post_clicks"] as const;
-    const values = await Promise.all(postMetrics.map(async (metric) => {
-      const path = `/${post.id}/insights`;
-      const result = await fetchMetaResult<MetaInsightsPayload>({
-        path,
-        token: pageToken,
-        appSecret: input.appSecret,
-        params: { metric, period: "lifetime" },
-        metricOrOperation: `facebook.post.${post.id}.${metric}`,
-      });
-      if (result.warning) input.warnings.push(result.warning);
-      return [metric, insightNumber(result.payload)] as const;
-    }));
-    const postInsight = Object.fromEntries(values) as Record<typeof postMetrics[number], number | null>;
-    topContent.push({
+    const path = `/${post.id}/insights`;
+    const result = await fetchMetaResult<MetaInsightsPayload>({ app: input.app, path, token: pageToken, appSecret: input.appSecret, params: { metric: postMetrics.join(","), period: "lifetime" }, metricOrOperation: `facebook.post.${post.id}.insights` });
+    if (result.warning) input.warnings.push(result.warning);
+    const postInsight = insightNumbers(result.payload, postMetrics);
+    return {
       ...post,
       reach: postInsight.post_total_media_view_unique,
       views: postInsight.post_media_view,
       clicks: postInsight.post_clicks,
-    });
-  }
+    };
+  }));
   topContent.sort((left, right) => (
     (right.interactions + (right.clicks ?? 0)) - (left.interactions + (left.clicks ?? 0))
   ));
@@ -692,23 +643,36 @@ export async function getMetaInsights(
   }
   const token = decryptToken(connection.encryptedToken, config.encryptionKey);
   const warnings: MetaInsightsWarning[] = [];
+  const runSource = async <T>(source: "instagram" | "facebook", operation: () => Promise<T>) => {
+    try { return await operation(); }
+    catch (error) {
+      app.log.error({ err: error, source }, "Meta Insights source failed unexpectedly");
+      warnings.push({ endpoint: source, code: null, message: `Falha inesperada ao consultar ${source === "instagram" ? "o Instagram" : "o Facebook"}.`, metricOrOperation: `${source}.source`, kind: "api_error" });
+      return null;
+    }
+  };
+  const [instagram, facebook] = await Promise.all([
+    assets.instagramAccountId ? runSource("instagram", () => getInstagramInsights({ app, accountId: assets.instagramAccountId!, savedUsername: assets.instagramUsername, token, appSecret: config.appSecret, period, warnings })) : Promise.resolve(null),
+    assets.facebookPageId ? runSource("facebook", () => getFacebookInsights({ app, pageId: assets.facebookPageId!, savedPageName: assets.facebookPageName, userToken: token, appSecret: config.appSecret, period, warnings })) : Promise.resolve(null),
+  ]);
 
-  const instagram = assets.instagramAccountId ? await getInstagramInsights({
-    accountId: assets.instagramAccountId,
-    savedUsername: assets.instagramUsername,
-    token,
-    appSecret: config.appSecret,
-    period,
-    warnings,
-  }) : null;
-  const facebook = assets.facebookPageId ? await getFacebookInsights({
-    pageId: assets.facebookPageId,
-    savedPageName: assets.facebookPageName,
-    userToken: token,
-    appSecret: config.appSecret,
-    period,
-    warnings,
-  }) : null;
-
-  return { period, instagram, facebook, warnings };
+  const errorKinds = new Set<MetaInsightsWarning["kind"]>(["api_error", "network_error", "timeout"]);
+  const statusFor = (source: "instagram" | "facebook", linked: boolean, data: typeof instagram | typeof facebook) => {
+    if (!linked) return "not_linked" as const;
+    if (!data) return "failed" as const;
+    const sourceWarnings = warnings.filter((warning) => warning.metricOrOperation.startsWith(`${source}.`) && errorKinds.has(warning.kind));
+    const hasValues = Object.values(data.metrics).some((value) => typeof value === "number") || data.topContent.length > 0;
+    if (sourceWarnings.length) return hasValues ? "partial" as const : "failed" as const;
+    return hasValues ? "complete" as const : "empty" as const;
+  };
+  const sources = {
+    instagram: statusFor("instagram", Boolean(assets.instagramAccountId), instagram),
+    facebook: statusFor("facebook", Boolean(assets.facebookPageId), facebook),
+  };
+  const linkedStatuses = Object.values(sources).filter((status) => status !== "not_linked");
+  const status = linkedStatuses.every((source) => source === "failed") ? "failed"
+    : linkedStatuses.some((source) => source === "failed" || source === "partial") ? "partial"
+      : linkedStatuses.every((source) => source === "empty") ? "empty"
+        : "complete";
+  return { period, status, sources, instagram, facebook, warnings };
 }

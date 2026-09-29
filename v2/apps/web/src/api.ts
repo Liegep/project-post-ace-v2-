@@ -133,6 +133,8 @@ export type ReportMetrics = {
 export type ClientReport = { id: string; clientAccountId: string; title: string; periodStart: string; periodEnd: string; status: "draft" | "published"; metrics: ReportMetrics; highlights: Array<{ channel: "instagram" | "facebook"; title: string; value: number }>; evidenceUrls: string[]; notes: string | null; publishedAt: string | null; createdAt: string; updatedAt: string };
 export type ClientMetaInsights = {
   period: { since: string; until: string };
+  status: "complete" | "partial" | "empty" | "failed";
+  sources: { instagram: "complete" | "partial" | "empty" | "failed" | "not_linked"; facebook: "complete" | "partial" | "empty" | "failed" | "not_linked" };
   instagram: null | {
     accountId: string; username: string | null;
     metrics: { reach: number | null; views: number | null; followers: number | null; profileViews: number | null; interactions: number | null; linkClicks: number | null; accountsEngaged: number | null };
@@ -143,7 +145,7 @@ export type ClientMetaInsights = {
     metrics: { reach: number | null; views: number | null; impressions: number | null; engagement: number | null; followers: number | null; fans: number | null; pageViews: number | null };
     topContent: Array<{ id: string; message: string | null; timestamp: string | null; permalink: string | null; reactions: number | null; comments: number | null; shares: number | null; interactions: number | null; reach: number | null; views: number | null; clicks: number | null }>;
   };
-  warnings: Array<{ endpoint: string; code: number | null; message: string; metricOrOperation: string }>;
+  warnings: Array<{ endpoint: string; code: number | null; message: string; metricOrOperation: string; kind: "api_error" | "network_error" | "timeout" | "unavailable"; httpStatus?: number; durationMs?: number }>;
 };
 export type BillingCurrency = "BRL" | "EUR" | "USD" | "SEK";
 export type BillingInvoiceStatus = "open" | "paid" | "overdue" | "cancelled";
@@ -476,11 +478,11 @@ function getAccessToken() {
   return window.localStorage.getItem(ACCESS_TOKEN_KEY)?.trim() ?? "";
 }
 
-async function fetchJson<T>(path: string): Promise<T> {
-  return sendJson<T>(path, { method: "GET" });
+async function fetchJson<T>(path: string, timeoutMs?: number): Promise<T> {
+  return sendJson<T>(path, { method: "GET" }, timeoutMs);
 }
 
-async function sendJson<T>(path: string, init: RequestInit): Promise<T> {
+async function sendJson<T>(path: string, init: RequestInit, timeoutMs?: number): Promise<T> {
   const headers = new Headers({
     Accept: "application/json",
   });
@@ -502,7 +504,7 @@ async function sendJson<T>(path: string, init: RequestInit): Promise<T> {
     // can leave the client area showing an old permission snapshot even after
     // the admin has saved a change.
     cache: (init.method ?? "GET").toUpperCase() === "GET" ? "no-store" : init.cache,
-  });
+  }, timeoutMs);
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { message?: string } | null;
@@ -538,15 +540,22 @@ async function sendJson<T>(path: string, init: RequestInit): Promise<T> {
   return payload;
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit) {
+export class ApiRequestTimeoutError extends Error {
+  constructor() {
+    super("O servidor demorou para responder. Tente novamente.");
+    this.name = "ApiRequestTimeoutError";
+  }
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 20_000) {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 20_000);
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("O servidor demorou para responder. Tente novamente.");
+      throw new ApiRequestTimeoutError();
     }
     throw error;
   } finally {
@@ -1232,7 +1241,9 @@ export async function loadClientMetaAssets(clientAccountId: string) {
 
 export async function loadClientMetaInsights(clientAccountId: string, since: string, until: string) {
   const query = new URLSearchParams({ since, until });
-  return fetchJson<ClientMetaInsights>(`/api/clients/${clientAccountId}/meta-insights?${query.toString()}`);
+  // This endpoint fans out to bounded Meta requests; its deadline is explicit
+  // and slightly above the backend's maximum per-request phases.
+  return fetchJson<ClientMetaInsights>(`/api/clients/${clientAccountId}/meta-insights?${query.toString()}`, 28_000);
 }
 
 export async function saveClientMetaAssetsBySlug(slug: string, assets: ClientMetaAssets) {
