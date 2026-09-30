@@ -1,5 +1,5 @@
 import { convertBriefApprovalToPost, isBriefApprovalConversion } from "../approvals/approval-workflow.service.js";
-import { approvalStatuses } from "../approvals/approval-state.js";
+import { approvalStatuses, inferredApprovalState } from "../approvals/approval-state.js";
 import type { FastifyInstance } from "fastify";
 import type { RowDataPacket } from "mysql2/promise";
 import { findClientAccountById } from "../clients/clients.repository.js";
@@ -431,6 +431,7 @@ export async function moveKanbanCard(
   clientAccountId: string,
   cardId: string,
   input: MoveCardInput,
+  actor: { id: string; fullName: string; globalRole: string },
 ) {
   const card = await findCardById(app.db, cardId);
   if (!card || card.clientAccountId !== clientAccountId) {
@@ -439,12 +440,26 @@ export async function moveKanbanCard(
 
   await assertColumnBelongsToClient(app, clientAccountId, input.columnId);
 
-  const moved = await moveCard(app.db, cardId, card, input);
+  const changingColumn = card.columnId !== input.columnId;
+  let cardToMove = card;
+
+  // Once the client has approved a pauta, intentionally moving it to another
+  // production column means the pauta phase is finished. Convert it to a
+  // regular post before moving so the approval workflow cannot route it back
+  // to "Pautas para aprovação".
+  if (changingColumn && card.isBriefApproval && inferredApprovalState(card) === "approved") {
+    cardToMove = await convertBriefApprovalToPost(app, clientAccountId, cardId, actor, {
+      isBriefApproval: false,
+      expectedApprovalRevision: card.approvalRevision,
+    });
+  }
+
+  const moved = await moveCard(app.db, cardId, cardToMove, input);
   if (!moved) {
     throw app.httpErrors.badRequest("Não foi possível mover o card.");
   }
 
-  const automations = card.columnId !== input.columnId
+  const automations = changingColumn
     ? (await listActiveAutomations(app, clientAccountId)).filter((rule) => (
       rule.triggerType === "column_moved" && rule.triggerValue === input.columnId
     ))
