@@ -5823,6 +5823,15 @@ function awaitingApprovalLabel(locale: string) {
   return "Aguardando aprovação";
 }
 
+function awaitingPostReviewPortalLabel(locale: string) {
+  const normalized = locale.toLocaleLowerCase("pt-BR");
+  if (normalized.startsWith("it") || normalized.includes("ital")) return "Post da revisionare";
+  if (normalized.startsWith("es") || normalized.includes("espa")) return "Post para revisión";
+  if (normalized.startsWith("en") || normalized.includes("ingl")) return "Post for review";
+  if (normalized.startsWith("sv") || normalized.includes("suec")) return "Inlägg för granskning";
+  return "Post para revisão";
+}
+
 function awaitingReReviewPortalLabel(locale: string) {
   const normalized = locale.toLocaleLowerCase("pt-BR");
   if (normalized.startsWith("it") || normalized.includes("ital")) return "In attesa di nuova revisione";
@@ -5849,8 +5858,12 @@ function changeRequestConfirmationCopy(locale: string) {
   return { title: "Alteração solicitada", detail: "Sua solicitação foi enviada. Nossa equipe vai revisar o feedback e trabalhar nos ajustes." };
 }
 
+function hasPortalFirstPostReview(card: BoardCard) {
+  return card.approvalState === "pending" && card.latestApprovalAction === "converted_to_post";
+}
+
 function hasPortalResubmittedReview(card: BoardCard) {
-  return card.approvalState === "pending" && (card.approvalRevision ?? 0) > 0;
+  return card.approvalState === "pending" && card.latestApprovalAction === "resubmitted";
 }
 
 function isPortalApproved(card: BoardCard) {
@@ -6243,7 +6256,7 @@ function ClientPortalApprovalCard({ card, locale, localeTag, canEditSuggestion, 
       </div>
     </article>;
   }
-  return <button className={`portal-card card-button${hasPortalChangesRequested(card) ? " has-change-request" : ""}${hasPortalResubmittedReview(card) ? " has-awaiting-rereview" : ""}`} onClick={onView}><ClosedCardMedia card={card} />{hasPortalChangesRequested(card) ? <span className="portal-change-request-tab">{changesRequestedPortalLabel(locale)}</span> : hasPortalResubmittedReview(card) ? <span className="portal-review-wait-tab">{awaitingReReviewPortalLabel(locale)}</span> : null}<div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{new Intl.DateTimeFormat(localeTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(card.scheduledAt))}</p> : null}</div></button>;
+  return <button className={`portal-card card-button${hasPortalChangesRequested(card) ? " has-change-request" : ""}${hasPortalFirstPostReview(card) || hasPortalResubmittedReview(card) ? " has-awaiting-rereview" : ""}`} onClick={onView}><ClosedCardMedia card={card} />{hasPortalChangesRequested(card) ? <span className="portal-change-request-tab">{changesRequestedPortalLabel(locale)}</span> : hasPortalFirstPostReview(card) ? <span className="portal-review-wait-tab">{awaitingPostReviewPortalLabel(locale)}</span> : hasPortalResubmittedReview(card) ? <span className="portal-review-wait-tab">{awaitingReReviewPortalLabel(locale)}</span> : null}<div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{new Intl.DateTimeFormat(localeTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(card.scheduledAt))}</p> : null}</div></button>;
 }
 
 function ClientPortalWorkspacePage({
