@@ -8249,16 +8249,27 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
   const previewIsVideo = isReel || isStoryVideo;
   const [localDateTime, setLocalDateTime] = useState(suggestedAt || toDateTimeLocal(fallback.toISOString()));
   const [bestPublishingTimes, setBestPublishingTimes] = useState<Array<{ weekday: number | null; hour: number; averageFollowers: number; samples: number }>>([]);
+  const [bestPublishingTimesDebug, setBestPublishingTimesDebug] = useState("");
   const [platforms, setPlatforms] = useState<("instagram" | "facebook")[]>(instagramAvailable ? ["instagram"] : facebookAvailable ? ["facebook"] : []);
   useEffect(() => {
     if (!clientSlug || !instagramAvailable || lockSuggestedAt) {
       setBestPublishingTimes([]);
+      setBestPublishingTimesDebug("");
       return;
     }
     let active = true;
+    setBestPublishingTimesDebug("Consultando atividade dos seguidores…");
     void loadClientMetaBestTimesBySlug(clientSlug)
-      .then((result) => { if (active) setBestPublishingTimes(result.available ? result.recommendations.slice(0, 3) : []); })
-      .catch(() => { if (active) setBestPublishingTimes([]); });
+      .then((result) => {
+        if (!active) return;
+        setBestPublishingTimes(result.available ? result.recommendations.slice(0, 3) : []);
+        setBestPublishingTimesDebug(result.available ? "" : result.message || "A Meta não retornou dados de atividade dos seguidores.");
+      })
+      .catch((error) => {
+        if (!active) return;
+        setBestPublishingTimes([]);
+        setBestPublishingTimesDebug(error instanceof Error ? error.message : "Falha ao consultar os melhores horários na Meta.");
+      });
     return () => { active = false; };
   }, [clientSlug, instagramAvailable, lockSuggestedAt]);
 
@@ -8472,7 +8483,7 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
         </div> : null}
       </section>
 
-      {!lockSuggestedAt && bestPublishingTimes.length ? <div className="meta-best-publishing-times"><div><strong>Melhores horários</strong><small>Seguidores mais ativos no Instagram</small></div><div>{bestPublishingTimes.map((slot) => <button type="button" key={`${slot.weekday ?? "any"}-${slot.hour}`} onClick={() => applyBestPublishingTime(slot.weekday, slot.hour)}>{slot.weekday === null ? "" : `${["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][slot.weekday]} · `}{String(slot.hour).padStart(2, "0")}h</button>)}</div></div> : null}
+      {!lockSuggestedAt && instagramAvailable ? <div className={bestPublishingTimes.length ? "meta-best-publishing-times" : "meta-best-publishing-times debug"}><div><strong>Melhores horários</strong><small>{bestPublishingTimes.length ? "Seguidores mais ativos no Instagram" : bestPublishingTimesDebug || "Sem dados de atividade disponíveis."}</small></div>{bestPublishingTimes.length ? <div>{bestPublishingTimes.map((slot) => <button type="button" key={`${slot.weekday ?? "any"}-${slot.hour}`} onClick={() => applyBestPublishingTime(slot.weekday, slot.hour)}>{slot.weekday === null ? "" : `${["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][slot.weekday]} · `}{String(slot.hour).padStart(2, "0")}h</button>)}</div> : null}</div> : null}
       {lockSuggestedAt ? <div className="meta-schedule-fixed-time"><span>Data e hora</span><strong>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(localDateTime))}</strong><small>Definidas no modal de feedback</small></div> : <label><span>Data e hora</span><input type="datetime-local" value={localDateTime} onChange={(event) => setLocalDateTime(event.target.value)} /></label>}
       <small>Fuso horário: {timezone}</small>
       <footer><button type="button" className="ghost-button" disabled={submitting || reelCoverUploading} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || reelCoverUploading || !localDateTime || platforms.length === 0 || platforms.some((platform) => blockedPlatforms.includes(platform)) || locationInvalid || Boolean(pendingTagUsername) || Boolean(storyMediaError)} onClick={() => void onSubmit(platforms, localDateTime, timezone, { publicationFormat: isStory ? "story" : null, reelCoverUrl: isReel ? reelCoverUrl : null, locationId: isStory ? null : normalizedLocationId || null, locationName: isStory ? null : selectedLocation?.name ?? null, instagramUserTags: isCarousel || isReel || isStory ? [] : instagramUserTags })}>{submitting ? "Agendando…" : reelCoverUploading ? "Enviando capa…" : "Agendar publicação"}</button></footer>
