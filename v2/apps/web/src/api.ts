@@ -162,6 +162,13 @@ export type ReportMetrics = {
   ads?: ReportAdsMetrics | null;
 };
 export type ClientReport = { id: string; clientAccountId: string; title: string; periodStart: string; periodEnd: string; status: "draft" | "published"; metrics: ReportMetrics; highlights: Array<{ channel: "instagram" | "facebook"; title: string; value: number; thumbnailUrl?: string | null; permalink?: string | null; metricLabel?: "interactions" }>; evidenceUrls: string[]; notes: string | null; publishedAt: string | null; createdAt: string; updatedAt: string };
+export type MetaBestPublishingTimes = {
+  available: boolean;
+  source: "instagram_online_followers";
+  recommendations: Array<{ weekday: number | null; hour: number; averageFollowers: number; samples: number }>;
+  message: string | null;
+};
+
 export type ClientMetaInsights = {
   period: { since: string; until: string };
   status: "complete" | "partial" | "empty" | "failed";
@@ -1339,6 +1346,11 @@ export async function loadMetaAdAccounts() {
 export async function loadClientMetaAssetsBySlug(slug: string) {
   const client = await findAdminClientBySlug(slug);
   return fetchJson<{ assets: ClientMetaAssets | null }>(`/api/clients/${client.id}/meta-assets`);
+}
+
+export async function loadClientMetaBestTimesBySlug(slug: string) {
+  const client = await findAdminClientBySlug(slug);
+  return fetchJson<MetaBestPublishingTimes>(`/api/clients/${client.id}/meta-best-times`, 18_000);
 }
 
 export async function loadClientMetaAssets(clientAccountId: string) {
