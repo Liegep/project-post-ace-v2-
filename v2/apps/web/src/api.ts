@@ -165,6 +165,8 @@ export type ClientReport = { id: string; clientAccountId: string; title: string;
 export type MetaBestPublishingTimes = {
   available: boolean;
   source: "instagram_online_followers";
+  sourceTimeZone: "UTC-07:00";
+  timeZone: string;
   recommendations: Array<{ weekday: number | null; hour: number; averageFollowers: number; samples: number }>;
   message: string | null;
 };
@@ -1348,9 +1350,10 @@ export async function loadClientMetaAssetsBySlug(slug: string) {
   return fetchJson<{ assets: ClientMetaAssets | null }>(`/api/clients/${client.id}/meta-assets`);
 }
 
-export async function loadClientMetaBestTimesBySlug(slug: string) {
+export async function loadClientMetaBestTimesBySlug(slug: string, timeZone: string) {
   const client = await findAdminClientBySlug(slug);
-  return fetchJson<MetaBestPublishingTimes>(`/api/clients/${client.id}/meta-best-times`, 18_000);
+  const query = new URLSearchParams({ timeZone });
+  return fetchJson<MetaBestPublishingTimes>(`/api/clients/${client.id}/meta-best-times?${query.toString()}`, 18_000);
 }
 
 export async function loadClientMetaAssets(clientAccountId: string) {

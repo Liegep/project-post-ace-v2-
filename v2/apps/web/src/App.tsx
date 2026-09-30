@@ -8250,13 +8250,14 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
   const [localDateTime, setLocalDateTime] = useState(suggestedAt || toDateTimeLocal(fallback.toISOString()));
   const [bestPublishingTimes, setBestPublishingTimes] = useState<Array<{ weekday: number | null; hour: number; averageFollowers: number; samples: number }>>([]);
   const [platforms, setPlatforms] = useState<("instagram" | "facebook")[]>(instagramAvailable ? ["instagram"] : facebookAvailable ? ["facebook"] : []);
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   useEffect(() => {
     if (!clientSlug || !instagramAvailable || lockSuggestedAt) {
       setBestPublishingTimes([]);
       return;
     }
     let active = true;
-    void loadClientMetaBestTimesBySlug(clientSlug)
+    void loadClientMetaBestTimesBySlug(clientSlug, timezone)
       .then((result) => {
         if (!active) return;
         setBestPublishingTimes(result.available ? result.recommendations.slice(0, 3) : []);
@@ -8266,7 +8267,7 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
         setBestPublishingTimes([]);
       });
     return () => { active = false; };
-  }, [clientSlug, instagramAvailable, lockSuggestedAt]);
+  }, [clientSlug, instagramAvailable, lockSuggestedAt, timezone]);
 
   const applyBestPublishingTime = (weekday: number | null, hour: number) => {
     const now = new Date();
@@ -8301,7 +8302,6 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
   const [pendingTagUsername, setPendingTagUsername] = useState<string | null>(null);
   const [instagramUserTags, setInstagramUserTags] = useState<Array<{ username: string; x: number; y: number }>>([]);
   const [tagError, setTagError] = useState("");
-  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const instagramSelected = platforms.includes("instagram");
   const facebookSelected = platforms.includes("facebook");
   const blockedPlatforms = cardId ? scheduledMetaPlatformsAt(existingPublications, cardId, localDateTime) : [];

@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import net from "node:net";
 import type { FastifyInstance } from "fastify";
 import { archiveKanbanCard } from "../cards/cards.service.js";
-import { instagramOnlineFollowersDateRange, parseInstagramBestPublishingTimes, summarizeInstagramOnlineFollowersPayload } from "./meta-best-times.js";
+import { instagramOnlineFollowersDateRange, META_ONLINE_FOLLOWERS_SOURCE_TIME_ZONE, parseInstagramBestPublishingTimes, summarizeInstagramOnlineFollowersPayload } from "./meta-best-times.js";
 import {
   canArchiveScheduledPublicationCard,
   createScheduledPublications,
@@ -937,6 +937,7 @@ export async function getInstagramBestPublishingTimes(
   app: FastifyInstance,
   userId: string,
   accountId: string,
+  timeZone: string,
 ) {
   const config = requireMetaConfig(app);
   const connection = await findMetaConnection(app.db, userId);
@@ -958,23 +959,27 @@ export async function getInstagramBestPublishingTimes(
   });
 
   if (result.payload) {
-    app.log.debug({ responseStructure: summarizeInstagramOnlineFollowersPayload(result.payload) }, "Meta online followers response structure");
+    app.log.debug({ responseStructure: summarizeInstagramOnlineFollowersPayload(result.payload, { ...range, targetTimeZone: timeZone }) }, "Meta online followers response structure");
   }
 
   if (!result.payload?.data?.length) {
     return {
       available: false as const,
       source: "instagram_online_followers" as const,
+      sourceTimeZone: META_ONLINE_FOLLOWERS_SOURCE_TIME_ZONE,
+      timeZone,
       recommendations: [],
       message: result.warning?.message ?? "A Meta não retornou dados de atividade dos seguidores para esta conta.",
     };
   }
 
-  const recommendations = parseInstagramBestPublishingTimes(result.payload);
+  const recommendations = parseInstagramBestPublishingTimes(result.payload, timeZone);
 
   return {
     available: recommendations.length > 0,
     source: "instagram_online_followers" as const,
+    sourceTimeZone: META_ONLINE_FOLLOWERS_SOURCE_TIME_ZONE,
+    timeZone,
     recommendations,
     message: recommendations.length ? null : "A Meta não disponibilizou dados suficientes de atividade dos seguidores.",
   };

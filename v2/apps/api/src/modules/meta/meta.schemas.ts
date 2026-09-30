@@ -39,6 +39,17 @@ export const metaInsightsQuerySchema = z.object({
 
 export type MetaInsightsPeriod = z.infer<typeof metaInsightsQuerySchema>;
 
+export const metaBestTimesQuerySchema = z.object({
+  timeZone: z.string().trim().min(1).max(100).default("UTC").refine((value) => {
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: value }).format();
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Timezone inválido."),
+});
+
 export const clientMetaAssetsSchema = z.object({
   facebookPageId: nullableMetaIdentifier,
   facebookPageName: nullableMetaLabel,

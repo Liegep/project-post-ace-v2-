@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { findClientAccountById } from "../clients/clients.repository.js";
 import { findCardById } from "../cards/cards.repository.js";
-import { clientMetaAssetsSchema, clientMetaPublicationsQuerySchema, createMetaPublicationSchema, createMetaSavedLocationSchema, manageMetaPublicationsSchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema, metaPlaceSearchQuerySchema, metaPublicationsQuerySchema, rescheduleMetaPublicationsSchema, updateMetaSavedLocationSchema } from "./meta.schemas.js";
+import { clientMetaAssetsSchema, clientMetaPublicationsQuerySchema, createMetaPublicationSchema, createMetaSavedLocationSchema, manageMetaPublicationsSchema, metaBestTimesQuerySchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema, metaPlaceSearchQuerySchema, metaPublicationsQuerySchema, rescheduleMetaPublicationsSchema, updateMetaSavedLocationSchema } from "./meta.schemas.js";
 import { cancelScheduledPublication, cancelScheduledPublicationGroup, consumeMetaOAuthState, createMetaSavedLocation, deleteMetaSavedLocation, findClientMetaAssets, findMetaSavedLocation, findScheduledPublication, listGlobalScheduledPublications, listMetaSavedLocations, listScheduledPublicationsForClient, rescheduleScheduledPublications, updateMetaSavedLocation, upsertClientMetaAssets } from "./meta.repository.js";
 import { archiveMetaCardIfPublicationGroupComplete, completeMetaAuthorization, createMetaAuthorizationUrl, getInstagramBestPublishingTimes, getMetaAdsInsights, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets, scheduleMetaCardPublications, searchMetaPlaces } from "./meta.service.js";
 
@@ -191,21 +191,23 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
 
   app.get("/clients/:clientAccountId/meta-best-times", async (request) => {
     const auth = assertSuperAdmin(request);
+    const query = metaBestTimesQuerySchema.safeParse(request.query);
+    if (!query.success) throw app.httpErrors.badRequest(query.error.issues[0]?.message ?? "Timezone inválido.");
     const { clientAccountId } = request.params as { clientAccountId: string };
     if (!await findClientAccountById(app.db, clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
     const assets = await findClientMetaAssets(app.db, clientAccountId);
     if (!assets?.instagramAccountId) {
-      return { available: false, source: "instagram_online_followers", recommendations: [], message: "O cliente não possui Instagram profissional vinculado." };
+      return { available: false, source: "instagram_online_followers", sourceTimeZone: "UTC-07:00", timeZone: query.data.timeZone, recommendations: [], message: "O cliente não possui Instagram profissional vinculado." };
     }
     const startedAt = Date.now();
-    request.log.info({ clientAccountId, instagramAccountId: assets.instagramAccountId }, "Meta best publishing times request started");
+    request.log.info({ timeZone: query.data.timeZone }, "Meta best publishing times request started");
     try {
-      const result = await getInstagramBestPublishingTimes(app, auth.user.id, assets.instagramAccountId);
-      request.log.info({ clientAccountId, durationMs: Date.now() - startedAt, available: result.available, recommendationCount: result.recommendations.length }, "Meta best publishing times request completed");
+      const result = await getInstagramBestPublishingTimes(app, auth.user.id, assets.instagramAccountId, query.data.timeZone);
+      request.log.info({ durationMs: Date.now() - startedAt, available: result.available, recommendationCount: result.recommendations.length, timeZone: query.data.timeZone }, "Meta best publishing times request completed");
       return result;
     } catch (error) {
-      request.log.error({ err: error, clientAccountId, durationMs: Date.now() - startedAt }, "Meta best publishing times request failed");
-      return { available: false, source: "instagram_online_followers", recommendations: [], message: "Os melhores horários estão temporariamente indisponíveis." };
+      request.log.error({ err: error, durationMs: Date.now() - startedAt }, "Meta best publishing times request failed");
+      return { available: false, source: "instagram_online_followers", sourceTimeZone: "UTC-07:00", timeZone: query.data.timeZone, recommendations: [], message: "Os melhores horários estão temporariamente indisponíveis." };
     }
   });
 
