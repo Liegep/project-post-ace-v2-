@@ -1,9 +1,9 @@
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { findClientAccountById } from "../clients/clients.repository.js";
 import { findCardById } from "../cards/cards.repository.js";
-import { clientMetaAssetsSchema, createMetaPublicationSchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema } from "./meta.schemas.js";
-import { cancelScheduledPublication, consumeMetaOAuthState, findClientMetaAssets, findScheduledPublication, listScheduledPublicationsForClient, upsertClientMetaAssets } from "./meta.repository.js";
-import { archiveMetaCardIfPublicationGroupComplete, completeMetaAuthorization, createMetaAuthorizationUrl, getMetaAdsInsights, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets, scheduleMetaCardPublications } from "./meta.service.js";
+import { clientMetaAssetsSchema, createMetaPublicationSchema, manageMetaPublicationsSchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema, metaPlaceSearchQuerySchema, metaPublicationsQuerySchema, rescheduleMetaPublicationsSchema } from "./meta.schemas.js";
+import { cancelScheduledPublication, cancelScheduledPublicationGroup, consumeMetaOAuthState, findClientMetaAssets, findScheduledPublication, listGlobalScheduledPublications, listScheduledPublicationsForClient, rescheduleScheduledPublications, upsertClientMetaAssets } from "./meta.repository.js";
+import { archiveMetaCardIfPublicationGroupComplete, completeMetaAuthorization, createMetaAuthorizationUrl, getMetaAdsInsights, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets, scheduleMetaCardPublications, searchMetaPlaces } from "./meta.service.js";
 
 function assertSuperAdmin(request: FastifyRequest) {
   if (!request.auth) throw request.server.httpErrors.unauthorized("Sessão obrigatória.");
@@ -28,6 +28,11 @@ function publicationResponse(publication: NonNullable<Awaited<ReturnType<typeof 
     timezone: publication.timezone,
     reelCoverUrl: publication.reelCoverUrl,
     locationId: publication.locationId,
+    locationName: publication.locationName,
+    caption: publication.caption,
+    mediaUrl: publication.mediaUrl,
+    mediaUrls: publication.mediaUrls,
+    mediaType: publication.mediaType,
     instagramUserTags: publication.instagramUserTags,
     status: publication.status,
     attemptCount: publication.attemptCount,
@@ -79,6 +84,56 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
   app.get("/meta/ad-accounts", async (request) => {
     const auth = assertSuperAdmin(request);
     return listMetaAdAccounts(app, auth.user.id);
+  });
+
+  app.get("/meta/places/search", async (request) => {
+    const auth = assertSuperAdmin(request);
+    const parsed = metaPlaceSearchQuerySchema.safeParse(request.query);
+    if (!parsed.success) throw app.httpErrors.badRequest(parsed.error.issues[0]?.message ?? "Busca inválida.");
+    if (parsed.data.q.length < 3) return { places: [] };
+    return { places: await searchMetaPlaces(app, auth.user.id, parsed.data.q) };
+  });
+
+  app.get("/meta/publications", async (request) => {
+    assertSuperAdmin(request);
+    const parsed = metaPublicationsQuerySchema.safeParse(request.query);
+    if (!parsed.success) throw app.httpErrors.badRequest(parsed.error.issues[0]?.message ?? "Filtros inválidos.");
+    const result = await listGlobalScheduledPublications(app.db, parsed.data);
+    return { total: result.total, summary: result.summary, publications: result.items.map((publication) => ({
+      ...publicationResponse(publication),
+      clientAccountId: publication.clientAccountId,
+      clientName: publication.clientName,
+      clientSlug: publication.clientSlug,
+      cardTitle: publication.cardTitle,
+    })) };
+  });
+
+  app.patch("/meta/publications/reschedule", async (request) => {
+    assertSuperAdmin(request);
+    const parsed = rescheduleMetaPublicationsSchema.safeParse(request.body);
+    if (!parsed.success) throw app.httpErrors.badRequest(parsed.error.issues[0]?.message ?? "Reagendamento inválido.");
+    if (!await rescheduleScheduledPublications(app.db, parsed.data)) {
+      throw app.httpErrors.conflict("Somente publicações ainda agendadas podem ser reagendadas.");
+    }
+    const publications = await Promise.all(parsed.data.publicationIds.map((id) => findScheduledPublication(app.db, id)));
+    return { publications: publications.filter((item): item is NonNullable<typeof item> => Boolean(item)).map(publicationResponse) };
+  });
+
+  app.post("/meta/publications/cancel", async (request) => {
+    assertSuperAdmin(request);
+    const parsed = manageMetaPublicationsSchema.safeParse(request.body);
+    if (!parsed.success) throw app.httpErrors.badRequest(parsed.error.issues[0]?.message ?? "Cancelamento inválido.");
+    const previous = await cancelScheduledPublicationGroup(app.db, parsed.data.publicationIds);
+    if (!previous) throw app.httpErrors.conflict("Somente publicações agendadas ou com falha podem ser canceladas.");
+    for (const publication of previous) {
+      try {
+        await archiveMetaCardIfPublicationGroupComplete(app, publication);
+      } catch (error) {
+        request.log.error({ err: error, publicationId: publication.id, cardId: publication.cardId }, "Meta card could not be archived after group cancellation");
+      }
+    }
+    const publications = await Promise.all(parsed.data.publicationIds.map((id) => findScheduledPublication(app.db, id)));
+    return { publications: publications.filter((item): item is NonNullable<typeof item> => Boolean(item)).map(publicationResponse) };
   });
 
   app.get("/clients/:clientAccountId/meta-assets", async (request) => {
@@ -170,6 +225,7 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
       publicationFormat: parsed.data.publicationFormat,
       reelCoverUrl: parsed.data.reelCoverUrl,
       locationId: parsed.data.locationId,
+      locationName: parsed.data.locationName,
       instagramUserTags: parsed.data.instagramUserTags,
     });
     if (results.some((result) => !result.publication)) throw new Error("O agendamento foi salvo, mas não pôde ser carregado.");

@@ -36,6 +36,7 @@ type ScheduledPublicationRow = RowDataPacket & {
   media_type: string | null;
   reel_cover_url: string | null;
   location_id: string | null;
+  location_name: string | null;
   instagram_user_tags_json: unknown;
   status: MetaScheduledPublicationStatus;
   attempt_count: number;
@@ -51,7 +52,7 @@ type ScheduledPublicationRow = RowDataPacket & {
 
 const scheduledPublicationSelect = [
   "SELECT id, client_account_id, card_id, platform, meta_asset_id,",
-  "DATE_FORMAT(scheduled_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS scheduled_at, timezone, caption, media_url, media_urls_json, media_type, reel_cover_url, location_id, instagram_user_tags_json,",
+  "DATE_FORMAT(scheduled_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS scheduled_at, timezone, caption, media_url, media_urls_json, media_type, reel_cover_url, location_id, location_name, instagram_user_tags_json,",
   "status, attempt_count, idempotency_key, published_meta_id, published_permalink, last_error, created_by_user_id, created_at, updated_at, published_at",
   "FROM meta_scheduled_publications",
 ].join(" ");
@@ -104,6 +105,7 @@ function mapScheduledPublication(row: ScheduledPublicationRow) {
     mediaType: row.media_type,
     reelCoverUrl: row.reel_cover_url,
     locationId: row.location_id,
+    locationName: row.location_name,
     instagramUserTags: parseInstagramUserTags(row.instagram_user_tags_json),
     status: row.status,
     attemptCount: Number(row.attempt_count),
@@ -226,6 +228,7 @@ export type CreateScheduledPublicationInput = {
   mediaType: "image" | "carousel" | "reel" | "story";
   reelCoverUrl: string | null;
   locationId: string | null;
+  locationName: string | null;
   instagramUserTags: Array<{ username: string; x: number; y: number }>;
   createdByUserId: string;
   idempotencyKey: string;
@@ -242,13 +245,13 @@ export async function createScheduledPublications(db: Pool, inputs: CreateSchedu
         await connection.query(
           [
             "INSERT INTO meta_scheduled_publications",
-            "(id, client_account_id, card_id, platform, meta_asset_id, scheduled_at, timezone, caption, media_url, media_urls_json, media_type, reel_cover_url, location_id, instagram_user_tags_json, status, created_by_user_id, idempotency_key)",
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)",
+            "(id, client_account_id, card_id, platform, meta_asset_id, scheduled_at, timezone, caption, media_url, media_urls_json, media_type, reel_cover_url, location_id, location_name, instagram_user_tags_json, status, created_by_user_id, idempotency_key)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)",
           ].join(" "),
           [
             id, input.clientAccountId, input.cardId, input.platform, input.metaAssetId,
             mysqlUtcDateTime(input.scheduledAt), input.timezone, input.caption, input.mediaUrl,
-            JSON.stringify(input.mediaUrls), input.mediaType, input.reelCoverUrl, input.locationId, JSON.stringify(input.instagramUserTags),
+            JSON.stringify(input.mediaUrls), input.mediaType, input.reelCoverUrl, input.locationId, input.locationName, JSON.stringify(input.instagramUserTags),
             input.createdByUserId, input.idempotencyKey,
           ],
         );
@@ -292,6 +295,135 @@ export async function listScheduledPublicationsForClient(db: Pool, clientAccount
     [clientAccountId],
   );
   return rows.map(mapScheduledPublication);
+}
+
+type GlobalScheduledPublicationRow = ScheduledPublicationRow & {
+  client_name: string;
+  client_slug: string;
+  card_title: string | null;
+};
+
+export type GlobalMetaPublicationFilters = {
+  clientAccountId?: string;
+  platform?: "instagram" | "facebook";
+  mediaType?: "image" | "carousel" | "reel" | "story";
+  status?: MetaScheduledPublicationStatus;
+  from?: string;
+  to?: string;
+  limit: number;
+  offset: number;
+};
+
+function globalPublicationWhere(filters: GlobalMetaPublicationFilters) {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+  if (filters.clientAccountId) { conditions.push("p.client_account_id = ?"); params.push(filters.clientAccountId); }
+  if (filters.platform) { conditions.push("p.platform = ?"); params.push(filters.platform); }
+  if (filters.mediaType) { conditions.push("p.media_type = ?"); params.push(filters.mediaType); }
+  if (filters.status) { conditions.push("p.status = ?"); params.push(filters.status); }
+  if (filters.from) { conditions.push("p.scheduled_at >= ?"); params.push(mysqlUtcDateTime(filters.from)); }
+  if (filters.to) { conditions.push("p.scheduled_at < ?"); params.push(mysqlUtcDateTime(filters.to)); }
+  return { sql: conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "", params };
+}
+
+export async function listGlobalScheduledPublications(db: Pool, filters: GlobalMetaPublicationFilters) {
+  const where = globalPublicationWhere(filters);
+  const safeLimit = Math.max(1, Math.min(200, Math.trunc(filters.limit)));
+  const safeOffset = Math.max(0, Math.trunc(filters.offset));
+  const fields = [
+    "p.id, p.client_account_id, p.card_id, p.platform, p.meta_asset_id,",
+    "DATE_FORMAT(p.scheduled_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS scheduled_at, p.timezone, p.caption, p.media_url, p.media_urls_json, p.media_type, p.reel_cover_url, p.location_id, p.location_name, p.instagram_user_tags_json,",
+    "p.status, p.attempt_count, p.idempotency_key, p.published_meta_id, p.published_permalink, p.last_error, p.created_by_user_id, p.created_at, p.updated_at, p.published_at,",
+    "c.name AS client_name, c.slug AS client_slug, k.title AS card_title",
+  ].join(" ");
+  const joins = " FROM meta_scheduled_publications p INNER JOIN client_accounts c ON c.id = p.client_account_id LEFT JOIN kanban_cards k ON k.id = p.card_id";
+  const [rows] = await db.query<GlobalScheduledPublicationRow[]>(
+    `SELECT ${fields}${joins}${where.sql} ORDER BY p.scheduled_at ASC, p.created_at ASC LIMIT ${safeLimit} OFFSET ${safeOffset}`,
+    where.params,
+  );
+  const [countRows] = await db.query<(RowDataPacket & { total: number | string })[]>(
+    `SELECT COUNT(*) AS total${joins}${where.sql}`,
+    where.params,
+  );
+  const [summaryRows] = await db.query<(RowDataPacket & { scheduled: number | string; publishing: number | string; published_today: number | string; failed: number | string })[]>([
+    "SELECT SUM(status = 'scheduled') AS scheduled, SUM(status = 'publishing') AS publishing,",
+    "SUM(status = 'published' AND published_at >= UTC_DATE()) AS published_today, SUM(status = 'failed') AS failed",
+    "FROM meta_scheduled_publications",
+  ].join(" "));
+  return {
+    items: rows.map((row) => ({
+      ...mapScheduledPublication(row),
+      clientName: row.client_name,
+      clientSlug: row.client_slug,
+      cardTitle: row.card_title?.trim() || "Publicação Meta",
+    })),
+    total: Number(countRows[0]?.total ?? 0),
+    summary: {
+      scheduled: Number(summaryRows[0]?.scheduled ?? 0),
+      publishing: Number(summaryRows[0]?.publishing ?? 0),
+      publishedToday: Number(summaryRows[0]?.published_today ?? 0),
+      failed: Number(summaryRows[0]?.failed ?? 0),
+    },
+  };
+}
+
+async function lockScheduledPublications(connection: Awaited<ReturnType<Pool["getConnection"]>>, ids: string[]) {
+  const placeholders = ids.map(() => "?").join(", ");
+  const [rows] = await connection.query<ScheduledPublicationRow[]>(
+    `${scheduledPublicationSelect} WHERE id IN (${placeholders}) FOR UPDATE`,
+    ids,
+  );
+  return rows;
+}
+
+export async function rescheduleScheduledPublications(db: Pool, input: { publicationIds: string[]; scheduledAt: string; timezone: string }) {
+  const ids = [...new Set(input.publicationIds)];
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const rows = await lockScheduledPublications(connection, ids);
+    if (rows.length !== ids.length || rows.some((row) => row.status !== "scheduled")) {
+      await connection.rollback();
+      return false;
+    }
+    const placeholders = ids.map(() => "?").join(", ");
+    await connection.query(
+      `UPDATE meta_scheduled_publications SET scheduled_at = ?, timezone = ?, updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`,
+      [mysqlUtcDateTime(input.scheduledAt), input.timezone, ...ids],
+    );
+    await connection.commit();
+    return true;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+export async function cancelScheduledPublicationGroup(db: Pool, publicationIds: string[]) {
+  const ids = [...new Set(publicationIds)];
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const rows = await lockScheduledPublications(connection, ids);
+    if (rows.length !== ids.length || rows.some((row) => !["scheduled", "failed"].includes(row.status))) {
+      await connection.rollback();
+      return null;
+    }
+    const placeholders = ids.map(() => "?").join(", ");
+    await connection.query(
+      `UPDATE meta_scheduled_publications SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id IN (${placeholders})`,
+      ids,
+    );
+    await connection.commit();
+    return rows.map(mapScheduledPublication);
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 export async function listDueScheduledPublications(db: Pool, limit = 10) {

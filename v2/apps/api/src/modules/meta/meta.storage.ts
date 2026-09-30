@@ -30,7 +30,7 @@ export async function ensureMetaStorage(db: Pool) {
     "CREATE TABLE IF NOT EXISTS meta_scheduled_publications (",
     "id CHAR(36) NOT NULL PRIMARY KEY, client_account_id CHAR(36) NOT NULL, card_id CHAR(36) NULL,",
     "platform ENUM('instagram', 'facebook') NOT NULL, meta_asset_id VARCHAR(190) NOT NULL, scheduled_at DATETIME(3) NOT NULL, timezone VARCHAR(64) NOT NULL,",
-    "caption TEXT NULL, media_url VARCHAR(2048) NULL, media_urls_json JSON NULL, media_type VARCHAR(50) NULL, reel_cover_url VARCHAR(2048) NULL, location_id VARCHAR(190) NULL, instagram_user_tags_json JSON NULL,",
+    "caption TEXT NULL, media_url VARCHAR(2048) NULL, media_urls_json JSON NULL, media_type VARCHAR(50) NULL, reel_cover_url VARCHAR(2048) NULL, location_id VARCHAR(190) NULL, location_name VARCHAR(255) NULL, instagram_user_tags_json JSON NULL,",
     "status ENUM('scheduled', 'publishing', 'published', 'failed', 'cancelled') NOT NULL DEFAULT 'scheduled', attempt_count INT UNSIGNED NOT NULL DEFAULT 0,",
     "idempotency_key CHAR(64) NOT NULL, published_meta_id VARCHAR(190) NULL, published_permalink VARCHAR(2048) NULL, last_error TEXT NULL, created_by_user_id CHAR(36) NULL,",
     "created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3), published_at DATETIME(3) NULL,",
@@ -44,7 +44,8 @@ export async function ensureMetaStorage(db: Pool) {
   const publicationColumns = [
     ["reel_cover_url", "VARCHAR(2048) NULL AFTER media_type"],
     ["location_id", "VARCHAR(190) NULL AFTER media_type"],
-    ["instagram_user_tags_json", "JSON NULL AFTER location_id"],
+    ["location_name", "VARCHAR(255) NULL AFTER location_id"],
+    ["instagram_user_tags_json", "JSON NULL AFTER location_name"],
   ] as const;
   for (const [column, definition] of publicationColumns) {
     const [columns] = await db.query<RowDataPacket[]>("SHOW COLUMNS FROM meta_scheduled_publications LIKE ?", [column]);

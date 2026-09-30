@@ -69,6 +69,8 @@ const isoDateTimeSchema = z.string().trim().refine((value) => {
 }, "Use uma data e hora ISO com fuso horário.");
 
 const metaPublicationPlatformSchema = z.enum(["instagram", "facebook"]);
+const metaPublicationStatusSchema = z.enum(["scheduled", "publishing", "published", "failed", "cancelled"]);
+const metaPublicationMediaTypeSchema = z.enum(["image", "carousel", "reel", "story"]);
 
 const instagramUserTagSchema = z.object({
   username: z.string().trim().transform((value) => value.replace(/^@+/, "")).refine(
@@ -93,6 +95,7 @@ export const createMetaPublicationSchema = z.object({
     z.null(),
   ]).optional(),
   locationId: z.union([z.string().trim().regex(/^\d+$/, "O ID da localização deve ser numérico.").max(190), z.null()]).optional(),
+  locationName: z.union([z.string().trim().min(1).max(255), z.null()]).optional(),
   instagramUserTags: z.array(instagramUserTagSchema).max(20, "O Instagram aceita no máximo 20 marcações por publicação.").optional(),
   timezone: z.string().trim().min(1).max(100).refine((value) => {
     try {
@@ -114,7 +117,42 @@ export const createMetaPublicationSchema = z.object({
   ...value,
   platforms: [...new Set(value.platforms ?? (value.platform ? [value.platform] : []))],
   locationId: value.locationId || null,
+  locationName: value.locationName || null,
   reelCoverUrl: value.reelCoverUrl || null,
   publicationFormat: value.publicationFormat || null,
   instagramUserTags: value.instagramUserTags ?? [],
 }));
+
+export const metaPublicationsQuerySchema = z.object({
+  clientAccountId: z.string().trim().min(1).max(190).optional(),
+  platform: metaPublicationPlatformSchema.optional(),
+  mediaType: metaPublicationMediaTypeSchema.optional(),
+  status: metaPublicationStatusSchema.optional(),
+  from: isoDateTimeSchema.optional(),
+  to: isoDateTimeSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+  offset: z.coerce.number().int().min(0).default(0),
+}).refine((value) => !value.from || !value.to || new Date(value.from).getTime() <= new Date(value.to).getTime(), {
+  message: "O início do período deve ser anterior ao fim.",
+  path: ["to"],
+});
+
+export const manageMetaPublicationsSchema = z.object({
+  publicationIds: z.array(z.string().trim().min(1).max(190)).min(1).max(2).transform((ids) => [...new Set(ids)]),
+});
+
+export const rescheduleMetaPublicationsSchema = manageMetaPublicationsSchema.extend({
+  scheduledAt: isoDateTimeSchema,
+  timezone: z.string().trim().min(1).max(100).refine((value) => {
+    try {
+      new Intl.DateTimeFormat("pt-BR", { timeZone: value });
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Timezone inválido."),
+});
+
+export const metaPlaceSearchQuerySchema = z.object({
+  q: z.string().trim().max(100).default(""),
+});

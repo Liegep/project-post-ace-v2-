@@ -156,6 +156,14 @@ type FacebookPost = {
 
 type FacebookPostsPayload = MetaApiError & { data?: FacebookPost[]; paging?: { next?: string } };
 
+type MetaPlaceSearchPayload = MetaApiError & {
+  data?: Array<{
+    id?: string;
+    name?: string;
+    location?: { city?: string; state?: string; country?: string; street?: string; zip?: string | number };
+  }>;
+};
+
 type FacebookVideoStatusPayload = MetaApiError & {
   status?: {
     video_status?: string;
@@ -1082,6 +1090,7 @@ export async function scheduleMetaCardPublications(app: FastifyInstance, input: 
   publicationFormat?: "story" | null;
   reelCoverUrl?: string | null;
   locationId?: string | null;
+  locationName?: string | null;
   instagramUserTags?: Array<{ username: string; x: number; y: number }>;
 }) {
   await getPublishingContext(app, input.userId);
@@ -1114,12 +1123,40 @@ export async function scheduleMetaCardPublications(app: FastifyInstance, input: 
     mediaType: plan.mediaType,
     reelCoverUrl: plan.reelCoverUrl ? assertPublicReelCoverUrl(app, plan.reelCoverUrl) : null,
     locationId: plan.locationId,
+    locationName: plan.locationId ? input.locationName?.trim() || null : null,
     instagramUserTags: plan.instagramUserTags,
     createdByUserId: input.userId,
     idempotencyKey: crypto.createHash("sha256")
       .update([input.clientAccountId, input.card.id, plan.platform, scheduledAt].join(":"))
       .digest("hex"),
   })));
+}
+
+export async function searchMetaPlaces(app: FastifyInstance, userId: string, query: string) {
+  const q = query.trim();
+  if (q.length < 3) return [];
+  const context = await getPublishingContext(app, userId);
+  const result = await fetchMetaResult<MetaPlaceSearchPayload>({
+    app,
+    path: "/pages/search",
+    token: context.token,
+    appSecret: context.appSecret,
+    params: { q, fields: "id,name,location", limit: "8" },
+    metricOrOperation: "meta.places.search",
+    timeoutMs: 15_000,
+  });
+  if (!result.payload) throw app.httpErrors.badRequest("Não foi possível buscar locais agora.");
+  return (result.payload.data ?? []).flatMap((place) => place.id && place.name ? [{
+    id: place.id,
+    name: place.name,
+    location: {
+      city: place.location?.city ?? null,
+      state: place.location?.state ?? null,
+      country: place.location?.country ?? null,
+      street: place.location?.street ?? null,
+      zip: place.location?.zip === undefined ? null : String(place.location.zip),
+    },
+  }] : []);
 }
 
 export async function archiveMetaCardIfPublicationGroupComplete(app: FastifyInstance, publication: {

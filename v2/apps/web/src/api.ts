@@ -458,8 +458,13 @@ export type MetaScheduledPublication = {
   platform: "instagram" | "facebook";
   scheduledAt: string;
   timezone: string;
+  caption: string | null;
+  mediaUrl: string | null;
+  mediaUrls: string[];
+  mediaType: "image" | "carousel" | "reel" | "story" | null;
   reelCoverUrl: string | null;
   locationId: string | null;
+  locationName: string | null;
   instagramUserTags: InstagramUserTag[];
   status: "scheduled" | "publishing" | "published" | "failed" | "cancelled";
   attemptCount: number;
@@ -469,6 +474,17 @@ export type MetaScheduledPublication = {
   createdAt: string;
   updatedAt: string;
   publishedAt: string | null;
+};
+export type GlobalMetaScheduledPublication = MetaScheduledPublication & {
+  clientAccountId: string;
+  clientName: string;
+  clientSlug: string;
+  cardTitle: string;
+};
+export type MetaPlace = {
+  id: string;
+  name: string;
+  location: { city: string | null; state: string | null; country: string | null; street: string | null; zip: string | null };
 };
 
 type ApiCardDetailResponse = {
@@ -1345,11 +1361,41 @@ export async function listMetaPublicationsBySlug(slug: string) {
   return fetchJson<{ publications: MetaScheduledPublication[] }>(`/api/clients/${client.id}/meta-publications`);
 }
 
-export async function createMetaPublicationBySlug(slug: string, input: { cardId: string; platforms: ("instagram" | "facebook")[]; scheduledAt: string; timezone: string; publicationFormat?: "story" | null; reelCoverUrl?: string | null; locationId?: string | null; instagramUserTags?: InstagramUserTag[] }) {
+export async function createMetaPublicationBySlug(slug: string, input: { cardId: string; platforms: ("instagram" | "facebook")[]; scheduledAt: string; timezone: string; publicationFormat?: "story" | null; reelCoverUrl?: string | null; locationId?: string | null; locationName?: string | null; instagramUserTags?: InstagramUserTag[] }) {
   const client = await findAdminClientBySlug(slug);
   return sendJson<{ publications: MetaScheduledPublication[]; created: boolean }>(`/api/clients/${client.id}/meta-publications`, {
     method: "POST",
     body: JSON.stringify(input),
+  });
+}
+
+export async function searchMetaPlaces(query: string) {
+  return fetchJson<{ places: MetaPlace[] }>(`/api/meta/places/search?q=${encodeURIComponent(query)}`, 18_000);
+}
+
+export async function loadGlobalMetaPublications(filters: {
+  clientAccountId?: string; platform?: string; mediaType?: string; status?: string; from?: string; to?: string; limit?: number; offset?: number;
+} = {}) {
+  const query = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== "") query.set(key, String(value)); });
+  return fetchJson<{
+    publications: GlobalMetaScheduledPublication[];
+    total: number;
+    summary: { scheduled: number; publishing: number; publishedToday: number; failed: number };
+  }>(`/api/meta/publications?${query.toString()}`);
+}
+
+export async function rescheduleMetaPublications(publicationIds: string[], scheduledAt: string, timezone: string) {
+  return sendJson<{ publications: MetaScheduledPublication[] }>("/api/meta/publications/reschedule", {
+    method: "PATCH",
+    body: JSON.stringify({ publicationIds, scheduledAt, timezone }),
+  });
+}
+
+export async function cancelMetaPublications(publicationIds: string[]) {
+  return sendJson<{ publications: MetaScheduledPublication[] }>("/api/meta/publications/cancel", {
+    method: "POST",
+    body: JSON.stringify({ publicationIds }),
   });
 }
 

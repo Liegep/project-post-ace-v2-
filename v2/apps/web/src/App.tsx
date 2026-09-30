@@ -172,7 +172,13 @@ import {
   listMetaPublicationsBySlug,
   createMetaPublicationBySlug,
   cancelMetaPublicationBySlug,
+  cancelMetaPublications,
+  loadGlobalMetaPublications,
+  rescheduleMetaPublications,
+  searchMetaPlaces,
   type ClientMetaAssets,
+  type GlobalMetaScheduledPublication,
+  type MetaPlace,
   type MetaScheduledPublication,
   type MetaAdAccount,
   type MetaAssetPage,
@@ -1018,6 +1024,7 @@ function AdminRail({ session, onCreateClient }: { session: SessionUser; onCreate
     { icon: "spark" as const, to: "/area/datas-comemorativas", label: "Datas comemorativas" },
     { icon: "brush" as const, to: "/area/briefs-design", label: "Briefs de design" },
     { icon: "calendar" as const, to: "/area/calendario-social", label: "Calendário social" },
+    ...(session.role === "super_admin" ? [{ icon: "layers" as const, to: "/area/publicacoes-meta", label: "Publicações Meta" }] : []),
     { icon: "users" as const, to: "/area/equipe", label: "Equipe" },
   ];
 
@@ -7581,7 +7588,7 @@ ${internalMessage.trim()}`, isInternal: true });
     platforms: ("instagram" | "facebook")[],
     localDateTime: string,
     timezone: string,
-    options: { publicationFormat: "story" | null; reelCoverUrl: string | null; locationId: string | null; instagramUserTags: Array<{ username: string; x: number; y: number }> },
+    options: { publicationFormat: "story" | null; reelCoverUrl: string | null; locationId: string | null; locationName: string | null; instagramUserTags: Array<{ username: string; x: number; y: number }> },
   ) {
     setMetaScheduling(true);
     setFeedback(null);
@@ -7597,6 +7604,7 @@ ${internalMessage.trim()}`, isInternal: true });
         publicationFormat: options.publicationFormat,
         reelCoverUrl: options.reelCoverUrl,
         locationId: options.locationId,
+        locationName: options.locationName,
         instagramUserTags: options.instagramUserTags,
       });
       setMetaPublications((current) => [...result.publications, ...current.filter((item) => !result.publications.some((publication) => publication.id === item.id))]);
@@ -7984,7 +7992,7 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
     platforms: ("instagram" | "facebook")[],
     localDateTime: string,
     timezone: string,
-    options: { publicationFormat: "story" | null; reelCoverUrl: string | null; locationId: string | null; instagramUserTags: Array<{ username: string; x: number; y: number }> },
+    options: { publicationFormat: "story" | null; reelCoverUrl: string | null; locationId: string | null; locationName: string | null; instagramUserTags: Array<{ username: string; x: number; y: number }> },
   ) => Promise<void>;
 }) {
   const fallback = new Date(Date.now() + 60 * 60_000);
@@ -8000,6 +8008,12 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
   const [localDateTime, setLocalDateTime] = useState(suggestedAt || toDateTimeLocal(fallback.toISOString()));
   const [platforms, setPlatforms] = useState<("instagram" | "facebook")[]>(instagramAvailable ? ["instagram"] : facebookAvailable ? ["facebook"] : []);
   const [locationId, setLocationId] = useState("");
+  const [locationQuery, setLocationQuery] = useState("");
+  const [locationResults, setLocationResults] = useState<MetaPlace[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState<MetaPlace | null>(null);
+  const [locationSearching, setLocationSearching] = useState(false);
+  const [locationSearchError, setLocationSearchError] = useState("");
+  const [manualLocationMode, setManualLocationMode] = useState(false);
   const [reelCoverUrl, setReelCoverUrl] = useState<string | null>(null);
   const [reelCoverUploading, setReelCoverUploading] = useState(false);
   const [reelCoverError, setReelCoverError] = useState("");
@@ -8062,6 +8076,27 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
 
   const normalizedLocationId = locationId.trim();
   const locationInvalid = Boolean(normalizedLocationId && !/^\d+$/.test(normalizedLocationId));
+  const placeDetail = (place: MetaPlace) => [place.location.city, place.location.state, place.location.country].filter(Boolean).join(" · ");
+
+  useEffect(() => {
+    const query = locationQuery.trim();
+    if (manualLocationMode || selectedLocation || query.length < 3) {
+      setLocationResults([]);
+      setLocationSearching(false);
+      return;
+    }
+    let active = true;
+    const timer = window.setTimeout(() => {
+      setLocationSearching(true);
+      setLocationSearchError("");
+      void searchMetaPlaces(query).then((result) => {
+        if (active) setLocationResults(result.places.slice(0, 8));
+      }).catch(() => {
+        if (active) { setLocationResults([]); setLocationSearchError("Não foi possível buscar locais agora."); }
+      }).finally(() => { if (active) setLocationSearching(false); });
+    }, 350);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [locationQuery, manualLocationMode, selectedLocation]);
 
   const uploadReelCover = async (file: File | null) => {
     if (!file) return;
@@ -8109,19 +8144,13 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
           {reelCoverUrl ? <div className="meta-reel-cover-preview"><img src={reelCoverUrl} alt="Capa personalizada do Reel" /><div><span>Capa do Reel</span><div><button type="button" disabled={reelCoverUploading || submitting} onClick={() => reelCoverInputRef.current?.click()}>Alterar</button><button type="button" disabled={reelCoverUploading || submitting} onClick={() => { setReelCoverUrl(null); setReelCoverError(""); }}>Remover</button></div></div></div> : <button type="button" className="meta-reel-cover-upload" disabled={reelCoverUploading || submitting} onClick={() => reelCoverInputRef.current?.click()}>{reelCoverUploading ? "Enviando capa…" : "Enviar imagem de capa"}</button>}
           {reelCoverError ? <em>{reelCoverError}</em> : null}
         </div> : null}
-        {!isStory ? <label>
-          <span>Localização <small>{isReel ? facebookSelected ? "opcional · Facebook" : "indisponível no Instagram Reel" : "opcional · Instagram e Facebook"}</small></span>
-          <input
-            value={locationId}
-            disabled={isReel && !facebookSelected}
-            inputMode="numeric"
-            placeholder="ID do local na Meta"
-            onChange={(event) => setLocationId(event.target.value.replace(/\s+/g, ""))}
-            aria-invalid={locationInvalid}
-          />
-          <small>{isReel ? facebookSelected ? "Use o ID numérico de uma localização/Place da Meta. Em agendamento conjunto, o local será aplicado somente ao Facebook." : "A localização não está disponível no fluxo de Instagram Reels." : "Use o ID numérico de uma localização/Place da Meta. O mesmo local será aplicado às plataformas selecionadas."}</small>
-          {locationInvalid ? <em>O ID da localização deve conter somente números.</em> : null}
-        </label> : null}
+        {!isStory ? <div className="meta-location-picker">
+          <div className="meta-option-heading"><div><strong>Localização</strong><small>{isReel ? facebookSelected ? "Opcional · Facebook" : "Indisponível no Instagram Reel" : "Opcional · Instagram e Facebook"}</small></div></div>
+          {selectedLocation ? <div className="meta-location-selected"><span aria-hidden="true">⌖</span><div><strong>{selectedLocation.name}</strong><small>{placeDetail(selectedLocation) || "Localização Meta"}</small></div><button type="button" aria-label="Remover localização" onClick={() => { setSelectedLocation(null); setLocationId(""); setLocationQuery(""); }}>×</button></div> : manualLocationMode ? <label className="meta-location-manual"><span>ID manual da localização</span><input value={locationId} disabled={isReel && !facebookSelected} inputMode="numeric" placeholder="ID numérico da Meta" onChange={(event) => setLocationId(event.target.value.replace(/\s+/g, ""))} aria-invalid={locationInvalid} />{locationInvalid ? <em>O ID da localização deve conter somente números.</em> : null}</label> : <div className="meta-location-search"><input value={locationQuery} disabled={isReel && !facebookSelected} placeholder="Buscar local..." onChange={(event) => { setLocationQuery(event.target.value); setLocationSearchError(""); }} />{locationSearching ? <span>Buscando…</span> : null}{locationResults.length ? <div className="meta-location-results">{locationResults.map((place) => <button type="button" key={place.id} onClick={() => { setSelectedLocation(place); setLocationId(place.id); setLocationQuery(place.name); setLocationResults([]); }}><strong>{place.name}</strong><small>{placeDetail(place) || "Localização Meta"}</small></button>)}</div> : null}</div>}
+          {locationSearchError ? <em>{locationSearchError}</em> : null}
+          {!selectedLocation ? <button type="button" className="meta-location-mode" onClick={() => { setManualLocationMode((current) => !current); setLocationId(""); setLocationQuery(""); setLocationResults([]); setLocationSearchError(""); }}>{manualLocationMode ? "Buscar pelo nome" : "Opções avançadas · usar ID manualmente"}</button> : null}
+          <small>{isReel ? facebookSelected ? "Em agendamento conjunto, o local será aplicado somente ao Facebook." : "A localização não está disponível no fluxo de Instagram Reels." : "O mesmo local será aplicado às plataformas compatíveis selecionadas."}</small>
+        </div> : null}
 
         {instagramSelected && (isCarousel || isReel) ? <div className="meta-carousel-tags-note">{isReel ? "Marcações de pessoas não estão disponíveis para Reels nesta etapa." : "Marcações por imagem serão adicionadas em uma próxima etapa."}</div> : null}
         {instagramSelected && !isCarousel && !isReel && !isStory ? <div className="meta-instagram-tags">
@@ -8142,7 +8171,7 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
 
       <label><span>Data e hora</span><input type="datetime-local" value={localDateTime} onChange={(event) => setLocalDateTime(event.target.value)} /></label>
       <small>Fuso horário: {timezone}</small>
-      <footer><button type="button" className="ghost-button" disabled={submitting || reelCoverUploading} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || reelCoverUploading || !localDateTime || platforms.length === 0 || locationInvalid || Boolean(pendingTagUsername) || Boolean(storyMediaError)} onClick={() => void onSubmit(platforms, localDateTime, timezone, { publicationFormat: isStory ? "story" : null, reelCoverUrl: isReel ? reelCoverUrl : null, locationId: isStory ? null : normalizedLocationId || null, instagramUserTags: isCarousel || isReel || isStory ? [] : instagramUserTags })}>{submitting ? "Agendando…" : reelCoverUploading ? "Enviando capa…" : "Agendar publicação"}</button></footer>
+      <footer><button type="button" className="ghost-button" disabled={submitting || reelCoverUploading} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || reelCoverUploading || !localDateTime || platforms.length === 0 || locationInvalid || Boolean(pendingTagUsername) || Boolean(storyMediaError)} onClick={() => void onSubmit(platforms, localDateTime, timezone, { publicationFormat: isStory ? "story" : null, reelCoverUrl: isReel ? reelCoverUrl : null, locationId: isStory ? null : normalizedLocationId || null, locationName: isStory ? null : selectedLocation?.name ?? null, instagramUserTags: isCarousel || isReel || isStory ? [] : instagramUserTags })}>{submitting ? "Agendando…" : reelCoverUploading ? "Enviando capa…" : "Agendar publicação"}</button></footer>
     </section>
   </div>;
 }
@@ -8386,6 +8415,7 @@ const INTERNAL_AREAS: Record<string, { title: string; description: string; restr
   "datas-comemorativas": { title: "Datas comemorativas", description: "Planeje campanhas e oportunidades importantes." },
   "briefs-design": { title: "Briefs de design", description: "Organize as referências e direcionamentos criativos." },
   "calendario-social": { title: "Calendário social", description: "Visualize o planejamento de conteúdo nas redes sociais." },
+  "publicacoes-meta": { title: "Publicações Meta", description: "Acompanhe agendamentos e publicações reais no Instagram e Facebook.", restricted: true },
   equipe: { title: "Equipe", description: "Acompanhe as pessoas e responsabilidades do seu time." },
 };
 
@@ -9304,6 +9334,180 @@ function ClientContractAcceptance({ slug, accountName, canAccept = true }: { slu
   return <div className="contract-acceptance-backdrop"><section className="contract-acceptance-modal"><header><span>{t("PRIMEIRO ACESSO")}</span><h1>{t("Antes de começar, leia seu contrato")}</h1><p>{accountName}, {t("este documento foi disponibilizado para sua conta. Revise os termos com calma.")}</p></header><div className="contract-acceptance-paper"><ContractDocumentPreview contract={contractRecordDraft(contract)} clientName={accountName} /></div><footer><small>{t("Ao clicar, você confirma que leu e está de acordo com os termos apresentados.")}</small><button className="gradient-button" onClick={accept}>{t("Li e aceito o contrato")}</button></footer></section></div>;
 }
 
+type MetaPublicationGroup = {
+  key: string;
+  cardId: string | null;
+  cardTitle: string;
+  clientAccountId: string;
+  clientName: string;
+  clientSlug: string;
+  scheduledAt: string;
+  timezone: string;
+  mediaType: GlobalMetaScheduledPublication["mediaType"];
+  thumbnailUrl: string | null;
+  mediaCount: number;
+  caption: string | null;
+  locationName: string | null;
+  publications: GlobalMetaScheduledPublication[];
+};
+
+function groupMetaPublications(publications: GlobalMetaScheduledPublication[]) {
+  const groups = new Map<string, MetaPublicationGroup>();
+  publications.forEach((publication) => {
+    const key = publication.cardId ? `${publication.cardId}:${publication.scheduledAt}` : publication.id;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.publications.push(publication);
+      return;
+    }
+    groups.set(key, {
+      key,
+      cardId: publication.cardId,
+      cardTitle: publication.cardTitle,
+      clientAccountId: publication.clientAccountId,
+      clientName: publication.clientName,
+      clientSlug: publication.clientSlug,
+      scheduledAt: publication.scheduledAt,
+      timezone: publication.timezone,
+      mediaType: publication.mediaType,
+      thumbnailUrl: publication.reelCoverUrl || publication.mediaUrls[0] || publication.mediaUrl,
+      mediaCount: Math.max(publication.mediaUrls.length, publication.mediaUrl ? 1 : 0),
+      caption: publication.caption,
+      locationName: publication.locationName,
+      publications: [publication],
+    });
+  });
+  return [...groups.values()].sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
+}
+
+function metaPublicationStatusLabel(status: MetaScheduledPublication["status"]) {
+  return status === "scheduled" ? "Agendado" : status === "publishing" ? "Publicando" : status === "published" ? "Publicado" : status === "failed" ? "Falhou" : "Cancelado";
+}
+
+function metaPublicationTypeLabel(type: MetaScheduledPublication["mediaType"]) {
+  return type === "carousel" ? "Carrossel" : type === "reel" ? "Reel" : type === "story" ? "Story" : "Post";
+}
+
+function metaCenterDateKey(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function MetaPublicationsWorkspace() {
+  const [anchor, setAnchor] = useState(() => new Date());
+  const [view, setView] = useState<"calendar" | "list">("calendar");
+  const [clients, setClients] = useState<AdminClientOption[]>([]);
+  const [publications, setPublications] = useState<GlobalMetaScheduledPublication[]>([]);
+  const [summary, setSummary] = useState({ scheduled: 0, publishing: 0, publishedToday: 0, failed: 0 });
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [clientAccountId, setClientAccountId] = useState("");
+  const [platform, setPlatform] = useState("");
+  const [mediaType, setMediaType] = useState("");
+  const [status, setStatus] = useState("");
+  const [periodFrom, setPeriodFrom] = useState(() => metaCenterDateKey(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
+  const [periodTo, setPeriodTo] = useState(() => metaCenterDateKey(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)));
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [rescheduleAt, setRescheduleAt] = useState("");
+  const [actionPending, setActionPending] = useState(false);
+  const limit = view === "calendar" ? 200 : 100;
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const until = new Date(`${periodTo}T00:00:00`);
+      until.setDate(until.getDate() + 1);
+      const result = await loadGlobalMetaPublications({
+        clientAccountId: clientAccountId || undefined,
+        platform: platform || undefined,
+        mediaType: mediaType || undefined,
+        status: status || undefined,
+        from: new Date(`${periodFrom}T00:00:00`).toISOString(),
+        to: until.toISOString(),
+        limit,
+        offset: view === "calendar" ? 0 : offset,
+      });
+      setPublications(result.publications);
+      setSummary(result.summary);
+      setTotal(result.total);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível carregar as publicações Meta.");
+    } finally {
+      setLoading(false);
+    }
+  }, [clientAccountId, limit, mediaType, offset, periodFrom, periodTo, platform, status, view]);
+
+  useEffect(() => { void listAdminClients().then((result) => setClients(result.items)).catch(() => setClients([])); }, []);
+  useEffect(() => { void refresh(); const timer = window.setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 60_000); return () => window.clearInterval(timer); }, [refresh]);
+  useEffect(() => { setOffset(0); }, [clientAccountId, mediaType, periodFrom, periodTo, platform, status, view]);
+
+  const groups = useMemo(() => groupMetaPublications(publications), [publications]);
+  const selected = selectedKey ? groups.find((group) => group.key === selectedKey) ?? null : null;
+  const calendarStart = useMemo(() => {
+    const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+    first.setDate(first.getDate() - first.getDay());
+    return first;
+  }, [anchor]);
+  const calendarDays = useMemo(() => Array.from({ length: 42 }, (_, index) => {
+    const day = new Date(calendarStart);
+    day.setDate(day.getDate() + index);
+    return day;
+  }), [calendarStart]);
+  const groupsByDay = useMemo(() => groups.reduce((map, group) => {
+    const key = metaCenterDateKey(group.scheduledAt);
+    map.set(key, [...(map.get(key) ?? []), group]);
+    return map;
+  }, new Map<string, MetaPublicationGroup[]>()), [groups]);
+
+  const moveMonth = (direction: -1 | 1) => {
+    const next = new Date(anchor.getFullYear(), anchor.getMonth() + direction, 1);
+    setAnchor(next);
+    setPeriodFrom(metaCenterDateKey(new Date(next.getFullYear(), next.getMonth(), 1)));
+    setPeriodTo(metaCenterDateKey(new Date(next.getFullYear(), next.getMonth() + 1, 0)));
+  };
+  const performCancel = async (ids: string[]) => {
+    if (!ids.length || !window.confirm(ids.length > 1 ? "Cancelar estes agendamentos?" : "Cancelar este agendamento?")) return;
+    setActionPending(true);
+    try { await cancelMetaPublications(ids); setSelectedKey(null); await refresh(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível cancelar."); }
+    finally { setActionPending(false); }
+  };
+  const performReschedule = async () => {
+    if (!selected || !rescheduleAt) return;
+    const ids = selected.publications.filter((item) => item.status === "scheduled").map((item) => item.id);
+    setActionPending(true);
+    try {
+      await rescheduleMetaPublications(ids, new Date(rescheduleAt).toISOString(), Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+      setSelectedKey(null); setRescheduleOpen(false); await refresh();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível reagendar."); }
+    finally { setActionPending(false); }
+  };
+  const openReschedule = () => {
+    if (!selected) return;
+    const date = new Date(selected.scheduledAt);
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+    setRescheduleAt(local);
+    setRescheduleOpen(true);
+  };
+
+  const platformChips = (group: MetaPublicationGroup) => <div className="meta-center-platforms">{group.publications.map((item) => <span key={item.id} className={`${item.platform} ${item.status}`} title={`${item.platform === "instagram" ? "Instagram" : "Facebook"}: ${metaPublicationStatusLabel(item.status)}`}>{item.platform === "instagram" ? "IG" : "FB"}<i /></span>)}</div>;
+  const thumbnail = (group: MetaPublicationGroup) => <div className="meta-center-thumb">{group.thumbnailUrl ? /\.(mp4|mov)(?:$|[?#])/i.test(group.thumbnailUrl) ? <video src={group.thumbnailUrl} muted preload="metadata" /> : <img src={group.thumbnailUrl} alt="" /> : <span>{group.publications[0]?.platform === "instagram" ? "◎" : "f"}</span>}{group.mediaType === "carousel" && group.mediaCount > 1 ? <b>+{group.mediaCount - 1}</b> : null}</div>;
+
+  return <section className="meta-center">
+    <div className="meta-center-summary"><article className="scheduled"><span>Agendados</span><strong>{summary.scheduled}</strong></article><article className="publishing"><span>Publicando</span><strong>{summary.publishing}</strong></article><article className="published"><span>Publicados hoje</span><strong>{summary.publishedToday}</strong></article><article className="failed"><span>Com erro</span><strong>{summary.failed}</strong></article></div>
+    <div className="meta-center-toolbar"><div className="meta-center-view"><button className={view === "calendar" ? "active" : ""} onClick={() => setView("calendar")}><UiIcon name="calendar" />Calendário</button><button className={view === "list" ? "active" : ""} onClick={() => setView("list")}><UiIcon name="layers" />Lista</button></div><div className="meta-center-filters"><select value={clientAccountId} onChange={(event) => setClientAccountId(event.target.value)}><option value="">Todos os clientes</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select><select value={platform} onChange={(event) => setPlatform(event.target.value)}><option value="">Todas as plataformas</option><option value="instagram">Instagram</option><option value="facebook">Facebook</option></select><select value={mediaType} onChange={(event) => setMediaType(event.target.value)}><option value="">Todos os tipos</option><option value="image">Post</option><option value="carousel">Carrossel</option><option value="reel">Reel</option><option value="story">Story</option></select><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Todos os status</option><option value="scheduled">Agendado</option><option value="publishing">Publicando</option><option value="published">Publicado</option><option value="failed">Falhou</option><option value="cancelled">Cancelado</option></select><input type="date" value={periodFrom} onChange={(event) => setPeriodFrom(event.target.value)} /><input type="date" value={periodTo} onChange={(event) => setPeriodTo(event.target.value)} /></div></div>
+    {error ? <p className="meta-center-error">{error}</p> : null}
+    {view === "calendar" ? <div className="meta-center-calendar"><header><button onClick={() => moveMonth(-1)} aria-label="Mês anterior">‹</button><h3>{anchor.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</h3><button onClick={() => moveMonth(1)} aria-label="Próximo mês">›</button></header><div className="meta-center-weekdays">{["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => <span key={day}>{day}</span>)}</div><div className="meta-center-month">{calendarDays.map((day) => { const dayGroups = groupsByDay.get(metaCenterDateKey(day)) ?? []; return <div key={day.toISOString()} className={day.getMonth() === anchor.getMonth() ? "" : "outside"}><b>{day.getDate()}</b>{dayGroups.map((group) => <button key={group.key} onClick={() => setSelectedKey(group.key)}><time>{new Date(group.scheduledAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</time><strong>{group.cardTitle}</strong>{platformChips(group)}</button>)}</div>; })}</div></div> : <div className="meta-center-list"><div className="meta-center-list-head"><span>Conteúdo</span><span>Cliente</span><span>Data / hora</span><span>Tipo</span><span>Plataformas</span><span>Status</span></div>{groups.map((group) => <button key={group.key} className="meta-center-row" onClick={() => setSelectedKey(group.key)}>{thumbnail(group)}<div><strong>{group.cardTitle}</strong><small>{group.caption || "Sem legenda"}</small></div><span>{group.clientName}</span><time>{new Date(group.scheduledAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</time><span>{metaPublicationTypeLabel(group.mediaType)}</span>{platformChips(group)}<span>{group.publications.map((item) => metaPublicationStatusLabel(item.status)).join(" · ")}</span></button>)}{!loading && groups.length === 0 ? <p className="meta-center-empty">Nenhuma publicação encontrada neste período.</p> : null}<footer><button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Anterior</button><span>{total ? `${offset + 1}–${Math.min(offset + limit, total)} de ${total}` : "0 resultados"}</span><button disabled={offset + limit >= total} onClick={() => setOffset(offset + limit)}>Próxima</button></footer></div>}
+    {loading ? <div className="meta-center-loading">Carregando publicações…</div> : null}
+    {selected ? createPortal(<div className="meta-center-backdrop" onMouseDown={() => setSelectedKey(null)}><aside className="meta-center-detail" onMouseDown={(event) => event.stopPropagation()}><header><div><span>PUBLICAÇÃO META</span><h2>{selected.cardTitle}</h2><p>{selected.clientName}</p></div><button onClick={() => setSelectedKey(null)}>×</button></header>{thumbnail(selected)}<dl><div><dt>Data e hora</dt><dd>{new Date(selected.scheduledAt).toLocaleString("pt-BR")} · {selected.timezone}</dd></div><div><dt>Tipo</dt><dd>{metaPublicationTypeLabel(selected.mediaType)}</dd></div>{selected.locationName ? <div><dt>Localização</dt><dd>⌖ {selected.locationName}</dd></div> : null}{selected.caption ? <div><dt>Legenda</dt><dd>{selected.caption}</dd></div> : null}</dl><section className="meta-center-platform-detail">{selected.publications.map((item) => <article key={item.id} className={item.status}><div><strong>{item.platform === "instagram" ? "Instagram" : "Facebook"}</strong><span>{metaPublicationStatusLabel(item.status)}</span></div>{item.lastError ? <p>{item.lastError}</p> : null}<footer>{item.publishedPermalink ? <a href={item.publishedPermalink} target="_blank" rel="noreferrer">Abrir publicação</a> : null}{["scheduled", "failed"].includes(item.status) ? <button disabled={actionPending} onClick={() => void performCancel([item.id])}>Cancelar {item.platform === "instagram" ? "Instagram" : "Facebook"}</button> : null}</footer></article>)}</section><footer className="meta-center-detail-actions">{selected.cardId ? <a className="ghost-button" href={`/admin/${selected.clientSlug}?card=${encodeURIComponent(selected.cardId)}`}>Abrir card</a> : null}{selected.publications.some((item) => item.status === "scheduled") ? <button className="ghost-button" disabled={actionPending} onClick={openReschedule}>Reagendar</button> : null}{selected.publications.filter((item) => ["scheduled", "failed"].includes(item.status)).length > 1 ? <button className="danger-button" disabled={actionPending} onClick={() => void performCancel(selected.publications.filter((item) => ["scheduled", "failed"].includes(item.status)).map((item) => item.id))}>Cancelar ambos</button> : null}</footer></aside></div>, document.body) : null}
+    {selected && rescheduleOpen ? createPortal(<div className="modal-backdrop" onMouseDown={() => setRescheduleOpen(false)}><section className="meta-reschedule-modal" onMouseDown={(event) => event.stopPropagation()}><header><div><span>REAGENDAR</span><h3>{selected.cardTitle}</h3></div><button onClick={() => setRescheduleOpen(false)}>×</button></header><label>Nova data e hora<input type="datetime-local" value={rescheduleAt} onChange={(event) => setRescheduleAt(event.target.value)} /></label><small>As plataformas ainda agendadas serão movidas juntas.</small><footer><button className="ghost-button" onClick={() => setRescheduleOpen(false)}>Cancelar</button><button className="gradient-button" disabled={!rescheduleAt || actionPending} onClick={() => void performReschedule()}>{actionPending ? "Salvando…" : "Confirmar"}</button></footer></section></div>, document.body) : null}
+  </section>;
+}
+
 function InternalAreaPage({ session, onLogout }: { session: SessionUser | null; onLogout: () => void }) {
   const { area = "" } = useParams();
   const [reportCreationVersion, setReportCreationVersion] = useState(1);
@@ -9313,12 +9517,13 @@ function InternalAreaPage({ session, onLogout }: { session: SessionUser | null; 
   const [memberCreationVersion, setMemberCreationVersion] = useState(0);
   const page = INTERNAL_AREAS[area];
   if (!session || session.role === "client") return <Navigate to={getDefaultRoute(session)} replace />;
+  if (area === "publicacoes-meta" && session.role !== "super_admin") return <Navigate to="/dashboard" replace />;
   if (!page || (page.restricted && session.role === "collaborator")) return <Navigate to="/dashboard" replace />;
   const metrics = area === "equipe" ? [{ label: "Papéis", value: "4", note: "Níveis de acesso", icon: <UiIcon name="users" />, tone: "clients" }, { label: "Clientes", value: "—", note: "Atribuições ativas", icon: <UiIcon name="link" />, tone: "posts" }] : area === "relatorios" ? [{ label: "Relatórios", value: "—", note: "Períodos disponíveis", icon: <UiIcon name="file" />, tone: "posts" }, { label: "Indicadores", value: "—", note: "Acompanhe resultados", icon: <UiIcon name="check" />, tone: "approved" }] : area === "faturamento" ? [{ label: "Faturas", value: "—", note: "Lançamentos da operação", icon: <UiIcon name="receipt" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Cobranças centralizadas", icon: <UiIcon name="check" />, tone: "approved" }] : area === "controle-de-tempo" ? [{ label: "Cronômetro", value: "◷", note: "Continua após sair", icon: <UiIcon name="clock" />, tone: "posts" }, { label: "Relatórios", value: "✓", note: "Separados por cliente", icon: <UiIcon name="file" />, tone: "approved" }] : [{ label: "Em andamento", value: "—", note: "Dados desta área", icon: <UiIcon name="clock" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Operação centralizada", icon: <UiIcon name="check" />, tone: "approved" }];
-  const content = area === "relatorios" ? <ReportsWorkspace newReportSignal={reportCreationVersion} /> : area === "faturamento" ? <BillingWorkspace session={session} newInvoiceSignal={invoiceCreationVersion} /> : area === "controle-de-tempo" ? <TimeTrackingWorkspace /> : area === "propostas" ? <ProposalsWorkspace newProposalSignal={proposalCreationVersion} /> : area === "contratos" ? <ContractsWorkspace newContractSignal={contractCreationVersion} /> : area === "equipe" ? <TeamManagementWorkspace session={session} newMemberSignal={memberCreationVersion} /> : area === "datas-comemorativas" ? <CommemorativeDatesWorkspace /> : area === "calendario-social" ? <SocialCalendarWorkspace session={session} /> : area === "briefs-design" ? <DesignBriefsWorkspace /> : <section className="internal-area-card glass"><div className="internal-area-empty"><UiIcon name="spark" /><strong>Esta página é privada para o seu nível de acesso.</strong><span>O conteúdo desta área será organizado aqui.</span></div></section>;
+  const content = area === "relatorios" ? <ReportsWorkspace newReportSignal={reportCreationVersion} /> : area === "faturamento" ? <BillingWorkspace session={session} newInvoiceSignal={invoiceCreationVersion} /> : area === "controle-de-tempo" ? <TimeTrackingWorkspace /> : area === "propostas" ? <ProposalsWorkspace newProposalSignal={proposalCreationVersion} /> : area === "contratos" ? <ContractsWorkspace newContractSignal={contractCreationVersion} /> : area === "equipe" ? <TeamManagementWorkspace session={session} newMemberSignal={memberCreationVersion} /> : area === "datas-comemorativas" ? <CommemorativeDatesWorkspace /> : area === "calendario-social" ? <SocialCalendarWorkspace session={session} /> : area === "publicacoes-meta" ? <MetaPublicationsWorkspace /> : area === "briefs-design" ? <DesignBriefsWorkspace /> : <section className="internal-area-card glass"><div className="internal-area-empty"><UiIcon name="spark" /><strong>Esta página é privada para o seu nível de acesso.</strong><span>O conteúdo desta área será organizado aqui.</span></div></section>;
   const action = area === "relatorios" ? <button className="gradient-button page-context-action" onClick={() => setReportCreationVersion((current) => current + 1)}>+ Novo relatório</button> : area === "faturamento" ? <button className="gradient-button page-context-action" onClick={() => setInvoiceCreationVersion((current) => current + 1)}>+ Nova fatura</button> : area === "propostas" ? <button className="gradient-button page-context-action" onClick={() => setProposalCreationVersion((current) => current + 1)}>+ Nova proposta</button> : area === "contratos" ? <button className="gradient-button page-context-action" onClick={() => setContractCreationVersion((current) => current + 1)}>+ Novo contrato</button> : area === "equipe" && session.role === "super_admin" ? <button className="gradient-button page-context-action" onClick={() => setMemberCreationVersion((current) => current + 1)}>+ Novo membro</button> : null;
-  const titleIcon = area === "equipe" ? <UiIcon name="users" /> : area === "briefs-design" ? <UiIcon name="brush" /> : area === "relatorios" ? <UiIcon name="file" /> : area === "faturamento" ? <UiIcon name="receipt" /> : area === "controle-de-tempo" ? <UiIcon name="clock" /> : area === "propostas" ? <UiIcon name="send" /> : area === "contratos" ? <UiIcon name="check" /> : area === "calendario-social" ? <UiIcon name="calendar" /> : area === "datas-comemorativas" ? <UiIcon name="spark" /> : undefined;
-  return <div className="page-grid admin-layout internal-area-layout"><AdminRail session={session} /><main className="main-column"><WorkspaceNavbar session={session} onLogout={onLogout} />{area !== "controle-de-tempo" ? <PageContextBanner eyebrow="Área da operação" title={page.title} description={page.description} metrics={metrics} action={action} titleClassName={["relatorios", "faturamento", "propostas", "equipe", "calendario-social", "briefs-design", "datas-comemorativas", "contratos"].includes(area) ? "billing-banner-title" : undefined} titleIcon={titleIcon} /> : null}{content}</main></div>;
+  const titleIcon = area === "equipe" ? <UiIcon name="users" /> : area === "briefs-design" ? <UiIcon name="brush" /> : area === "relatorios" ? <UiIcon name="file" /> : area === "faturamento" ? <UiIcon name="receipt" /> : area === "controle-de-tempo" ? <UiIcon name="clock" /> : area === "propostas" ? <UiIcon name="send" /> : area === "contratos" ? <UiIcon name="check" /> : area === "calendario-social" ? <UiIcon name="calendar" /> : area === "publicacoes-meta" ? <UiIcon name="layers" /> : area === "datas-comemorativas" ? <UiIcon name="spark" /> : undefined;
+  return <div className="page-grid admin-layout internal-area-layout"><AdminRail session={session} /><main className="main-column"><WorkspaceNavbar session={session} onLogout={onLogout} />{area !== "controle-de-tempo" ? <PageContextBanner eyebrow="Área da operação" title={page.title} description={page.description} metrics={metrics} action={action} titleClassName={["relatorios", "faturamento", "propostas", "equipe", "calendario-social", "publicacoes-meta", "briefs-design", "datas-comemorativas", "contratos"].includes(area) ? "billing-banner-title" : undefined} titleIcon={titleIcon} /> : null}{content}</main></div>;
 }
 
 type SocialCalendarView = "day" | "week" | "month" | "year";
