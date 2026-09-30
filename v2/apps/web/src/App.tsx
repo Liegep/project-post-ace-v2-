@@ -168,6 +168,7 @@ import {
   loadMetaAssets,
   loadMetaStatus,
   loadClientMetaAssetsBySlug,
+  loadClientMetaBestTimesBySlug,
   saveClientMetaAssetsBySlug,
   listMetaPublicationsBySlug,
   createMetaPublicationBySlug,
@@ -3281,6 +3282,7 @@ function DashboardScheduleModal({ activity, canScheduleMeta, onClose, onSchedule
         instagramAvailable={Boolean(metaAssets?.instagramAccountId)}
         facebookAvailable={Boolean(metaAssets?.facebookPageId)}
         submitting={metaScheduling}
+        clientSlug={activity.clientSlug}
         cardId={activity.cardId ?? undefined}
         existingPublications={metaPublications}
         lockSuggestedAt
@@ -8111,6 +8113,7 @@ ${internalMessage.trim()}`, isInternal: true });
           instagramAvailable={Boolean(metaAssets?.instagramAccountId)}
           facebookAvailable={Boolean(metaAssets?.facebookPageId)}
           submitting={metaScheduling}
+          clientSlug={slug}
           cardId={card.id}
           existingPublications={metaPublications}
           onClose={() => { if (!metaScheduling) setMetaScheduleOpen(false); }}
@@ -8214,7 +8217,7 @@ function MetaSavedLocationsDialog({ locations, initialMode, onUpsert, onDelete, 
   </div>, document.body);
 }
 
-function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagramAvailable, facebookAvailable, submitting, cardId, existingPublications = [], lockSuggestedAt = false, onClose, onSubmit }: {
+function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagramAvailable, facebookAvailable, submitting, clientSlug, cardId, existingPublications = [], lockSuggestedAt = false, onClose, onSubmit }: {
   mediaUrls: string[];
   mediaMode: "image" | "carousel" | "reel" | "story";
   caption: string;
@@ -8222,6 +8225,7 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
   instagramAvailable: boolean;
   facebookAvailable: boolean;
   submitting: boolean;
+  clientSlug?: string;
   cardId?: string;
   existingPublications?: MetaScheduledPublication[];
   lockSuggestedAt?: boolean;
@@ -8244,7 +8248,35 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
   const isStoryVideo = isStory && /\.(mp4|mov)(?:$|[?#])/i.test(firstMediaUrl);
   const previewIsVideo = isReel || isStoryVideo;
   const [localDateTime, setLocalDateTime] = useState(suggestedAt || toDateTimeLocal(fallback.toISOString()));
+  const [bestPublishingTimes, setBestPublishingTimes] = useState<Array<{ weekday: number | null; hour: number; averageFollowers: number; samples: number }>>([]);
   const [platforms, setPlatforms] = useState<("instagram" | "facebook")[]>(instagramAvailable ? ["instagram"] : facebookAvailable ? ["facebook"] : []);
+  useEffect(() => {
+    if (!clientSlug || !instagramAvailable || lockSuggestedAt) {
+      setBestPublishingTimes([]);
+      return;
+    }
+    let active = true;
+    void loadClientMetaBestTimesBySlug(clientSlug)
+      .then((result) => { if (active) setBestPublishingTimes(result.available ? result.recommendations.slice(0, 3) : []); })
+      .catch(() => { if (active) setBestPublishingTimes([]); });
+    return () => { active = false; };
+  }, [clientSlug, instagramAvailable, lockSuggestedAt]);
+
+  const applyBestPublishingTime = (weekday: number | null, hour: number) => {
+    const now = new Date();
+    const target = new Date(now);
+    target.setSeconds(0, 0);
+    target.setHours(hour, 0, 0, 0);
+    if (weekday === null) {
+      if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1);
+    } else {
+      let daysAhead = (weekday - target.getDay() + 7) % 7;
+      if (daysAhead === 0 && target.getTime() <= now.getTime()) daysAhead = 7;
+      target.setDate(target.getDate() + daysAhead);
+    }
+    setLocalDateTime(toDateTimeLocal(target.toISOString()));
+  };
+
   const [locationId, setLocationId] = useState("");
   const [locationQuery, setLocationQuery] = useState("");
   const [savedLocations, setSavedLocations] = useState<MetaSavedLocation[]>([]);
@@ -8440,6 +8472,7 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
         </div> : null}
       </section>
 
+      {!lockSuggestedAt && bestPublishingTimes.length ? <div className="meta-best-publishing-times"><div><strong>Melhores horários</strong><small>Seguidores mais ativos no Instagram</small></div><div>{bestPublishingTimes.map((slot) => <button type="button" key={`${slot.weekday ?? "any"}-${slot.hour}`} onClick={() => applyBestPublishingTime(slot.weekday, slot.hour)}>{slot.weekday === null ? "" : `${["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][slot.weekday]} · `}{String(slot.hour).padStart(2, "0")}h</button>)}</div></div> : null}
       {lockSuggestedAt ? <div className="meta-schedule-fixed-time"><span>Data e hora</span><strong>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(localDateTime))}</strong><small>Definidas no modal de feedback</small></div> : <label><span>Data e hora</span><input type="datetime-local" value={localDateTime} onChange={(event) => setLocalDateTime(event.target.value)} /></label>}
       <small>Fuso horário: {timezone}</small>
       <footer><button type="button" className="ghost-button" disabled={submitting || reelCoverUploading} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || reelCoverUploading || !localDateTime || platforms.length === 0 || platforms.some((platform) => blockedPlatforms.includes(platform)) || locationInvalid || Boolean(pendingTagUsername) || Boolean(storyMediaError)} onClick={() => void onSubmit(platforms, localDateTime, timezone, { publicationFormat: isStory ? "story" : null, reelCoverUrl: isReel ? reelCoverUrl : null, locationId: isStory ? null : normalizedLocationId || null, locationName: isStory ? null : selectedLocation?.name ?? null, instagramUserTags: isCarousel || isReel || isStory ? [] : instagramUserTags })}>{submitting ? "Agendando…" : reelCoverUploading ? "Enviando capa…" : "Agendar publicação"}</button></footer>
