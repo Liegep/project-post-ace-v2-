@@ -293,6 +293,7 @@ type ApiPortalAccountItem = {
 type ApiBoardCard = {
   approvalRevision?: number;
   approvalState?: "pending" | "approved" | "changes_requested" | null;
+  latestApprovalAction?: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "legacy_snapshot" | null;
   columnId?: string | null;
   archived?: boolean;
   id: string;
@@ -660,6 +661,7 @@ function mapCard(card: ApiBoardCard, tagColors: Record<string, string> = {}): Bo
   return {
     approvalRevision: card.approvalRevision ?? 0,
     approvalState: card.approvalState ?? null,
+    latestApprovalAction: card.latestApprovalAction ?? null,
     columnId: card.columnId,
     archived: card.archived ?? false,
     id: card.id,
