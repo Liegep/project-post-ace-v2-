@@ -7985,7 +7985,7 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
   const isStoryVideo = isStory && /\.(mp4|mov)(?:$|[?#])/i.test(firstMediaUrl);
   const previewIsVideo = isReel || isStoryVideo;
   const [localDateTime, setLocalDateTime] = useState(suggestedAt || toDateTimeLocal(fallback.toISOString()));
-  const [platforms, setPlatforms] = useState<("instagram" | "facebook")[]>(instagramAvailable ? ["instagram"] : mediaMode !== "carousel" && mediaMode !== "story" && facebookAvailable ? ["facebook"] : []);
+  const [platforms, setPlatforms] = useState<("instagram" | "facebook")[]>(instagramAvailable ? ["instagram"] : mediaMode !== "carousel" && facebookAvailable ? ["facebook"] : []);
   const [locationId, setLocationId] = useState("");
   const [reelCoverUrl, setReelCoverUrl] = useState<string | null>(null);
   const [reelCoverUploading, setReelCoverUploading] = useState(false);
@@ -8012,7 +8012,6 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
     setPublishAsStory(selected);
     setStoryMediaError("");
     if (selected) {
-      setPlatforms((current) => current.filter((platform) => platform === "instagram"));
       setLocationId("");
       setInstagramUserTags([]);
       setPendingTagUsername(null);
@@ -8083,8 +8082,8 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
         <button type="button" className={isStory ? "selected" : ""} aria-pressed={isStory} onClick={() => selectStoryFormat(true)}>Story</button>
       </div> : null}
       <div className="meta-platform-options" role="group" aria-label="Plataformas de publicação">
-        <button type="button" className={platforms.includes("instagram") ? "selected instagram" : "instagram"} disabled={!instagramAvailable} aria-pressed={platforms.includes("instagram")} onClick={() => togglePlatform("instagram")}><i aria-hidden="true">◎</i><span><strong>Instagram</strong>{instagramAvailable ? <small>{isStory ? "✓ Story" : isReel ? "✓ Reel · ✓ Capa personalizada" : isCarousel ? `Carrossel · ${mediaUrls.length} imagens` : "Imagem única"}</small> : <small>Não vinculado a este cliente</small>}</span></button>
-        <button type="button" className={platforms.includes("facebook") ? "selected facebook" : "facebook"} disabled={!facebookAvailable || isCarousel || isStory} aria-pressed={platforms.includes("facebook")} onClick={() => togglePlatform("facebook")}><i aria-hidden="true">f</i><span><strong>Facebook</strong>{!facebookAvailable ? <small>Não vinculado a este cliente</small> : isStory ? <small>Stories no Facebook ainda não disponíveis</small> : isReel ? <small>✓ Reel · ✓ Capa personalizada</small> : isCarousel ? <small>Carrossel ainda não disponível no Facebook</small> : <small>Imagem única</small>}</span></button>
+        <button type="button" className={platforms.includes("instagram") ? "selected instagram" : "instagram"} disabled={!instagramAvailable} aria-pressed={platforms.includes("instagram")} onClick={() => togglePlatform("instagram")}><i aria-hidden="true">◎</i><span><strong>Instagram</strong>{instagramAvailable ? <small>{isStory ? `✓ Story de ${isStoryVideo ? "vídeo" : "imagem"}` : isReel ? "✓ Reel · ✓ Capa personalizada" : isCarousel ? `Carrossel · ${mediaUrls.length} imagens` : "Imagem única"}</small> : <small>Não vinculado a este cliente</small>}</span></button>
+        <button type="button" className={platforms.includes("facebook") ? "selected facebook" : "facebook"} disabled={!facebookAvailable || isCarousel} aria-pressed={platforms.includes("facebook")} onClick={() => togglePlatform("facebook")}><i aria-hidden="true">f</i><span><strong>Facebook</strong>{!facebookAvailable ? <small>Não vinculado a este cliente</small> : isStory ? <small>{`✓ Story de ${isStoryVideo ? "vídeo" : "imagem"}`}</small> : isReel ? <small>✓ Reel · ✓ Capa personalizada</small> : isCarousel ? <small>Carrossel ainda não disponível no Facebook</small> : <small>Imagem única</small>}</span></button>
       </div>
 
       <div className={`meta-schedule-preview${isCarousel ? " carousel" : isReel || isStory ? " reel" : ""}`}><div className="meta-schedule-preview-media">{previewIsVideo ? <video src={firstMediaUrl} controls preload="metadata" aria-label={isStory ? "Prévia da Story" : "Prévia do Reel"} onLoadedMetadata={(event) => { if (!isStory) return; const duration = event.currentTarget.duration; setStoryMediaError(Number.isFinite(duration) && (duration < 3 || duration > 60) ? "O vídeo da Story deve ter entre 3 e 60 segundos." : ""); }} /> : <img src={firstMediaUrl} alt={isStory ? "Prévia da Story" : "Prévia da publicação"} />}{isCarousel ? <span>{mediaUrls.length} imagens</span> : isStory ? <span>{`Story · ${isStoryVideo ? "vídeo" : "imagem"}`}</span> : isReel ? <span>Reel</span> : null}</div><div><p>{isStory ? `Story · ${isStoryVideo ? "vídeo" : "imagem"}` : caption.trim() || "Sem legenda"}</p>{isCarousel ? <div className="meta-carousel-thumbnails">{mediaUrls.slice(1, 5).map((url, index) => <img key={`${url}-${index}`} src={url} alt={`Imagem ${index + 2} do carrossel`} />)}{mediaUrls.length > 5 ? <span>+{mediaUrls.length - 5}</span> : null}</div> : null}</div></div>

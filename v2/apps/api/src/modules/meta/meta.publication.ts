@@ -34,9 +34,6 @@ export function planMetaCardPublications(input: {
     if (mediaUrls.length !== 1) {
       return { plans: null, error: "Stories aceita exatamente uma imagem ou um vídeo nesta etapa." };
     }
-    if (input.platforms.includes("facebook")) {
-      return { plans: null, error: "Stories no Facebook serão adicionados em uma próxima etapa. Selecione somente Instagram." };
-    }
     return {
       plans: input.platforms.map((platform) => ({
         platform,

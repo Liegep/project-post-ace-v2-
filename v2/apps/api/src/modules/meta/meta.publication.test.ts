@@ -80,9 +80,26 @@ test("multiple media items are rejected for Stories", () => {
   assert.match(mixed.error ?? "", /exatamente uma/i);
 });
 
-test("a Story cannot be scheduled for Facebook", () => {
-  const result = planMetaCardPublications({ platforms: ["instagram", "facebook"], mediaUrls: imageUrls(1), mediaType: "image", artType: "Story", locationId: null, instagramUserTags: [] });
-  assert.match(result.error ?? "", /Stories no Facebook/i);
+test("a Facebook image Story is allowed", () => {
+  const result = planMetaCardPublications({ platforms: ["facebook"], mediaUrls: imageUrls(1), mediaType: "image", artType: "Story", locationId: null, instagramUserTags: [] });
+  assert.equal(result.error, null);
+  assert.equal(result.plans?.[0]?.platform, "facebook");
+  assert.equal(result.plans?.[0]?.mediaType, "story");
+});
+
+test("a Facebook video Story is allowed", () => {
+  const result = planMetaCardPublications({ platforms: ["facebook"], mediaUrls: ["https://cdn.example.com/story.mp4"], mediaType: "video", artType: "Story", locationId: null, instagramUserTags: [] });
+  assert.equal(result.error, null);
+  assert.equal(result.plans?.[0]?.mediaType, "story");
+});
+
+test("an Instagram and Facebook Story creates one independent plan per platform", () => {
+  const result = planMetaCardPublications({ platforms: ["instagram", "facebook"], mediaUrls: imageUrls(1), mediaType: "image", artType: "Story", locationId: "123", instagramUserTags: [tag] });
+  assert.equal(result.error, null);
+  assert.deepEqual(result.plans?.map((plan) => ({ platform: plan.platform, mediaType: plan.mediaType, locationId: plan.locationId, tags: plan.instagramUserTags })), [
+    { platform: "instagram", mediaType: "story", locationId: null, tags: [] },
+    { platform: "facebook", mediaType: "story", locationId: null, tags: [] },
+  ]);
 });
 
 test("one MP4 is classified as an Instagram Reel", () => {

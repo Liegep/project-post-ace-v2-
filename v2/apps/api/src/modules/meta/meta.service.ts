@@ -178,6 +178,13 @@ export const META_FACEBOOK_REEL_PERMALINK_TIMEOUT_MS = 15_000;
 export const META_FACEBOOK_REEL_COVER_FETCH_TIMEOUT_MS = 30_000;
 export const META_FACEBOOK_REEL_COVER_UPLOAD_TIMEOUT_MS = 45_000;
 export const META_FACEBOOK_REEL_MAX_DOWNLOAD_BYTES = 250 * 1024 * 1024;
+export const META_FACEBOOK_STORY_PHOTO_UPLOAD_TIMEOUT_MS = 45_000;
+export const META_FACEBOOK_STORY_PUBLISH_TIMEOUT_MS = 45_000;
+const META_FACEBOOK_STORY_MEDIA_CHECK_TIMEOUT_MS = 15_000;
+export const META_FACEBOOK_STORY_VIDEO_START_TIMEOUT_MS = 30_000;
+export const META_FACEBOOK_STORY_VIDEO_STATUS_TIMEOUT_MS = 15_000;
+export const META_FACEBOOK_STORY_VIDEO_FINISH_TIMEOUT_MS = 45_000;
+export const META_FACEBOOK_STORY_PERMALINK_TIMEOUT_MS = 15_000;
 export const META_INSTAGRAM_CREATE_TIMEOUT_MS = 30_000;
 export const META_INSTAGRAM_REEL_CREATE_TIMEOUT_MS = 45_000;
 export const META_INSTAGRAM_STORY_CREATE_TIMEOUT_MS = 45_000;
@@ -988,7 +995,7 @@ function isVideoMediaUrl(rawUrl: string) {
   }
 }
 
-function assertPublicHttpUrl(app: FastifyInstance, rawUrl: string, mediaType: "image" | "carousel" | "reel" | "story") {
+function assertPublicHttpUrl(app: FastifyInstance, rawUrl: string, mediaType: "image" | "carousel" | "reel" | "story", storyPlatforms: Array<"instagram" | "facebook"> = []) {
   let url: URL;
   try {
     url = rawUrl.startsWith("/api/uploads/") ? new URL(rawUrl, app.appEnv.API_URL) : new URL(rawUrl);
@@ -1000,16 +1007,28 @@ function assertPublicHttpUrl(app: FastifyInstance, rawUrl: string, mediaType: "i
   }
   const isVideo = mediaType === "reel" || (mediaType === "story" && isVideoMediaUrl(rawUrl));
   if (rawUrl.startsWith("/api/uploads/")) {
-    if (mediaType === "story" && !/\.(mp4|mov|webp|png|jpe?g)$/i.test(url.pathname)) {
-      throw app.httpErrors.badRequest("Stories aceita somente uma imagem JPEG ou um vídeo MP4/MOV.");
+    if (mediaType === "story" && !/\.(mp4|mov|webp|png|jpe?g|bmp|gif|tiff?)$/i.test(url.pathname)) {
+      throw app.httpErrors.badRequest("Stories aceita somente uma imagem compatível ou um vídeo MP4/MOV.");
     }
     if (!isVideo) {
       // Image uploads are converted because Instagram Content Publishing accepts JPEG, not WebP.
       url.searchParams.set("format", "jpeg");
     }
+    if (mediaType === "story" && isVideo && storyPlatforms.includes("facebook") && !/\.mp4$/i.test(url.pathname)) {
+      throw app.httpErrors.badRequest("Stories de vídeo no Facebook precisam usar um arquivo MP4.");
+    }
   } else if (mediaType === "story") {
-    if (!/\.(mp4|mov|jpe?g)$/i.test(url.pathname)) {
-      throw app.httpErrors.badRequest("Stories aceita somente uma imagem JPEG ou um vídeo MP4/MOV acessível por URL pública.");
+    if (isVideo) {
+      if (storyPlatforms.includes("facebook") && !/\.mp4$/i.test(url.pathname)) {
+        throw app.httpErrors.badRequest("Stories de vídeo no Facebook precisam usar um arquivo MP4 acessível por URL pública.");
+      }
+    } else {
+      const supportedImage = storyPlatforms.includes("instagram") ? /\.jpe?g$/i : /\.(jpe?g|bmp|png|gif|tiff?)$/i;
+      if (!supportedImage.test(url.pathname)) {
+        throw app.httpErrors.badRequest(storyPlatforms.includes("instagram")
+          ? "Stories no Instagram aceitam imagem JPEG acessível por URL pública."
+          : "Stories de imagem no Facebook aceitam JPEG, BMP, PNG, GIF ou TIFF acessível por URL pública.");
+      }
     }
   } else if (isVideo ? !/\.(mp4|mov)$/i.test(url.pathname) : !/\.jpe?g$/i.test(url.pathname)) {
     throw app.httpErrors.badRequest(isVideo
@@ -1076,7 +1095,8 @@ export async function scheduleMetaCardPublications(app: FastifyInstance, input: 
   });
   if (!planned.plans) throw app.httpErrors.badRequest(planned.error);
   const mediaType = planned.plans[0]?.mediaType ?? "image";
-  const validatedUrls = new Map(planned.plans[0]?.mediaUrls.map((url) => [url, assertPublicHttpUrl(app, url, mediaType)]) ?? []);
+  const storyPlatforms = mediaType === "story" ? planned.plans.map((plan) => plan.platform) : [];
+  const validatedUrls = new Map(planned.plans[0]?.mediaUrls.map((url) => [url, assertPublicHttpUrl(app, url, mediaType, storyPlatforms)]) ?? []);
   const scheduledAt = new Date(input.scheduledAt).toISOString();
   return createScheduledPublications(app.db, planned.plans.map((plan) => ({
     clientAccountId: input.clientAccountId,
@@ -1458,7 +1478,7 @@ function facebookReelStatusError(payload: FacebookReelStatusPayload) {
   return phases.flatMap((phase) => phase?.errors ?? []).find((error) => error.error_message)?.error_message ?? null;
 }
 
-function parseFacebookReelUploadResponse(responseText: string, pageToken: string, appSecret: string) {
+function parseFacebookVideoUploadResponse(responseText: string, pageToken: string, appSecret: string) {
   let payload: MetaApiError & { success?: boolean } = {};
   try {
     const parsed = JSON.parse(responseText) as unknown;
@@ -1497,13 +1517,14 @@ async function readResponseBodyWithLimit(response: Response, maxBytes: number) {
   return bytes.buffer;
 }
 
-async function uploadFacebookReelBinaryFallback(app: FastifyInstance, input: {
+async function uploadFacebookVideoBinaryFallback(app: FastifyInstance, input: {
   publicationId: string;
   videoId: string;
   uploadUrl: URL;
   videoUrl: string;
   pageToken: string;
   appSecret: string;
+  mediaKind: "reel" | "story";
 }) {
   const downloadStartedAt = Date.now();
   let videoResponse: Response;
@@ -1536,12 +1557,12 @@ async function uploadFacebookReelBinaryFallback(app: FastifyInstance, input: {
   app.log.info({
     publicationId: input.publicationId,
     videoId: input.videoId,
-    operation: "facebook.publish.reel.binaryDownload",
+    operation: `facebook.publish.${input.mediaKind}.binaryDownload`,
     sizeBytes: bytes.byteLength,
     contentType,
     durationMs: Date.now() - downloadStartedAt,
     httpStatus: videoResponse.status,
-  }, "Facebook Reel video downloaded for binary fallback");
+  }, `Facebook ${input.mediaKind} video downloaded for binary fallback`);
 
   const uploadStartedAt = Date.now();
   let response: Response;
@@ -1563,49 +1584,51 @@ async function uploadFacebookReelBinaryFallback(app: FastifyInstance, input: {
     throw new Error(timedOut ? "O upload direto do vídeo para a Meta excedeu o tempo limite." : "Falha de rede no upload direto do vídeo para a Meta.");
   }
   const responseText = await response.text().catch(() => "");
-  const { payload, detail } = parseFacebookReelUploadResponse(responseText, input.pageToken, input.appSecret);
+  const { payload, detail } = parseFacebookVideoUploadResponse(responseText, input.pageToken, input.appSecret);
   const durationMs = Date.now() - uploadStartedAt;
   if (!response.ok || payload.error || payload.success !== true) {
     app.log.warn({
       publicationId: input.publicationId,
       videoId: input.videoId,
-      operation: "facebook.publish.reel.binaryUpload",
+      operation: `facebook.publish.${input.mediaKind}.binaryUpload`,
       sizeBytes: bytes.byteLength,
       contentType,
       durationMs,
       httpStatus: response.status,
       metaCode: payload.error?.code ?? null,
       detail,
-    }, "Facebook Reel binary upload failed");
-    throw new Error(detail || `Upload direto do Reel respondeu com HTTP ${response.status}.`);
+    }, `Facebook ${input.mediaKind} binary upload failed`);
+    throw new Error(detail || `Upload direto da ${input.mediaKind === "story" ? "Story" : "Reel"} respondeu com HTTP ${response.status}.`);
   }
   app.log.info({
     publicationId: input.publicationId,
     videoId: input.videoId,
-    operation: "facebook.publish.reel.binaryUpload",
+    operation: `facebook.publish.${input.mediaKind}.binaryUpload`,
     sizeBytes: bytes.byteLength,
     contentType,
     durationMs,
     httpStatus: response.status,
-  }, "Facebook Reel binary upload completed");
+  }, `Facebook ${input.mediaKind} binary upload completed`);
 }
 
-async function uploadFacebookReelFromUrl(app: FastifyInstance, input: {
+async function uploadFacebookVideoFromUrl(app: FastifyInstance, input: {
   publicationId: string;
   videoId: string;
   uploadUrl: string;
   videoUrl: string;
   pageToken: string;
   appSecret: string;
+  mediaKind: "reel" | "story";
 }) {
+  const mediaLabel = input.mediaKind === "story" ? "Story" : "Reel";
   let uploadUrl: URL;
   try {
     uploadUrl = new URL(input.uploadUrl);
   } catch {
-    throw new Error("A Meta retornou um endereço inválido para o envio do Reel.");
+    throw new Error(`A Meta retornou um endereço inválido para o envio da ${mediaLabel}.`);
   }
   if (uploadUrl.protocol !== "https:" || uploadUrl.hostname !== "rupload.facebook.com") {
-    throw new Error("A Meta retornou um endereço de upload inesperado para o Reel.");
+    throw new Error(`A Meta retornou um endereço de upload inesperado para a ${mediaLabel}.`);
   }
   const startedAt = Date.now();
   let response: Response;
@@ -1622,43 +1645,43 @@ async function uploadFacebookReelFromUrl(app: FastifyInstance, input: {
   } catch (error) {
     const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
     if (timedOut) {
-      app.log.warn({ publicationId: input.publicationId, videoId: input.videoId, operation: "facebook.publish.reel.upload", durationMs: Date.now() - startedAt, timedOut: true }, "Facebook Reel upload did not complete");
-      throw new Error("A Meta demorou mais que o esperado para receber o vídeo do Reel. Verifique a Página antes de tentar novamente.");
+      app.log.warn({ publicationId: input.publicationId, videoId: input.videoId, operation: `facebook.publish.${input.mediaKind}.upload`, durationMs: Date.now() - startedAt, timedOut: true }, `Facebook ${input.mediaKind} upload did not complete`);
+      throw new Error(`A Meta demorou mais que o esperado para receber o vídeo da ${mediaLabel}. Verifique a Página antes de tentar novamente.`);
     }
     throw error;
   }
   const responseText = await response.text().catch(() => "");
-  const { payload, detail } = parseFacebookReelUploadResponse(responseText, input.pageToken, input.appSecret);
+  const { payload, detail } = parseFacebookVideoUploadResponse(responseText, input.pageToken, input.appSecret);
   const durationMs = Date.now() - startedAt;
   if (response.ok && !payload.error && payload.success === true) {
-    app.log.info({ publicationId: input.publicationId, videoId: input.videoId, operation: "facebook.publish.reel.hostedUpload", durationMs, httpStatus: response.status }, "Facebook Reel hosted upload completed");
+    app.log.info({ publicationId: input.publicationId, videoId: input.videoId, operation: `facebook.publish.${input.mediaKind}.hostedUpload`, durationMs, httpStatus: response.status }, `Facebook ${input.mediaKind} hosted upload completed`);
     return;
   }
   app.log.warn({
     publicationId: input.publicationId,
     videoId: input.videoId,
-    operation: "facebook.publish.reel.hostedUpload",
+    operation: `facebook.publish.${input.mediaKind}.hostedUpload`,
     durationMs,
     httpStatus: response.status,
     metaCode: payload.error?.code ?? null,
     detail,
-  }, "Facebook Reel hosted upload failed");
+  }, `Facebook ${input.mediaKind} hosted upload failed`);
   if (response.status >= 400 && response.status < 500) {
     app.log.warn({
       publicationId: input.publicationId,
       videoId: input.videoId,
-      operation: "facebook.publish.reel.binaryFallback",
+      operation: `facebook.publish.${input.mediaKind}.binaryFallback`,
       httpStatus: response.status,
-    }, `Upload hospedado do Reel foi rejeitado pela Meta (HTTP ${response.status}). Tentando envio direto do arquivo.`);
+    }, `Upload hospedado da ${mediaLabel} foi rejeitado pela Meta (HTTP ${response.status}). Tentando envio direto do arquivo.`);
     try {
-      await uploadFacebookReelBinaryFallback(app, { ...input, uploadUrl });
+      await uploadFacebookVideoBinaryFallback(app, { ...input, uploadUrl });
       return;
     } catch (error) {
       const fallbackMessage = redactMetaSecrets(error instanceof Error ? error.message : "Falha inesperada no envio direto.", input.pageToken, input.appSecret);
       throw new Error(`A Meta recusou o envio do vídeo tanto por URL quanto por upload direto. ${fallbackMessage}`);
     }
   }
-  throw new Error(detail || `Meta Reel upload respondeu com HTTP ${response.status}.`);
+  throw new Error(detail || `Upload da ${mediaLabel} respondeu com HTTP ${response.status}.`);
 }
 
 async function waitForFacebookReel(app: FastifyInstance, input: {
@@ -1796,13 +1819,14 @@ async function publishFacebookReel(app: FastifyInstance, input: {
     ? "A Meta demorou demais para iniciar o envio do Reel do Facebook."
     : start.warning?.message || "A Meta não iniciou o envio do Reel do Facebook.");
   const videoId = start.payload.video_id;
-  await uploadFacebookReelFromUrl(app, {
+  await uploadFacebookVideoFromUrl(app, {
     publicationId: input.publicationId,
     videoId,
     uploadUrl: start.payload.upload_url,
     videoUrl: input.videoUrl,
     pageToken: pageAccess.pageToken,
     appSecret: context.appSecret,
+    mediaKind: "reel",
   });
   if (input.reelCoverUrl) {
     await uploadFacebookReelCover(app, {
@@ -1853,6 +1877,230 @@ async function publishFacebookReel(app: FastifyInstance, input: {
     timeoutMs: META_FACEBOOK_REEL_PERMALINK_TIMEOUT_MS,
   });
   return { publishedMetaId: finish.payload.post_id ?? videoId, publishedPermalink: permalink.payload?.permalink_url ?? null };
+}
+
+async function findFacebookStoryPermalink(app: FastifyInstance, input: {
+  pageId: string;
+  postId: string;
+  mediaId: string;
+  pageToken: string;
+  appSecret: string;
+}) {
+  const stories = await fetchMetaResult<MetaApiError & { data?: Array<{ post_id?: string; media_id?: string; url?: string; status?: string }> }>({
+    app,
+    path: `/${input.pageId}/stories`,
+    token: input.pageToken,
+    appSecret: input.appSecret,
+    params: { fields: "post_id,media_id,url,status", limit: "25" },
+    metricOrOperation: "facebook.publish.story.permalink",
+    timeoutMs: META_FACEBOOK_STORY_PERMALINK_TIMEOUT_MS,
+  });
+  return stories.payload?.data?.find((story) => story.post_id === input.postId || story.media_id === input.mediaId)?.url ?? null;
+}
+
+async function publishFacebookStoryImage(app: FastifyInstance, input: {
+  publicationId: string;
+  userId: string;
+  pageId: string;
+  imageUrl: string;
+}) {
+  try {
+    const mediaResponse = await fetch(input.imageUrl, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(META_FACEBOOK_STORY_MEDIA_CHECK_TIMEOUT_MS),
+    });
+    if (mediaResponse.ok) {
+      const contentType = mediaResponse.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() || null;
+      const contentLength = Number(mediaResponse.headers.get("content-length"));
+      if (Number.isFinite(contentLength) && contentLength > 10 * 1024 * 1024) {
+        throw new Error("A imagem da Story excede o limite oficial de 10 MB do Facebook.");
+      }
+      if (contentType && !["image/jpeg", "image/bmp", "image/png", "image/gif", "image/tiff"].includes(contentType)) {
+        throw new Error("A imagem da Story do Facebook precisa estar em formato JPEG, BMP, PNG, GIF ou TIFF.");
+      }
+      app.log.info({ publicationId: input.publicationId, operation: "facebook.publish.story.photo.validateMedia", contentType, contentLength: Number.isFinite(contentLength) ? contentLength : null, httpStatus: mediaResponse.status }, "Facebook Story photo metadata checked");
+    }
+  } catch (error) {
+    if (error instanceof Error && /(limite oficial|formato JPEG)/.test(error.message)) throw error;
+    app.log.warn({ publicationId: input.publicationId, operation: "facebook.publish.story.photo.validateMedia" }, "Facebook Story photo metadata could not be checked before Meta processing");
+  }
+  const context = await getPublishingContext(app, input.userId);
+  const pageAccess = await getFacebookPageAccessContext({
+    app,
+    pageId: input.pageId,
+    userToken: context.token,
+    appSecret: context.appSecret,
+    timeoutMs: META_FACEBOOK_PAGE_ACCESS_TIMEOUT_MS,
+  });
+  if (!pageAccess.page || pageAccess.page.id !== input.pageId) {
+    throw new Error(pageAccess.warning?.message || "A Página do Facebook vinculada não está disponível na conexão Meta.");
+  }
+  if (pageAccess.tokenSource !== "page") {
+    throw new Error("A Meta não forneceu um Page Access Token para a Página do Facebook vinculada.");
+  }
+  const upload = await fetchMetaResult<MetaApiError & { id?: string }>({
+    app,
+    path: `/${input.pageId}/photos`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: { url: input.imageUrl, published: "false" },
+    metricOrOperation: "facebook.publish.story.photo.upload",
+    method: "POST",
+    timeoutMs: META_FACEBOOK_STORY_PHOTO_UPLOAD_TIMEOUT_MS,
+  });
+  if (!upload.payload?.id) throw new Error(upload.warning?.kind === "timeout"
+    ? "A Meta demorou demais para carregar a imagem da Story do Facebook."
+    : upload.warning?.message || "A Meta não carregou a imagem da Story do Facebook.");
+  const photoId = upload.payload.id;
+  const publish = await fetchMetaResult<MetaApiError & { success?: boolean; post_id?: string }>({
+    app,
+    path: `/${input.pageId}/photo_stories`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: { photo_id: photoId },
+    metricOrOperation: "facebook.publish.story.photo.finish",
+    method: "POST",
+    timeoutMs: META_FACEBOOK_STORY_PUBLISH_TIMEOUT_MS,
+  });
+  if (publish.warning?.kind === "timeout") {
+    throw new Error("A Meta demorou mais que o esperado para confirmar a Story. Verifique a Página antes de tentar novamente.");
+  }
+  if (!publish.payload || publish.payload.success !== true || !publish.payload.post_id) {
+    throw new Error(publish.warning?.message || "A Meta não confirmou a publicação da Story de imagem na Página do Facebook.");
+  }
+  const postId = String(publish.payload.post_id);
+  const publishedPermalink = await findFacebookStoryPermalink(app, {
+    pageId: input.pageId,
+    postId,
+    mediaId: photoId,
+    pageToken: pageAccess.pageToken,
+    appSecret: context.appSecret,
+  });
+  return { publishedMetaId: postId, publishedPermalink };
+}
+
+async function waitForFacebookStoryProcessing(app: FastifyInstance, input: {
+  publicationId: string;
+  videoId: string;
+  pageToken: string;
+  appSecret: string;
+  pollIntervalMs?: number;
+  maxWaitMs?: number;
+}) {
+  const pollIntervalMs = input.pollIntervalMs ?? 5_000;
+  const maxWaitMs = input.maxWaitMs ?? 5 * 60_000;
+  const deadline = Date.now() + maxWaitMs;
+  for (let attempt = 1; Date.now() < deadline; attempt += 1) {
+    await wait(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
+    const result = await fetchMetaResult<FacebookReelStatusPayload>({
+      app,
+      path: `/${input.videoId}`,
+      token: input.pageToken,
+      appSecret: input.appSecret,
+      params: { fields: "status" },
+      metricOrOperation: "facebook.publish.story.video.status",
+      timeoutMs: META_FACEBOOK_STORY_VIDEO_STATUS_TIMEOUT_MS,
+    });
+    if (!result.payload) throw new Error(result.warning?.kind === "timeout"
+      ? "A Meta demorou demais para responder ao consultar o processamento da Story do Facebook."
+      : result.warning?.message || "Não foi possível consultar o processamento da Story do Facebook.");
+    const status = result.payload.status;
+    const videoStatus = status?.video_status?.trim().toLowerCase() || "unknown";
+    const phaseStatuses = {
+      uploading: status?.uploading_phase?.status?.trim().toLowerCase() || null,
+      processing: status?.processing_phase?.status?.trim().toLowerCase() || null,
+      publishing: status?.publishing_phase?.status?.trim().toLowerCase() || null,
+    };
+    app.log.info({ publicationId: input.publicationId, videoId: input.videoId, attempt, video_status: videoStatus, phases: phaseStatuses }, "Facebook Story status checked");
+    if (videoStatus === "ready") return;
+    if (["error", "expired", "upload_failed"].includes(videoStatus) || Object.values(phaseStatuses).some((phase) => phase === "error")) {
+      throw new Error(facebookReelStatusError(result.payload) || `A Meta não conseguiu processar a Story do Facebook (${videoStatus}).`);
+    }
+    if (!["uploading", "upload_complete", "processing"].includes(videoStatus)) {
+      throw new Error(`A Meta retornou um status inesperado para a Story do Facebook: ${videoStatus}.`);
+    }
+  }
+  throw new Error("A Meta ainda não concluiu o processamento da Story do Facebook. Verifique a Página antes de tentar novamente.");
+}
+
+async function publishFacebookStoryVideo(app: FastifyInstance, input: {
+  publicationId: string;
+  userId: string;
+  pageId: string;
+  videoUrl: string;
+  pollIntervalMs?: number;
+  maxWaitMs?: number;
+}) {
+  const context = await getPublishingContext(app, input.userId);
+  const pageAccess = await getFacebookPageAccessContext({
+    app,
+    pageId: input.pageId,
+    userToken: context.token,
+    appSecret: context.appSecret,
+    timeoutMs: META_FACEBOOK_PAGE_ACCESS_TIMEOUT_MS,
+  });
+  if (!pageAccess.page || pageAccess.page.id !== input.pageId) {
+    throw new Error(pageAccess.warning?.message || "A Página do Facebook vinculada não está disponível na conexão Meta.");
+  }
+  if (pageAccess.tokenSource !== "page") {
+    throw new Error("A Meta não forneceu um Page Access Token para a Página do Facebook vinculada.");
+  }
+  const start = await fetchMetaResult<MetaApiError & { video_id?: string; upload_url?: string }>({
+    app,
+    path: `/${input.pageId}/video_stories`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: { upload_phase: "start" },
+    metricOrOperation: "facebook.publish.story.video.start",
+    method: "POST",
+    timeoutMs: META_FACEBOOK_STORY_VIDEO_START_TIMEOUT_MS,
+  });
+  if (!start.payload?.video_id || !start.payload.upload_url) throw new Error(start.warning?.kind === "timeout"
+    ? "A Meta demorou demais para iniciar o envio da Story de vídeo do Facebook."
+    : start.warning?.message || "A Meta não iniciou o envio da Story de vídeo do Facebook.");
+  const videoId = start.payload.video_id;
+  await uploadFacebookVideoFromUrl(app, {
+    publicationId: input.publicationId,
+    videoId,
+    uploadUrl: start.payload.upload_url,
+    videoUrl: input.videoUrl,
+    pageToken: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    mediaKind: "story",
+  });
+  await waitForFacebookStoryProcessing(app, {
+    publicationId: input.publicationId,
+    videoId,
+    pageToken: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    pollIntervalMs: input.pollIntervalMs,
+    maxWaitMs: input.maxWaitMs,
+  });
+  const finish = await fetchMetaResult<MetaApiError & { success?: boolean; post_id?: string }>({
+    app,
+    path: `/${input.pageId}/video_stories`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: { video_id: videoId, upload_phase: "finish" },
+    metricOrOperation: "facebook.publish.story.video.finish",
+    method: "POST",
+    timeoutMs: META_FACEBOOK_STORY_VIDEO_FINISH_TIMEOUT_MS,
+  });
+  if (finish.warning?.kind === "timeout") {
+    throw new Error("A Meta demorou mais que o esperado para confirmar a Story. Verifique a Página antes de tentar novamente.");
+  }
+  if (!finish.payload || finish.payload.success !== true || !finish.payload.post_id) {
+    throw new Error(finish.warning?.message || "A Meta não confirmou a publicação da Story de vídeo na Página do Facebook.");
+  }
+  const postId = String(finish.payload.post_id);
+  const publishedPermalink = await findFacebookStoryPermalink(app, {
+    pageId: input.pageId,
+    postId,
+    mediaId: videoId,
+    pageToken: pageAccess.pageToken,
+    appSecret: context.appSecret,
+  });
+  return { publishedMetaId: postId, publishedPermalink };
 }
 
 async function publishFacebookImage(app: FastifyInstance, input: {
@@ -1922,6 +2170,8 @@ export async function processDueMetaPublications(app: FastifyInstance, limit = 1
   reelMaxWaitMs?: number;
   storyPollIntervalMs?: number;
   storyMaxWaitMs?: number;
+  facebookStoryPollIntervalMs?: number;
+  facebookStoryMaxWaitMs?: number;
   facebookReelPollIntervalMs?: number;
   facebookReelMaxWaitMs?: number;
 }) {
@@ -1957,9 +2207,6 @@ export async function processDueMetaPublications(app: FastifyInstance, limit = 1
       if (publication.platform === "facebook" && publication.mediaType === "carousel") {
         throw new Error("Carrossel ainda não está disponível para publicação no Facebook.");
       }
-      if (publication.platform === "facebook" && publication.mediaType === "story") {
-        throw new Error("Stories no Facebook ainda não estão disponíveis.");
-      }
       const result = publication.platform === "instagram" && publication.mediaType === "story"
         ? await publishInstagramStory(app, {
           publicationId: publication.id,
@@ -1969,6 +2216,22 @@ export async function processDueMetaPublications(app: FastifyInstance, limit = 1
           pollIntervalMs: options?.storyPollIntervalMs,
           maxWaitMs: options?.storyMaxWaitMs,
         })
+        : publication.platform === "facebook" && publication.mediaType === "story"
+          ? isVideoMediaUrl(publication.mediaUrl)
+            ? await publishFacebookStoryVideo(app, {
+              publicationId: publication.id,
+              userId: publication.createdByUserId,
+              pageId: publication.metaAssetId,
+              videoUrl: publication.mediaUrl,
+              pollIntervalMs: options?.facebookStoryPollIntervalMs,
+              maxWaitMs: options?.facebookStoryMaxWaitMs,
+            })
+            : await publishFacebookStoryImage(app, {
+              publicationId: publication.id,
+              userId: publication.createdByUserId,
+              pageId: publication.metaAssetId,
+              imageUrl: publication.mediaUrl,
+            })
         : publication.platform === "instagram" && publication.mediaType === "reel"
         ? await publishInstagramReel(app, {
           publicationId: publication.id,
