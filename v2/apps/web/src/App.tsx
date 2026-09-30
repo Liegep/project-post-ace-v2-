@@ -2430,7 +2430,23 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
         {createOpen ? <CreateClientModal form={form} logoFile={logoFile} creating={creating} error={createError} onChange={updateForm} onLogoChange={setLogoFile} onClose={closeCreate} onSubmit={submitClient} /> : null}
         {editClient ? <EditClientModal client={editClient} form={editForm} logoFile={editLogoFile} accesses={clientAccesses} saving={clientActionSaving} detailsLoading={editClientDetailsLoading} error={clientActionError} onChange={(key, value) => setEditForm((current) => ({ ...current, [key]: value }))} onLogoChange={setEditLogoFile} onClose={() => { setEditClientDetailsLoading(false); setEditClient(null); }} onSubmit={saveEditedClient} /> : null}
         {shareClient ? <ShareClientModal client={shareClient} accesses={clientAccesses} users={managedUsers} userId={shareUserId} role={shareRole} saving={clientActionSaving} error={clientActionError} onUserChange={setShareUserId} onRoleChange={setShareRole} onClose={() => setShareClient(null)} onShare={() => void shareSelectedClient()} /> : null}
-        {scheduleActivity ? <DashboardScheduleModal activity={scheduleActivity} canScheduleMeta={session.role === "super_admin"} onClose={() => setScheduleActivity(null)} onScheduled={() => { setClientActivities((current) => current.filter((item) => item.cardId !== scheduleActivity.cardId)); setScheduledNotice({ title: scheduleActivity.title, clientName: scheduleActivity.clientName }); setScheduleActivity(null); }} /> : null}
+        {scheduleActivity ? <DashboardScheduleModal activity={scheduleActivity} canScheduleMeta={session.role === "super_admin"} onClose={() => setScheduleActivity(null)} onScheduled={() => {
+          const matchingFeedbackIds = clientActivities
+            .filter((item) => item.cardId && item.cardId === scheduleActivity.cardId)
+            .map((item) => item.id);
+          if (matchingFeedbackIds.length) {
+            const storageKey = `designhub-v2-dismissed-client-feedback:${session.id}`;
+            try {
+              const current = JSON.parse(window.localStorage.getItem(storageKey) ?? "[]") as string[];
+              window.localStorage.setItem(storageKey, JSON.stringify([...new Set([...current, ...matchingFeedbackIds])]));
+            } catch {
+              // The dashboard still removes the scheduled feedback for this visit.
+            }
+          }
+          setClientActivities((current) => current.filter((item) => item.cardId !== scheduleActivity.cardId));
+          setScheduledNotice({ title: scheduleActivity.title, clientName: scheduleActivity.clientName });
+          setScheduleActivity(null);
+        }} /> : null}
       </main>
     </div>
   );
