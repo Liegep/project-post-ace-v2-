@@ -6568,6 +6568,9 @@ function ClientPortalWorkspacePage({
       return next;
     });
   }, [slug]);
+  const latestPortalReport = portalReports[0] ?? null;
+  const unreadPortalReportCount = portalReports.filter((report) => !viewedReportIds.includes(report.id)).length;
+  const latestPortalReportIsNew = Boolean(latestPortalReport && !viewedReportIds.includes(latestPortalReport.id));
   useEffect(() => {
     if ((portalView === "texts" && !data.permissions.allowClientViewTexts) || (portalView === "invoices" && !data.permissions.allowClientViewInvoices) || (portalView === "reports" && !data.permissions.allowClientViewReports) || (portalView === "brand" && !data.permissions.allowClientViewBrandBrain)) {
       setPortalView("board");
@@ -6601,9 +6604,6 @@ function ClientPortalWorkspacePage({
   const contentApprovalCardIds = new Set(approvalPortalCards.filter((card) => !card.isBriefApproval).map((card) => card.id));
   const visiblePortalColumns = data.boardColumns.filter((column) => !isPortalApprovedColumn(column.name) || column.cards.some((card) => contentApprovalCardIds.has(card.id)));
   const portalTrackerEnabled = data.widgets.tracking && data.permissions.allowClientViewTracking;
-  const latestPortalReport = portalReports[0] ?? null;
-  const unreadPortalReportCount = portalReports.filter((report) => !viewedReportIds.includes(report.id)).length;
-  const latestPortalReportIsNew = Boolean(latestPortalReport && !viewedReportIds.includes(latestPortalReport.id));
   const upcomingPortalAppointments = useMemo(() => {
     const now = new Date();
     const from = localDateKey(now);
