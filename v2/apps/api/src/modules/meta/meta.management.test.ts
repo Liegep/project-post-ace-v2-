@@ -3,8 +3,8 @@ import crypto from "node:crypto";
 import test from "node:test";
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "mysql2/promise";
-import { cancelScheduledPublicationGroup, listGlobalScheduledPublications, rescheduleScheduledPublications } from "./meta.repository.js";
-import { createMetaPublicationSchema, metaPublicationsQuerySchema } from "./meta.schemas.js";
+import { cancelScheduledPublicationGroup, listGlobalScheduledPublications, listScheduledPublicationsForClient, rescheduleScheduledPublications } from "./meta.repository.js";
+import { clientMetaPublicationsQuerySchema, createMetaPublicationSchema, metaPublicationsQuerySchema } from "./meta.schemas.js";
 import { searchMetaPlaces } from "./meta.service.js";
 
 const publicationRow = (overrides: Record<string, unknown> = {}) => ({
@@ -37,6 +37,24 @@ test("global listing joins clients and cards while preserving each platform stat
   assert.equal(result.items[0]?.locationName, "Piazza San Marco");
   assert.match(calls[0]?.sql ?? "", /INNER JOIN client_accounts.+LEFT JOIN kanban_cards/);
   assert.match(calls[0]?.sql ?? "", /p\.client_account_id = \?/);
+});
+
+test("client calendar publications stay scoped to one client and the visible range", async () => {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const db = { async query(sql: string, params: unknown[] = []) {
+    calls.push({ sql, params });
+    return [[publicationRow({ client_account_id: "client-a", card_title: "Post Primavera" })], []];
+  } } as unknown as Pool;
+  const range = clientMetaPublicationsQuerySchema.parse({ from: "2026-09-28T00:00:00Z", to: "2026-11-02T00:00:00Z" });
+  const result = await listScheduledPublicationsForClient(db, "client-a", range);
+  assert.equal(result.length, 1);
+  assert.equal(result[0]?.clientAccountId, "client-a");
+  assert.equal(result[0]?.cardTitle, "Post Primavera");
+  assert.match(calls[0]?.sql ?? "", /p\.client_account_id = \?/);
+  assert.match(calls[0]?.sql ?? "", /p\.scheduled_at >= \?.+p\.scheduled_at < \?/);
+  assert.match(calls[0]?.sql ?? "", /LEFT JOIN kanban_cards/);
+  assert.deepEqual(calls[0]?.params, ["client-a", "2026-09-28 00:00:00.000", "2026-11-02 00:00:00.000"]);
+  assert.doesNotMatch(calls[0]?.sql ?? "", /client-b/);
 });
 
 function transactionPool(statuses: string[]) {

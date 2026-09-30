@@ -137,6 +137,14 @@ export const metaPublicationsQuerySchema = z.object({
   path: ["to"],
 });
 
+export const clientMetaPublicationsQuerySchema = z.object({
+  from: isoDateTimeSchema.optional(),
+  to: isoDateTimeSchema.optional(),
+}).refine((value) => !value.from || !value.to || new Date(value.from).getTime() <= new Date(value.to).getTime(), {
+  message: "O início do período deve ser anterior ao fim.",
+  path: ["to"],
+});
+
 export const manageMetaPublicationsSchema = z.object({
   publicationIds: z.array(z.string().trim().min(1).max(190)).min(1).max(2).transform((ids) => [...new Set(ids)]),
 });

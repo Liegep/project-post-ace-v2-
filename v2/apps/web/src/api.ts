@@ -474,6 +474,7 @@ export type MetaScheduledPublication = {
   createdAt: string;
   updatedAt: string;
   publishedAt: string | null;
+  cardTitle: string | null;
 };
 export type GlobalMetaScheduledPublication = MetaScheduledPublication & {
   clientAccountId: string;
@@ -1356,9 +1357,13 @@ export async function saveClientMetaAssetsBySlug(slug: string, assets: ClientMet
   });
 }
 
-export async function listMetaPublicationsBySlug(slug: string) {
+export async function listMetaPublicationsBySlug(slug: string, range: { from?: string; to?: string } = {}) {
   const client = await findAdminClientBySlug(slug);
-  return fetchJson<{ publications: MetaScheduledPublication[] }>(`/api/clients/${client.id}/meta-publications`);
+  const query = new URLSearchParams();
+  if (range.from) query.set("from", range.from);
+  if (range.to) query.set("to", range.to);
+  const suffix = query.size ? `?${query.toString()}` : "";
+  return fetchJson<{ publications: MetaScheduledPublication[] }>(`/api/clients/${client.id}/meta-publications${suffix}`);
 }
 
 export async function createMetaPublicationBySlug(slug: string, input: { cardId: string; platforms: ("instagram" | "facebook")[]; scheduledAt: string; timezone: string; publicationFormat?: "story" | null; reelCoverUrl?: string | null; locationId?: string | null; locationName?: string | null; instagramUserTags?: InstagramUserTag[] }) {

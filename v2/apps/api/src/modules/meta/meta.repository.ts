@@ -48,6 +48,7 @@ type ScheduledPublicationRow = RowDataPacket & {
   created_at: Date | string;
   updated_at: Date | string;
   published_at: Date | string | null;
+  card_title?: string | null;
 };
 
 const scheduledPublicationSelect = [
@@ -117,6 +118,7 @@ function mapScheduledPublication(row: ScheduledPublicationRow) {
     createdAt: isoValue(row.created_at)!,
     updatedAt: isoValue(row.updated_at)!,
     publishedAt: isoValue(row.published_at),
+    cardTitle: row.card_title?.trim() || null,
   };
 }
 
@@ -289,10 +291,20 @@ export async function findScheduledPublication(db: Pool, id: string, clientAccou
   return rows[0] ? mapScheduledPublication(rows[0]) : null;
 }
 
-export async function listScheduledPublicationsForClient(db: Pool, clientAccountId: string) {
+export async function listScheduledPublicationsForClient(db: Pool, clientAccountId: string, range: { from?: string; to?: string } = {}) {
+  const conditions = ["p.client_account_id = ?"];
+  const params: unknown[] = [clientAccountId];
+  if (range.from) { conditions.push("p.scheduled_at >= ?"); params.push(mysqlUtcDateTime(range.from)); }
+  if (range.to) { conditions.push("p.scheduled_at < ?"); params.push(mysqlUtcDateTime(range.to)); }
   const [rows] = await db.query<ScheduledPublicationRow[]>(
-    `${scheduledPublicationSelect} WHERE client_account_id = ? ORDER BY CASE WHEN status = 'scheduled' THEN 0 ELSE 1 END, scheduled_at ASC, created_at DESC`,
-    [clientAccountId],
+    [
+      "SELECT p.id, p.client_account_id, p.card_id, p.platform, p.meta_asset_id,",
+      "DATE_FORMAT(p.scheduled_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS scheduled_at, p.timezone, p.caption, p.media_url, p.media_urls_json, p.media_type, p.reel_cover_url, p.location_id, p.location_name, p.instagram_user_tags_json,",
+      "p.status, p.attempt_count, p.idempotency_key, p.published_meta_id, p.published_permalink, p.last_error, p.created_by_user_id, p.created_at, p.updated_at, p.published_at, k.title AS card_title",
+      "FROM meta_scheduled_publications p LEFT JOIN kanban_cards k ON k.id = p.card_id",
+      `WHERE ${conditions.join(" AND ")} ORDER BY p.scheduled_at ASC, p.created_at ASC`,
+    ].join(" "),
+    params,
   );
   return rows.map(mapScheduledPublication);
 }

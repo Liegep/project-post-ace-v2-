@@ -1,7 +1,7 @@
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { findClientAccountById } from "../clients/clients.repository.js";
 import { findCardById } from "../cards/cards.repository.js";
-import { clientMetaAssetsSchema, createMetaPublicationSchema, manageMetaPublicationsSchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema, metaPlaceSearchQuerySchema, metaPublicationsQuerySchema, rescheduleMetaPublicationsSchema } from "./meta.schemas.js";
+import { clientMetaAssetsSchema, clientMetaPublicationsQuerySchema, createMetaPublicationSchema, manageMetaPublicationsSchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema, metaPlaceSearchQuerySchema, metaPublicationsQuerySchema, rescheduleMetaPublicationsSchema } from "./meta.schemas.js";
 import { cancelScheduledPublication, cancelScheduledPublicationGroup, consumeMetaOAuthState, findClientMetaAssets, findScheduledPublication, listGlobalScheduledPublications, listScheduledPublicationsForClient, rescheduleScheduledPublications, upsertClientMetaAssets } from "./meta.repository.js";
 import { archiveMetaCardIfPublicationGroupComplete, completeMetaAuthorization, createMetaAuthorizationUrl, getMetaAdsInsights, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets, scheduleMetaCardPublications, searchMetaPlaces } from "./meta.service.js";
 
@@ -42,6 +42,7 @@ function publicationResponse(publication: NonNullable<Awaited<ReturnType<typeof 
     createdAt: publication.createdAt,
     updatedAt: publication.updatedAt,
     publishedAt: publication.publishedAt,
+    cardTitle: publication.cardTitle,
   };
 }
 
@@ -194,7 +195,9 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
     assertSuperAdmin(request);
     const { clientAccountId } = request.params as { clientAccountId: string };
     if (!await findClientAccountById(app.db, clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
-    const publications = await listScheduledPublicationsForClient(app.db, clientAccountId);
+    const parsed = clientMetaPublicationsQuerySchema.safeParse(request.query);
+    if (!parsed.success) throw app.httpErrors.badRequest(parsed.error.issues[0]?.message ?? "Período inválido.");
+    const publications = await listScheduledPublicationsForClient(app.db, clientAccountId, parsed.data);
     return { publications: publications.map(publicationResponse) };
   });
 

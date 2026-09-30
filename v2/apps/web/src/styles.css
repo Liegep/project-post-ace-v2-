@@ -10770,9 +10770,89 @@ button {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+.client-calendar-day > .client-calendar-event-item.meta {
+  background: #f0edff;
+  color: #4f45b8;
+}
+.client-calendar-day > .client-calendar-event-item.combined {
+  box-shadow: inset 0 0 0 1px rgba(92, 76, 190, .22);
+}
+.client-calendar-event-item > em {
+  flex: 1 1 auto;
+}
+.client-calendar-event-item > time {
+  flex: 0 0 auto;
+  font-size: .55rem;
+  font-weight: 900;
+}
+.client-calendar-meta-chips {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+}
+.client-calendar-meta-chips i {
+  display: inline-flex;
+  align-items: center;
+  min-height: 18px;
+  padding: 2px 4px;
+  border-radius: 6px;
+  color: #fff;
+  background: #8f59bf;
+  font-size: .54rem;
+  font-style: normal;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+}
+.client-calendar-meta-chips i.facebook { background: #3979cc; }
+.client-calendar-meta-chips i.publishing { background: #5a65d8; }
+.client-calendar-meta-chips i.published { background: #319b6d; }
+.client-calendar-meta-chips i.failed { background: #d84f69; }
+.client-kanban-calendar > p i.instagram { background: #a555c8; }
+.client-kanban-calendar > p i.facebook { background: #3979cc; }
+.client-calendar-meta-error {
+  display: block;
+  margin-top: 8px;
+  color: #a15a68;
+  font-size: .72rem;
+}
+.client-calendar-detail-platforms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 14px;
+}
+.client-calendar-detail-platforms span {
+  padding: 5px 8px;
+  border-radius: 8px;
+  color: #fff;
+  background: #7260d2;
+  font-size: .7rem;
+  font-weight: 800;
+}
+.client-calendar-detail-platforms span.published { background: #319b6d; }
+.client-calendar-detail-platforms span.failed { background: #d84f69; }
 @media (hover: none) {
   .client-calendar-event-item::after {
     display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .client-calendar-event-item.meta > b,
+  .client-calendar-event-item.combined > b {
+    display: none;
+  }
+  .client-calendar-meta-chips {
+    max-width: 50px;
+    overflow: hidden;
+  }
+  .client-calendar-meta-chips i {
+    min-width: 22px;
+    justify-content: center;
+    padding-inline: 3px;
   }
 }
 
