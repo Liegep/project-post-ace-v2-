@@ -3234,6 +3234,7 @@ function DashboardScheduleModal({ activity, canScheduleMeta, onClose, onSchedule
       setMetaScheduleOpen(false);
       setMetaDetailsOpen(true);
       setMetaFeedback(`Meta agendada: ${result.publications.map((publication) => publication.platform === "instagram" ? "Instagram" : "Facebook").join(" + ")}.`);
+      onScheduled();
     } catch (cause) {
       setMetaFeedbackError(true);
       setMetaFeedback(cause instanceof Error ? cause.message : "Não foi possível agendar a publicação na Meta.");
