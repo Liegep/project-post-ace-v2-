@@ -7541,13 +7541,18 @@ ${internalMessage.trim()}`, isInternal: true });
   const hasLinkedMetaPlatform = Boolean(metaAssets?.instagramAccountId || metaAssets?.facebookPageId);
   const metaVideoUrls = mediaUrls.filter((url) => /\.(mp4|mov)(?:$|[?#])/i.test(url));
   const metaDeclaredReel = /reel/i.test(artType);
-  const metaMediaMode: "image" | "carousel" | "reel" = mediaUrls.length === 1 && (metaVideoUrls.length === 1 || metaDeclaredReel)
+  const metaDeclaredStory = /stor(?:y|ies)/i.test(artType);
+  const metaMediaMode: "image" | "carousel" | "reel" | "story" = metaDeclaredStory
+    ? "story"
+    : mediaUrls.length === 1 && (metaVideoUrls.length === 1 || metaDeclaredReel)
     ? "reel"
     : mediaUrls.length > 1 ? "carousel" : "image";
   const metaScheduleUnavailableReason = mediaUrls.length === 0
     ? null
-    : /story/i.test(artType)
-      ? "Stories ainda não estão disponíveis para publicação Meta."
+    : metaMediaMode === "story" && mediaUrls.length !== 1
+      ? "Stories aceita exatamente uma imagem ou um vídeo nesta etapa."
+      : metaMediaMode === "story" && !metaAssets?.instagramAccountId
+        ? "Stories exige uma conta do Instagram vinculada ao cliente."
       : metaVideoUrls.length > 1 || (mediaUrls.length > 1 && (metaVideoUrls.length > 0 || metaDeclaredReel))
         ? "Reels aceita somente um vídeo, sem imagens adicionais."
         : mediaUrls.length > 10
@@ -7563,7 +7568,7 @@ ${internalMessage.trim()}`, isInternal: true });
     platforms: ("instagram" | "facebook")[],
     localDateTime: string,
     timezone: string,
-    options: { reelCoverUrl: string | null; locationId: string | null; instagramUserTags: Array<{ username: string; x: number; y: number }> },
+    options: { publicationFormat: "story" | null; reelCoverUrl: string | null; locationId: string | null; instagramUserTags: Array<{ username: string; x: number; y: number }> },
   ) {
     setMetaScheduling(true);
     setFeedback(null);
@@ -7576,6 +7581,7 @@ ${internalMessage.trim()}`, isInternal: true });
         platforms,
         scheduledAt: date.toISOString(),
         timezone,
+        publicationFormat: options.publicationFormat,
         reelCoverUrl: options.reelCoverUrl,
         locationId: options.locationId,
         instagramUserTags: options.instagramUserTags,
@@ -7954,7 +7960,7 @@ ${internalMessage.trim()}`, isInternal: true });
 
 function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagramAvailable, facebookAvailable, submitting, onClose, onSubmit }: {
   mediaUrls: string[];
-  mediaMode: "image" | "carousel" | "reel";
+  mediaMode: "image" | "carousel" | "reel" | "story";
   caption: string;
   suggestedAt: string;
   instagramAvailable: boolean;
@@ -7965,20 +7971,26 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
     platforms: ("instagram" | "facebook")[],
     localDateTime: string,
     timezone: string,
-    options: { reelCoverUrl: string | null; locationId: string | null; instagramUserTags: Array<{ username: string; x: number; y: number }> },
+    options: { publicationFormat: "story" | null; reelCoverUrl: string | null; locationId: string | null; instagramUserTags: Array<{ username: string; x: number; y: number }> },
   ) => Promise<void>;
 }) {
   const fallback = new Date(Date.now() + 60 * 60_000);
   fallback.setSeconds(0, 0);
-  const isCarousel = mediaMode === "carousel";
-  const isReel = mediaMode === "reel";
+  const storyFromCard = mediaMode === "story";
+  const [publishAsStory, setPublishAsStory] = useState(storyFromCard);
+  const isStory = publishAsStory;
+  const isCarousel = !isStory && mediaMode === "carousel";
+  const isReel = !isStory && mediaMode === "reel";
   const firstMediaUrl = mediaUrls[0];
+  const isStoryVideo = isStory && /\.(mp4|mov)(?:$|[?#])/i.test(firstMediaUrl);
+  const previewIsVideo = isReel || isStoryVideo;
   const [localDateTime, setLocalDateTime] = useState(suggestedAt || toDateTimeLocal(fallback.toISOString()));
-  const [platforms, setPlatforms] = useState<("instagram" | "facebook")[]>(instagramAvailable ? ["instagram"] : !isCarousel && facebookAvailable ? ["facebook"] : []);
+  const [platforms, setPlatforms] = useState<("instagram" | "facebook")[]>(instagramAvailable ? ["instagram"] : mediaMode !== "carousel" && mediaMode !== "story" && facebookAvailable ? ["facebook"] : []);
   const [locationId, setLocationId] = useState("");
   const [reelCoverUrl, setReelCoverUrl] = useState<string | null>(null);
   const [reelCoverUploading, setReelCoverUploading] = useState(false);
   const [reelCoverError, setReelCoverError] = useState("");
+  const [storyMediaError, setStoryMediaError] = useState("");
   const reelCoverInputRef = useRef<HTMLInputElement>(null);
   const [tagUsername, setTagUsername] = useState("");
   const [pendingTagUsername, setPendingTagUsername] = useState<string | null>(null);
@@ -7993,6 +8005,18 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
     if (platform === "instagram" && instagramSelected) {
       setPendingTagUsername(null);
       setTagError("");
+    }
+  };
+
+  const selectStoryFormat = (selected: boolean) => {
+    setPublishAsStory(selected);
+    setStoryMediaError("");
+    if (selected) {
+      setPlatforms((current) => current.filter((platform) => platform === "instagram"));
+      setLocationId("");
+      setInstagramUserTags([]);
+      setPendingTagUsername(null);
+      setReelCoverUrl(null);
     }
   };
 
@@ -8054,12 +8078,17 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
   return <div className="meta-schedule-backdrop" onClick={onClose}>
     <section className="meta-schedule-modal" role="dialog" aria-modal="true" aria-labelledby="meta-schedule-title" onClick={(event) => event.stopPropagation()}>
       <header><div><span>PUBLICAÇÃO META</span><h3 id="meta-schedule-title">Agendar publicação</h3></div><button type="button" onClick={onClose} aria-label="Fechar">×</button></header>
+      {!storyFromCard && mediaUrls.length === 1 ? <div className="meta-format-options" role="group" aria-label="Formato da publicação">
+        <button type="button" className={!isStory ? "selected" : ""} aria-pressed={!isStory} onClick={() => selectStoryFormat(false)}>{mediaMode === "reel" ? "Reel" : "Publicação"}</button>
+        <button type="button" className={isStory ? "selected" : ""} aria-pressed={isStory} onClick={() => selectStoryFormat(true)}>Story</button>
+      </div> : null}
       <div className="meta-platform-options" role="group" aria-label="Plataformas de publicação">
-        <button type="button" className={platforms.includes("instagram") ? "selected instagram" : "instagram"} disabled={!instagramAvailable} aria-pressed={platforms.includes("instagram")} onClick={() => togglePlatform("instagram")}><i aria-hidden="true">◎</i><span><strong>Instagram</strong>{instagramAvailable ? <small>{isReel ? "✓ Reel · ✓ Capa personalizada" : isCarousel ? `Carrossel · ${mediaUrls.length} imagens` : "Imagem única"}</small> : <small>Não vinculado a este cliente</small>}</span></button>
-        <button type="button" className={platforms.includes("facebook") ? "selected facebook" : "facebook"} disabled={!facebookAvailable || isCarousel} aria-pressed={platforms.includes("facebook")} onClick={() => togglePlatform("facebook")}><i aria-hidden="true">f</i><span><strong>Facebook</strong>{!facebookAvailable ? <small>Não vinculado a este cliente</small> : isReel ? <small>✓ Reel · ✓ Capa personalizada</small> : isCarousel ? <small>Carrossel ainda não disponível no Facebook</small> : <small>Imagem única</small>}</span></button>
+        <button type="button" className={platforms.includes("instagram") ? "selected instagram" : "instagram"} disabled={!instagramAvailable} aria-pressed={platforms.includes("instagram")} onClick={() => togglePlatform("instagram")}><i aria-hidden="true">◎</i><span><strong>Instagram</strong>{instagramAvailable ? <small>{isStory ? "✓ Story" : isReel ? "✓ Reel · ✓ Capa personalizada" : isCarousel ? `Carrossel · ${mediaUrls.length} imagens` : "Imagem única"}</small> : <small>Não vinculado a este cliente</small>}</span></button>
+        <button type="button" className={platforms.includes("facebook") ? "selected facebook" : "facebook"} disabled={!facebookAvailable || isCarousel || isStory} aria-pressed={platforms.includes("facebook")} onClick={() => togglePlatform("facebook")}><i aria-hidden="true">f</i><span><strong>Facebook</strong>{!facebookAvailable ? <small>Não vinculado a este cliente</small> : isStory ? <small>Stories no Facebook ainda não disponíveis</small> : isReel ? <small>✓ Reel · ✓ Capa personalizada</small> : isCarousel ? <small>Carrossel ainda não disponível no Facebook</small> : <small>Imagem única</small>}</span></button>
       </div>
 
-      <div className={`meta-schedule-preview${isCarousel ? " carousel" : isReel ? " reel" : ""}`}><div className="meta-schedule-preview-media">{isReel ? <video src={firstMediaUrl} controls preload="metadata" aria-label="Prévia do Reel" /> : <img src={firstMediaUrl} alt="Prévia da publicação" />}{isCarousel ? <span>{mediaUrls.length} imagens</span> : isReel ? <span>Reel</span> : null}</div><div><p>{caption.trim() || "Sem legenda"}</p>{isCarousel ? <div className="meta-carousel-thumbnails">{mediaUrls.slice(1, 5).map((url, index) => <img key={`${url}-${index}`} src={url} alt={`Imagem ${index + 2} do carrossel`} />)}{mediaUrls.length > 5 ? <span>+{mediaUrls.length - 5}</span> : null}</div> : null}</div></div>
+      <div className={`meta-schedule-preview${isCarousel ? " carousel" : isReel || isStory ? " reel" : ""}`}><div className="meta-schedule-preview-media">{previewIsVideo ? <video src={firstMediaUrl} controls preload="metadata" aria-label={isStory ? "Prévia da Story" : "Prévia do Reel"} onLoadedMetadata={(event) => { if (!isStory) return; const duration = event.currentTarget.duration; setStoryMediaError(Number.isFinite(duration) && (duration < 3 || duration > 60) ? "O vídeo da Story deve ter entre 3 e 60 segundos." : ""); }} /> : <img src={firstMediaUrl} alt={isStory ? "Prévia da Story" : "Prévia da publicação"} />}{isCarousel ? <span>{mediaUrls.length} imagens</span> : isStory ? <span>{`Story · ${isStoryVideo ? "vídeo" : "imagem"}`}</span> : isReel ? <span>Reel</span> : null}</div><div><p>{isStory ? `Story · ${isStoryVideo ? "vídeo" : "imagem"}` : caption.trim() || "Sem legenda"}</p>{isCarousel ? <div className="meta-carousel-thumbnails">{mediaUrls.slice(1, 5).map((url, index) => <img key={`${url}-${index}`} src={url} alt={`Imagem ${index + 2} do carrossel`} />)}{mediaUrls.length > 5 ? <span>+{mediaUrls.length - 5}</span> : null}</div> : null}</div></div>
+      {storyMediaError ? <div className="meta-tag-error">{storyMediaError}</div> : null}
 
       <section className="meta-publish-options">
         {isReel ? <div className="meta-reel-cover-option">
@@ -8068,7 +8097,7 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
           {reelCoverUrl ? <div className="meta-reel-cover-preview"><img src={reelCoverUrl} alt="Capa personalizada do Reel" /><div><span>Capa do Reel</span><div><button type="button" disabled={reelCoverUploading || submitting} onClick={() => reelCoverInputRef.current?.click()}>Alterar</button><button type="button" disabled={reelCoverUploading || submitting} onClick={() => { setReelCoverUrl(null); setReelCoverError(""); }}>Remover</button></div></div></div> : <button type="button" className="meta-reel-cover-upload" disabled={reelCoverUploading || submitting} onClick={() => reelCoverInputRef.current?.click()}>{reelCoverUploading ? "Enviando capa…" : "Enviar imagem de capa"}</button>}
           {reelCoverError ? <em>{reelCoverError}</em> : null}
         </div> : null}
-        <label>
+        {!isStory ? <label>
           <span>Localização <small>{isReel ? facebookSelected ? "opcional · Facebook" : "indisponível no Instagram Reel" : "opcional · Instagram e Facebook"}</small></span>
           <input
             value={locationId}
@@ -8080,10 +8109,10 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
           />
           <small>{isReel ? facebookSelected ? "Use o ID numérico de uma localização/Place da Meta. Em agendamento conjunto, o local será aplicado somente ao Facebook." : "A localização não está disponível no fluxo de Instagram Reels." : "Use o ID numérico de uma localização/Place da Meta. O mesmo local será aplicado às plataformas selecionadas."}</small>
           {locationInvalid ? <em>O ID da localização deve conter somente números.</em> : null}
-        </label>
+        </label> : null}
 
         {instagramSelected && (isCarousel || isReel) ? <div className="meta-carousel-tags-note">{isReel ? "Marcações de pessoas não estão disponíveis para Reels nesta etapa." : "Marcações por imagem serão adicionadas em uma próxima etapa."}</div> : null}
-        {instagramSelected && !isCarousel && !isReel ? <div className="meta-instagram-tags">
+        {instagramSelected && !isCarousel && !isReel && !isStory ? <div className="meta-instagram-tags">
           <div className="meta-option-heading"><div><strong>Marcar pessoas no Instagram</strong><small>Opcional · até 20 contas públicas</small></div><span>{instagramUserTags.length}/20</span></div>
           <div className="meta-tag-input-row">
             <input value={tagUsername} placeholder="@usuario" onChange={(event) => { setTagUsername(event.target.value); setTagError(""); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); prepareTag(); } }} />
@@ -8101,7 +8130,7 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
 
       <label><span>Data e hora</span><input type="datetime-local" value={localDateTime} onChange={(event) => setLocalDateTime(event.target.value)} /></label>
       <small>Fuso horário: {timezone}</small>
-      <footer><button type="button" className="ghost-button" disabled={submitting || reelCoverUploading} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || reelCoverUploading || !localDateTime || platforms.length === 0 || locationInvalid || Boolean(pendingTagUsername)} onClick={() => void onSubmit(platforms, localDateTime, timezone, { reelCoverUrl: isReel ? reelCoverUrl : null, locationId: normalizedLocationId || null, instagramUserTags: isCarousel || isReel ? [] : instagramUserTags })}>{submitting ? "Agendando…" : reelCoverUploading ? "Enviando capa…" : "Agendar publicação"}</button></footer>
+      <footer><button type="button" className="ghost-button" disabled={submitting || reelCoverUploading} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || reelCoverUploading || !localDateTime || platforms.length === 0 || locationInvalid || Boolean(pendingTagUsername) || Boolean(storyMediaError)} onClick={() => void onSubmit(platforms, localDateTime, timezone, { publicationFormat: isStory ? "story" : null, reelCoverUrl: isReel ? reelCoverUrl : null, locationId: isStory ? null : normalizedLocationId || null, instagramUserTags: isCarousel || isReel || isStory ? [] : instagramUserTags })}>{submitting ? "Agendando…" : reelCoverUploading ? "Enviando capa…" : "Agendar publicação"}</button></footer>
     </section>
   </div>;
 }

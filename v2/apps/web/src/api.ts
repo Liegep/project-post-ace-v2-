@@ -1343,7 +1343,7 @@ export async function listMetaPublicationsBySlug(slug: string) {
   return fetchJson<{ publications: MetaScheduledPublication[] }>(`/api/clients/${client.id}/meta-publications`);
 }
 
-export async function createMetaPublicationBySlug(slug: string, input: { cardId: string; platforms: ("instagram" | "facebook")[]; scheduledAt: string; timezone: string; reelCoverUrl?: string | null; locationId?: string | null; instagramUserTags?: InstagramUserTag[] }) {
+export async function createMetaPublicationBySlug(slug: string, input: { cardId: string; platforms: ("instagram" | "facebook")[]; scheduledAt: string; timezone: string; publicationFormat?: "story" | null; reelCoverUrl?: string | null; locationId?: string | null; instagramUserTags?: InstagramUserTag[] }) {
   const client = await findAdminClientBySlug(slug);
   return sendJson<{ publications: MetaScheduledPublication[]; created: boolean }>(`/api/clients/${client.id}/meta-publications`, {
     method: "POST",

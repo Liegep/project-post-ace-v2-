@@ -167,6 +167,7 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
       card,
       scheduledAt: parsed.data.scheduledAt,
       timezone: parsed.data.timezone,
+      publicationFormat: parsed.data.publicationFormat,
       reelCoverUrl: parsed.data.reelCoverUrl,
       locationId: parsed.data.locationId,
       instagramUserTags: parsed.data.instagramUserTags,

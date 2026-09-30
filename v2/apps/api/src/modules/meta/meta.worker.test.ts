@@ -18,6 +18,7 @@ import {
   META_FACEBOOK_REEL_MAX_DOWNLOAD_BYTES,
   META_INSTAGRAM_CREATE_TIMEOUT_MS,
   META_INSTAGRAM_REEL_CREATE_TIMEOUT_MS,
+  META_INSTAGRAM_STORY_CREATE_TIMEOUT_MS,
   META_INSTAGRAM_PERMALINK_TIMEOUT_MS,
   META_INSTAGRAM_PUBLISH_TIMEOUT_MS,
   META_INSTAGRAM_STATUS_TIMEOUT_MS,
@@ -43,7 +44,7 @@ function metaResponse(payload: unknown) {
 
 function publishingHarness(fetchImpl: typeof fetch, overrides: {
   platform?: "instagram" | "facebook";
-  mediaType?: "image" | "reel";
+  mediaType?: "image" | "reel" | "story";
   mediaUrl?: string;
   caption?: string | null;
   locationId?: string | null;
@@ -143,6 +144,7 @@ async function withFetch<T>(fetchImpl: typeof fetch, run: () => Promise<T>) {
 test("Instagram publishing uses operation-specific timeouts", () => {
   assert.equal(META_INSTAGRAM_CREATE_TIMEOUT_MS, 30_000);
   assert.equal(META_INSTAGRAM_REEL_CREATE_TIMEOUT_MS, 45_000);
+  assert.equal(META_INSTAGRAM_STORY_CREATE_TIMEOUT_MS, 45_000);
   assert.equal(META_INSTAGRAM_STATUS_TIMEOUT_MS, 15_000);
   assert.equal(META_INSTAGRAM_PUBLISH_TIMEOUT_MS, 45_000);
   assert.equal(META_INSTAGRAM_PERMALINK_TIMEOUT_MS, 15_000);
@@ -322,6 +324,111 @@ test("a Reel tolerates multiple IN_PROGRESS cycles before FINISHED", async () =>
   const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { reelPollIntervalMs: 1, reelMaxWaitMs: 30 }));
   assert.equal(result.published, 1);
   assert.equal(statusChecks, 4);
+});
+
+test("an Instagram image Story publishes without caption, tags, location, cover or permalink lookup", async () => {
+  const requests: URL[] = [];
+  const harness = publishingHarness(async (input, init) => {
+    const url = new URL(String(input));
+    requests.push(url);
+    if (init?.method === "HEAD" && url.href === "https://cdn.example.com/story.jpg") return new Response(null, { status: 200, headers: { "content-type": "image/jpeg", "content-length": "2048" } });
+    if (init?.method === "POST" && url.pathname.endsWith("/media_publish")) return metaResponse({ id: "story-media-1" });
+    if (init?.method === "POST" && url.pathname.endsWith("/media")) return metaResponse({ id: "story-container-1" });
+    if (url.pathname.endsWith("/story-container-1")) return metaResponse({ status_code: "FINISHED" });
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, {
+    mediaType: "story",
+    mediaUrl: "https://cdn.example.com/story.jpg",
+    caption: "Esta legenda não deve ser enviada",
+    locationId: "123456",
+    reelCoverUrl: "https://cdn.example.com/cover.jpg",
+    instagramUserTags: [{ username: "designhub", x: 0.5, y: 0.5 }],
+  });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { storyPollIntervalMs: 1, storyMaxWaitMs: 20 }));
+  assert.equal(result.published, 1);
+  const create = requests.find((url) => url.pathname.endsWith("/media"));
+  assert.equal(create?.searchParams.get("media_type"), "STORIES");
+  assert.equal(create?.searchParams.get("image_url"), "https://cdn.example.com/story.jpg");
+  assert.equal(create?.searchParams.has("video_url"), false);
+  assert.equal(create?.searchParams.has("caption"), false);
+  assert.equal(create?.searchParams.has("user_tags"), false);
+  assert.equal(create?.searchParams.has("location_id"), false);
+  assert.equal(create?.searchParams.has("cover_url"), false);
+  assert.equal(requests.some((url) => url.pathname.endsWith("/story-media-1")), false);
+});
+
+test("an Instagram video Story waits for FINISHED before publishing", async () => {
+  const requests: URL[] = [];
+  let statusChecks = 0;
+  const harness = publishingHarness(async (input, init) => {
+    const url = new URL(String(input));
+    requests.push(url);
+    if (init?.method === "HEAD" && url.href === "https://cdn.example.com/story.mp4") return new Response(null, { status: 200, headers: { "content-type": "video/mp4", "content-length": "4096" } });
+    if (init?.method === "POST" && url.pathname.endsWith("/media_publish")) return metaResponse({ id: "story-media-1" });
+    if (init?.method === "POST" && url.pathname.endsWith("/media")) return metaResponse({ id: "story-container-1" });
+    if (url.pathname.endsWith("/story-container-1")) {
+      statusChecks += 1;
+      return metaResponse({ status_code: statusChecks === 1 ? "IN_PROGRESS" : "FINISHED" });
+    }
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, { mediaType: "story", mediaUrl: "https://cdn.example.com/story.mp4" });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { storyPollIntervalMs: 1, storyMaxWaitMs: 20 }));
+  assert.equal(result.published, 1);
+  assert.equal(statusChecks, 2);
+  const create = requests.find((url) => url.pathname.endsWith("/media"));
+  assert.equal(create?.searchParams.get("media_type"), "STORIES");
+  assert.equal(create?.searchParams.get("video_url"), "https://cdn.example.com/story.mp4");
+  assert.equal(create?.searchParams.has("image_url"), false);
+  const statusIndex = requests.findIndex((url) => url.pathname.endsWith("/story-container-1"));
+  const publishIndex = requests.findIndex((url) => url.pathname.endsWith("/media_publish"));
+  assert.ok(statusIndex >= 0 && publishIndex > statusIndex);
+});
+
+test("an oversized Instagram video Story fails before creating a Meta container", async () => {
+  let createCalls = 0;
+  const harness = publishingHarness(async (input, init) => {
+    const url = new URL(String(input));
+    if (init?.method === "HEAD" && url.href === "https://cdn.example.com/story.mp4") return new Response(null, { status: 200, headers: { "content-type": "video/mp4", "content-length": String(100 * 1024 * 1024 + 1) } });
+    if (init?.method === "POST" && url.pathname.endsWith("/media")) {
+      createCalls += 1;
+      return metaResponse({ id: "story-container-1" });
+    }
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, { mediaType: "story", mediaUrl: "https://cdn.example.com/story.mp4" });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { storyPollIntervalMs: 1, storyMaxWaitMs: 20 }));
+  assert.equal(result.failed, 1);
+  assert.equal(createCalls, 0);
+  assert.match(harness.state.lastError ?? "", /100 MB/i);
+});
+
+test("an Instagram Story processing ERROR marks the publication failed", async () => {
+  const harness = publishingHarness(async (input, init) => {
+    const url = new URL(String(input));
+    if (init?.method === "POST" && url.pathname.endsWith("/media")) return metaResponse({ id: "story-container-1" });
+    if (url.pathname.endsWith("/story-container-1")) return metaResponse({ status_code: "ERROR", error_message: "Story video is incompatible" });
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, { mediaType: "story", mediaUrl: "https://cdn.example.com/story.mp4" });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { storyPollIntervalMs: 1, storyMaxWaitMs: 20 }));
+  assert.equal(result.failed, 1);
+  assert.match(harness.state.lastError ?? "", /Story video is incompatible/i);
+});
+
+test("an Instagram Story final publish timeout is not retried", async () => {
+  let publishCalls = 0;
+  const harness = publishingHarness(async (input, init) => {
+    const url = new URL(String(input));
+    if (init?.method === "POST" && url.pathname.endsWith("/media_publish")) {
+      publishCalls += 1;
+      throw timeoutError();
+    }
+    if (init?.method === "POST" && url.pathname.endsWith("/media")) return metaResponse({ id: "story-container-1" });
+    if (url.pathname.endsWith("/story-container-1")) return metaResponse({ status_code: "FINISHED" });
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, { mediaType: "story", mediaUrl: "https://cdn.example.com/story.jpg" });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { storyPollIntervalMs: 1, storyMaxWaitMs: 20 }));
+  assert.equal(result.failed, 1);
+  assert.equal(publishCalls, 1);
+  assert.match(harness.state.lastError ?? "", /publicação final/i);
 });
 
 test("a Facebook Reel completes start, hosted upload, status polling, finish and permalink", async () => {

@@ -42,6 +42,49 @@ test("carousel keeps location on its main publication plan", () => {
   assert.deepEqual(result.plans?.[0]?.instagramUserTags, []);
 });
 
+test("one image is allowed as an Instagram Story without tags, location or Reel cover", () => {
+  const result = planMetaCardPublications({
+    platforms: ["instagram"],
+    mediaUrls: imageUrls(1),
+    mediaType: "image",
+    artType: "Story",
+    reelCoverUrl: "/api/uploads/cover.webp",
+    locationId: "123456789",
+    instagramUserTags: [tag],
+  });
+  assert.equal(result.error, null);
+  assert.equal(result.plans?.[0]?.mediaType, "story");
+  assert.equal(result.plans?.[0]?.reelCoverUrl, null);
+  assert.equal(result.plans?.[0]?.locationId, null);
+  assert.deepEqual(result.plans?.[0]?.instagramUserTags, []);
+});
+
+test("one MP4 is allowed as an Instagram Story", () => {
+  const result = planMetaCardPublications({ platforms: ["instagram"], mediaUrls: ["https://cdn.example.com/story.mp4"], mediaType: "video", artType: "Stories", locationId: null, instagramUserTags: [] });
+  assert.equal(result.error, null);
+  assert.equal(result.plans?.[0]?.mediaType, "story");
+});
+
+test("the scheduling format override can publish a regular card as a Story", () => {
+  const result = planMetaCardPublications({ platforms: ["instagram"], mediaUrls: imageUrls(1), mediaType: "image", artType: "Post único", publicationFormat: "story", locationId: null, instagramUserTags: [] });
+  assert.equal(result.error, null);
+  assert.equal(result.plans?.[0]?.mediaType, "story");
+});
+
+test("multiple media items are rejected for Stories", () => {
+  const images = planMetaCardPublications({ platforms: ["instagram"], mediaUrls: imageUrls(2), mediaType: "image", artType: "Story", locationId: null, instagramUserTags: [] });
+  const videos = planMetaCardPublications({ platforms: ["instagram"], mediaUrls: ["https://cdn.example.com/one.mp4", "https://cdn.example.com/two.mp4"], mediaType: "video", artType: "Story", locationId: null, instagramUserTags: [] });
+  const mixed = planMetaCardPublications({ platforms: ["instagram"], mediaUrls: [imageUrls(1)[0], "https://cdn.example.com/story.mp4"], mediaType: "video", artType: "Story", locationId: null, instagramUserTags: [] });
+  assert.match(images.error ?? "", /exatamente uma/i);
+  assert.match(videos.error ?? "", /exatamente uma/i);
+  assert.match(mixed.error ?? "", /exatamente uma/i);
+});
+
+test("a Story cannot be scheduled for Facebook", () => {
+  const result = planMetaCardPublications({ platforms: ["instagram", "facebook"], mediaUrls: imageUrls(1), mediaType: "image", artType: "Story", locationId: null, instagramUserTags: [] });
+  assert.match(result.error ?? "", /Stories no Facebook/i);
+});
+
 test("one MP4 is classified as an Instagram Reel", () => {
   const result = planMetaCardPublications({
     platforms: ["instagram"],

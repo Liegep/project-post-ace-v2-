@@ -223,7 +223,7 @@ export type CreateScheduledPublicationInput = {
   caption: string | null;
   mediaUrl: string;
   mediaUrls: string[];
-  mediaType: "image" | "carousel" | "reel";
+  mediaType: "image" | "carousel" | "reel" | "story";
   reelCoverUrl: string | null;
   locationId: string | null;
   instagramUserTags: Array<{ username: string; x: number; y: number }>;

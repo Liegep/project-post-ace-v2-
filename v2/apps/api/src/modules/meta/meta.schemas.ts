@@ -84,6 +84,7 @@ export const createMetaPublicationSchema = z.object({
   platform: metaPublicationPlatformSchema.optional(),
   platforms: z.array(metaPublicationPlatformSchema).min(1).max(2).optional(),
   scheduledAt: isoDateTimeSchema,
+  publicationFormat: z.enum(["story"]).nullable().optional(),
   reelCoverUrl: z.union([
     z.string().trim().max(2048).refine(
       (value) => value.startsWith("/api/uploads/") || z.string().url().safeParse(value).success,
@@ -114,5 +115,6 @@ export const createMetaPublicationSchema = z.object({
   platforms: [...new Set(value.platforms ?? (value.platform ? [value.platform] : []))],
   locationId: value.locationId || null,
   reelCoverUrl: value.reelCoverUrl || null,
+  publicationFormat: value.publicationFormat || null,
   instagramUserTags: value.instagramUserTags ?? [],
 }));

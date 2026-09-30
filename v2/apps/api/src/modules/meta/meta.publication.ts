@@ -1,5 +1,5 @@
 export type MetaPublicationPlatform = "instagram" | "facebook";
-export type MetaPublicationMediaType = "image" | "carousel" | "reel";
+export type MetaPublicationMediaType = "image" | "carousel" | "reel" | "story";
 export type InstagramUserTag = { username: string; x: number; y: number };
 
 type MetaPublicationMediaPlan = {
@@ -17,6 +17,7 @@ export function planMetaCardPublications(input: {
   mediaUrls: string[];
   mediaType: string | null;
   artType: string | null;
+  publicationFormat?: "story" | null;
   reelCoverUrl?: string | null;
   locationId: string | null;
   instagramUserTags: InstagramUserTag[];
@@ -28,12 +29,30 @@ export function planMetaCardPublications(input: {
   const videoUrls = mediaUrls.filter((url) => /\.(mp4|mov)(?:$|[?#])/i.test(url));
   const declaredVideo = /video/i.test(input.mediaType ?? "");
   const declaredReel = /reel/i.test(input.artType ?? "");
+  const isStory = input.publicationFormat === "story" || /stor(?:y|ies)/i.test(input.artType ?? "");
+  if (isStory) {
+    if (mediaUrls.length !== 1) {
+      return { plans: null, error: "Stories aceita exatamente uma imagem ou um vídeo nesta etapa." };
+    }
+    if (input.platforms.includes("facebook")) {
+      return { plans: null, error: "Stories no Facebook serão adicionados em uma próxima etapa. Selecione somente Instagram." };
+    }
+    return {
+      plans: input.platforms.map((platform) => ({
+        platform,
+        mediaType: "story",
+        mediaUrl: mediaUrls[0],
+        mediaUrls,
+        reelCoverUrl: null,
+        locationId: null,
+        instagramUserTags: [],
+      })),
+      error: null,
+    };
+  }
   const isReel = mediaUrls.length === 1 && (videoUrls.length === 1 || declaredVideo || declaredReel);
   if (videoUrls.length > 1 || (mediaUrls.length > 1 && (videoUrls.length > 0 || declaredVideo || declaredReel))) {
     return { plans: null, error: "Reels aceita somente um vídeo. Não misture vídeo com imagens nem selecione vários vídeos." };
-  }
-  if (/story/i.test(input.artType ?? "")) {
-    return { plans: null, error: "Stories ainda não estão disponíveis para publicação Meta." };
   }
   const reelCoverUrl = input.reelCoverUrl?.trim() || null;
   if (isReel && reelCoverUrl) {
