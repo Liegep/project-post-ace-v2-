@@ -211,6 +211,7 @@ import liegePaschoaliniLogo from "./assets/liege-paschoalini-logo.png";
 import designHubV2Logo from "./assets/design-hub-v2-logo.png";
 import { normalizePortalLocale, portalLocaleTag, portalText, type PortalLocale } from "./portalI18n";
 import { composeClientMetaCalendarEvents, type ClientMetaCalendarPlatform } from "./metaCalendar";
+import { buildDashboardMetaScheduleRequest, canShowDashboardMetaAction, dashboardMetaDateTime, dashboardMetaMediaContext, mergeDashboardMetaPublications, scheduledMetaPlatformsAt } from "./dashboardMetaScheduling";
 
 const SESSION_KEY = "designhub-v2-session";
 const DEV_USER_ID_KEY = "designhub-v2-dev-user-id";
@@ -2429,7 +2430,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
         {createOpen ? <CreateClientModal form={form} logoFile={logoFile} creating={creating} error={createError} onChange={updateForm} onLogoChange={setLogoFile} onClose={closeCreate} onSubmit={submitClient} /> : null}
         {editClient ? <EditClientModal client={editClient} form={editForm} logoFile={editLogoFile} accesses={clientAccesses} saving={clientActionSaving} detailsLoading={editClientDetailsLoading} error={clientActionError} onChange={(key, value) => setEditForm((current) => ({ ...current, [key]: value }))} onLogoChange={setEditLogoFile} onClose={() => { setEditClientDetailsLoading(false); setEditClient(null); }} onSubmit={saveEditedClient} /> : null}
         {shareClient ? <ShareClientModal client={shareClient} accesses={clientAccesses} users={managedUsers} userId={shareUserId} role={shareRole} saving={clientActionSaving} error={clientActionError} onUserChange={setShareUserId} onRoleChange={setShareRole} onClose={() => setShareClient(null)} onShare={() => void shareSelectedClient()} /> : null}
-        {scheduleActivity ? <DashboardScheduleModal activity={scheduleActivity} onClose={() => setScheduleActivity(null)} onScheduled={() => { setClientActivities((current) => current.filter((item) => item.cardId !== scheduleActivity.cardId)); setScheduledNotice({ title: scheduleActivity.title, clientName: scheduleActivity.clientName }); setScheduleActivity(null); }} /> : null}
+        {scheduleActivity ? <DashboardScheduleModal activity={scheduleActivity} canScheduleMeta={session.role === "super_admin"} onClose={() => setScheduleActivity(null)} onScheduled={() => { setClientActivities((current) => current.filter((item) => item.cardId !== scheduleActivity.cardId)); setScheduledNotice({ title: scheduleActivity.title, clientName: scheduleActivity.clientName }); setScheduleActivity(null); }} /> : null}
       </main>
     </div>
   );
@@ -3089,7 +3090,7 @@ function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items:
   </section>;
 }
 
-function DashboardScheduleModal({ activity, onClose, onScheduled }: { activity: DashboardClientActivity; onClose: () => void; onScheduled: () => void }) {
+function DashboardScheduleModal({ activity, canScheduleMeta, onClose, onScheduled }: { activity: DashboardClientActivity; canScheduleMeta: boolean; onClose: () => void; onScheduled: () => void }) {
   const [detail, setDetail] = useState<CardDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [scheduleDate, setScheduleDate] = useState("");
@@ -3097,6 +3098,14 @@ function DashboardScheduleModal({ activity, onClose, onScheduled }: { activity: 
   const [saving, setSaving] = useState(false);
   const [captionCopied, setCaptionCopied] = useState(false);
   const [error, setError] = useState("");
+  const [metaAssets, setMetaAssets] = useState<ClientMetaAssets | null>(null);
+  const [metaPublications, setMetaPublications] = useState<MetaScheduledPublication[]>([]);
+  const [metaLoading, setMetaLoading] = useState(canScheduleMeta);
+  const [metaScheduleOpen, setMetaScheduleOpen] = useState(false);
+  const [metaScheduling, setMetaScheduling] = useState(false);
+  const [metaFeedback, setMetaFeedback] = useState("");
+  const [metaFeedbackError, setMetaFeedbackError] = useState(false);
+  const [metaDetailsOpen, setMetaDetailsOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -3126,6 +3135,36 @@ function DashboardScheduleModal({ activity, onClose, onScheduled }: { activity: 
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [activity]);
+
+  useEffect(() => {
+    let active = true;
+    if (!canScheduleMeta || !activity.cardId) { setMetaLoading(false); return () => { active = false; }; }
+    setMetaLoading(true);
+    void Promise.all([
+      loadClientMetaAssetsBySlug(activity.clientSlug),
+      listMetaPublicationsBySlug(activity.clientSlug),
+    ]).then(([assets, publications]) => {
+      if (!active) return;
+      setMetaAssets(assets.assets);
+      setMetaPublications(publications.publications);
+    }).catch(() => {
+      if (active) { setMetaAssets(null); setMetaPublications([]); }
+    }).finally(() => { if (active) setMetaLoading(false); });
+    return () => { active = false; };
+  }, [activity.cardId, activity.clientSlug, canScheduleMeta]);
+
+  const metaContext = useMemo(() => dashboardMetaMediaContext(detail?.card ?? null), [detail?.card]);
+  const metaDateTime = dashboardMetaDateTime(scheduleDate, scheduleTime);
+  const currentMetaPublications = activity.cardId ? selectMetaPublicationsByCard(metaPublications).get(activity.cardId) ?? [] : [];
+  const duplicatePlatforms = activity.cardId && metaDateTime.value
+    ? scheduledMetaPlatformsAt(metaPublications, activity.cardId, metaDateTime.value)
+    : [];
+  const linkedPlatforms = [
+    ...(metaAssets?.instagramAccountId ? ["instagram" as const] : []),
+    ...(metaAssets?.facebookPageId ? ["facebook" as const] : []),
+  ];
+  const remainingPlatforms = linkedPlatforms.filter((platform) => !duplicatePlatforms.includes(platform));
+  const canOpenMeta = canShowDashboardMetaAction({ canScheduleMeta, cardId: activity.cardId, mediaUrls: metaContext.mediaUrls, hasLinkedPlatform: linkedPlatforms.length > 0 });
 
   const saveSchedule = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -3165,6 +3204,44 @@ function DashboardScheduleModal({ activity, onClose, onScheduled }: { activity: 
     }
   };
 
+  const openMetaSchedule = () => {
+    if (!activity.cardId || !detail) return;
+    if (!metaDateTime.value) { setError(metaDateTime.error ?? "Escolha a data e o horário antes de agendar na Meta."); return; }
+    if (metaContext.unavailableReason) { setError(metaContext.unavailableReason); return; }
+    if (!linkedPlatforms.length) { setError("Este cliente ainda não possui Instagram ou Facebook vinculado."); return; }
+    if (!remainingPlatforms.length) { setMetaDetailsOpen(true); setMetaFeedbackError(false); setMetaFeedback("Este horário já possui agendamento Meta para todas as plataformas vinculadas."); return; }
+    setError("");
+    setMetaScheduleOpen(true);
+  };
+
+  const scheduleOnMeta = async (
+    platforms: ("instagram" | "facebook")[],
+    localDateTime: string,
+    timezone: string,
+    options: { publicationFormat: "story" | null; reelCoverUrl: string | null; locationId: string | null; locationName: string | null; instagramUserTags: Array<{ username: string; x: number; y: number }> },
+  ) => {
+    if (!activity.cardId) return;
+    setMetaScheduling(true);
+    setMetaFeedback("");
+    setMetaFeedbackError(false);
+    try {
+      const duplicates = scheduledMetaPlatformsAt(metaPublications, activity.cardId, localDateTime);
+      const platformsToCreate = platforms.filter((platform) => !duplicates.includes(platform));
+      if (!platformsToCreate.length) throw new Error("Este agendamento Meta já existe para as plataformas selecionadas.");
+      const request = buildDashboardMetaScheduleRequest({ clientSlug: activity.clientSlug, cardId: activity.cardId, platforms: platformsToCreate, localDateTime, timezone, options });
+      const result = await createMetaPublicationBySlug(request.clientSlug, request.publication);
+      setMetaPublications((current) => mergeDashboardMetaPublications(current, result.publications));
+      setMetaScheduleOpen(false);
+      setMetaDetailsOpen(true);
+      setMetaFeedback(`Meta agendada: ${result.publications.map((publication) => publication.platform === "instagram" ? "Instagram" : "Facebook").join(" + ")}.`);
+    } catch (cause) {
+      setMetaFeedbackError(true);
+      setMetaFeedback(cause instanceof Error ? cause.message : "Não foi possível agendar a publicação na Meta.");
+    } finally {
+      setMetaScheduling(false);
+    }
+  };
+
   return <div className="modal-backdrop dashboard-schedule-backdrop" onMouseDown={onClose}>
     <form className="dashboard-schedule-modal" onSubmit={saveSchedule} onMouseDown={(event) => event.stopPropagation()}>
       <header><div><p className="eyebrow">Agendamento pelo dashboard</p><h2>{activity.title}</h2><p>{activity.clientName} · feedback em {new Intl.DateTimeFormat("pt-BR", { dateStyle: "long", timeStyle: "short" }).format(new Date(activity.occurredAt))}</p></div><button type="button" className="icon-close" onClick={onClose}>×</button></header>
@@ -3172,8 +3249,24 @@ function DashboardScheduleModal({ activity, onClose, onScheduled }: { activity: 
         <section className="dashboard-schedule-preview"><h3>Prévia do post</h3>{portalCardAssets(detail.card).length ? <ClosedCardMedia card={detail.card} /> : <div className="dashboard-schedule-no-media"><UiIcon name="image" />Sem arte cadastrada</div>}</section>
         <section className="dashboard-schedule-content"><div className="dashboard-schedule-caption portal-summary-card"><div className="portal-summary-heading"><span><UiIcon name="file" /></span><div><small>CONTEÚDO DO POST</small><div className="dashboard-caption-title"><h4>Legenda</h4><button type="button" className="portal-caption-edit-button dashboard-caption-copy-button" disabled={!detail.card.subtitle?.trim()} onClick={() => void copyCaption()} aria-label={captionCopied ? "Legenda copiada" : "Copiar legenda"} title={captionCopied ? "Legenda copiada" : "Copiar legenda"} aria-live="polite"><UiIcon name={captionCopied ? "check" : "copy"} /></button></div></div></div><PortalFormattedCaption text={detail.card.subtitle ?? ""} /></div><div className="dashboard-schedule-feedback"><span>{activity.activityType === "approved" ? "✓" : activity.activityType === "changes_requested" ? "↻" : "💬"}</span><div><small>Retorno do cliente</small><strong>{activity.detail}</strong><time>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(activity.occurredAt))}</time></div></div><div className="dashboard-schedule-fields"><label>Data da publicação<input type="date" value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} required /></label><label>Horário<input type="time" value={scheduleTime} onChange={(event) => setScheduleTime(event.target.value)} required /></label></div></section>
       </div> : null}
+      {metaDetailsOpen && currentMetaPublications.length ? <section className="dashboard-meta-schedule-status" aria-live="polite"><header><strong>Publicação Meta</strong><button type="button" onClick={() => setMetaDetailsOpen(false)} aria-label="Fechar detalhes Meta">×</button></header><div>{currentMetaPublications.map((publication) => <span key={publication.id} className={`${publication.platform} ${publication.status}`}><b>{publication.platform === "instagram" ? "IG" : "FB"}</b>{metaPublicationDetailLabel(publication)}{publication.publishedPermalink ? <a href={publication.publishedPermalink} target="_blank" rel="noreferrer">Abrir ↗</a> : null}</span>)}</div></section> : null}
+      {metaFeedback ? <p className={`form-feedback dashboard-meta-feedback${metaFeedbackError ? " error-text" : ""}`}>{metaFeedback}</p> : null}
       {error ? <p className="form-feedback error-text">{error}</p> : null}
-      <footer><NavLink to={`/admin/${activity.clientSlug}`} className="ghost-button">Abrir no Kanban</NavLink><button type="button" className="ghost-button" onClick={onClose}>Cancelar</button><button type="submit" className="gradient-button" disabled={saving || loading || !detail}><UiIcon name="calendar" />{saving ? "Agendando..." : "Confirmar agendamento"}</button></footer>
+      <footer><NavLink to={`/admin/${activity.clientSlug}`} className="ghost-button">Abrir no Kanban</NavLink><button type="button" className="ghost-button" onClick={onClose}>Cancelar</button>{canOpenMeta ? <button type="button" className="dashboard-meta-schedule-button" disabled={metaLoading || metaScheduling || loading || !detail} onClick={remainingPlatforms.length ? openMetaSchedule : () => setMetaDetailsOpen(true)}><UiIcon name="send" />{metaLoading ? "Carregando Meta..." : remainingPlatforms.length ? duplicatePlatforms.length ? "Completar na Meta" : "Agendar na Meta" : "Ver agendamento Meta"}</button> : null}<button type="submit" className="gradient-button" disabled={saving || loading || !detail}><UiIcon name="calendar" />{saving ? "Agendando..." : "Confirmar agendamento"}</button></footer>
+      {metaScheduleOpen && metaDateTime.value ? <MetaScheduleModal
+        mediaUrls={metaContext.mediaUrls}
+        mediaMode={metaContext.mediaMode}
+        caption={metaContext.caption}
+        suggestedAt={metaDateTime.value}
+        instagramAvailable={Boolean(metaAssets?.instagramAccountId)}
+        facebookAvailable={Boolean(metaAssets?.facebookPageId)}
+        submitting={metaScheduling}
+        cardId={activity.cardId ?? undefined}
+        existingPublications={metaPublications}
+        lockSuggestedAt
+        onClose={() => { if (!metaScheduling) setMetaScheduleOpen(false); }}
+        onSubmit={scheduleOnMeta}
+      /> : null}
     </form>
   </div>;
 }
@@ -7971,6 +8064,8 @@ ${internalMessage.trim()}`, isInternal: true });
           instagramAvailable={Boolean(metaAssets?.instagramAccountId)}
           facebookAvailable={Boolean(metaAssets?.facebookPageId)}
           submitting={metaScheduling}
+          cardId={card.id}
+          existingPublications={metaPublications}
           onClose={() => { if (!metaScheduling) setMetaScheduleOpen(false); }}
           onSubmit={scheduleMetaPublication}
         /> : null}
@@ -7980,7 +8075,7 @@ ${internalMessage.trim()}`, isInternal: true });
   );
 }
 
-function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagramAvailable, facebookAvailable, submitting, onClose, onSubmit }: {
+function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagramAvailable, facebookAvailable, submitting, cardId, existingPublications = [], lockSuggestedAt = false, onClose, onSubmit }: {
   mediaUrls: string[];
   mediaMode: "image" | "carousel" | "reel" | "story";
   caption: string;
@@ -7988,6 +8083,9 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
   instagramAvailable: boolean;
   facebookAvailable: boolean;
   submitting: boolean;
+  cardId?: string;
+  existingPublications?: MetaScheduledPublication[];
+  lockSuggestedAt?: boolean;
   onClose: () => void;
   onSubmit: (
     platforms: ("instagram" | "facebook")[],
@@ -8027,8 +8125,21 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
   const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
   const instagramSelected = platforms.includes("instagram");
   const facebookSelected = platforms.includes("facebook");
+  const blockedPlatforms = cardId ? scheduledMetaPlatformsAt(existingPublications, cardId, localDateTime) : [];
+
+  useEffect(() => {
+    if (!blockedPlatforms.length) return;
+    setPlatforms((current) => {
+      const remaining = current.filter((platform) => !blockedPlatforms.includes(platform));
+      if (remaining.length) return remaining;
+      if (instagramAvailable && !blockedPlatforms.includes("instagram")) return ["instagram"];
+      if (facebookAvailable && !blockedPlatforms.includes("facebook")) return ["facebook"];
+      return [];
+    });
+  }, [blockedPlatforms.join("|"), facebookAvailable, instagramAvailable]);
 
   const togglePlatform = (platform: "instagram" | "facebook") => {
+    if (blockedPlatforms.includes(platform)) return;
     setPlatforms((current) => current.includes(platform) ? current.filter((item) => item !== platform) : [...current, platform]);
     if (platform === "instagram" && instagramSelected) {
       setPendingTagUsername(null);
@@ -8131,8 +8242,8 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
         <button type="button" className={isStory ? "selected" : ""} aria-pressed={isStory} onClick={() => selectStoryFormat(true)}>Story</button>
       </div> : null}
       <div className="meta-platform-options" role="group" aria-label="Plataformas de publicação">
-        <button type="button" className={platforms.includes("instagram") ? "selected instagram" : "instagram"} disabled={!instagramAvailable} aria-pressed={platforms.includes("instagram")} onClick={() => togglePlatform("instagram")}><i aria-hidden="true">◎</i><span><strong>Instagram</strong>{instagramAvailable ? <small>{isStory ? `✓ Story de ${isStoryVideo ? "vídeo" : "imagem"}` : isReel ? "✓ Reel · ✓ Capa personalizada" : isCarousel ? `Carrossel · ${mediaUrls.length} imagens` : "Imagem única"}</small> : <small>Não vinculado a este cliente</small>}</span></button>
-        <button type="button" className={platforms.includes("facebook") ? "selected facebook" : "facebook"} disabled={!facebookAvailable} aria-pressed={platforms.includes("facebook")} onClick={() => togglePlatform("facebook")}><i aria-hidden="true">f</i><span><strong>Facebook</strong>{!facebookAvailable ? <small>Não vinculado a este cliente</small> : isStory ? <small>{`✓ Story de ${isStoryVideo ? "vídeo" : "imagem"}`}</small> : isReel ? <small>✓ Reel · ✓ Capa personalizada</small> : isCarousel ? <small>{`✓ Carrossel · ${mediaUrls.length} imagens`}</small> : <small>Imagem única</small>}</span></button>
+        <button type="button" className={platforms.includes("instagram") ? "selected instagram" : "instagram"} disabled={!instagramAvailable || blockedPlatforms.includes("instagram")} aria-pressed={platforms.includes("instagram")} onClick={() => togglePlatform("instagram")}><i aria-hidden="true">◎</i><span><strong>Instagram</strong>{!instagramAvailable ? <small>Não vinculado a este cliente</small> : blockedPlatforms.includes("instagram") ? <small>Já agendado neste horário</small> : <small>{isStory ? `✓ Story de ${isStoryVideo ? "vídeo" : "imagem"}` : isReel ? "✓ Reel · ✓ Capa personalizada" : isCarousel ? `Carrossel · ${mediaUrls.length} imagens` : "Imagem única"}</small>}</span></button>
+        <button type="button" className={platforms.includes("facebook") ? "selected facebook" : "facebook"} disabled={!facebookAvailable || blockedPlatforms.includes("facebook")} aria-pressed={platforms.includes("facebook")} onClick={() => togglePlatform("facebook")}><i aria-hidden="true">f</i><span><strong>Facebook</strong>{!facebookAvailable ? <small>Não vinculado a este cliente</small> : blockedPlatforms.includes("facebook") ? <small>Já agendado neste horário</small> : isStory ? <small>{`✓ Story de ${isStoryVideo ? "vídeo" : "imagem"}`}</small> : isReel ? <small>✓ Reel · ✓ Capa personalizada</small> : isCarousel ? <small>{`✓ Carrossel · ${mediaUrls.length} imagens`}</small> : <small>Imagem única</small>}</span></button>
       </div>
 
       <div className={`meta-schedule-preview${isCarousel ? " carousel" : isReel || isStory ? " reel" : ""}`}><div className="meta-schedule-preview-media">{previewIsVideo ? <video src={firstMediaUrl} controls preload="metadata" aria-label={isStory ? "Prévia da Story" : "Prévia do Reel"} onLoadedMetadata={(event) => { if (!isStory) return; const duration = event.currentTarget.duration; setStoryMediaError(Number.isFinite(duration) && (duration < 3 || duration > 60) ? "O vídeo da Story deve ter entre 3 e 60 segundos." : ""); }} /> : <img src={firstMediaUrl} alt={isStory ? "Prévia da Story" : "Prévia da publicação"} />}{isCarousel ? <span>{mediaUrls.length} imagens</span> : isStory ? <span>{`Story · ${isStoryVideo ? "vídeo" : "imagem"}`}</span> : isReel ? <span>Reel</span> : null}</div><div><p>{isStory ? `Story · ${isStoryVideo ? "vídeo" : "imagem"}` : caption.trim() || "Sem legenda"}</p>{isCarousel ? <div className="meta-carousel-thumbnails">{mediaUrls.slice(1, 5).map((url, index) => <img key={`${url}-${index}`} src={url} alt={`Imagem ${index + 2} do carrossel`} />)}{mediaUrls.length > 5 ? <span>+{mediaUrls.length - 5}</span> : null}</div> : null}</div></div>
@@ -8170,9 +8281,9 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
         </div> : null}
       </section>
 
-      <label><span>Data e hora</span><input type="datetime-local" value={localDateTime} onChange={(event) => setLocalDateTime(event.target.value)} /></label>
+      {lockSuggestedAt ? <div className="meta-schedule-fixed-time"><span>Data e hora</span><strong>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(localDateTime))}</strong><small>Definidas no modal de feedback</small></div> : <label><span>Data e hora</span><input type="datetime-local" value={localDateTime} onChange={(event) => setLocalDateTime(event.target.value)} /></label>}
       <small>Fuso horário: {timezone}</small>
-      <footer><button type="button" className="ghost-button" disabled={submitting || reelCoverUploading} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || reelCoverUploading || !localDateTime || platforms.length === 0 || locationInvalid || Boolean(pendingTagUsername) || Boolean(storyMediaError)} onClick={() => void onSubmit(platforms, localDateTime, timezone, { publicationFormat: isStory ? "story" : null, reelCoverUrl: isReel ? reelCoverUrl : null, locationId: isStory ? null : normalizedLocationId || null, locationName: isStory ? null : selectedLocation?.name ?? null, instagramUserTags: isCarousel || isReel || isStory ? [] : instagramUserTags })}>{submitting ? "Agendando…" : reelCoverUploading ? "Enviando capa…" : "Agendar publicação"}</button></footer>
+      <footer><button type="button" className="ghost-button" disabled={submitting || reelCoverUploading} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || reelCoverUploading || !localDateTime || platforms.length === 0 || platforms.some((platform) => blockedPlatforms.includes(platform)) || locationInvalid || Boolean(pendingTagUsername) || Boolean(storyMediaError)} onClick={() => void onSubmit(platforms, localDateTime, timezone, { publicationFormat: isStory ? "story" : null, reelCoverUrl: isReel ? reelCoverUrl : null, locationId: isStory ? null : normalizedLocationId || null, locationName: isStory ? null : selectedLocation?.name ?? null, instagramUserTags: isCarousel || isReel || isStory ? [] : instagramUserTags })}>{submitting ? "Agendando…" : reelCoverUploading ? "Enviando capa…" : "Agendar publicação"}</button></footer>
     </section>
   </div>;
 }
