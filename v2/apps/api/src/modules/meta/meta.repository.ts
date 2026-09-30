@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { Pool, ResultSetHeader, RowDataPacket } from "mysql2/promise";
-import type { ClientMetaAssetsInput } from "./meta.schemas.js";
+import type { ClientMetaAssetsInput, CreateMetaSavedLocationInput, UpdateMetaSavedLocationInput } from "./meta.schemas.js";
 
 type ConnectionRow = RowDataPacket & {
   access_token_encrypted: string;
@@ -17,6 +17,15 @@ type AssetsRow = RowDataPacket & {
   instagram_username: string | null;
   meta_ad_account_id: string | null;
   meta_ad_account_name: string | null;
+  updated_at: Date | string;
+};
+
+type SavedLocationRow = RowDataPacket & {
+  id: string;
+  name: string;
+  meta_place_id: string;
+  notes: string | null;
+  created_at: Date | string;
   updated_at: Date | string;
 };
 
@@ -89,6 +98,17 @@ function isoValue(value: Date | string | null) {
   if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
   return Number.isNaN(date.getTime()) ? String(value) : date.toISOString();
+}
+
+function mapSavedLocation(row: SavedLocationRow) {
+  return {
+    id: row.id,
+    name: row.name,
+    metaPlaceId: row.meta_place_id,
+    notes: row.notes,
+    createdAt: isoValue(row.created_at)!,
+    updatedAt: isoValue(row.updated_at)!,
+  };
 }
 
 function mapScheduledPublication(row: ScheduledPublicationRow) {
@@ -215,6 +235,48 @@ export async function upsertClientMetaAssets(db: Pool, clientAccountId: string, 
     input.metaAdAccountId ?? null, input.metaAdAccountName ?? null,
   ]);
   return findClientMetaAssets(db, clientAccountId);
+}
+
+export async function listMetaSavedLocations(db: Pool) {
+  const [rows] = await db.query<SavedLocationRow[]>(
+    "SELECT id, name, meta_place_id, notes, created_at, updated_at FROM meta_saved_locations ORDER BY name ASC, created_at ASC",
+  );
+  return rows.map(mapSavedLocation);
+}
+
+export async function findMetaSavedLocation(db: Pool, id: string) {
+  const [rows] = await db.query<SavedLocationRow[]>(
+    "SELECT id, name, meta_place_id, notes, created_at, updated_at FROM meta_saved_locations WHERE id = ? LIMIT 1",
+    [id],
+  );
+  return rows[0] ? mapSavedLocation(rows[0]) : null;
+}
+
+export async function createMetaSavedLocation(db: Pool, input: CreateMetaSavedLocationInput) {
+  const id = crypto.randomUUID();
+  await db.query(
+    "INSERT INTO meta_saved_locations (id, name, meta_place_id, notes) VALUES (?, ?, ?, ?)",
+    [id, input.name, input.metaPlaceId, input.notes ?? null],
+  );
+  return findMetaSavedLocation(db, id);
+}
+
+export async function updateMetaSavedLocation(db: Pool, id: string, input: UpdateMetaSavedLocationInput) {
+  const fields: string[] = [];
+  const values: unknown[] = [];
+  if (input.name !== undefined) { fields.push("name = ?"); values.push(input.name); }
+  if (input.metaPlaceId !== undefined) { fields.push("meta_place_id = ?"); values.push(input.metaPlaceId); }
+  if (input.notes !== undefined) { fields.push("notes = ?"); values.push(input.notes); }
+  const [result] = await db.query<ResultSetHeader>(
+    `UPDATE meta_saved_locations SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
+    [...values, id],
+  );
+  return result.affectedRows > 0 ? findMetaSavedLocation(db, id) : null;
+}
+
+export async function deleteMetaSavedLocation(db: Pool, id: string) {
+  const [result] = await db.query<ResultSetHeader>("DELETE FROM meta_saved_locations WHERE id = ?", [id]);
+  return result.affectedRows > 0;
 }
 
 export type CreateScheduledPublicationInput = {

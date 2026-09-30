@@ -1,8 +1,8 @@
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { findClientAccountById } from "../clients/clients.repository.js";
 import { findCardById } from "../cards/cards.repository.js";
-import { clientMetaAssetsSchema, clientMetaPublicationsQuerySchema, createMetaPublicationSchema, manageMetaPublicationsSchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema, metaPlaceSearchQuerySchema, metaPublicationsQuerySchema, rescheduleMetaPublicationsSchema } from "./meta.schemas.js";
-import { cancelScheduledPublication, cancelScheduledPublicationGroup, consumeMetaOAuthState, findClientMetaAssets, findScheduledPublication, listGlobalScheduledPublications, listScheduledPublicationsForClient, rescheduleScheduledPublications, upsertClientMetaAssets } from "./meta.repository.js";
+import { clientMetaAssetsSchema, clientMetaPublicationsQuerySchema, createMetaPublicationSchema, createMetaSavedLocationSchema, manageMetaPublicationsSchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema, metaPlaceSearchQuerySchema, metaPublicationsQuerySchema, rescheduleMetaPublicationsSchema, updateMetaSavedLocationSchema } from "./meta.schemas.js";
+import { cancelScheduledPublication, cancelScheduledPublicationGroup, consumeMetaOAuthState, createMetaSavedLocation, deleteMetaSavedLocation, findClientMetaAssets, findMetaSavedLocation, findScheduledPublication, listGlobalScheduledPublications, listMetaSavedLocations, listScheduledPublicationsForClient, rescheduleScheduledPublications, updateMetaSavedLocation, upsertClientMetaAssets } from "./meta.repository.js";
 import { archiveMetaCardIfPublicationGroupComplete, completeMetaAuthorization, createMetaAuthorizationUrl, getMetaAdsInsights, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets, scheduleMetaCardPublications, searchMetaPlaces } from "./meta.service.js";
 
 function assertSuperAdmin(request: FastifyRequest) {
@@ -17,6 +17,10 @@ function callbackLocation(appUrl: string, returnPath: string, status: "connected
   const base = appUrl.replace(/\/$/, "");
   const separator = returnPath.includes("?") ? "&" : "?";
   return `${base}/${returnPath}${separator}meta=${status}`;
+}
+
+function isDuplicateEntry(error: unknown) {
+  return Boolean(error && typeof error === "object" && (error as { code?: string }).code === "ER_DUP_ENTRY");
 }
 
 function publicationResponse(publication: NonNullable<Awaited<ReturnType<typeof findScheduledPublication>>>) {
@@ -85,6 +89,47 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
   app.get("/meta/ad-accounts", async (request) => {
     const auth = assertSuperAdmin(request);
     return listMetaAdAccounts(app, auth.user.id);
+  });
+
+  app.get("/meta/saved-locations", async (request) => {
+    assertSuperAdmin(request);
+    return { locations: await listMetaSavedLocations(app.db) };
+  });
+
+  app.post("/meta/saved-locations", async (request, reply) => {
+    assertSuperAdmin(request);
+    const parsed = createMetaSavedLocationSchema.safeParse(request.body);
+    if (!parsed.success) throw app.httpErrors.badRequest(parsed.error.issues[0]?.message ?? "Localização inválida.");
+    try {
+      const location = await createMetaSavedLocation(app.db, parsed.data);
+      return reply.code(201).send({ location });
+    } catch (error) {
+      if (isDuplicateEntry(error)) throw app.httpErrors.conflict("Este Meta Place ID já está salvo.");
+      throw error;
+    }
+  });
+
+  app.patch("/meta/saved-locations/:id", async (request) => {
+    assertSuperAdmin(request);
+    const { id } = request.params as { id: string };
+    if (!await findMetaSavedLocation(app.db, id)) throw app.httpErrors.notFound("Localização salva não encontrada.");
+    const parsed = updateMetaSavedLocationSchema.safeParse(request.body);
+    if (!parsed.success) throw app.httpErrors.badRequest(parsed.error.issues[0]?.message ?? "Localização inválida.");
+    try {
+      const location = await updateMetaSavedLocation(app.db, id, parsed.data);
+      if (!location) throw app.httpErrors.notFound("Localização salva não encontrada.");
+      return { location };
+    } catch (error) {
+      if (isDuplicateEntry(error)) throw app.httpErrors.conflict("Este Meta Place ID já está salvo.");
+      throw error;
+    }
+  });
+
+  app.delete("/meta/saved-locations/:id", async (request) => {
+    assertSuperAdmin(request);
+    const { id } = request.params as { id: string };
+    if (!await deleteMetaSavedLocation(app.db, id)) throw app.httpErrors.notFound("Localização salva não encontrada.");
+    return { ok: true };
   });
 
   app.get("/meta/places/search", async (request) => {

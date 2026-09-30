@@ -164,3 +164,19 @@ export const rescheduleMetaPublicationsSchema = manageMetaPublicationsSchema.ext
 export const metaPlaceSearchQuerySchema = z.object({
   q: z.string().trim().max(100).default(""),
 });
+
+const savedLocationFields = {
+  name: z.string().trim().min(1, "Informe o nome da localização.").max(255),
+  metaPlaceId: z.string().trim().regex(/^\d+$/, "O Meta Place ID deve conter somente números.").max(190),
+  notes: z.union([z.string().trim().max(2000), z.null()]).optional().transform((value) => value || null),
+};
+
+export const createMetaSavedLocationSchema = z.object(savedLocationFields);
+
+export const updateMetaSavedLocationSchema = z.object(savedLocationFields).partial().refine(
+  (value) => Object.keys(value).length > 0,
+  "Informe ao menos um campo para atualizar.",
+);
+
+export type CreateMetaSavedLocationInput = z.infer<typeof createMetaSavedLocationSchema>;
+export type UpdateMetaSavedLocationInput = z.infer<typeof updateMetaSavedLocationSchema>;

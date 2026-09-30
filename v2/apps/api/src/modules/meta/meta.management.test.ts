@@ -3,8 +3,8 @@ import crypto from "node:crypto";
 import test from "node:test";
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "mysql2/promise";
-import { cancelScheduledPublicationGroup, listGlobalScheduledPublications, listScheduledPublicationsForClient, rescheduleScheduledPublications } from "./meta.repository.js";
-import { clientMetaPublicationsQuerySchema, createMetaPublicationSchema, metaPublicationsQuerySchema } from "./meta.schemas.js";
+import { cancelScheduledPublicationGroup, createMetaSavedLocation, deleteMetaSavedLocation, listGlobalScheduledPublications, listMetaSavedLocations, listScheduledPublicationsForClient, rescheduleScheduledPublications, updateMetaSavedLocation } from "./meta.repository.js";
+import { clientMetaPublicationsQuerySchema, createMetaPublicationSchema, createMetaSavedLocationSchema, metaPublicationsQuerySchema, updateMetaSavedLocationSchema } from "./meta.schemas.js";
 import { searchMetaPlaces } from "./meta.service.js";
 
 const publicationRow = (overrides: Record<string, unknown> = {}) => ({
@@ -95,6 +95,34 @@ test("location name is optional, stored with its id, and manual id remains valid
   const manual = createMetaPublicationSchema.parse({ cardId: "card-1", platforms: ["facebook"], scheduledAt: "2026-10-02T14:00:00Z", timezone: "Europe/Stockholm", locationId: "456" });
   assert.equal(manual.locationId, "456");
   assert.equal(manual.locationName, null);
+});
+
+test("saved location schemas require a numeric Meta Place ID and allow partial edits", () => {
+  assert.deepEqual(createMetaSavedLocationSchema.parse({ name: " Venezia ", metaPlaceId: "1234567890", notes: " Centro histórico " }), {
+    name: "Venezia", metaPlaceId: "1234567890", notes: "Centro histórico",
+  });
+  assert.deepEqual(updateMetaSavedLocationSchema.parse({ notes: "" }), { notes: null });
+  assert.equal(createMetaSavedLocationSchema.safeParse({ name: "Venezia", metaPlaceId: "abc" }).success, false);
+  assert.equal(updateMetaSavedLocationSchema.safeParse({}).success, false);
+});
+
+test("saved locations repository lists, creates, updates and deletes global locations", async () => {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const row = { id: "location-1", name: "Venezia", meta_place_id: "1234567890", notes: null, created_at: "2026-09-30T10:00:00Z", updated_at: "2026-09-30T10:00:00Z" };
+  const db = { async query(sql: string, params: unknown[] = []) {
+    calls.push({ sql, params });
+    if (sql.startsWith("SELECT")) return [[row], []];
+    return [{ affectedRows: 1 }, []];
+  } } as unknown as Pool;
+  const listed = await listMetaSavedLocations(db);
+  assert.deepEqual(listed[0], { id: "location-1", name: "Venezia", metaPlaceId: "1234567890", notes: null, createdAt: "2026-09-30T10:00:00.000Z", updatedAt: "2026-09-30T10:00:00.000Z" });
+  await createMetaSavedLocation(db, { name: "Venezia", metaPlaceId: "1234567890", notes: null });
+  await updateMetaSavedLocation(db, "location-1", { name: "Venezia Centro" });
+  assert.equal(await deleteMetaSavedLocation(db, "location-1"), true);
+  assert.equal(calls.some((call) => call.sql.includes("INSERT INTO meta_saved_locations")), true);
+  assert.equal(calls.some((call) => call.sql.includes("UPDATE meta_saved_locations SET name = ?")), true);
+  assert.equal(calls.some((call) => call.sql.includes("DELETE FROM meta_saved_locations")), true);
+  assert.equal(calls.every((call) => !call.sql.includes("client_account_id")), true);
 });
 
 function encryptToken(token: string, key: Buffer) {

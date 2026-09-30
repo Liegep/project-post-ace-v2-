@@ -173,12 +173,15 @@ import {
   createMetaPublicationBySlug,
   cancelMetaPublicationBySlug,
   cancelMetaPublications,
+  createMetaSavedLocation,
+  deleteMetaSavedLocation,
   loadGlobalMetaPublications,
+  loadMetaSavedLocations,
   rescheduleMetaPublications,
-  searchMetaPlaces,
+  updateMetaSavedLocation,
   type ClientMetaAssets,
   type GlobalMetaScheduledPublication,
-  type MetaPlace,
+  type MetaSavedLocation,
   type MetaScheduledPublication,
   type MetaAdAccount,
   type MetaAssetPage,
@@ -8092,6 +8095,84 @@ ${internalMessage.trim()}`, isInternal: true });
   );
 }
 
+function MetaSavedLocationsDialog({ locations, initialMode, onUpsert, onDelete, onClose }: {
+  locations: MetaSavedLocation[];
+  initialMode: "create" | "manage";
+  onUpsert: (location: MetaSavedLocation, select: boolean) => void;
+  onDelete: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [editing, setEditing] = useState<MetaSavedLocation | "new" | null>(initialMode === "create" ? "new" : null);
+  const [name, setName] = useState("");
+  const [metaPlaceId, setMetaPlaceId] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  const beginEdit = (location: MetaSavedLocation | "new") => {
+    setEditing(location);
+    setName(location === "new" ? "" : location.name);
+    setMetaPlaceId(location === "new" ? "" : location.metaPlaceId);
+    setNotes(location === "new" ? "" : location.notes ?? "");
+    setError("");
+  };
+
+  const save = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editing) return;
+    const normalizedName = name.trim();
+    const normalizedId = metaPlaceId.trim();
+    if (!normalizedName) { setError("Informe o nome da localização."); return; }
+    if (!/^\d+$/.test(normalizedId)) { setError("O Meta Place ID deve conter somente números."); return; }
+    setSaving(true);
+    setError("");
+    try {
+      const result = editing === "new"
+        ? await createMetaSavedLocation({ name: normalizedName, metaPlaceId: normalizedId, notes: notes.trim() || null })
+        : await updateMetaSavedLocation(editing.id, { name: normalizedName, metaPlaceId: normalizedId, notes: notes.trim() || null });
+      onUpsert(result.location, editing === "new");
+      if (editing === "new") onClose();
+      else setEditing(null);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Não foi possível salvar a localização.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (location: MetaSavedLocation) => {
+    if (!window.confirm(`Excluir a localização “${location.name}”?`)) return;
+    setDeletingId(location.id);
+    setError("");
+    try {
+      await deleteMetaSavedLocation(location.id);
+      onDelete(location.id);
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Não foi possível excluir a localização.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return createPortal(<div className="meta-saved-location-backdrop" onMouseDown={onClose}>
+    <section className="meta-saved-location-dialog" role="dialog" aria-modal="true" aria-labelledby="meta-saved-location-title" onMouseDown={(event) => event.stopPropagation()}>
+      <header><div><span>LOCALIZAÇÕES META</span><h3 id="meta-saved-location-title">{editing ? editing === "new" ? "Salvar nova localização" : "Editar localização" : "Gerenciar localizações"}</h3></div><button type="button" onClick={onClose} aria-label="Fechar">×</button></header>
+      {editing ? <form onSubmit={(event) => void save(event)}>
+        <label><span>Nome da localização</span><input autoFocus value={name} maxLength={255} placeholder="Ex.: Venezia" onChange={(event) => setName(event.target.value)} /></label>
+        <label><span>Meta Place ID</span><input value={metaPlaceId} maxLength={190} inputMode="numeric" placeholder="Ex.: 1234567890" onChange={(event) => setMetaPlaceId(event.target.value.replace(/\s+/g, ""))} /></label>
+        <label><span>Observação <small>Opcional</small></span><textarea value={notes} maxLength={2000} rows={3} placeholder="Informação interna para identificar o local" onChange={(event) => setNotes(event.target.value)} /></label>
+        {error ? <em>{error}</em> : null}
+        <footer><button type="button" className="ghost-button" disabled={saving} onClick={() => editing === "new" && initialMode === "create" ? onClose() : setEditing(null)}>Cancelar</button><button type="submit" className="gradient-button" disabled={saving || !name.trim() || !metaPlaceId.trim()}>{saving ? "Salvando…" : "Salvar"}</button></footer>
+      </form> : <>
+        <button type="button" className="meta-saved-location-add" onClick={() => beginEdit("new")}>+ Salvar nova localização</button>
+        <div className="meta-saved-location-list">{locations.length ? locations.map((location) => <article key={location.id}><div><strong>{location.name}</strong>{location.notes ? <small>{location.notes}</small> : <small>Meta Place ID cadastrado</small>}</div><div><button type="button" onClick={() => beginEdit(location)}>Editar</button><button type="button" className="danger" disabled={deletingId === location.id} onClick={() => void remove(location)}>{deletingId === location.id ? "Excluindo…" : "Excluir"}</button></div></article>) : <p>Nenhuma localização salva ainda.</p>}</div>
+        {error ? <em>{error}</em> : null}
+      </>}
+    </section>
+  </div>, document.body);
+}
+
 function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagramAvailable, facebookAvailable, submitting, cardId, existingPublications = [], lockSuggestedAt = false, onClose, onSubmit }: {
   mediaUrls: string[];
   mediaMode: "image" | "carousel" | "reel" | "story";
@@ -8125,10 +8206,12 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
   const [platforms, setPlatforms] = useState<("instagram" | "facebook")[]>(instagramAvailable ? ["instagram"] : facebookAvailable ? ["facebook"] : []);
   const [locationId, setLocationId] = useState("");
   const [locationQuery, setLocationQuery] = useState("");
-  const [locationResults, setLocationResults] = useState<MetaPlace[]>([]);
-  const [selectedLocation, setSelectedLocation] = useState<MetaPlace | null>(null);
-  const [locationSearching, setLocationSearching] = useState(false);
-  const [locationSearchError, setLocationSearchError] = useState("");
+  const [savedLocations, setSavedLocations] = useState<MetaSavedLocation[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState<MetaSavedLocation | null>(null);
+  const [locationLibraryLoading, setLocationLibraryLoading] = useState(true);
+  const [locationLibraryError, setLocationLibraryError] = useState("");
+  const [locationSearchOpen, setLocationSearchOpen] = useState(false);
+  const [locationDialogMode, setLocationDialogMode] = useState<"create" | "manage" | null>(null);
   const [manualLocationMode, setManualLocationMode] = useState(false);
   const [reelCoverUrl, setReelCoverUrl] = useState<string | null>(null);
   const [reelCoverUploading, setReelCoverUploading] = useState(false);
@@ -8143,6 +8226,23 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
   const instagramSelected = platforms.includes("instagram");
   const facebookSelected = platforms.includes("facebook");
   const blockedPlatforms = cardId ? scheduledMetaPlatformsAt(existingPublications, cardId, localDateTime) : [];
+  const filteredSavedLocations = useMemo(() => {
+    const query = locationQuery.trim().toLocaleLowerCase("pt-BR");
+    return savedLocations.filter((location) => !query || location.name.toLocaleLowerCase("pt-BR").includes(query)).slice(0, 8);
+  }, [locationQuery, savedLocations]);
+
+  useEffect(() => {
+    let active = true;
+    setLocationLibraryLoading(true);
+    void loadMetaSavedLocations().then((result) => {
+      if (active) setSavedLocations(result.locations);
+    }).catch(() => {
+      if (active) setLocationLibraryError("Não foi possível carregar as localizações salvas.");
+    }).finally(() => {
+      if (active) setLocationLibraryLoading(false);
+    });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (!blockedPlatforms.length) return;
@@ -8169,6 +8269,8 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
     setStoryMediaError("");
     if (selected) {
       setLocationId("");
+      setLocationQuery("");
+      setSelectedLocation(null);
       setInstagramUserTags([]);
       setPendingTagUsername(null);
       setReelCoverUrl(null);
@@ -8205,30 +8307,26 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
 
   const normalizedLocationId = locationId.trim();
   const locationInvalid = Boolean(normalizedLocationId && !/^\d+$/.test(normalizedLocationId));
-  const placeDetail = (place: MetaPlace) => [place.location.city, place.location.state, place.location.country].filter(Boolean).join(" · ");
 
-  useEffect(() => {
-    const query = locationQuery.trim();
-    if (manualLocationMode || selectedLocation || query.length < 3) {
-      setLocationResults([]);
-      setLocationSearching(false);
-      return;
+  const upsertSavedLocation = (location: MetaSavedLocation, select: boolean) => {
+    setSavedLocations((current) => [...current.filter((item) => item.id !== location.id), location].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")));
+    if (select || selectedLocation?.id === location.id) {
+      setSelectedLocation(location);
+      setLocationId(location.metaPlaceId);
+      setLocationQuery(location.name);
+      setManualLocationMode(false);
+      setLocationSearchOpen(false);
     }
-    let active = true;
-    const timer = window.setTimeout(() => {
-      setLocationSearching(true);
-      setLocationSearchError("");
-      void searchMetaPlaces(query).then((result) => {
-        if (active) setLocationResults(result.places.slice(0, 8));
-      }).catch((error) => {
-        if (active) {
-          setLocationResults([]);
-          setLocationSearchError(error instanceof Error ? error.message : "Não foi possível buscar locais agora.");
-        }
-      }).finally(() => { if (active) setLocationSearching(false); });
-    }, 350);
-    return () => { active = false; window.clearTimeout(timer); };
-  }, [locationQuery, manualLocationMode, selectedLocation]);
+  };
+
+  const removeSavedLocation = (id: string) => {
+    setSavedLocations((current) => current.filter((item) => item.id !== id));
+    if (selectedLocation?.id === id) {
+      setSelectedLocation(null);
+      setLocationId("");
+      setLocationQuery("");
+    }
+  };
 
   const uploadReelCover = async (file: File | null) => {
     if (!file) return;
@@ -8278,9 +8376,10 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
         </div> : null}
         {!isStory ? <div className="meta-location-picker">
           <div className="meta-option-heading"><div><strong>Localização</strong><small>{isReel ? facebookSelected ? "Opcional · Facebook" : "Indisponível no Instagram Reel" : "Opcional · Instagram e Facebook"}</small></div></div>
-          {selectedLocation ? <div className="meta-location-selected"><span aria-hidden="true">⌖</span><div><strong>{selectedLocation.name}</strong><small>{placeDetail(selectedLocation) || "Localização Meta"}</small></div><button type="button" aria-label="Remover localização" onClick={() => { setSelectedLocation(null); setLocationId(""); setLocationQuery(""); }}>×</button></div> : manualLocationMode ? <label className="meta-location-manual"><span>ID manual da localização</span><input value={locationId} disabled={isReel && !facebookSelected} inputMode="numeric" placeholder="ID numérico da Meta" onChange={(event) => setLocationId(event.target.value.replace(/\s+/g, ""))} aria-invalid={locationInvalid} />{locationInvalid ? <em>O ID da localização deve conter somente números.</em> : null}</label> : <div className="meta-location-search"><input value={locationQuery} disabled={isReel && !facebookSelected} placeholder="Buscar local..." onChange={(event) => { setLocationQuery(event.target.value); setLocationSearchError(""); }} />{locationSearching ? <span>Buscando…</span> : null}{locationResults.length ? <div className="meta-location-results">{locationResults.map((place) => <button type="button" key={place.id} onClick={() => { setSelectedLocation(place); setLocationId(place.id); setLocationQuery(place.name); setLocationResults([]); }}><strong>{place.name}</strong><small>{placeDetail(place) || "Localização Meta"}</small></button>)}</div> : null}</div>}
-          {locationSearchError ? <em>{locationSearchError}</em> : null}
-          {!selectedLocation ? <button type="button" className="meta-location-mode" onClick={() => { setManualLocationMode((current) => !current); setLocationId(""); setLocationQuery(""); setLocationResults([]); setLocationSearchError(""); }}>{manualLocationMode ? "Buscar pelo nome" : "Opções avançadas · usar ID manualmente"}</button> : null}
+          {selectedLocation ? <div className="meta-location-selected"><span aria-hidden="true">⌖</span><div><strong>{selectedLocation.name}</strong><small>Meta Place ID aplicado</small></div><button type="button" aria-label="Remover localização" onClick={() => { setSelectedLocation(null); setLocationId(""); setLocationQuery(""); }}>×</button></div> : manualLocationMode ? <label className="meta-location-manual"><span>ID manual da localização</span><input value={locationId} disabled={isReel && !facebookSelected} inputMode="numeric" placeholder="ID numérico da Meta" onChange={(event) => setLocationId(event.target.value.replace(/\s+/g, ""))} aria-invalid={locationInvalid} />{locationInvalid ? <em>O ID da localização deve conter somente números.</em> : null}</label> : <div className="meta-location-search"><input value={locationQuery} disabled={isReel && !facebookSelected} placeholder="Buscar entre localizações salvas" onFocus={() => setLocationSearchOpen(true)} onChange={(event) => { setLocationQuery(event.target.value); setLocationSearchOpen(true); }} />{locationLibraryLoading ? <span>Carregando…</span> : null}{locationSearchOpen && !locationLibraryLoading ? <div className="meta-location-results">{filteredSavedLocations.length ? filteredSavedLocations.map((location) => <button type="button" key={location.id} onClick={() => { setSelectedLocation(location); setLocationId(location.metaPlaceId); setLocationQuery(location.name); setLocationSearchOpen(false); }}><strong>{location.name}</strong><small>{location.notes || "Localização salva"}</small></button>) : <p>{locationQuery.trim() ? "Nenhuma localização encontrada." : "Nenhuma localização salva ainda."}</p>}</div> : null}</div>}
+          {locationLibraryError ? <em>{locationLibraryError}</em> : null}
+          <div className="meta-location-actions"><button type="button" onClick={() => setLocationDialogMode("create")}>+ Salvar nova localização</button><button type="button" onClick={() => setLocationDialogMode("manage")}>Gerenciar localizações</button></div>
+          {!selectedLocation ? <button type="button" className="meta-location-mode" onClick={() => { setManualLocationMode((current) => !current); setLocationId(""); setLocationQuery(""); setLocationSearchOpen(false); }}>{manualLocationMode ? "Usar localizações salvas" : "Opções avançadas · usar ID manualmente"}</button> : null}
           <small>{isReel ? facebookSelected ? "Em agendamento conjunto, o local será aplicado somente ao Facebook." : "A localização não está disponível no fluxo de Instagram Reels." : "O mesmo local será aplicado às plataformas compatíveis selecionadas."}</small>
         </div> : null}
 
@@ -8305,6 +8404,7 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
       <small>Fuso horário: {timezone}</small>
       <footer><button type="button" className="ghost-button" disabled={submitting || reelCoverUploading} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || reelCoverUploading || !localDateTime || platforms.length === 0 || platforms.some((platform) => blockedPlatforms.includes(platform)) || locationInvalid || Boolean(pendingTagUsername) || Boolean(storyMediaError)} onClick={() => void onSubmit(platforms, localDateTime, timezone, { publicationFormat: isStory ? "story" : null, reelCoverUrl: isReel ? reelCoverUrl : null, locationId: isStory ? null : normalizedLocationId || null, locationName: isStory ? null : selectedLocation?.name ?? null, instagramUserTags: isCarousel || isReel || isStory ? [] : instagramUserTags })}>{submitting ? "Agendando…" : reelCoverUploading ? "Enviando capa…" : "Agendar publicação"}</button></footer>
     </section>
+    {locationDialogMode ? <MetaSavedLocationsDialog locations={savedLocations} initialMode={locationDialogMode} onUpsert={upsertSavedLocation} onDelete={removeSavedLocation} onClose={() => setLocationDialogMode(null)} /> : null}
   </div>;
 }
 

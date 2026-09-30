@@ -487,6 +487,14 @@ export type MetaPlace = {
   name: string;
   location: { city: string | null; state: string | null; country: string | null; street: string | null; zip: string | null };
 };
+export type MetaSavedLocation = {
+  id: string;
+  name: string;
+  metaPlaceId: string;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
 
 type ApiCardDetailResponse = {
   card: ApiBoardCard;
@@ -1372,6 +1380,28 @@ export async function createMetaPublicationBySlug(slug: string, input: { cardId:
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export async function loadMetaSavedLocations() {
+  return fetchJson<{ locations: MetaSavedLocation[] }>("/api/meta/saved-locations");
+}
+
+export async function createMetaSavedLocation(input: { name: string; metaPlaceId: string; notes?: string | null }) {
+  return sendJson<{ location: MetaSavedLocation }>("/api/meta/saved-locations", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateMetaSavedLocation(id: string, input: { name?: string; metaPlaceId?: string; notes?: string | null }) {
+  return sendJson<{ location: MetaSavedLocation }>(`/api/meta/saved-locations/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteMetaSavedLocation(id: string) {
+  return sendJson<{ ok: true }>(`/api/meta/saved-locations/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 export async function searchMetaPlaces(query: string) {
