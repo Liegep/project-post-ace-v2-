@@ -205,7 +205,7 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
       return result;
     } catch (error) {
       request.log.error({ err: error, clientAccountId, durationMs: Date.now() - startedAt }, "Meta best publishing times request failed");
-      throw error;
+      return { available: false, source: "instagram_online_followers", recommendations: [], message: "Os melhores horários estão temporariamente indisponíveis." };
     }
   });
 
