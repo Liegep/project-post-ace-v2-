@@ -7406,6 +7406,8 @@ function AdminCardEditor({
   const [metaPublications, setMetaPublications] = useState<MetaScheduledPublication[]>([]);
   const [metaScheduleOpen, setMetaScheduleOpen] = useState(false);
   const [metaScheduling, setMetaScheduling] = useState(false);
+  const [scheduleMenuOpen, setScheduleMenuOpen] = useState(false);
+  const [internalScheduleOpen, setInternalScheduleOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [approvalLinkCopied, setApprovalLinkCopied] = useState(false);
@@ -7425,6 +7427,7 @@ function AdminCardEditor({
   const [externalLinkCopied, setExternalLinkCopied] = useState(false);
   const captionCopiedTimerRef = useRef<number | null>(null);
   const externalLinkCopiedTimerRef = useRef<number | null>(null);
+  const scheduleActionsRef = useRef<HTMLDivElement>(null);
   const editorMainRef = useRef<HTMLDivElement>(null);
   const editorSideRef = useRef<HTMLElement>(null);
   const saveInFlightRef = useRef(false);
@@ -7439,6 +7442,18 @@ function AdminCardEditor({
     if (captionCopiedTimerRef.current !== null) window.clearTimeout(captionCopiedTimerRef.current);
     if (externalLinkCopiedTimerRef.current !== null) window.clearTimeout(externalLinkCopiedTimerRef.current);
   }, []);
+
+  useEffect(() => {
+    if (!scheduleMenuOpen && !internalScheduleOpen) return;
+    const closeScheduleActions = (event: MouseEvent) => {
+      if (!scheduleActionsRef.current?.contains(event.target as Node)) {
+        setScheduleMenuOpen(false);
+        setInternalScheduleOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", closeScheduleActions);
+    return () => document.removeEventListener("mousedown", closeScheduleActions);
+  }, [internalScheduleOpen, scheduleMenuOpen]);
 
   useEffect(() => {
     editorMainRef.current?.scrollTo({ top: 0 });
@@ -7697,6 +7712,16 @@ ${internalMessage.trim()}`, isInternal: true });
               ? "Reels exige Instagram ou Facebook vinculado ao cliente."
             : null;
   const metaCompatibleMedia = mediaUrls.length >= 1 && !metaScheduleUnavailableReason;
+  const metaSchedulingAvailable = canScheduleMeta && currentMetaPublications.length === 0 && hasLinkedMetaPlatform && metaCompatibleMedia;
+  const metaSchedulingOptionHint = currentMetaPublications.length
+    ? "Acompanhe o agendamento atual abaixo."
+    : !canScheduleMeta
+      ? "Disponível somente para administradores autorizados."
+      : !hasLinkedMetaPlatform
+        ? "Nenhuma conta Meta vinculada a este cliente."
+        : mediaUrls.length === 0
+          ? "Adicione uma mídia ao card para publicar."
+          : metaScheduleUnavailableReason ?? "Instagram ou Facebook";
 
   async function scheduleMetaPublication(
     platforms: ("instagram" | "facebook")[],
@@ -8014,17 +8039,6 @@ ${internalMessage.trim()}`, isInternal: true });
           <label className="editor-field"><span>Prioridade</span><select value={priorityLevel} onChange={(event) => setPriorityLevel(event.target.value as CardPriority | "")}><option value="">Sem prioridade</option><option value="high">Alta prioridade</option><option value="medium">Média prioridade</option><option value="normal">Prioridade normal</option></select></label>
           {approvalRevision > 0 ? <div className="editor-field client-feedback-field"><span>Retorno do cliente</span><span className={`client-feedback-badge ${clientFeedbackToneClass(clientLabel)}`}><i aria-hidden="true" />{clientLabel === "Pendente" ? "Aguardando aprovação" : clientLabel}</span></div> : <EditorSelect label="Feedback do cliente" value={clientLabel} onChange={setClientLabel} options={["Pendente", "Aprovado", "Alteração solicitada"]} />}
           {newApprovalUrl ? <section className="approval-resubmit-panel" aria-label="Novo link de aprovação"><small>O novo link é válido por 7 dias. Os links anteriores foram encerrados.</small><input aria-label="Novo link de aprovação" readOnly value={newApprovalUrl} onFocus={(event) => event.target.select()} /><button type="button" className="ghost-button" onClick={() => { void navigator.clipboard.writeText(newApprovalUrl).then(() => setApprovalLinkCopied(true)).catch(() => setFeedback("O reenvio foi concluído. Selecione o link acima para copiá-lo manualmente.")); }}>{approvalLinkCopied ? "Link copiado" : "Copiar novo link"}</button></section> : null}
-          <EditorField label="Agendamento"><input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /><small className="editor-field-hint">Na data e hora informadas, o card será movido para Arquivados.</small></EditorField>
-          {canScheduleMeta && (currentMetaPublications.length || (hasLinkedMetaPlatform && mediaUrls.length > 0)) ? <section className="meta-publication-panel">
-            <span>PUBLICAÇÃO META REAL</span>
-            {currentMetaPublications.length ? <div className="meta-publication-list">{currentMetaPublications.map((publication) => <article key={publication.id} className={`meta-publication-item ${publication.platform}`}>
-              <small>{publication.platform === "facebook" ? "Facebook" : "Instagram"}</small>
-              <strong>{metaPublicationDetailLabel(publication)}</strong>
-              {publication.status === "failed" && publication.lastError ? <details><summary>Ver erro</summary><p>{publication.lastError}</p></details> : null}
-              {publication.publishedPermalink ? <a href={publication.publishedPermalink} target="_blank" rel="noreferrer">Abrir publicação ↗</a> : null}
-              {publication.status === "scheduled" || publication.status === "failed" ? <button type="button" className="ghost-button" onClick={() => void cancelMetaPublication(publication.id)}>Cancelar publicação</button> : null}
-            </article>)}</div> : metaScheduleUnavailableReason ? <small className="meta-schedule-unavailable">{metaScheduleUnavailableReason}</small> : metaCompatibleMedia ? <button type="button" className="meta-schedule-button" onClick={() => setMetaScheduleOpen(true)}>Agendar publicação Meta</button> : null}
-          </section> : null}
           <label className="editor-field"><span>Coluna</span><select value={columnId} onChange={(event) => setColumnId(event.target.value)}><option value="">Sem coluna</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select></label>
           <section className="tag-library">
             <div className="tag-library-head"><span>Etiquetas</span></div>
@@ -8071,9 +8085,22 @@ ${internalMessage.trim()}`, isInternal: true });
           {internalApprovalOpen ? <div className="internal-approval-popover"><header><div><span>REVISÃO DA EQUIPE</span><h4>Enviar para aprovação interna</h4></div><button type="button" onClick={() => setInternalApprovalOpen(false)}>×</button></header><p>Escolha quem deve revisar este card. Clientes não aparecem nesta lista.</p><div className="internal-recipient-list">{internalUsers.length ? internalUsers.map((user) => <label key={user.id}><input type="checkbox" checked={internalRecipientIds.includes(user.id)} onChange={(event) => setInternalRecipientIds((current) => event.target.checked ? [...current, user.id] : current.filter((id) => id !== user.id))} /><span><strong>{user.fullName}</strong><small>{user.globalRole} · {user.email}</small></span></label>) : <small>Nenhum membro interno disponível.</small>}</div><textarea value={internalMessage} onChange={(event) => setInternalMessage(event.target.value)} placeholder="Escreva uma mensagem para quem vai revisar..." /><footer><button type="button" className="ghost-button" onClick={() => setInternalApprovalOpen(false)}>Cancelar</button><button type="button" className="gradient-button" disabled={internalSending || !internalRecipientIds.length || !internalMessage.trim()} onClick={() => void sendInternalApproval()}>{internalSending ? "Enviando..." : "Enviar para revisão"}</button></footer></div> : null}
         </aside>
         <footer className="admin-card-footer">
-          <div>{feedback ? <p className={`editor-feedback${newApprovalUrl && feedback.startsWith("Enviado novamente") ? " approval-success" : ""}`}>{feedback}</p> : null}<AutosaveIndicator state={autosaveState} savedAt={autosavedAt} /></div>
+          <div className="admin-card-feedback">{feedback ? <p className={`editor-feedback${newApprovalUrl && feedback.startsWith("Enviado novamente") ? " approval-success" : ""}`}>{feedback}</p> : null}<AutosaveIndicator state={autosaveState} savedAt={autosavedAt} /></div>
           <button type="button" className="ghost-button" onClick={() => void requestClose()} disabled={saving || uploading || resubmitting}>Cancelar</button>
           <button type="button" className="send-client-button" onClick={() => void sendToClientAndClose()} disabled={saving || uploading || resubmitting || approvalConflict}>{saving ? "Salvando..." : "Enviar para cliente"}</button>
+          <div className="admin-schedule-actions" ref={scheduleActionsRef}>
+            <button type="button" className="admin-schedule-trigger" aria-haspopup="menu" aria-expanded={scheduleMenuOpen} disabled={saving || uploading || resubmitting} onClick={() => { setScheduleMenuOpen((open) => !open); setInternalScheduleOpen(false); }}>Agendar <span aria-hidden="true">⌄</span></button>
+            {scheduleMenuOpen ? <div className="admin-schedule-menu" role="menu">
+              <button type="button" role="menuitem" onClick={() => { setScheduleMenuOpen(false); setInternalScheduleOpen(true); }}><UiIcon name="calendar" /><span><strong>Agendamento interno</strong><small>{scheduledAt ? formatScheduledCardDate(scheduledAt) : "Mover para Arquivados na data escolhida"}</small></span></button>
+              <button type="button" role="menuitem" disabled={!metaSchedulingAvailable} onClick={() => { setScheduleMenuOpen(false); setInternalScheduleOpen(false); setMetaScheduleOpen(true); }}><UiIcon name="send" /><span><strong>Publicação Meta</strong><small>{metaSchedulingAvailable ? "Instagram ou Facebook" : metaSchedulingOptionHint}</small></span></button>
+              {currentMetaPublications.length ? <div className="admin-schedule-meta-status"><span>PUBLICAÇÕES META</span>{currentMetaPublications.map((publication) => <article key={publication.id} className={publication.platform}><div><small>{publication.platform === "facebook" ? "Facebook" : "Instagram"}</small><strong>{metaPublicationDetailLabel(publication)}</strong></div>{publication.status === "failed" && publication.lastError ? <details><summary>Ver erro</summary><p>{publication.lastError}</p></details> : null}<footer>{publication.publishedPermalink ? <a href={publication.publishedPermalink} target="_blank" rel="noreferrer">Abrir publicação ↗</a> : null}{publication.status === "scheduled" || publication.status === "failed" ? <button type="button" onClick={() => void cancelMetaPublication(publication.id)}>Cancelar</button> : null}</footer></article>)}</div> : null}
+            </div> : null}
+            {internalScheduleOpen ? <div className="admin-internal-schedule-panel">
+              <header><div><strong>Agendamento interno</strong><small>O card será movido para Arquivados nesta data.</small></div><button type="button" aria-label="Fechar agendamento interno" onClick={() => setInternalScheduleOpen(false)}>×</button></header>
+              <input autoFocus type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} />
+              <footer>{scheduledAt ? <button type="button" className="ghost-button" onClick={() => setScheduledAt("")}>Remover</button> : <span />}<button type="button" className="gradient-button" onClick={() => setInternalScheduleOpen(false)}>Concluir</button></footer>
+            </div> : null}
+          </div>
           <button className="gradient-button editor-save" onClick={() => void persistCard(true)} disabled={saving || uploading || resubmitting}>{saving ? "Salvando..." : "Salvar e fechar"}</button>
         </footer>
         {metaScheduleOpen ? <MetaScheduleModal

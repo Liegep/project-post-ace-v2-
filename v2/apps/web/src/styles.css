@@ -5081,27 +5081,17 @@ button {
 .admin-card-side { display: grid; align-content: start; gap: 21px; }
 .admin-card-close { position: absolute; top: 18px; right: 22px; z-index: 3; width: 50px; height: 50px; color: #1e2531; background: #f6f8fb; border: 0; border-radius: 50%; font-size: 39px; line-height: 1; cursor: pointer; }
 .admin-card-footer { grid-column: 1 / -1; display: flex; align-items: center; justify-content: flex-end; gap: 10px; min-height: 76px; padding: 12px 22px; border-top: 1px solid rgba(255,255,255,.16); background: rgba(27,29,33,.94); box-shadow: 0 -12px 28px rgba(0,0,0,.18); backdrop-filter: blur(14px); }
-.admin-card-footer > div { display: grid; gap: 4px; margin-right: auto; }
+.admin-card-footer > .admin-card-feedback { display: grid; gap: 4px; margin-right: auto; }
 .admin-card-footer .editor-feedback { margin: 0; }
 .admin-card-footer .editor-save { width: auto; min-width: 190px; min-height: 48px; }
 .admin-card-footer > .ghost-button { min-height: 48px; color: #eef1f8; border-color: rgba(255,255,255,.22); background: rgba(255,255,255,.06); }
 .editor-field { display: grid; gap: 11px; margin-bottom: 28px; color: #c7c7c9; font-size: 14px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; }
 .editor-field > span { display: flex; align-items: center; gap: 10px; }
 .editor-field-hint { color: #9ba2ae; font-size: 12px; font-weight: 600; letter-spacing: normal; line-height: 1.4; text-transform: none; }
-.meta-publication-panel { display: grid; gap: 10px; padding: 16px; border: 1px solid rgba(205, 139, 255, .34); border-radius: 12px; background: linear-gradient(135deg, rgba(113, 73, 209, .22), rgba(210, 63, 139, .14)); }
-.meta-publication-panel > span { color: #dcbcff; font-size: 10px; font-weight: 800; letter-spacing: .13em; }
-.meta-publication-panel > strong { font-size: 14px; line-height: 1.4; }
-.meta-publication-panel details { color: #ffd1d7; font-size: 12px; }
-.meta-publication-panel details p { margin: 8px 0 0; overflow-wrap: anywhere; }
-.meta-publication-panel a { color: #d9ccff; font-size: 13px; font-weight: 700; }
-.meta-publication-list { display: grid; gap: 10px; }
-.meta-publication-item { display: grid; gap: 7px; padding: 11px; border: 1px solid rgba(210, 115, 218, .28); border-radius: 10px; background: rgba(15, 16, 23, .2); }
-.meta-publication-item.facebook { border-color: rgba(112, 167, 239, .35); }
-.meta-publication-item > small { color: #dcbcff; font-size: 10px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
-.meta-publication-item.facebook > small { color: #9fc8ff; }
-.meta-publication-item > strong { font-size: 13px; line-height: 1.4; }
-.meta-schedule-button { min-height: 44px; color: #fff; border: 0; border-radius: 9px; background: linear-gradient(120deg, #7652dc, #d13e8c); font: inherit; font-weight: 750; cursor: pointer; }
-.meta-schedule-unavailable { color: #ffd1d7; font-size: 11px; line-height: 1.45; }
+.admin-schedule-actions { position: relative; flex: 0 0 auto; }.admin-schedule-trigger { display: inline-flex; min-height: 48px; align-items: center; justify-content: center; gap: 8px; padding: 0 18px; color: #f2edff; border: 1px solid rgba(189,162,255,.35); border-radius: 12px; background: rgba(119,83,205,.2); font: inherit; font-weight: 800; cursor: pointer; }.admin-schedule-trigger span { transition: transform .18s ease; }.admin-schedule-trigger[aria-expanded="true"] span { transform: rotate(180deg); }.admin-schedule-trigger:disabled { opacity: .5; cursor: not-allowed; }
+.admin-schedule-menu,.admin-internal-schedule-panel { position: absolute; z-index: 30; right: 0; bottom: calc(100% + 10px); width: min(340px,calc(100vw - 32px)); padding: 8px; color: #393448; border: 1px solid #ddd8e8; border-radius: 14px; background: #fff; box-shadow: 0 18px 45px rgba(15,12,29,.28); }.admin-schedule-menu > button { display: grid; width: 100%; grid-template-columns: 32px minmax(0,1fr); gap: 10px; align-items: center; padding: 11px; color: #423c52; border: 0; border-radius: 10px; background: transparent; text-align: left; cursor: pointer; }.admin-schedule-menu > button:hover:not(:disabled) { background: #f6f3fc; }.admin-schedule-menu > button:disabled { opacity: .5; cursor: not-allowed; }.admin-schedule-menu > button svg { width: 19px; color: #7658c5; }.admin-schedule-menu > button span { display: grid; gap: 3px; }.admin-schedule-menu > button small { overflow: hidden; color: #7c7689; font-size: .68rem; text-overflow: ellipsis; white-space: nowrap; }
+.admin-internal-schedule-panel { display: grid; gap: 14px; padding: 16px; }.admin-internal-schedule-panel > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }.admin-internal-schedule-panel > header div { display: grid; gap: 3px; }.admin-internal-schedule-panel > header small { color: #7c7689; font-size: .68rem; }.admin-internal-schedule-panel > header button { padding: 0; color: #605a6a; border: 0; background: none; font-size: 1.35rem; }.admin-internal-schedule-panel > input { box-sizing: border-box; width: 100%; padding: 11px; color: #393448; border: 1px solid #d8d3e2; border-radius: 10px; background: #fff; font: inherit; }.admin-internal-schedule-panel > footer { display: flex; align-items: center; justify-content: space-between; gap: 9px; }.admin-internal-schedule-panel > footer button { min-height: 36px; padding: 0 12px; }
+.admin-schedule-meta-status { display: grid; gap: 7px; margin-top: 5px; padding: 10px 6px 4px; border-top: 1px solid #ece8f1; }.admin-schedule-meta-status > span { color: #877b9d; font-size: .58rem; font-weight: 850; letter-spacing: .11em; }.admin-schedule-meta-status article { display: grid; gap: 7px; padding: 9px; border: 1px solid #eadff0; border-left: 3px solid #bc5fcb; border-radius: 9px; background: #fcf9ff; }.admin-schedule-meta-status article.facebook { border-left-color: #4d87d8; }.admin-schedule-meta-status article > div { display: grid; gap: 2px; }.admin-schedule-meta-status article small { color: #8b6b99; font-size: .6rem; font-weight: 850; text-transform: uppercase; }.admin-schedule-meta-status article.facebook small { color: #507db6; }.admin-schedule-meta-status article strong { font-size: .72rem; line-height: 1.35; }.admin-schedule-meta-status details { color: #a23d52; font-size: .68rem; }.admin-schedule-meta-status details p { overflow-wrap: anywhere; }.admin-schedule-meta-status article footer { display: flex; flex-wrap: wrap; gap: 10px; }.admin-schedule-meta-status article footer a,.admin-schedule-meta-status article footer button { padding: 0; color: #6550ae; border: 0; background: none; font: inherit; font-size: .68rem; font-weight: 750; text-decoration: none; }
 .meta-schedule-backdrop { position: fixed; inset: 0; z-index: 190; display: grid; place-items: center; padding: 20px; background: rgba(9, 10, 16, .82); }
 .meta-schedule-modal { display: grid; width: min(560px, 100%); max-height: calc(100vh - 40px); gap: 18px; padding: 24px; overflow-y: auto; color: #f8f8fb; border: 1px solid rgba(255,255,255,.22); border-radius: 18px; background: #24252b; box-shadow: 0 28px 80px rgba(0,0,0,.55); }
 .meta-schedule-modal header, .meta-schedule-modal footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -8349,7 +8339,7 @@ button {
     padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 
-  .admin-card-footer > div {
+  .admin-card-footer > .admin-card-feedback {
     width: 100%;
     margin-right: 0;
   }
