@@ -30,9 +30,26 @@ test("eleven images are rejected", () => {
   assert.match(result.error ?? "", /máximo 10 imagens/i);
 });
 
-test("a carousel cannot be scheduled for Facebook", () => {
+test("two images are allowed in a Facebook carousel", () => {
+  const result = planMetaCardPublications({ platforms: ["facebook"], mediaUrls: imageUrls(2), mediaType: "image", artType: "Carrossel", locationId: null, instagramUserTags: [] });
+  assert.equal(result.error, null);
+  assert.equal(result.plans?.[0]?.mediaType, "carousel");
+  assert.equal(result.plans?.[0]?.mediaUrls.length, 2);
+});
+
+test("ten images are allowed in a Facebook carousel", () => {
+  const result = planMetaCardPublications({ platforms: ["facebook"], mediaUrls: imageUrls(10), mediaType: "image", artType: "Carrossel", locationId: null, instagramUserTags: [] });
+  assert.equal(result.error, null);
+  assert.equal(result.plans?.[0]?.mediaUrls.length, 10);
+});
+
+test("one carousel creates independent Instagram and Facebook plans", () => {
   const result = planMetaCardPublications({ platforms: ["instagram", "facebook"], mediaUrls: imageUrls(2), mediaType: "image", artType: "Carrossel", locationId: null, instagramUserTags: [] });
-  assert.match(result.error ?? "", /somente no Instagram/i);
+  assert.equal(result.error, null);
+  assert.deepEqual(result.plans?.map((plan) => ({ platform: plan.platform, mediaType: plan.mediaType, mediaUrls: plan.mediaUrls })), [
+    { platform: "instagram", mediaType: "carousel", mediaUrls: imageUrls(2) },
+    { platform: "facebook", mediaType: "carousel", mediaUrls: imageUrls(2) },
+  ]);
 });
 
 test("carousel keeps location on its main publication plan", () => {

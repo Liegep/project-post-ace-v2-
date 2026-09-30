@@ -67,12 +67,9 @@ export function planMetaCardPublications(input: {
     }
   }
   if (mediaUrls.length > 10) {
-    return { plans: null, error: "O carrossel do Instagram aceita no máximo 10 imagens." };
+    return { plans: null, error: "O carrossel aceita no máximo 10 imagens." };
   }
   const isCarousel = !isReel && mediaUrls.length > 1;
-  if (isCarousel && input.platforms.includes("facebook")) {
-    return { plans: null, error: "Nesta etapa, carrossel está disponível somente no Instagram. Remova o Facebook para continuar." };
-  }
   return {
     plans: input.platforms.map((platform) => ({
       platform,

@@ -6,6 +6,9 @@ import type { FastifyInstance } from "fastify";
 import type { Pool } from "mysql2/promise";
 import { canArchiveScheduledPublicationCard, markStalePublishingFailed } from "./meta.repository.js";
 import {
+  META_FACEBOOK_CAROUSEL_PERMALINK_TIMEOUT_MS,
+  META_FACEBOOK_CAROUSEL_PHOTO_UPLOAD_TIMEOUT_MS,
+  META_FACEBOOK_CAROUSEL_PUBLISH_TIMEOUT_MS,
   META_FACEBOOK_REEL_COVER_FETCH_TIMEOUT_MS,
   META_FACEBOOK_REEL_COVER_UPLOAD_TIMEOUT_MS,
   META_FACEBOOK_REEL_BINARY_UPLOAD_TIMEOUT_MS,
@@ -50,8 +53,9 @@ function metaResponse(payload: unknown) {
 
 function publishingHarness(fetchImpl: typeof fetch, overrides: {
   platform?: "instagram" | "facebook";
-  mediaType?: "image" | "reel" | "story";
+  mediaType?: "image" | "carousel" | "reel" | "story";
   mediaUrl?: string;
+  mediaUrls?: string[];
   caption?: string | null;
   locationId?: string | null;
   reelCoverUrl?: string | null;
@@ -69,7 +73,7 @@ function publishingHarness(fetchImpl: typeof fetch, overrides: {
     timezone: "Europe/Stockholm",
     caption: overrides.caption === undefined ? "Legenda" : overrides.caption,
     media_url: overrides.mediaUrl ?? "https://cdn.example.com/image.jpg",
-    media_urls_json: [overrides.mediaUrl ?? "https://cdn.example.com/image.jpg"],
+    media_urls_json: overrides.mediaUrls ?? [overrides.mediaUrl ?? "https://cdn.example.com/image.jpg"],
     media_type: overrides.mediaType ?? "image",
     reel_cover_url: overrides.reelCoverUrl ?? null,
     location_id: overrides.locationId ?? null,
@@ -167,6 +171,12 @@ test("Facebook Reel publishing uses operation-specific timeouts", () => {
   assert.equal(META_FACEBOOK_REEL_PERMALINK_TIMEOUT_MS, 15_000);
   assert.equal(META_FACEBOOK_REEL_COVER_FETCH_TIMEOUT_MS, 30_000);
   assert.equal(META_FACEBOOK_REEL_COVER_UPLOAD_TIMEOUT_MS, 45_000);
+});
+
+test("Facebook carousel publishing uses operation-specific timeouts", () => {
+  assert.equal(META_FACEBOOK_CAROUSEL_PHOTO_UPLOAD_TIMEOUT_MS, 45_000);
+  assert.equal(META_FACEBOOK_CAROUSEL_PUBLISH_TIMEOUT_MS, 45_000);
+  assert.equal(META_FACEBOOK_CAROUSEL_PERMALINK_TIMEOUT_MS, 15_000);
 });
 
 test("Facebook Story publishing uses operation-specific timeouts", () => {
@@ -772,6 +782,104 @@ test("the existing Facebook single-image flow remains unchanged", async () => {
   assert.equal(harness.state.status, "published");
   assert.equal(requests.some((url) => url.pathname.endsWith("/facebook-1/photos")), true);
   assert.equal(requests.some((url) => url.pathname.endsWith("/facebook-1/video_reels")), false);
+});
+
+test("a Facebook carousel uploads unpublished photos in order and creates one final feed post", async () => {
+  const requests: URL[] = [];
+  let photoNumber = 0;
+  const mediaUrls = [
+    "https://cdn.example.com/carousel-1.jpg",
+    "https://cdn.example.com/carousel-2.jpg",
+    "https://cdn.example.com/carousel-3.jpg",
+  ];
+  const harness = publishingHarness(async (input, init) => {
+    const url = new URL(String(input));
+    requests.push(url);
+    if (url.pathname.endsWith("/facebook-1") && url.searchParams.get("fields")?.includes("access_token")) return metaResponse({ id: "facebook-1", access_token: "page-token" });
+    if (init?.method === "POST" && url.pathname.endsWith("/facebook-1/photos")) {
+      photoNumber += 1;
+      return metaResponse({ id: `photo-${photoNumber}` });
+    }
+    if (init?.method === "POST" && url.pathname.endsWith("/facebook-1/feed")) return metaResponse({ id: "facebook-1_99" });
+    if (url.pathname.endsWith("/facebook-1_99")) return metaResponse({ permalink_url: "https://www.facebook.com/designhub/posts/99" });
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, {
+    platform: "facebook",
+    mediaType: "carousel",
+    mediaUrl: mediaUrls[0],
+    mediaUrls,
+    caption: "Legenda única do carrossel",
+    locationId: "123456789",
+  });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10));
+  assert.equal(result.published, 1);
+  assert.equal(harness.state.status, "published");
+  const uploads = requests.filter((url) => url.pathname.endsWith("/facebook-1/photos"));
+  assert.deepEqual(uploads.map((url) => url.searchParams.get("url")), mediaUrls);
+  assert.deepEqual(uploads.map((url) => url.searchParams.get("published")), ["false", "false", "false"]);
+  assert.equal(uploads.every((url) => !url.searchParams.has("caption") && !url.searchParams.has("place")), true);
+  const feed = requests.find((url) => url.pathname.endsWith("/facebook-1/feed"));
+  assert.equal(feed?.searchParams.get("message"), "Legenda única do carrossel");
+  assert.equal(feed?.searchParams.get("place"), "123456789");
+  assert.deepEqual([0, 1, 2].map((index) => feed?.searchParams.get(`attached_media[${index}]`)), [
+    JSON.stringify({ media_fbid: "photo-1" }),
+    JSON.stringify({ media_fbid: "photo-2" }),
+    JSON.stringify({ media_fbid: "photo-3" }),
+  ]);
+  assert.equal(feed?.searchParams.get("access_token"), "page-token");
+});
+
+test("a failed Facebook carousel photo upload never creates the final feed post", async () => {
+  let photoCalls = 0;
+  let feedCalls = 0;
+  const mediaUrls = [
+    "https://cdn.example.com/carousel-1.jpg",
+    "https://cdn.example.com/carousel-2.jpg",
+    "https://cdn.example.com/carousel-3.jpg",
+  ];
+  const harness = publishingHarness(async (input, init) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/facebook-1") && url.searchParams.get("fields")?.includes("access_token")) return metaResponse({ id: "facebook-1", access_token: "page-token" });
+    if (init?.method === "POST" && url.pathname.endsWith("/facebook-1/photos")) {
+      photoCalls += 1;
+      if (photoCalls === 3) return new Response(JSON.stringify({ error: { code: 100, message: "Invalid image" } }), { status: 400, headers: { "content-type": "application/json" } });
+      return metaResponse({ id: `photo-${photoCalls}` });
+    }
+    if (init?.method === "POST" && url.pathname.endsWith("/facebook-1/feed")) {
+      feedCalls += 1;
+      return metaResponse({ id: "unexpected-post" });
+    }
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, { platform: "facebook", mediaType: "carousel", mediaUrl: mediaUrls[0], mediaUrls });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10));
+  assert.equal(result.failed, 1);
+  assert.equal(photoCalls, 3);
+  assert.equal(feedCalls, 0);
+  assert.match(harness.state.lastError ?? "", /2 de 3 imagens preparadas/i);
+});
+
+test("a Facebook carousel final publish timeout is not retried", async () => {
+  let photoCalls = 0;
+  let feedCalls = 0;
+  const mediaUrls = ["https://cdn.example.com/carousel-1.jpg", "https://cdn.example.com/carousel-2.jpg"];
+  const harness = publishingHarness(async (input, init) => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith("/facebook-1") && url.searchParams.get("fields")?.includes("access_token")) return metaResponse({ id: "facebook-1", access_token: "page-token" });
+    if (init?.method === "POST" && url.pathname.endsWith("/facebook-1/photos")) {
+      photoCalls += 1;
+      return metaResponse({ id: `photo-${photoCalls}` });
+    }
+    if (init?.method === "POST" && url.pathname.endsWith("/facebook-1/feed")) {
+      feedCalls += 1;
+      throw timeoutError();
+    }
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, { platform: "facebook", mediaType: "carousel", mediaUrl: mediaUrls[0], mediaUrls });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10));
+  assert.equal(result.failed, 1);
+  assert.equal(photoCalls, 2);
+  assert.equal(feedCalls, 1);
+  assert.match(harness.state.lastError ?? "", /Verifique a Página/i);
 });
 
 test("a Facebook Reel uploads an optional custom cover through the official thumbnails endpoint", async () => {

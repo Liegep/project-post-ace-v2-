@@ -168,6 +168,9 @@ type FacebookVideoStatusPayload = MetaApiError & {
 const META_INSIGHTS_REQUEST_TIMEOUT_MS = 7_000;
 const META_FACEBOOK_PAGE_ACCESS_TIMEOUT_MS = 15_000;
 const META_FACEBOOK_PUBLISH_TIMEOUT_MS = 45_000;
+export const META_FACEBOOK_CAROUSEL_PHOTO_UPLOAD_TIMEOUT_MS = 45_000;
+export const META_FACEBOOK_CAROUSEL_PUBLISH_TIMEOUT_MS = 45_000;
+export const META_FACEBOOK_CAROUSEL_PERMALINK_TIMEOUT_MS = 15_000;
 export const META_FACEBOOK_REEL_START_TIMEOUT_MS = 30_000;
 export const META_FACEBOOK_REEL_UPLOAD_TIMEOUT_MS = 60_000;
 export const META_FACEBOOK_REEL_DOWNLOAD_TIMEOUT_MS = 60_000;
@@ -2217,6 +2220,107 @@ async function publishFacebookImage(app: FastifyInstance, input: {
   return { publishedMetaId, publishedPermalink: permalink.payload?.permalink_url ?? null };
 }
 
+async function publishFacebookCarousel(app: FastifyInstance, input: {
+  publicationId: string;
+  userId: string;
+  pageId: string;
+  imageUrls: string[];
+  caption: string | null;
+  locationId: string | null;
+}) {
+  if (input.imageUrls.length < 2 || input.imageUrls.length > 10) {
+    throw new Error("O carrossel do Facebook precisa ter entre 2 e 10 imagens.");
+  }
+  const context = await getPublishingContext(app, input.userId);
+  const pageAccess = await getFacebookPageAccessContext({
+    app,
+    pageId: input.pageId,
+    userToken: context.token,
+    appSecret: context.appSecret,
+    timeoutMs: META_FACEBOOK_PAGE_ACCESS_TIMEOUT_MS,
+  });
+  if (!pageAccess.page || pageAccess.page.id !== input.pageId) {
+    throw new Error(pageAccess.warning?.message || "A Página do Facebook vinculada não está disponível na conexão Meta.");
+  }
+  if (pageAccess.tokenSource !== "page") {
+    throw new Error("A Meta não forneceu um Page Access Token para a Página do Facebook vinculada.");
+  }
+
+  const photoIds: string[] = [];
+  for (const [index, imageUrl] of input.imageUrls.entries()) {
+    const startedAt = Date.now();
+    const upload = await fetchMetaResult<MetaApiError & { id?: string }>({
+      app,
+      path: `/${input.pageId}/photos`,
+      token: pageAccess.pageToken,
+      appSecret: context.appSecret,
+      params: { url: imageUrl, published: "false" },
+      metricOrOperation: "facebook.publish.carousel.uploadPhoto",
+      method: "POST",
+      timeoutMs: META_FACEBOOK_CAROUSEL_PHOTO_UPLOAD_TIMEOUT_MS,
+    });
+    if (!upload.payload?.id) {
+      const detail = upload.warning?.kind === "timeout"
+        ? "A Meta demorou demais para processar uma das imagens."
+        : upload.warning?.message || "A Meta não aceitou uma das imagens.";
+      throw new Error(`${detail} O carrossel final não foi publicado (${photoIds.length} de ${input.imageUrls.length} imagens preparadas).`);
+    }
+    photoIds.push(upload.payload.id);
+    app.log.info({
+      publicationId: input.publicationId,
+      photoId: upload.payload.id,
+      imageIndex: index + 1,
+      imageCount: input.imageUrls.length,
+      durationMs: Date.now() - startedAt,
+    }, "Facebook carousel photo uploaded as unpublished media");
+  }
+
+  const publishStartedAt = Date.now();
+  app.log.info({ publicationId: input.publicationId, imageCount: photoIds.length }, "Facebook carousel final publish started");
+  const attachedMedia = Object.fromEntries(photoIds.map((photoId, index) => [
+    `attached_media[${index}]`,
+    JSON.stringify({ media_fbid: photoId }),
+  ]));
+  const published = await fetchMetaResult<MetaApiError & { id?: string; post_id?: string }>({
+    app,
+    path: `/${input.pageId}/feed`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: {
+      ...attachedMedia,
+      ...(input.caption ? { message: input.caption } : {}),
+      ...(input.locationId ? { place: input.locationId } : {}),
+    },
+    metricOrOperation: "facebook.publish.carousel.publishPost",
+    method: "POST",
+    timeoutMs: META_FACEBOOK_CAROUSEL_PUBLISH_TIMEOUT_MS,
+  });
+  const publishedMetaId = published.payload?.post_id ?? published.payload?.id;
+  if (!publishedMetaId) {
+    if (published.warning?.kind === "timeout") {
+      throw new Error("A Meta demorou mais que o esperado para confirmar o carrossel. Verifique a Página antes de tentar novamente.");
+    }
+    throw new Error(published.warning?.message || "A Meta não confirmou a publicação do carrossel na Página do Facebook.");
+  }
+  app.log.info({
+    publicationId: input.publicationId,
+    publishedMetaId,
+    imageCount: photoIds.length,
+    durationMs: Date.now() - publishStartedAt,
+  }, "Facebook carousel final publish completed");
+
+  const permalink = await fetchMetaResult<MetaApiError & { permalink_url?: string }>({
+    app,
+    path: `/${publishedMetaId}`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: { fields: "permalink_url" },
+    metricOrOperation: "facebook.publish.carousel.permalink",
+    timeoutMs: META_FACEBOOK_CAROUSEL_PERMALINK_TIMEOUT_MS,
+  });
+  return { publishedMetaId, publishedPermalink: permalink.payload?.permalink_url ?? null };
+}
+
 function safePublicationError(error: unknown) {
   const message = error instanceof Error ? error.message : "Falha inesperada ao publicar na Meta.";
   return message
@@ -2264,9 +2368,6 @@ export async function processDueMetaPublications(app: FastifyInstance, limit = 1
         caption: publication.caption,
         locationId: publication.locationId,
       };
-      if (publication.platform === "facebook" && publication.mediaType === "carousel") {
-        throw new Error("Carrossel ainda não está disponível para publicação no Facebook.");
-      }
       const result = publication.platform === "instagram" && publication.mediaType === "story"
         ? await publishInstagramStory(app, {
           publicationId: publication.id,
@@ -2308,6 +2409,15 @@ export async function processDueMetaPublications(app: FastifyInstance, limit = 1
           publicationId: publication.id,
           userId: publication.createdByUserId,
           instagramAccountId: publication.metaAssetId,
+          imageUrls: publication.mediaUrls,
+          caption: publication.caption,
+          locationId: publication.locationId,
+        })
+        : publication.platform === "facebook" && publication.mediaType === "carousel"
+        ? await publishFacebookCarousel(app, {
+          publicationId: publication.id,
+          userId: publication.createdByUserId,
+          pageId: publication.metaAssetId,
           imageUrls: publication.mediaUrls,
           caption: publication.caption,
           locationId: publication.locationId,
