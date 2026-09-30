@@ -177,15 +177,12 @@ export async function getPortalHome(
     }];
   });
 
-  const nativeCardScheduleKeys = new Set(nativeCalendarCards
-    .filter((card) => card.scheduledAt)
-    .map((card) => `${card.id}|${new Date(card.scheduledAt as string | Date).toISOString()}`));
-  const uniqueMetaCalendarCards = metaCalendarCards.filter((card) => {
-    const instant = new Date(card.scheduledAt as string | Date);
-    return Number.isNaN(instant.getTime()) || !nativeCardScheduleKeys.has(`${card.id}|${instant.toISOString()}`);
-  });
-
-  const calendarPosts = [...nativeCalendarCards, ...uniqueMetaCalendarCards, ...importedCalendarCards];
+  const metaScheduledCardIds = new Set(metaCalendarCards.map((card) => card.id));
+  const calendarPosts = [
+    ...nativeCalendarCards.filter((card) => !metaScheduledCardIds.has(card.id)),
+    ...metaCalendarCards,
+    ...importedCalendarCards,
+  ];
   const upcomingCards = client.show_upcoming_posts ? calendarPosts : [];
   const upcomingItems = upcomingCards
     .filter((card) => !card.archived && !card.publishedAt)
