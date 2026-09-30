@@ -8220,8 +8220,11 @@ function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, instagr
       setLocationSearchError("");
       void searchMetaPlaces(query).then((result) => {
         if (active) setLocationResults(result.places.slice(0, 8));
-      }).catch(() => {
-        if (active) { setLocationResults([]); setLocationSearchError("Não foi possível buscar locais agora."); }
+      }).catch((error) => {
+        if (active) {
+          setLocationResults([]);
+          setLocationSearchError(error instanceof Error ? error.message : "Não foi possível buscar locais agora.");
+        }
       }).finally(() => { if (active) setLocationSearching(false); });
     }, 350);
     return () => { active = false; window.clearTimeout(timer); };
