@@ -1010,7 +1010,7 @@ export async function getInstagramBestPublishingTimes(
     const current = bestByWeekday.get(slot.weekday);
     if (!current || scored.averageFollowers > current.averageFollowers) bestByWeekday.set(slot.weekday, scored);
   }
-  let recommendations = [...bestByWeekday.values()]
+  let recommendations: Array<{ weekday: number | null; hour: number; averageFollowers: number; samples: number }> = [...bestByWeekday.values()]
     .sort((left, right) => right.averageFollowers - left.averageFollowers)
     .slice(0, 3)
     .map(({ weekday, hour, averageFollowers, samples }) => ({ weekday, hour, averageFollowers: Math.round(averageFollowers), samples }));
