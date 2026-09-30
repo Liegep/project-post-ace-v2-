@@ -6569,8 +6569,8 @@ function ClientPortalWorkspacePage({
     });
   }, [slug]);
   const latestPortalReport = portalReports[0] ?? null;
-  const unreadPortalReportCount = portalReports.filter((report) => !viewedReportIds.includes(report.id)).length;
   const latestPortalReportIsNew = Boolean(latestPortalReport && !viewedReportIds.includes(latestPortalReport.id));
+  const unreadPortalReportCount = latestPortalReportIsNew ? 1 : 0;
   useEffect(() => {
     if ((portalView === "texts" && !data.permissions.allowClientViewTexts) || (portalView === "invoices" && !data.permissions.allowClientViewInvoices) || (portalView === "reports" && !data.permissions.allowClientViewReports) || (portalView === "brand" && !data.permissions.allowClientViewBrandBrain)) {
       setPortalView("board");
