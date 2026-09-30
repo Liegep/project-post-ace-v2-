@@ -249,14 +249,14 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         "CASE WHEN e.source = 'legacy' THEN CONCAT('Estado anterior preservado: ', COALESCE(e.comment_text, '')) ELSE COALESCE(e.comment_text, '') END AS detail,",
         "1 AS recordedDecision, CASE WHEN e.revision = c.approval_revision AND c.approval_state = 'approved' AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL THEN 1 ELSE 0 END AS canSchedule",
         "FROM card_approval_events e JOIN kanban_cards c ON c.id = e.card_id JOIN client_accounts a ON a.id = c.client_account_id",
-        "WHERE c.is_brief_approval = 0 AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.status_json NOT LIKE '%Sugestão do cliente%' AND e.decision IN ('approved', 'changes_requested')", scopeSql,
+        "WHERE c.is_brief_approval = 0 AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.status_json NOT LIKE '%Sugestão do cliente%' AND e.decision IN ('approved', 'changes_requested') AND NOT EXISTS (SELECT 1 FROM meta_scheduled_publications mp WHERE mp.card_id = c.id AND mp.status IN ('scheduled', 'publishing', 'published'))", scopeSql,
         "UNION ALL",
-        "SELECT CONCAT('decision-', c.id, '-', UNIX_TIMESTAMP(c.updated_at)) AS id, c.id AS cardId, c.title, c.updated_at AS occurredAt,",
+        "SELECT CONCAT('decision-', c.id) AS id, c.id AS cardId, c.title, c.updated_at AS occurredAt,",
         "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl,",
         "CASE WHEN LOWER(c.client_label) LIKE '%aprovad%' THEN 'approved' ELSE 'changes_requested' END AS activityType,",
         "CASE WHEN LOWER(c.client_label) LIKE '%aprovad%' THEN 'Conteúdo aprovado pelo cliente' ELSE 'Cliente solicitou alterações' END AS detail, 0 AS recordedDecision, 1 AS canSchedule",
         "FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id",
-        "WHERE c.approval_revision = 0 AND c.archived = 0 AND c.is_brief_approval = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.status_json NOT LIKE '%Sugestão do cliente%' AND (LOWER(c.client_label) LIKE '%aprovad%' OR LOWER(c.client_label) LIKE '%altera%') AND NOT EXISTS (SELECT 1 FROM card_approval_events ae WHERE ae.card_id = c.id AND ae.decision IN ('approved', 'changes_requested'))", scopeSql,
+        "WHERE c.approval_revision = 0 AND c.archived = 0 AND c.is_brief_approval = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.status_json NOT LIKE '%Sugestão do cliente%' AND (LOWER(c.client_label) LIKE '%aprovad%' OR LOWER(c.client_label) LIKE '%altera%') AND NOT EXISTS (SELECT 1 FROM card_approval_events ae WHERE ae.card_id = c.id AND ae.decision IN ('approved', 'changes_requested')) AND NOT EXISTS (SELECT 1 FROM meta_scheduled_publications mp WHERE mp.card_id = c.id AND mp.status IN ('scheduled', 'publishing', 'published'))", scopeSql,
         "UNION ALL",
         "SELECT CONCAT('comment-', cc.id) AS id, c.id AS cardId, c.title, cc.created_at AS occurredAt,",
         "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl, 'comment' AS activityType, LEFT(CASE WHEN cc.comment_text = 'Legenda editada pelo cliente.' THEN CONCAT('Nova legenda: ', COALESCE(NULLIF(c.caption, ''), 'sem texto')) ELSE cc.comment_text END, 240) AS detail, 0 AS recordedDecision, 0 AS canSchedule",
@@ -264,7 +264,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         // Feedback is actionable only while the post is still waiting for the
         // team. Scheduling, publishing or archiving the card completes that
         // dashboard task and must remove all of its related feedback rows.
-        "WHERE c.is_brief_approval = 0 AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.status_json NOT LIKE '%Sugestão do cliente%' AND cc.is_internal = 0 AND cc.author_role IN ('cliente', 'guest') AND NOT EXISTS (SELECT 1 FROM card_approval_events ce WHERE ce.comment_id = cc.id)", scopeSql,
+        "WHERE c.is_brief_approval = 0 AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.status_json NOT LIKE '%Sugestão do cliente%' AND cc.is_internal = 0 AND cc.author_role IN ('cliente', 'guest') AND NOT EXISTS (SELECT 1 FROM card_approval_events ce WHERE ce.comment_id = cc.id) AND NOT EXISTS (SELECT 1 FROM meta_scheduled_publications mp WHERE mp.card_id = c.id AND mp.status IN ('scheduled', 'publishing', 'published'))", scopeSql,
         ") activity ORDER BY activity.occurredAt DESC LIMIT 24",
       ].join(" "), [...params, ...params, ...params]),
       app.db.query<RowDataPacket[]>([
@@ -301,7 +301,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         "FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id",
         "LEFT JOIN approval_links al ON al.card_id = c.id AND al.approved_at IS NOT NULL",
         "LEFT JOIN card_approval_events ae ON ae.card_id = c.id AND ae.revision = c.approval_revision AND ae.action = 'approved'",
-        "WHERE c.archived = 0 AND c.is_brief_approval = 1 AND (c.approval_state = 'approved' OR (c.approval_revision = 0 AND LOWER(c.client_label) NOT LIKE '%altera%' AND (LOWER(c.client_label) LIKE '%aprovad%' OR al.approved_at IS NOT NULL)))", scopeSql,
+        "WHERE c.archived = 0 AND c.is_brief_approval = 1 AND NOT EXISTS (SELECT 1 FROM card_approval_events converted WHERE converted.card_id = c.id AND converted.action = 'converted_to_post') AND (c.approval_state = 'approved' OR (c.approval_revision = 0 AND LOWER(c.client_label) NOT LIKE '%altera%' AND (LOWER(c.client_label) LIKE '%aprovad%' OR al.approved_at IS NOT NULL)))", scopeSql,
         "GROUP BY c.id, c.title, c.updated_at, a.name, a.slug, a.logo_url ORDER BY approvedAt DESC LIMIT 12",
       ].join(" "), params),
     ]);
