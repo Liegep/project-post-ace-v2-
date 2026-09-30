@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { instagramOnlineFollowersDateRange, parseInstagramBestPublishingTimes, summarizeInstagramOnlineFollowersPayload } from "./meta-best-times.js";
+import { instagramOnlineFollowersDateRange, META_ONLINE_FOLLOWERS_SOURCE_TIME_ZONE, parseInstagramBestPublishingTimes, summarizeInstagramOnlineFollowersPayload } from "./meta-best-times.js";
 
 const currentMetaFormatFixture = {
   data: [{
@@ -17,10 +17,39 @@ const currentMetaFormatFixture = {
 };
 
 test("parses the real Graph API v26 online_followers values/end_time format", () => {
-  assert.deepEqual(parseInstagramBestPublishingTimes(currentMetaFormatFixture), [
-    { weekday: 4, hour: 12, averageFollowers: 200, samples: 1 },
-    { weekday: 3, hour: 12, averageFollowers: 100, samples: 1 },
-    { weekday: 4, hour: 13, averageFollowers: 90, samples: 1 },
+  assert.deepEqual(parseInstagramBestPublishingTimes(currentMetaFormatFixture, "Europe/Stockholm"), [
+    { weekday: 3, hour: 21, averageFollowers: 200, samples: 1 },
+    { weekday: 2, hour: 21, averageFollowers: 100, samples: 1 },
+    { weekday: 3, hour: 22, averageFollowers: 90, samples: 1 },
+  ]);
+});
+
+test("converts a UTC-07 bucket without changing the source weekday", () => {
+  const fixture = { data: [{ name: "online_followers", values: [{ value: { "10": 100 }, end_time: "2026-07-15T07:00:00+0000" }] }] };
+  assert.deepEqual(parseInstagramBestPublishingTimes(fixture, "Europe/Stockholm"), [
+    { weekday: 2, hour: 19, averageFollowers: 100, samples: 1 },
+  ]);
+});
+
+test("moves hour and weekday together when conversion crosses midnight", () => {
+  const fixture = { data: [{ name: "online_followers", values: [{ value: { "15": 100 }, end_time: "2026-07-15T07:00:00+0000" }] }] };
+  assert.deepEqual(parseInstagramBestPublishingTimes(fixture, "Europe/Stockholm"), [
+    { weekday: 3, hour: 0, averageFollowers: 100, samples: 1 },
+  ]);
+});
+
+test("uses Europe/Stockholm daylight-saving rules in summer and winter", () => {
+  const summer = { data: [{ name: "online_followers", values: [{ value: { "15": 100 }, end_time: "2026-07-15T07:00:00+0000" }] }] };
+  const winter = { data: [{ name: "online_followers", values: [{ value: { "15": 100 }, end_time: "2026-01-15T07:00:00+0000" }] }] };
+  assert.deepEqual(parseInstagramBestPublishingTimes(summer, "Europe/Stockholm")[0], { weekday: 3, hour: 0, averageFollowers: 100, samples: 1 });
+  assert.deepEqual(parseInstagramBestPublishingTimes(winter, "Europe/Stockholm")[0], { weekday: 3, hour: 23, averageFollowers: 100, samples: 1 });
+});
+
+test("treats the production bucket source as fixed UTC-07 and combines hour with end_time", () => {
+  assert.equal(META_ONLINE_FOLLOWERS_SOURCE_TIME_ZONE, "UTC-07:00");
+  const fixture = { data: [{ name: "online_followers", period: "lifetime", values: [{ value: { "17": 284 }, end_time: "2026-09-22T07:00:00+0000" }] }] };
+  assert.deepEqual(parseInstagramBestPublishingTimes(fixture, "Europe/Stockholm"), [
+    { weekday: 2, hour: 2, averageFollowers: 284, samples: 1 },
   ]);
 });
 
@@ -82,15 +111,17 @@ test("parses combined weekday and hour breakdown results", () => {
   ]);
 });
 
-test("safe response logging exposes shape but not ids or follower counts", () => {
-  const summary = summarizeInstagramOnlineFollowersPayload(currentMetaFormatFixture);
+test("safe response logging exposes only bounded diagnostic data and no secrets or ids", () => {
+  const summary = summarizeInstagramOnlineFollowersPayload(currentMetaFormatFixture, { since: "2026-08-31", until: "2026-09-30", targetTimeZone: "Europe/Stockholm" });
   const serialized = JSON.stringify(summary);
   assert.match(serialized, /online_followers/);
   assert.match(serialized, /valuesCount/);
   assert.match(serialized, /valueShape/);
+  assert.match(serialized, /topHours/);
+  assert.match(serialized, /endTime/);
+  assert.match(serialized, /UTC-07:00/);
   assert.doesNotMatch(serialized, /instagram-account/);
-  assert.doesNotMatch(serialized, /"followers":200/);
-  assert.doesNotMatch(serialized, /100|200/);
+  assert.doesNotMatch(serialized, /access_token|appsecret_proof/i);
 });
 
 test("requests the explicit 30-day historical window", () => {
