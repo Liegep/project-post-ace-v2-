@@ -112,6 +112,14 @@ type MetaInsight = {
 
 type MetaInsightsPayload = MetaApiError & { data?: MetaInsight[] };
 
+type InstagramOnlineFollowersPayload = MetaApiError & {
+  data?: Array<{
+    name?: string;
+    period?: string;
+    values?: Array<{ value?: Record<string, number>; end_time?: string }>;
+  }>;
+};
+
 type InstagramProfilePayload = MetaApiError & {
   id?: string;
   username?: string;
@@ -927,6 +935,98 @@ async function getFacebookInsights(input: {
       pageViews: metrics.page_views_total,
     },
     topContent,
+  };
+}
+
+export async function getInstagramBestPublishingTimes(
+  app: FastifyInstance,
+  userId: string,
+  accountId: string,
+) {
+  const config = requireMetaConfig(app);
+  const connection = await findMetaConnection(app.db, userId);
+  if (!connection) throw app.httpErrors.badRequest("Conecte uma conta Meta antes de consultar horários.");
+  if (connection.expiresAt && new Date(connection.expiresAt).getTime() <= Date.now()) {
+    throw app.httpErrors.badRequest("A conexão Meta expirou. Atualize a conexão antes de consultar horários.");
+  }
+  const token = decryptToken(connection.encryptedToken, config.encryptionKey);
+  const path = `/${accountId}/insights`;
+  const result = await fetchMetaResult<InstagramOnlineFollowersPayload>({
+    app,
+    path,
+    token,
+    appSecret: config.appSecret,
+    params: { metric: "online_followers", period: "lifetime" },
+    metricOrOperation: "instagram.account.online_followers",
+    timeoutMs: META_INSIGHTS_REQUEST_TIMEOUT_MS,
+  });
+
+  if (!result.payload?.data?.length) {
+    return {
+      available: false as const,
+      source: "instagram_online_followers" as const,
+      recommendations: [],
+      message: result.warning?.message ?? "A Meta não retornou dados de atividade dos seguidores para esta conta.",
+    };
+  }
+
+  type SlotAggregate = { weekday: number; hour: number; total: number; samples: number };
+  const slots = new Map<string, SlotAggregate>();
+  const overallHours = new Map<number, { hour: number; total: number; samples: number }>();
+
+  for (const metric of result.payload.data) {
+    for (const entry of metric.values ?? []) {
+      const hourly = entry.value;
+      if (!hourly || typeof hourly !== "object") continue;
+      let weekday: number | null = null;
+      if (entry.end_time) {
+        const end = new Date(entry.end_time);
+        if (!Number.isNaN(end.getTime())) {
+          // Meta lifetime buckets end at the next period boundary; sample just before it.
+          weekday = new Date(end.getTime() - 60_000).getUTCDay();
+        }
+      }
+      for (const [hourKey, rawValue] of Object.entries(hourly)) {
+        const hour = Number(hourKey);
+        const value = Number(rawValue);
+        if (!Number.isInteger(hour) || hour < 0 || hour > 23 || !Number.isFinite(value)) continue;
+        const overall = overallHours.get(hour) ?? { hour, total: 0, samples: 0 };
+        overall.total += value;
+        overall.samples += 1;
+        overallHours.set(hour, overall);
+        if (weekday === null) continue;
+        const key = `${weekday}:${hour}`;
+        const current = slots.get(key) ?? { weekday, hour, total: 0, samples: 0 };
+        current.total += value;
+        current.samples += 1;
+        slots.set(key, current);
+      }
+    }
+  }
+
+  const bestByWeekday = new Map<number, SlotAggregate & { averageFollowers: number }>();
+  for (const slot of slots.values()) {
+    const scored = { ...slot, averageFollowers: slot.samples ? slot.total / slot.samples : 0 };
+    const current = bestByWeekday.get(slot.weekday);
+    if (!current || scored.averageFollowers > current.averageFollowers) bestByWeekday.set(slot.weekday, scored);
+  }
+  let recommendations = [...bestByWeekday.values()]
+    .sort((left, right) => right.averageFollowers - left.averageFollowers)
+    .slice(0, 3)
+    .map(({ weekday, hour, averageFollowers, samples }) => ({ weekday, hour, averageFollowers: Math.round(averageFollowers), samples }));
+
+  if (!recommendations.length) {
+    recommendations = [...overallHours.values()]
+      .map((slot) => ({ weekday: null as number | null, hour: slot.hour, averageFollowers: slot.samples ? Math.round(slot.total / slot.samples) : 0, samples: slot.samples }))
+      .sort((left, right) => right.averageFollowers - left.averageFollowers)
+      .slice(0, 3);
+  }
+
+  return {
+    available: recommendations.length > 0,
+    source: "instagram_online_followers" as const,
+    recommendations,
+    message: recommendations.length ? null : "A Meta não retornou horários suficientes para gerar sugestões.",
   };
 }
 
