@@ -8182,8 +8182,22 @@ function MetaSavedLocationsDialog({ locations, initialMode, onUpsert, onDelete, 
     }
   };
 
-  return createPortal(<div className="meta-saved-location-backdrop" onMouseDown={onClose}>
-    <section className="meta-saved-location-dialog" role="dialog" aria-modal="true" aria-labelledby="meta-saved-location-title" onMouseDown={(event) => event.stopPropagation()}>
+  return createPortal(<div
+    className="meta-saved-location-backdrop"
+    onMouseDown={(event) => event.stopPropagation()}
+    onClick={(event) => {
+      event.stopPropagation();
+      if (event.target === event.currentTarget) onClose();
+    }}
+  >
+    <section
+      className="meta-saved-location-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="meta-saved-location-title"
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+    >
       <header><div><span>LOCALIZAÇÕES META</span><h3 id="meta-saved-location-title">{editing ? editing === "new" ? "Salvar nova localização" : "Editar localização" : "Gerenciar localizações"}</h3></div><button type="button" onClick={onClose} aria-label="Fechar">×</button></header>
       {editing ? <form onSubmit={(event) => void save(event)}>
         <label><span>Nome da localização</span><input autoFocus value={name} maxLength={255} placeholder="Ex.: Venezia" onChange={(event) => setName(event.target.value)} /></label>
