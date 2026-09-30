@@ -1145,7 +1145,21 @@ export async function searchMetaPlaces(app: FastifyInstance, userId: string, que
     metricOrOperation: "meta.places.search",
     timeoutMs: 15_000,
   });
-  if (!result.payload) throw app.httpErrors.badRequest("Não foi possível buscar locais agora.");
+  if (!result.payload) {
+    app.log.warn({
+      query: q,
+      endpoint: result.warning?.endpoint ?? "/pages/search",
+      metaCode: result.warning?.code ?? null,
+      kind: result.warning?.kind ?? "unavailable",
+      httpStatus: result.warning?.httpStatus ?? null,
+      message: result.warning?.message ?? "Sem detalhes retornados pela Meta.",
+    }, "Meta place search failed");
+    throw app.httpErrors.badRequest(
+      result.warning?.message
+        ? `Meta recusou a busca de locais: ${result.warning.message}`
+        : "Não foi possível buscar locais agora.",
+    );
+  }
   return (result.payload.data ?? []).flatMap((place) => place.id && place.name ? [{
     id: place.id,
     name: place.name,
