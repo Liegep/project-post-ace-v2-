@@ -3,7 +3,7 @@ import { findClientAccountById } from "../clients/clients.repository.js";
 import { findCardById } from "../cards/cards.repository.js";
 import { clientMetaAssetsSchema, clientMetaPublicationsQuerySchema, createMetaPublicationSchema, createMetaSavedLocationSchema, manageMetaPublicationsSchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema, metaPlaceSearchQuerySchema, metaPublicationsQuerySchema, rescheduleMetaPublicationsSchema, updateMetaSavedLocationSchema } from "./meta.schemas.js";
 import { cancelScheduledPublication, cancelScheduledPublicationGroup, consumeMetaOAuthState, createMetaSavedLocation, deleteMetaSavedLocation, findClientMetaAssets, findMetaSavedLocation, findScheduledPublication, listGlobalScheduledPublications, listMetaSavedLocations, listScheduledPublicationsForClient, rescheduleScheduledPublications, updateMetaSavedLocation, upsertClientMetaAssets } from "./meta.repository.js";
-import { archiveMetaCardIfPublicationGroupComplete, completeMetaAuthorization, createMetaAuthorizationUrl, getMetaAdsInsights, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets, scheduleMetaCardPublications, searchMetaPlaces } from "./meta.service.js";
+import { archiveMetaCardIfPublicationGroupComplete, completeMetaAuthorization, createMetaAuthorizationUrl, getInstagramBestPublishingTimes, getMetaAdsInsights, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets, scheduleMetaCardPublications, searchMetaPlaces } from "./meta.service.js";
 
 function assertSuperAdmin(request: FastifyRequest) {
   if (!request.auth) throw request.server.httpErrors.unauthorized("Sessão obrigatória.");
@@ -187,6 +187,26 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
     const { clientAccountId } = request.params as { clientAccountId: string };
     if (!await findClientAccountById(app.db, clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
     return { assets: await findClientMetaAssets(app.db, clientAccountId) };
+  });
+
+  app.get("/clients/:clientAccountId/meta-best-times", async (request) => {
+    const auth = assertSuperAdmin(request);
+    const { clientAccountId } = request.params as { clientAccountId: string };
+    if (!await findClientAccountById(app.db, clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
+    const assets = await findClientMetaAssets(app.db, clientAccountId);
+    if (!assets?.instagramAccountId) {
+      return { available: false, source: "instagram_online_followers", recommendations: [], message: "O cliente não possui Instagram profissional vinculado." };
+    }
+    const startedAt = Date.now();
+    request.log.info({ clientAccountId, instagramAccountId: assets.instagramAccountId }, "Meta best publishing times request started");
+    try {
+      const result = await getInstagramBestPublishingTimes(app, auth.user.id, assets.instagramAccountId);
+      request.log.info({ clientAccountId, durationMs: Date.now() - startedAt, available: result.available, recommendationCount: result.recommendations.length }, "Meta best publishing times request completed");
+      return result;
+    } catch (error) {
+      request.log.error({ err: error, clientAccountId, durationMs: Date.now() - startedAt }, "Meta best publishing times request failed");
+      throw error;
+    }
   });
 
   app.get("/clients/:clientAccountId/meta-insights", async (request) => {
