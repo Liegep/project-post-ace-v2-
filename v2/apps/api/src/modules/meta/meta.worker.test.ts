@@ -488,6 +488,7 @@ test("an oversized Facebook Story photo fails before it reaches Meta", async () 
 test("a Facebook video Story starts, uploads, processes and publishes in the official order", async () => {
   const requests: URL[] = [];
   let statusChecks = 0;
+  let finishCalls = 0;
   const harness = publishingHarness(async (input, init) => {
     const url = new URL(String(input));
     requests.push(url);
@@ -498,30 +499,48 @@ test("a Facebook video Story starts, uploads, processes and publishes in the off
       statusChecks += 1;
       return metaResponse({ status: { video_status: statusChecks === 1 ? "processing" : "ready" } });
     }
-    if (init?.method === "POST" && url.pathname.endsWith("/facebook-1/video_stories") && url.searchParams.get("upload_phase") === "finish") return metaResponse({ success: true, post_id: "story-post-1" });
+    if (init?.method === "POST" && url.pathname.endsWith("/facebook-1/video_stories") && url.searchParams.get("upload_phase") === "finish") {
+      finishCalls += 1;
+      return metaResponse({ success: true, post_id: "story-post-1" });
+    }
     if (url.pathname.endsWith("/facebook-1/stories")) return metaResponse({ data: [{ post_id: "story-post-1", media_id: "story-video-1", status: "PUBLISHED", url: "https://facebook.com/stories/story-post-1" }] });
     throw new Error(`Unexpected Meta request: ${url}`);
   }, { platform: "facebook", mediaType: "story", mediaUrl: "https://cdn.example.com/story.mp4" });
   const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { facebookStoryPollIntervalMs: 1, facebookStoryMaxWaitMs: 20 }));
   assert.equal(result.published, 1);
   assert.equal(statusChecks, 2);
+  assert.equal(finishCalls, 1);
   const startIndex = requests.findIndex((url) => url.pathname.endsWith("/facebook-1/video_stories") && url.searchParams.get("upload_phase") === "start");
   const uploadIndex = requests.findIndex((url) => url.hostname === "rupload.facebook.com");
-  const statusIndex = requests.findIndex((url) => url.pathname.endsWith("/story-video-1") && url.searchParams.get("fields") === "status");
+  const statusIndexes = requests.map((url, index) => url.pathname.endsWith("/story-video-1") && url.searchParams.get("fields") === "status" ? index : -1).filter((index) => index >= 0);
   const finishIndex = requests.findIndex((url) => url.pathname.endsWith("/facebook-1/video_stories") && url.searchParams.get("upload_phase") === "finish");
-  assert.ok(startIndex >= 0 && uploadIndex > startIndex && statusIndex > uploadIndex && finishIndex > statusIndex);
+  assert.equal(statusIndexes.length, 2);
+  assert.ok(startIndex >= 0 && uploadIndex > startIndex && statusIndexes[0] > uploadIndex && finishIndex > statusIndexes[0] && statusIndexes[1] > finishIndex);
   assert.equal(requests[uploadIndex]?.searchParams.has("access_token"), false);
   assert.equal(requests[finishIndex]?.searchParams.get("access_token"), "page-token");
+  const logMessages = harness.state.logs.flatMap((entry) => entry.filter((value): value is string => typeof value === "string"));
+  assert.ok(logMessages.includes("Facebook Story video start completed"));
+  assert.ok(logMessages.includes("Facebook Story video upload completed"));
+  assert.ok(logMessages.includes("Facebook Story video status after_upload"));
+  assert.ok(logMessages.includes("Facebook Story video finish started"));
+  assert.ok(logMessages.includes("Facebook Story video finish completed"));
+  assert.ok(logMessages.includes("Facebook Story video status after_finish"));
 });
 
-test("a Facebook video Story processing error marks the publication failed before finish", async () => {
+test("a Facebook video Story processing error after finish marks the publication failed", async () => {
   let finishCalls = 0;
+  let statusChecks = 0;
   const harness = publishingHarness(async (input, init) => {
     const url = new URL(String(input));
     if (url.hostname === "rupload.facebook.com") return metaResponse({ success: true });
     if (url.pathname.endsWith("/facebook-1") && url.searchParams.get("fields")?.includes("access_token")) return metaResponse({ id: "facebook-1", access_token: "page-token" });
     if (url.pathname.endsWith("/facebook-1/video_stories") && url.searchParams.get("upload_phase") === "start") return metaResponse({ video_id: "story-video-1", upload_url: "https://rupload.facebook.com/video-upload/v26.0/story-video-1" });
-    if (url.pathname.endsWith("/story-video-1")) return metaResponse({ status: { video_status: "error", processing_phase: { status: "error", errors: [{ error_message: "Unsupported Story codec" }] } } });
+    if (url.pathname.endsWith("/story-video-1")) {
+      statusChecks += 1;
+      return statusChecks === 1
+        ? metaResponse({ status: { video_status: "processing", uploading_phase: { status: "complete" }, processing_phase: { status: "in_progress" }, publishing_phase: { status: "not_started" } } })
+        : metaResponse({ status: { video_status: "error", processing_phase: { status: "error", errors: [{ error_message: "Unsupported Story codec" }] } } });
+    }
     if (init?.method === "POST" && url.pathname.endsWith("/facebook-1/video_stories") && url.searchParams.get("upload_phase") === "finish") {
       finishCalls += 1;
       return metaResponse({ success: true, post_id: "story-post-1" });
@@ -530,7 +549,7 @@ test("a Facebook video Story processing error marks the publication failed befor
   }, { platform: "facebook", mediaType: "story", mediaUrl: "https://cdn.example.com/story.mp4" });
   const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { facebookStoryPollIntervalMs: 1, facebookStoryMaxWaitMs: 20 }));
   assert.equal(result.failed, 1);
-  assert.equal(finishCalls, 0);
+  assert.equal(finishCalls, 1);
   assert.match(harness.state.lastError ?? "", /Unsupported Story codec/i);
 });
 
@@ -575,6 +594,26 @@ test("a Facebook Story final publish timeout is not retried", async () => {
     throw new Error(`Unexpected Meta request: ${url}`);
   }, { platform: "facebook", mediaType: "story", mediaUrl: "https://cdn.example.com/story.jpg" });
   const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10));
+  assert.equal(result.failed, 1);
+  assert.equal(finishCalls, 1);
+  assert.match(harness.state.lastError ?? "", /Verifique a Página/i);
+});
+
+test("a Facebook video Story finish timeout is not retried", async () => {
+  let finishCalls = 0;
+  const harness = publishingHarness(async (input) => {
+    const url = new URL(String(input));
+    if (url.hostname === "rupload.facebook.com") return metaResponse({ success: true });
+    if (url.pathname.endsWith("/facebook-1") && url.searchParams.get("fields")?.includes("access_token")) return metaResponse({ id: "facebook-1", access_token: "page-token" });
+    if (url.pathname.endsWith("/facebook-1/video_stories") && url.searchParams.get("upload_phase") === "start") return metaResponse({ video_id: "story-video-1", upload_url: "https://rupload.facebook.com/video-upload/v26.0/story-video-1" });
+    if (url.pathname.endsWith("/story-video-1") && url.searchParams.get("fields") === "status") return metaResponse({ status: { video_status: "processing", uploading_phase: { status: "complete" }, processing_phase: { status: "in_progress" }, publishing_phase: { status: "not_started" } } });
+    if (url.pathname.endsWith("/facebook-1/video_stories") && url.searchParams.get("upload_phase") === "finish") {
+      finishCalls += 1;
+      throw timeoutError();
+    }
+    throw new Error(`Unexpected Meta request: ${url}`);
+  }, { platform: "facebook", mediaType: "story", mediaUrl: "https://cdn.example.com/story.mp4" });
+  const result = await withFetch(harness.wrappedFetch, () => processDueMetaPublications(harness.app, 10, { facebookStoryPollIntervalMs: 1, facebookStoryMaxWaitMs: 20 }));
   assert.equal(result.failed, 1);
   assert.equal(finishCalls, 1);
   assert.match(harness.state.lastError ?? "", /Verifique a Página/i);

@@ -156,12 +156,12 @@ type FacebookPost = {
 
 type FacebookPostsPayload = MetaApiError & { data?: FacebookPost[]; paging?: { next?: string } };
 
-type FacebookReelStatusPayload = MetaApiError & {
+type FacebookVideoStatusPayload = MetaApiError & {
   status?: {
     video_status?: string;
     uploading_phase?: { status?: string; errors?: Array<{ error_code?: number; error_message?: string }> };
     processing_phase?: { status?: string; errors?: Array<{ error_code?: number; error_message?: string }> };
-    publishing_phase?: { status?: string; errors?: Array<{ error_code?: number; error_message?: string }> };
+    publishing_phase?: { status?: string; publish_status?: string; publish_time?: number; errors?: Array<{ error_code?: number; error_message?: string }> };
   };
 };
 
@@ -1473,7 +1473,7 @@ async function publishInstagramStory(app: FastifyInstance, input: {
   });
 }
 
-function facebookReelStatusError(payload: FacebookReelStatusPayload) {
+function facebookVideoStatusError(payload: FacebookVideoStatusPayload) {
   const phases = [payload.status?.uploading_phase, payload.status?.processing_phase, payload.status?.publishing_phase];
   return phases.flatMap((phase) => phase?.errors ?? []).find((error) => error.error_message)?.error_message ?? null;
 }
@@ -1697,7 +1697,7 @@ async function waitForFacebookReel(app: FastifyInstance, input: {
   const deadline = Date.now() + maxWaitMs;
   for (let attempt = 1; Date.now() < deadline; attempt += 1) {
     await wait(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
-    const result = await fetchMetaResult<FacebookReelStatusPayload>({
+    const result = await fetchMetaResult<FacebookVideoStatusPayload>({
       app,
       path: `/${input.videoId}`,
       token: input.pageToken,
@@ -1722,7 +1722,7 @@ async function waitForFacebookReel(app: FastifyInstance, input: {
     if (videoStatus === "ready" || phaseStatuses.publishing === "complete" || phaseStatuses.publishing === "completed") return;
     const phaseError = Object.values(phaseStatuses).some((phase) => phase === "error");
     if (["error", "expired", "upload_failed"].includes(videoStatus) || phaseError) {
-      throw new Error(facebookReelStatusError(result.payload) || `A Meta não conseguiu processar o Reel do Facebook (${videoStatus}).`);
+      throw new Error(facebookVideoStatusError(result.payload) || `A Meta não conseguiu processar o Reel do Facebook (${videoStatus}).`);
     }
     if (!["uploading", "upload_complete", "processing"].includes(videoStatus)) {
       throw new Error(`A Meta retornou um status inesperado para o Reel do Facebook: ${videoStatus}.`);
@@ -1979,7 +1979,68 @@ async function publishFacebookStoryImage(app: FastifyInstance, input: {
   return { publishedMetaId: postId, publishedPermalink };
 }
 
-async function waitForFacebookStoryProcessing(app: FastifyInstance, input: {
+async function readFacebookStoryVideoStatus(app: FastifyInstance, input: {
+  publicationId: string;
+  videoId: string;
+  pageToken: string;
+  appSecret: string;
+  stage: "after_upload" | "after_finish";
+  attempt: number;
+}) {
+  const startedAt = Date.now();
+  const result = await fetchMetaResult<FacebookVideoStatusPayload>({
+    app,
+    path: `/${input.videoId}`,
+    token: input.pageToken,
+    appSecret: input.appSecret,
+    params: { fields: "status" },
+    metricOrOperation: `facebook.publish.story.video.status.${input.stage}`,
+    timeoutMs: META_FACEBOOK_STORY_VIDEO_STATUS_TIMEOUT_MS,
+  });
+  const durationMs = Date.now() - startedAt;
+  if (!result.payload) {
+    app.log.warn({
+      publicationId: input.publicationId,
+      videoId: input.videoId,
+      stage: input.stage,
+      attempt: input.attempt,
+      durationMs,
+      warningKind: result.warning?.kind ?? null,
+    }, `Facebook Story video status ${input.stage} unavailable`);
+    return null;
+  }
+  const status = result.payload.status;
+  const snapshot = {
+    payload: result.payload,
+    videoStatus: status?.video_status?.trim().toLowerCase() || "unknown",
+    uploadingStatus: status?.uploading_phase?.status?.trim().toLowerCase() || null,
+    processingStatus: status?.processing_phase?.status?.trim().toLowerCase() || null,
+    publishingStatus: status?.publishing_phase?.status?.trim().toLowerCase() || null,
+    publishStatus: status?.publishing_phase?.publish_status?.trim().toLowerCase() || null,
+  };
+  app.log.info({
+    publicationId: input.publicationId,
+    videoId: input.videoId,
+    stage: input.stage,
+    attempt: input.attempt,
+    durationMs,
+    video_status: snapshot.videoStatus,
+    uploading_phase_status: snapshot.uploadingStatus,
+    processing_phase_status: snapshot.processingStatus,
+    publishing_phase_status: snapshot.publishingStatus,
+    publish_status: snapshot.publishStatus,
+  }, `Facebook Story video status ${input.stage}`);
+  return snapshot;
+}
+
+function assertFacebookStoryStatusHasNoError(snapshot: NonNullable<Awaited<ReturnType<typeof readFacebookStoryVideoStatus>>>) {
+  const phaseStatuses = [snapshot.uploadingStatus, snapshot.processingStatus, snapshot.publishingStatus];
+  if (["error", "expired", "failed", "upload_failed"].includes(snapshot.videoStatus) || phaseStatuses.includes("error")) {
+    throw new Error(facebookVideoStatusError(snapshot.payload) || `A Meta não conseguiu processar a Story do Facebook (${snapshot.videoStatus}).`);
+  }
+}
+
+async function waitForFacebookStoryPublication(app: FastifyInstance, input: {
   publicationId: string;
   videoId: string;
   pageToken: string;
@@ -1991,36 +2052,19 @@ async function waitForFacebookStoryProcessing(app: FastifyInstance, input: {
   const maxWaitMs = input.maxWaitMs ?? 5 * 60_000;
   const deadline = Date.now() + maxWaitMs;
   for (let attempt = 1; Date.now() < deadline; attempt += 1) {
-    await wait(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
-    const result = await fetchMetaResult<FacebookReelStatusPayload>({
-      app,
-      path: `/${input.videoId}`,
-      token: input.pageToken,
-      appSecret: input.appSecret,
-      params: { fields: "status" },
-      metricOrOperation: "facebook.publish.story.video.status",
-      timeoutMs: META_FACEBOOK_STORY_VIDEO_STATUS_TIMEOUT_MS,
+    if (attempt > 1) await wait(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
+    const snapshot = await readFacebookStoryVideoStatus(app, {
+      ...input,
+      stage: "after_finish",
+      attempt,
     });
-    if (!result.payload) throw new Error(result.warning?.kind === "timeout"
-      ? "A Meta demorou demais para responder ao consultar o processamento da Story do Facebook."
-      : result.warning?.message || "Não foi possível consultar o processamento da Story do Facebook.");
-    const status = result.payload.status;
-    const videoStatus = status?.video_status?.trim().toLowerCase() || "unknown";
-    const phaseStatuses = {
-      uploading: status?.uploading_phase?.status?.trim().toLowerCase() || null,
-      processing: status?.processing_phase?.status?.trim().toLowerCase() || null,
-      publishing: status?.publishing_phase?.status?.trim().toLowerCase() || null,
-    };
-    app.log.info({ publicationId: input.publicationId, videoId: input.videoId, attempt, video_status: videoStatus, phases: phaseStatuses }, "Facebook Story status checked");
-    if (videoStatus === "ready") return;
-    if (["error", "expired", "upload_failed"].includes(videoStatus) || Object.values(phaseStatuses).some((phase) => phase === "error")) {
-      throw new Error(facebookReelStatusError(result.payload) || `A Meta não conseguiu processar a Story do Facebook (${videoStatus}).`);
-    }
-    if (!["uploading", "upload_complete", "processing"].includes(videoStatus)) {
-      throw new Error(`A Meta retornou um status inesperado para a Story do Facebook: ${videoStatus}.`);
-    }
+    if (!snapshot) return;
+    assertFacebookStoryStatusHasNoError(snapshot);
+    if (snapshot.publishStatus === "published"
+      || ["complete", "completed"].includes(snapshot.publishingStatus ?? "")
+      || snapshot.videoStatus === "ready") return;
   }
-  throw new Error("A Meta ainda não concluiu o processamento da Story do Facebook. Verifique a Página antes de tentar novamente.");
+  throw new Error("A Meta ainda não confirmou a publicação da Story do Facebook. Verifique a Página antes de tentar novamente.");
 }
 
 async function publishFacebookStoryVideo(app: FastifyInstance, input: {
@@ -2045,6 +2089,7 @@ async function publishFacebookStoryVideo(app: FastifyInstance, input: {
   if (pageAccess.tokenSource !== "page") {
     throw new Error("A Meta não forneceu um Page Access Token para a Página do Facebook vinculada.");
   }
+  const startStartedAt = Date.now();
   const start = await fetchMetaResult<MetaApiError & { video_id?: string; upload_url?: string }>({
     app,
     path: `/${input.pageId}/video_stories`,
@@ -2059,6 +2104,8 @@ async function publishFacebookStoryVideo(app: FastifyInstance, input: {
     ? "A Meta demorou demais para iniciar o envio da Story de vídeo do Facebook."
     : start.warning?.message || "A Meta não iniciou o envio da Story de vídeo do Facebook.");
   const videoId = start.payload.video_id;
+  app.log.info({ publicationId: input.publicationId, videoId, operation: "facebook.publish.story.video.start", durationMs: Date.now() - startStartedAt }, "Facebook Story video start completed");
+  const uploadStartedAt = Date.now();
   await uploadFacebookVideoFromUrl(app, {
     publicationId: input.publicationId,
     videoId,
@@ -2068,14 +2115,18 @@ async function publishFacebookStoryVideo(app: FastifyInstance, input: {
     appSecret: context.appSecret,
     mediaKind: "story",
   });
-  await waitForFacebookStoryProcessing(app, {
+  app.log.info({ publicationId: input.publicationId, videoId, operation: "facebook.publish.story.video.upload", durationMs: Date.now() - uploadStartedAt }, "Facebook Story video upload completed");
+  const statusAfterUpload = await readFacebookStoryVideoStatus(app, {
     publicationId: input.publicationId,
     videoId,
     pageToken: pageAccess.pageToken,
     appSecret: context.appSecret,
-    pollIntervalMs: input.pollIntervalMs,
-    maxWaitMs: input.maxWaitMs,
+    stage: "after_upload",
+    attempt: 1,
   });
+  if (statusAfterUpload) assertFacebookStoryStatusHasNoError(statusAfterUpload);
+  const finishStartedAt = Date.now();
+  app.log.info({ publicationId: input.publicationId, videoId, operation: "facebook.publish.story.video.finish" }, "Facebook Story video finish started");
   const finish = await fetchMetaResult<MetaApiError & { success?: boolean; post_id?: string }>({
     app,
     path: `/${input.pageId}/video_stories`,
@@ -2093,6 +2144,15 @@ async function publishFacebookStoryVideo(app: FastifyInstance, input: {
     throw new Error(finish.warning?.message || "A Meta não confirmou a publicação da Story de vídeo na Página do Facebook.");
   }
   const postId = String(finish.payload.post_id);
+  app.log.info({ publicationId: input.publicationId, videoId, postId, operation: "facebook.publish.story.video.finish", durationMs: Date.now() - finishStartedAt }, "Facebook Story video finish completed");
+  await waitForFacebookStoryPublication(app, {
+    publicationId: input.publicationId,
+    videoId,
+    pageToken: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    pollIntervalMs: input.pollIntervalMs,
+    maxWaitMs: input.maxWaitMs,
+  });
   const publishedPermalink = await findFacebookStoryPermalink(app, {
     pageId: input.pageId,
     postId,
