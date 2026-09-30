@@ -9602,14 +9602,25 @@ function MetaPublicationsWorkspace() {
     setLoading(true);
     setError("");
     try {
-      const until = new Date(`${periodTo}T00:00:00`);
+      let from = new Date(`${periodFrom}T00:00:00`);
+      let until = new Date(`${periodTo}T00:00:00`);
       until.setDate(until.getDate() + 1);
+
+      if (view === "calendar") {
+        const visibleFrom = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+        visibleFrom.setDate(visibleFrom.getDate() - visibleFrom.getDay());
+        const visibleUntil = new Date(visibleFrom);
+        visibleUntil.setDate(visibleUntil.getDate() + 42);
+        if (visibleFrom < from) from = visibleFrom;
+        if (visibleUntil > until) until = visibleUntil;
+      }
+
       const result = await loadGlobalMetaPublications({
         clientAccountId: clientAccountId || undefined,
         platform: platform || undefined,
         mediaType: mediaType || undefined,
         status: status || undefined,
-        from: new Date(`${periodFrom}T00:00:00`).toISOString(),
+        from: from.toISOString(),
         to: until.toISOString(),
         limit,
         offset: view === "calendar" ? 0 : offset,
@@ -9622,7 +9633,7 @@ function MetaPublicationsWorkspace() {
     } finally {
       setLoading(false);
     }
-  }, [clientAccountId, limit, mediaType, offset, periodFrom, periodTo, platform, status, view]);
+  }, [anchor, clientAccountId, limit, mediaType, offset, periodFrom, periodTo, platform, status, view]);
 
   useEffect(() => { void listAdminClients().then((result) => setClients(result.items)).catch(() => setClients([])); }, []);
   useEffect(() => { void refresh(); const timer = window.setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 60_000); return () => window.clearInterval(timer); }, [refresh]);
