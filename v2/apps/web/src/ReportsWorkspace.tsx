@@ -105,6 +105,14 @@ function sanitizeReportNotesHtml(value: string) {
   return output.innerHTML;
 }
 
+function reportNotesPlainText(value: string | null) {
+  const visible = visibleReportNotes(value);
+  if (!visible) return "";
+  const html = sanitizeReportNotesHtml(visible);
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  return (doc.body.textContent ?? "").replace(/\s+/g, " ").trim();
+}
+
 function ReportNotesEditor({ value, onChange }: { value: string | null; onChange: (value: string | null) => void }) {
   const editorRef = useRef<HTMLDivElement>(null);
   const selectionRef = useRef<Range | null>(null);
@@ -253,7 +261,7 @@ async function downloadReportPdf(report: ClientReport, clientName: string, local
   pdf.setFillColor(255, 255, 255); pdf.roundedRect(25, 128, 545, 668, 22, 22, "F"); pdf.setTextColor(39, 51, 87); pdf.setFontSize(18); pdf.text(clampLines(report.title, 490, 2), contentX, 164, { lineHeightFactor: 1.2 }); pdf.setTextColor(92, 106, 137); pdf.setFontSize(10); pdf.text(clampLines(reportSummary(report, language), 480, 3), contentX, 190, { lineHeightFactor: 1.35 });
   pdf.setTextColor(79, 91, 122); pdf.setFontSize(9); pdf.text(copy.organic, contentX, 235);
   (["instagram", "facebook"] as const).forEach((channel, channelIndex) => { const x = contentX + channelIndex * 258; pdf.setFillColor(channel === "instagram" ? 252 : 242, channel === "instagram" ? 243 : 247, 255); pdf.roundedRect(x, 252, 246, 300, 14, 14, "F"); pdf.setTextColor(39, 51, 87); pdf.setFontSize(16); pdf.text(channel === "instagram" ? "Instagram" : "Facebook", x + 15, 281); reportPlatformRows(report, channel).forEach(([key, value], rowIndex) => { const y = 312 + rowIndex * 25; if (y > 535) return; pdf.setTextColor(103, 117, 148); pdf.setFontSize(8); pdf.text(metricText[language][key], x + 15, y, { maxWidth: 145 }); pdf.setTextColor(value == null ? 145 : 39, value == null ? 151 : 51, value == null ? 166 : 87); pdf.setFontSize(value == null ? 8 : 11); pdf.text(displayMetric(value, language), x + 230, y, { align: "right" }); }); });
-  const notes = visibleReportNotes(report.notes); if (notes) { pdf.setTextColor(79, 91, 122); pdf.setFontSize(9); pdf.text(pdfSafeText(copy.teamNotes.toUpperCase()), contentX, 735); pdf.setTextColor(82, 94, 122); pdf.text(clampLines(notes, 500, 3), contentX, 754, { lineHeightFactor: 1.3 }); }
+  const notes = reportNotesPlainText(report.notes); if (notes) { pdf.setTextColor(79, 91, 122); pdf.setFontSize(9); pdf.text(pdfSafeText(copy.teamNotes.toUpperCase()), contentX, 735); pdf.setTextColor(82, 94, 122); pdf.text(clampLines(notes, 500, 3), contentX, 754, { lineHeightFactor: 1.3 }); }
   drawFooter();
 
   if (report.metrics.ads) {
