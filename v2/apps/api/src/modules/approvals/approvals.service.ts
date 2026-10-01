@@ -56,7 +56,10 @@ export async function reconcileApprovedCardColumns(app: FastifyInstance) {
     ].join(" "),
   );
 
-  // This is a legacy repair, not a workflow rule. Cards that already have a\n  // column may have been moved deliberately and must never be routed again at\n  // startup.\n  const [rows] = await app.db.query<Array<RowDataPacket & { clientAccountId: string }>>(
+  // This is a legacy repair, not a workflow rule. Cards that already have a
+  // column may have been moved deliberately and must never be routed again at
+  // startup.
+  const [rows] = await app.db.query<Array<RowDataPacket & { clientAccountId: string }>>(
     [
       "SELECT DISTINCT c.client_account_id AS clientAccountId",
       "FROM kanban_cards c",
