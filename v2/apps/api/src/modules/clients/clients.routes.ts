@@ -288,8 +288,19 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         [tomorrowStart, upcomingEnd, ...params],
       ),
       app.db.query<RowDataPacket[]>(
-        ["SELECT c.id, c.title, c.scheduled_at AS scheduledAt, c.primary_media_url AS mediaUrl, a.name AS clientName, a.logo_url AS clientLogoUrl FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id WHERE c.archived = 0 AND c.scheduled_at >= ? AND c.scheduled_at < ?", scopeSql, "ORDER BY c.scheduled_at ASC, c.title ASC LIMIT 50"].join(" "),
-        [todayStart, tomorrowStart, ...params],
+        [
+          "SELECT p.id, MAX(p.title) AS title, p.scheduledAt, MAX(p.mediaUrl) AS mediaUrl, MAX(p.clientName) AS clientName, MAX(p.clientLogoUrl) AS clientLogoUrl FROM (",
+          "SELECT c.id, c.title, c.scheduled_at AS scheduledAt, c.primary_media_url AS mediaUrl, a.name AS clientName, a.logo_url AS clientLogoUrl",
+          "FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id",
+          "WHERE c.archived = 0 AND c.scheduled_at >= ? AND c.scheduled_at < ?", scopeSql,
+          "UNION ALL",
+          "SELECT COALESCE(mp.card_id, CONCAT('meta-', mp.id)) AS id, COALESCE(kc.title, 'Publicação Meta') AS title, mp.scheduled_at AS scheduledAt, COALESCE(mp.media_url, kc.primary_media_url) AS mediaUrl, a.name AS clientName, a.logo_url AS clientLogoUrl",
+          "FROM meta_scheduled_publications mp LEFT JOIN kanban_cards kc ON kc.id = mp.card_id JOIN client_accounts a ON a.id = mp.client_account_id",
+          "WHERE mp.status IN ('scheduled', 'publishing', 'published') AND mp.scheduled_at >= ? AND mp.scheduled_at < ?",
+          scope.mode === "global" ? "" : `AND mp.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")})`,
+          ") p GROUP BY p.id, p.scheduledAt ORDER BY p.scheduledAt ASC, title ASC LIMIT 50",
+        ].join(" "),
+        [todayStart, tomorrowStart, ...params, todayStart, tomorrowStart, ...params],
       ),
       app.db.query<RowDataPacket[]>(
         ["SELECT e.id, e.title, e.task_description AS taskDescription, e.starts_at AS startsAt, e.color, e.is_completed AS isCompleted, e.agenda_label_id AS labelId, l.name AS labelName, a.name AS clientName FROM agenda_events e LEFT JOIN client_accounts a ON a.id = e.client_account_id LEFT JOIN agenda_labels l ON l.id = e.agenda_label_id WHERE e.starts_at >= ? AND e.starts_at < ?", scope.mode === "global" ? "" : ` AND (e.client_account_id IS NULL OR e.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")}))`, "ORDER BY e.starts_at ASC LIMIT 6"].join(" "),
