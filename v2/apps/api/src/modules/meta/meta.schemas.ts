@@ -40,6 +40,7 @@ export const metaInsightsQuerySchema = z.object({
 export type MetaInsightsPeriod = z.infer<typeof metaInsightsQuerySchema>;
 
 export const metaBestTimesQuerySchema = z.object({
+  destinationId: z.string().trim().min(1).max(190).optional(),
   timeZone: z.string().trim().min(1).max(100).default("UTC").refine((value) => {
     try {
       new Intl.DateTimeFormat("en", { timeZone: value }).format();
@@ -74,6 +75,35 @@ export const clientMetaAssetsSchema = z.object({
 
 export type ClientMetaAssetsInput = z.infer<typeof clientMetaAssetsSchema>;
 
+const metaDestinationFields = {
+  name: z.string().trim().min(1, "Informe o nome do destino.").max(255),
+  facebookPageId: nullableMetaIdentifier,
+  facebookPageName: nullableMetaLabel,
+  instagramAccountId: nullableMetaIdentifier,
+  instagramUsername: nullableMetaLabel,
+  isDefault: z.boolean().optional(),
+};
+
+function validateMetaDestination(value: { facebookPageId?: string | null; facebookPageName?: string | null; instagramAccountId?: string | null; instagramUsername?: string | null }, context: z.RefinementCtx) {
+  if (Boolean(value.facebookPageId) !== Boolean(value.facebookPageName)) {
+    context.addIssue({ code: "custom", message: "A Página do Facebook deve ter id e nome.", path: ["facebookPageId"] });
+  }
+  if (Boolean(value.instagramAccountId) !== Boolean(value.instagramUsername)) {
+    context.addIssue({ code: "custom", message: "A conta do Instagram deve ter id e usuário.", path: ["instagramAccountId"] });
+  }
+  if (!value.facebookPageId && !value.instagramAccountId) {
+    context.addIssue({ code: "custom", message: "Selecione ao menos Facebook ou Instagram.", path: ["facebookPageId"] });
+  }
+}
+
+export const createMetaPublishDestinationSchema = z.object(metaDestinationFields).superRefine(validateMetaDestination);
+export const updateMetaPublishDestinationSchema = z.object(metaDestinationFields).partial().refine(
+  (value) => Object.keys(value).length > 0,
+  "Informe ao menos um campo para atualizar.",
+);
+export type CreateMetaPublishDestinationInput = z.infer<typeof createMetaPublishDestinationSchema>;
+export type UpdateMetaPublishDestinationInput = z.infer<typeof updateMetaPublishDestinationSchema>;
+
 const isoDateTimeSchema = z.string().trim().refine((value) => {
   if (!/[zZ]|[+-]\d{2}:\d{2}$/.test(value)) return false;
   return !Number.isNaN(new Date(value).getTime());
@@ -94,6 +124,7 @@ const instagramUserTagSchema = z.object({
 
 export const createMetaPublicationSchema = z.object({
   cardId: z.string().trim().min(1).max(190),
+  destinationId: z.string().trim().min(1).max(190).optional(),
   platform: metaPublicationPlatformSchema.optional(),
   platforms: z.array(metaPublicationPlatformSchema).min(1).max(2).optional(),
   scheduledAt: isoDateTimeSchema,

@@ -62,11 +62,13 @@ function publishingHarness(fetchImpl: typeof fetch, overrides: {
   instagramUserTags?: Array<{ username: string; x: number; y: number }>;
 } = {}) {
   const encryptionKey = Buffer.alloc(32, 7);
-  const state = { status: "scheduled", lastError: null as string | null, attemptCount: 0, fetchCalls: 0, logs: [] as unknown[][] };
+  const state = { status: "scheduled", lastError: null as string | null, attemptCount: 0, fetchCalls: 0, assetResolutionQueries: 0, logs: [] as unknown[][] };
   const publicationRow = {
     id: "publication-1",
     client_account_id: "client-1",
     card_id: null,
+    destination_id: "destination-1",
+    destination_name: "Marca A",
     platform: overrides.platform ?? "instagram",
     meta_asset_id: overrides.platform === "facebook" ? "facebook-1" : "instagram-1",
     scheduled_at: "2026-09-29T16:00:00.000000Z",
@@ -101,6 +103,7 @@ function publishingHarness(fetchImpl: typeof fetch, overrides: {
         return [{ affectedRows: 1 }, []];
       }
       if (sql.includes("FROM client_meta_assets")) {
+        state.assetResolutionQueries += 1;
         return [[{ facebook_page_id: "facebook-1", facebook_page_name: "Design Hub", instagram_account_id: "instagram-1", instagram_username: "designhub", meta_ad_account_id: null, meta_ad_account_name: null, updated_at: new Date() }], []];
       }
       if (sql.includes("FROM meta_connections")) {
@@ -238,6 +241,7 @@ test("a scheduled Instagram publication still completes normally", async () => {
   assert.equal(result.published, 1);
   assert.equal(harness.state.status, "published");
   assert.equal(harness.state.fetchCalls, 4);
+  assert.equal(harness.state.assetResolutionQueries, 0, "the worker must publish with the immutable asset snapshot instead of the current default destination");
 });
 
 test("a finished Reel container publishes with its caption and without image-only fields", async () => {

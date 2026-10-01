@@ -18,6 +18,8 @@ const publication = (overrides: Partial<MetaScheduledPublication> = {}): MetaSch
   id: "publication-1",
   cardId: "card-1",
   cardTitle: "Post Primavera",
+  destinationId: "destination-a",
+  destinationName: "Marca A",
   platform: "instagram",
   scheduledAt: "2026-09-30T12:30:45.000Z",
   timezone: "Europe/Stockholm",
@@ -69,6 +71,15 @@ test("Instagram and Facebook group once while preserving individual status", () 
   ]);
   assert.equal(events.length, 1);
   assert.deepEqual(events[0]?.platforms.map((item) => [item.platform, item.status]), [["instagram", "published"], ["facebook", "failed"]]);
+});
+
+test("two destinations at the same card and minute remain separate calendar events", () => {
+  const events = composeClientMetaCalendarEvents([], [
+    publication(),
+    publication({ id: "publication-2", destinationId: "destination-b", destinationName: "Marca B", platform: "facebook" }),
+  ]);
+  assert.equal(events.length, 2);
+  assert.deepEqual(events.map((event) => event.destinationName).sort(), ["Marca A", "Marca B"]);
 });
 
 test("cancelled publications do not pollute the client calendar", () => {

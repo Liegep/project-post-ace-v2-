@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { Pool, ResultSetHeader, RowDataPacket } from "mysql2/promise";
-import type { ClientMetaAssetsInput, CreateMetaSavedLocationInput, UpdateMetaSavedLocationInput } from "./meta.schemas.js";
+import type { ClientMetaAssetsInput, CreateMetaPublishDestinationInput, CreateMetaSavedLocationInput, UpdateMetaPublishDestinationInput, UpdateMetaSavedLocationInput } from "./meta.schemas.js";
 
 type ConnectionRow = RowDataPacket & {
   access_token_encrypted: string;
@@ -29,12 +29,27 @@ type SavedLocationRow = RowDataPacket & {
   updated_at: Date | string;
 };
 
+type MetaPublishDestinationRow = RowDataPacket & {
+  id: string;
+  client_account_id: string;
+  name: string;
+  facebook_page_id: string | null;
+  facebook_page_name: string | null;
+  instagram_account_id: string | null;
+  instagram_username: string | null;
+  is_default: number | boolean;
+  created_at: Date | string;
+  updated_at: Date | string;
+};
+
 export type MetaScheduledPublicationStatus = "scheduled" | "publishing" | "published" | "failed" | "cancelled";
 
 type ScheduledPublicationRow = RowDataPacket & {
   id: string;
   client_account_id: string;
   card_id: string | null;
+  destination_id: string | null;
+  destination_name: string | null;
   platform: "instagram" | "facebook";
   meta_asset_id: string;
   scheduled_at: string;
@@ -61,7 +76,7 @@ type ScheduledPublicationRow = RowDataPacket & {
 };
 
 const scheduledPublicationSelect = [
-  "SELECT id, client_account_id, card_id, platform, meta_asset_id,",
+  "SELECT id, client_account_id, card_id, destination_id, destination_name, platform, meta_asset_id,",
   "DATE_FORMAT(scheduled_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS scheduled_at, timezone, caption, media_url, media_urls_json, media_type, reel_cover_url, location_id, location_name, instagram_user_tags_json,",
   "status, attempt_count, idempotency_key, published_meta_id, published_permalink, last_error, created_by_user_id, created_at, updated_at, published_at",
   "FROM meta_scheduled_publications",
@@ -111,11 +126,28 @@ function mapSavedLocation(row: SavedLocationRow) {
   };
 }
 
+function mapMetaPublishDestination(row: MetaPublishDestinationRow) {
+  return {
+    id: row.id,
+    clientAccountId: row.client_account_id,
+    name: row.name,
+    facebookPageId: row.facebook_page_id,
+    facebookPageName: row.facebook_page_name,
+    instagramAccountId: row.instagram_account_id,
+    instagramUsername: row.instagram_username,
+    isDefault: Boolean(row.is_default),
+    createdAt: isoValue(row.created_at)!,
+    updatedAt: isoValue(row.updated_at)!,
+  };
+}
+
 function mapScheduledPublication(row: ScheduledPublicationRow) {
   return {
     id: row.id,
     clientAccountId: row.client_account_id,
     cardId: row.card_id,
+    destinationId: row.destination_id,
+    destinationName: row.destination_name,
     platform: row.platform,
     metaAssetId: row.meta_asset_id,
     scheduledAt: row.scheduled_at,
@@ -207,7 +239,13 @@ export async function findMetaConnection(db: Pool, userId: string) {
 
 export async function findClientMetaAssets(db: Pool, clientAccountId: string) {
   const [rows] = await db.query<AssetsRow[]>(
-    "SELECT facebook_page_id, facebook_page_name, instagram_account_id, instagram_username, meta_ad_account_id, meta_ad_account_name, updated_at FROM client_meta_assets WHERE client_account_id = ? LIMIT 1",
+    [
+      "SELECT CASE WHEN d.id IS NOT NULL THEN d.facebook_page_id ELSE a.facebook_page_id END AS facebook_page_id, CASE WHEN d.id IS NOT NULL THEN d.facebook_page_name ELSE a.facebook_page_name END AS facebook_page_name,",
+      "CASE WHEN d.id IS NOT NULL THEN d.instagram_account_id ELSE a.instagram_account_id END AS instagram_account_id, CASE WHEN d.id IS NOT NULL THEN d.instagram_username ELSE a.instagram_username END AS instagram_username,",
+      "a.meta_ad_account_id, a.meta_ad_account_name, COALESCE(d.updated_at, a.updated_at) AS updated_at",
+      "FROM client_accounts c LEFT JOIN client_meta_assets a ON a.client_account_id = c.id",
+      "LEFT JOIN meta_publish_destinations d ON d.client_account_id = c.id AND d.is_default = TRUE WHERE c.id = ? LIMIT 1",
+    ].join(" "),
     [clientAccountId],
   );
   const row = rows[0];
@@ -235,6 +273,137 @@ export async function upsertClientMetaAssets(db: Pool, clientAccountId: string, 
     input.metaAdAccountId ?? null, input.metaAdAccountName ?? null,
   ]);
   return findClientMetaAssets(db, clientAccountId);
+}
+
+const metaPublishDestinationSelect = [
+  "SELECT id, client_account_id, name, facebook_page_id, facebook_page_name, instagram_account_id, instagram_username, is_default, created_at, updated_at",
+  "FROM meta_publish_destinations",
+].join(" ");
+
+export async function listMetaPublishDestinations(db: Pool, clientAccountId: string) {
+  const [rows] = await db.query<MetaPublishDestinationRow[]>(
+    `${metaPublishDestinationSelect} WHERE client_account_id = ? ORDER BY is_default DESC, name ASC, created_at ASC`,
+    [clientAccountId],
+  );
+  return rows.map(mapMetaPublishDestination);
+}
+
+export async function findMetaPublishDestination(db: Pool, destinationId: string, clientAccountId?: string) {
+  const [rows] = await db.query<MetaPublishDestinationRow[]>(
+    `${metaPublishDestinationSelect} WHERE id = ?${clientAccountId ? " AND client_account_id = ?" : ""} LIMIT 1`,
+    clientAccountId ? [destinationId, clientAccountId] : [destinationId],
+  );
+  return rows[0] ? mapMetaPublishDestination(rows[0]) : null;
+}
+
+export async function findDefaultMetaPublishDestination(db: Pool, clientAccountId: string) {
+  const [rows] = await db.query<MetaPublishDestinationRow[]>(
+    `${metaPublishDestinationSelect} WHERE client_account_id = ? ORDER BY is_default DESC, created_at ASC LIMIT 1`,
+    [clientAccountId],
+  );
+  return rows[0] ? mapMetaPublishDestination(rows[0]) : null;
+}
+
+async function lockDestinationClient(connection: Awaited<ReturnType<Pool["getConnection"]>>, clientAccountId: string) {
+  await connection.query("SELECT id FROM client_accounts WHERE id = ? FOR UPDATE", [clientAccountId]);
+}
+
+export async function createMetaPublishDestination(db: Pool, clientAccountId: string, input: CreateMetaPublishDestinationInput) {
+  const connection = await db.getConnection();
+  const id = crypto.randomUUID();
+  try {
+    await connection.beginTransaction();
+    await lockDestinationClient(connection, clientAccountId);
+    const [countRows] = await connection.query<(RowDataPacket & { total: number | string })[]>("SELECT COUNT(*) AS total FROM meta_publish_destinations WHERE client_account_id = ?", [clientAccountId]);
+    const isDefault = input.isDefault === true || Number(countRows[0]?.total ?? 0) === 0;
+    if (isDefault) await connection.query("UPDATE meta_publish_destinations SET is_default = FALSE WHERE client_account_id = ?", [clientAccountId]);
+    await connection.query(
+      [
+        "INSERT INTO meta_publish_destinations",
+        "(id, client_account_id, name, facebook_page_id, facebook_page_name, instagram_account_id, instagram_username, is_default)",
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+      ].join(" "),
+      [id, clientAccountId, input.name, input.facebookPageId ?? null, input.facebookPageName ?? null, input.instagramAccountId ?? null, input.instagramUsername ?? null, isDefault],
+    );
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+  return findMetaPublishDestination(db, id, clientAccountId);
+}
+
+export async function updateMetaPublishDestination(db: Pool, clientAccountId: string, destinationId: string, input: UpdateMetaPublishDestinationInput) {
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    await lockDestinationClient(connection, clientAccountId);
+    const [rows] = await connection.query<MetaPublishDestinationRow[]>(`${metaPublishDestinationSelect} WHERE id = ? AND client_account_id = ? FOR UPDATE`, [destinationId, clientAccountId]);
+    if (!rows[0]) { await connection.rollback(); return null; }
+    const normalizedInput = { ...input };
+    if (input.isDefault === true) await connection.query("UPDATE meta_publish_destinations SET is_default = FALSE WHERE client_account_id = ?", [clientAccountId]);
+    if (input.isDefault === false && Boolean(rows[0].is_default)) {
+      const [replacementRows] = await connection.query<(RowDataPacket & { id: string })[]>(
+        "SELECT id FROM meta_publish_destinations WHERE client_account_id = ? AND id <> ? ORDER BY created_at ASC LIMIT 1 FOR UPDATE",
+        [clientAccountId, destinationId],
+      );
+      const replacementId = replacementRows[0]?.id;
+      if (replacementId) await connection.query("UPDATE meta_publish_destinations SET is_default = TRUE WHERE id = ?", [replacementId]);
+      else delete normalizedInput.isDefault;
+    }
+    const fields: string[] = [];
+    const values: unknown[] = [];
+    const fieldMap = {
+      name: "name", facebookPageId: "facebook_page_id", facebookPageName: "facebook_page_name",
+      instagramAccountId: "instagram_account_id", instagramUsername: "instagram_username", isDefault: "is_default",
+    } as const;
+    for (const [key, column] of Object.entries(fieldMap) as Array<[keyof typeof fieldMap, string]>) {
+      if (normalizedInput[key] !== undefined) { fields.push(`${column} = ?`); values.push(normalizedInput[key]); }
+    }
+    if (fields.length) await connection.query(`UPDATE meta_publish_destinations SET ${fields.join(", ")}, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND client_account_id = ?`, [...values, destinationId, clientAccountId]);
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
+  return findMetaPublishDestination(db, destinationId, clientAccountId);
+}
+
+export async function countActivePublicationsForDestination(db: Pool, clientAccountId: string, destinationId: string) {
+  const [rows] = await db.query<(RowDataPacket & { total: number | string })[]>(
+    "SELECT COUNT(*) AS total FROM meta_scheduled_publications WHERE client_account_id = ? AND destination_id = ? AND status IN ('scheduled', 'publishing', 'failed')",
+    [clientAccountId, destinationId],
+  );
+  return Number(rows[0]?.total ?? 0);
+}
+
+export async function deleteMetaPublishDestination(db: Pool, clientAccountId: string, destinationId: string) {
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    await lockDestinationClient(connection, clientAccountId);
+    const [rows] = await connection.query<MetaPublishDestinationRow[]>(`${metaPublishDestinationSelect} WHERE id = ? AND client_account_id = ? FOR UPDATE`, [destinationId, clientAccountId]);
+    const current = rows[0];
+    if (!current) { await connection.rollback(); return false; }
+    await connection.query("DELETE FROM meta_publish_destinations WHERE id = ? AND client_account_id = ?", [destinationId, clientAccountId]);
+    if (Boolean(current.is_default)) {
+      await connection.query(
+        "UPDATE meta_publish_destinations SET is_default = TRUE WHERE client_account_id = ? ORDER BY created_at ASC LIMIT 1",
+        [clientAccountId],
+      );
+    }
+    await connection.commit();
+    return true;
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
 }
 
 export async function listMetaSavedLocations(db: Pool) {
@@ -282,6 +451,8 @@ export async function deleteMetaSavedLocation(db: Pool, id: string) {
 export type CreateScheduledPublicationInput = {
   clientAccountId: string;
   cardId: string | null;
+  destinationId: string | null;
+  destinationName: string | null;
   platform: "instagram" | "facebook";
   metaAssetId: string;
   scheduledAt: string;
@@ -309,11 +480,11 @@ export async function createScheduledPublications(db: Pool, inputs: CreateSchedu
         await connection.query(
           [
             "INSERT INTO meta_scheduled_publications",
-            "(id, client_account_id, card_id, platform, meta_asset_id, scheduled_at, timezone, caption, media_url, media_urls_json, media_type, reel_cover_url, location_id, location_name, instagram_user_tags_json, status, created_by_user_id, idempotency_key)",
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)",
+            "(id, client_account_id, card_id, destination_id, destination_name, platform, meta_asset_id, scheduled_at, timezone, caption, media_url, media_urls_json, media_type, reel_cover_url, location_id, location_name, instagram_user_tags_json, status, created_by_user_id, idempotency_key)",
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)",
           ].join(" "),
           [
-            id, input.clientAccountId, input.cardId, input.platform, input.metaAssetId,
+            id, input.clientAccountId, input.cardId, input.destinationId, input.destinationName, input.platform, input.metaAssetId,
             mysqlUtcDateTime(input.scheduledAt), input.timezone, input.caption, input.mediaUrl,
             JSON.stringify(input.mediaUrls), input.mediaType, input.reelCoverUrl, input.locationId, input.locationName, JSON.stringify(input.instagramUserTags),
             input.createdByUserId, input.idempotencyKey,
@@ -360,7 +531,7 @@ export async function listScheduledPublicationsForClient(db: Pool, clientAccount
   if (range.to) { conditions.push("p.scheduled_at < ?"); params.push(mysqlUtcDateTime(range.to)); }
   const [rows] = await db.query<ScheduledPublicationRow[]>(
     [
-      "SELECT p.id, p.client_account_id, p.card_id, p.platform, p.meta_asset_id,",
+      "SELECT p.id, p.client_account_id, p.card_id, p.destination_id, p.destination_name, p.platform, p.meta_asset_id,",
       "DATE_FORMAT(p.scheduled_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS scheduled_at, p.timezone, p.caption, p.media_url, p.media_urls_json, p.media_type, p.reel_cover_url, p.location_id, p.location_name, p.instagram_user_tags_json,",
       "p.status, p.attempt_count, p.idempotency_key, p.published_meta_id, p.published_permalink, p.last_error, p.created_by_user_id, p.created_at, p.updated_at, p.published_at, k.title AS card_title",
       "FROM meta_scheduled_publications p LEFT JOIN kanban_cards k ON k.id = p.card_id",
@@ -405,7 +576,7 @@ export async function listGlobalScheduledPublications(db: Pool, filters: GlobalM
   const safeLimit = Math.max(1, Math.min(200, Math.trunc(filters.limit)));
   const safeOffset = Math.max(0, Math.trunc(filters.offset));
   const fields = [
-    "p.id, p.client_account_id, p.card_id, p.platform, p.meta_asset_id,",
+    "p.id, p.client_account_id, p.card_id, p.destination_id, p.destination_name, p.platform, p.meta_asset_id,",
     "DATE_FORMAT(p.scheduled_at, '%Y-%m-%dT%H:%i:%s.%fZ') AS scheduled_at, p.timezone, p.caption, p.media_url, p.media_urls_json, p.media_type, p.reel_cover_url, p.location_id, p.location_name, p.instagram_user_tags_json,",
     "p.status, p.attempt_count, p.idempotency_key, p.published_meta_id, p.published_permalink, p.last_error, p.created_by_user_id, p.created_at, p.updated_at, p.published_at,",
     "c.name AS client_name, c.slug AS client_slug, k.title AS card_title",
