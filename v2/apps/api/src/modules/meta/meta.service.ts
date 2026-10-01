@@ -433,10 +433,14 @@ export async function completeMetaAuthorization(app: FastifyInstance, input: { c
   const profile = await getMetaJson<MetaProfileResponse>(profileUrl);
   if (!profile.id) throw new Error("A Meta não retornou a identificação da conta.");
 
+  const existingConnection = await findMetaConnection(app.db, input.userId);
   await upsertMetaConnection(app.db, {
     userId: input.userId,
     encryptedToken: encryptToken(accessToken, config.encryptionKey),
-    expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
+    // Some successful Meta exchanges omit expires_in. Do not erase a known
+    // expiration in that case; keeping the last known date is safer than
+    // turning expiry monitoring off entirely.
+    expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : existingConnection?.expiresAt ? new Date(existingConnection.expiresAt) : null,
     metaUserId: profile.id,
     accountName: profile.name ?? null,
   });
