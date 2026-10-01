@@ -1405,9 +1405,6 @@ function ClientMetaIntegrationPanel({ slug }: { slug: string }) {
   const [editingDestinationId, setEditingDestinationId] = useState<string | "new" | null>(null);
   const [destinationForm, setDestinationForm] = useState({ name: "", facebookPageId: "", instagramAccountId: "", isDefault: false });
   const [loading, setLoading] = useState(true);
-  const [dashboardMetaStatus, setDashboardMetaStatus] = useState<Awaited<ReturnType<typeof loadMetaStatus>> | null>(null);
-  const [metaRenewing, setMetaRenewing] = useState(false);
-  const [metaRenewError, setMetaRenewError] = useState("");
   const [loadingAssets, setLoadingAssets] = useState(false);
   const [assetsLoaded, setAssetsLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -2120,6 +2117,9 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
   const [scheduleActivity, setScheduleActivity] = useState<DashboardClientActivity | null>(null);
   const [scheduledNotice, setScheduledNotice] = useState<{ title: string; clientName: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dashboardMetaStatus, setDashboardMetaStatus] = useState<Awaited<ReturnType<typeof loadMetaStatus>> | null>(null);
+  const [metaRenewing, setMetaRenewing] = useState(false);
+  const [metaRenewError, setMetaRenewError] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
