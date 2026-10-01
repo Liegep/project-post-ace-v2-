@@ -1189,7 +1189,7 @@ export async function scheduleMetaCardPublications(app: FastifyInstance, input: 
     idempotencyKey: crypto.createHash("sha256")
       .update([input.clientAccountId, input.destinationId ?? "legacy", input.card.id, plan.platform, scheduledAt].join(":"))
       .digest("hex"),
-  })));
+  }))), () => moveKanbanCardToScheduledColumn(app, input.clientAccountId, input.card.id, input.actor));
 }
 
 export async function searchMetaPlaces(app: FastifyInstance, userId: string, query: string) {
