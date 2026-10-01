@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import net from "node:net";
 import type { FastifyInstance } from "fastify";
-import { archiveKanbanCard } from "../cards/cards.service.js";
+import { archiveKanbanCard, moveKanbanCardToScheduledColumn } from "../cards/cards.service.js";
 import { instagramOnlineFollowersDateRange, META_ONLINE_FOLLOWERS_SOURCE_TIME_ZONE, parseInstagramBestPublishingTimes, summarizeInstagramOnlineFollowersPayload } from "./meta-best-times.js";
 import {
   canArchiveScheduledPublicationCard,
@@ -16,6 +16,7 @@ import {
   upsertMetaConnection,
 } from "./meta.repository.js";
 import { planMetaCardPublications } from "./meta.publication.js";
+import { completeMetaScheduling } from "./meta-schedule-completion.js";
 import type { MetaInsightsPeriod } from "./meta.schemas.js";
 
 const GRAPH_VERSION = "v26.0";
@@ -1136,6 +1137,7 @@ async function getPublishingContext(app: FastifyInstance, userId: string) {
 
 export async function scheduleMetaCardPublications(app: FastifyInstance, input: {
   userId: string;
+  actor: { id: string; fullName: string; globalRole: string };
   clientAccountId: string;
   destinationId: string | null;
   destinationName: string | null;
@@ -1166,7 +1168,7 @@ export async function scheduleMetaCardPublications(app: FastifyInstance, input: 
   const storyPlatforms = mediaType === "story" ? planned.plans.map((plan) => plan.platform) : [];
   const validatedUrls = new Map(planned.plans[0]?.mediaUrls.map((url) => [url, assertPublicHttpUrl(app, url, mediaType, storyPlatforms)]) ?? []);
   const scheduledAt = new Date(input.scheduledAt).toISOString();
-  return createScheduledPublications(app.db, planned.plans.map((plan) => ({
+  return completeMetaScheduling(() => createScheduledPublications(app.db, planned.plans.map((plan) => ({
     clientAccountId: input.clientAccountId,
     cardId: input.card.id,
     destinationId: input.destinationId,
@@ -1187,7 +1189,7 @@ export async function scheduleMetaCardPublications(app: FastifyInstance, input: 
     idempotencyKey: crypto.createHash("sha256")
       .update([input.clientAccountId, input.destinationId ?? "legacy", input.card.id, plan.platform, scheduledAt].join(":"))
       .digest("hex"),
-  })));
+  }))), () => moveKanbanCardToScheduledColumn(app, input.clientAccountId, input.card.id, input.actor));
 }
 
 export async function searchMetaPlaces(app: FastifyInstance, userId: string, query: string) {

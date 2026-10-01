@@ -372,6 +372,7 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
     if (!card) throw app.httpErrors.notFound("Card não encontrado.");
     const results = await scheduleMetaCardPublications(app, {
       userId: auth.user.id,
+      actor: { id: auth.user.id, fullName: auth.user.fullName, globalRole: auth.user.globalRole },
       clientAccountId,
       destinationId: destination?.id ?? null,
       destinationName: destination?.name ?? null,
