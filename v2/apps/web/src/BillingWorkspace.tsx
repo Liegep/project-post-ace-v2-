@@ -52,18 +52,43 @@ export function BillingInvoiceDocument({ invoice }: { invoice: BillingInvoice })
   return <article className="invoice-paper"><div className="invoice-paper-head"><img className="issuer-logo" src={liegePaschoaliniLogo} alt="Liege Paschoalini Studio" /><div><p>{text.invoice}</p><h1>#{invoice.number}</h1><span className={`invoice-status ${invoice.status}`}>{statusLabel[invoice.status]}</span></div></div><hr /><div className="invoice-addresses"><div><small>{text.from}</small><strong>LIEGE PASCHOALINI STUDIO</strong><p>Temperaturgatan, 67<br />Suécia<br />hello@liegepaschoalini.design</p></div><div><small>{text.to}</small><strong>{invoice.clientName || "Nome do cliente"}</strong><p>{invoice.clientAddress || "Endereço do cliente"}<br />{invoice.clientCountry || "País"}<br />{invoice.clientEmail || "E-mail do cliente"}<br />{invoice.clientTaxId}</p></div></div><div className="invoice-dates"><span><small>{text.issued}</small><b>{date(invoice.issueDate)}</b></span><span><small>{text.due}</small><b>{date(invoice.dueDate)}</b></span><span><small>{text.period}</small><b>{invoice.period || "-"}</b></span></div><div className="invoice-lines"><div className="invoice-lines-head"><span>{text.description}</span><span>{text.quantity}</span><span>{text.price}</span><span>{text.total}</span></div>{invoice.lines.map((line) => <div key={line.id}><span>{line.description}</span><span>{line.quantity}</span><span>{money(line.unitPrice, invoice.currency)}</span><strong>{money(line.quantity * line.unitPrice, invoice.currency)}</strong></div>)}</div><div className="invoice-total"><span>Subtotal</span><span>{money(invoiceTotal(invoice), invoice.currency)}</span><strong>{text.total}</strong><b>{money(invoiceTotal(invoice), invoice.currency)}</b></div>{invoice.notes ? <p className="invoice-notes">{invoice.notes}</p> : null}{invoice.attachments.length ? <div className="invoice-notes"><strong>Documentos anexos</strong>{invoice.attachments.map((attachment) => <p key={attachment.id}><a href={attachment.fileUrl} target="_blank" rel="noreferrer">{attachment.fileName}</a></p>)}</div> : null}<footer className="invoice-footer"><div className="invoice-payment"><small>{text.payment}</small><p>IBAN: SE51 5000 0000 0538 3021 2593<br />BIC: ESSESESSXXX<br />{text.account}: 53830212593 - SEB Bank<br />PayPal: slmariew@gmail.com<br />Pix: pix@liegepaschoalini.design</p></div><span>liegestudio.com</span></footer></article>;
 }
 
+const receiptLocaleTag: Record<BillingInvoice["locale"], string> = { pt: "pt-BR", en: "en-US", it: "it-IT", es: "es-ES", sv: "sv-SE" };
+const receiptPaymentMethods: Record<BillingInvoice["locale"], Record<string, string>> = {
+  pt: { "Transferência bancária": "Transferência bancária", Pix: "Pix", PayPal: "PayPal", Cartão: "Cartão", Dinheiro: "Dinheiro", Outro: "Outro" },
+  en: { "Transferência bancária": "Bank transfer", Pix: "Pix", PayPal: "PayPal", Cartão: "Card", Dinheiro: "Cash", Outro: "Other" },
+  it: { "Transferência bancária": "Bonifico bancario", Pix: "Pix", PayPal: "PayPal", Cartão: "Carta", Dinheiro: "Contanti", Outro: "Altro" },
+  es: { "Transferência bancária": "Transferencia bancaria", Pix: "Pix", PayPal: "PayPal", Cartão: "Tarjeta", Dinheiro: "Efectivo", Outro: "Otro" },
+  sv: { "Transferência bancária": "Banköverföring", Pix: "Pix", PayPal: "PayPal", Cartão: "Kort", Dinheiro: "Kontant", Outro: "Annat" },
+};
+const receiptLabels: Record<BillingInvoice["locale"], {
+  receipt: string; paid: string; receivedFrom: string; clientFallback: string; amountPrefix: string; referencePrefix: string;
+  invoice: string; paymentDate: string; paymentMethod: string; notProvided: string; amountReceived: string; period: string; digitalDocument: string;
+}> = {
+  pt: { receipt: "RECIBO", paid: "PAGO", receivedFrom: "RECEBEMOS DE", clientFallback: "Cliente", amountPrefix: "o valor de", referencePrefix: "referente a", invoice: "FATURA", paymentDate: "DATA DO PAGAMENTO", paymentMethod: "FORMA DE PAGAMENTO", notProvided: "Não informada", amountReceived: "VALOR RECEBIDO", period: "Período", digitalDocument: "Documento emitido digitalmente pelo Design Hub." },
+  en: { receipt: "RECEIPT", paid: "PAID", receivedFrom: "RECEIVED FROM", clientFallback: "Client", amountPrefix: "the amount of", referencePrefix: "for", invoice: "INVOICE", paymentDate: "PAYMENT DATE", paymentMethod: "PAYMENT METHOD", notProvided: "Not provided", amountReceived: "AMOUNT RECEIVED", period: "Period", digitalDocument: "Document issued digitally by Design Hub." },
+  it: { receipt: "RICEVUTA", paid: "PAGATO", receivedFrom: "RICEVUTO DA", clientFallback: "Cliente", amountPrefix: "l'importo di", referencePrefix: "relativo a", invoice: "FATTURA", paymentDate: "DATA DI PAGAMENTO", paymentMethod: "METODO DI PAGAMENTO", notProvided: "Non indicato", amountReceived: "IMPORTO RICEVUTO", period: "Periodo", digitalDocument: "Documento emesso digitalmente tramite Design Hub." },
+  es: { receipt: "RECIBO", paid: "PAGADO", receivedFrom: "RECIBIDO DE", clientFallback: "Cliente", amountPrefix: "el importe de", referencePrefix: "correspondiente a", invoice: "FACTURA", paymentDate: "FECHA DE PAGO", paymentMethod: "FORMA DE PAGO", notProvided: "No informada", amountReceived: "IMPORTE RECIBIDO", period: "Período", digitalDocument: "Documento emitido digitalmente por Design Hub." },
+  sv: { receipt: "KVITTO", paid: "BETALD", receivedFrom: "MOTTAGET FRÅN", clientFallback: "Kund", amountPrefix: "beloppet", referencePrefix: "avseende", invoice: "FAKTURA", paymentDate: "BETALNINGSDATUM", paymentMethod: "BETALNINGSSÄTT", notProvided: "Ej angivet", amountReceived: "MOTTAGET BELOPP", period: "Period", digitalDocument: "Dokumentet har utfärdats digitalt via Design Hub." },
+};
+
 export function BillingReceiptDocument({ invoice }: { invoice: BillingInvoice }) {
   const snapshot = invoice.receiptSnapshot;
   if (!snapshot) return null;
+  const copy = receiptLabels[invoice.locale];
+  const locale = receiptLocaleTag[invoice.locale];
+  const receiptMoney = (value: number) => new Intl.NumberFormat(locale, { style: "currency", currency: snapshot.currency }).format(value);
+  const receiptDate = (value: string) => value ? new Intl.DateTimeFormat(locale).format(new Date(`${value}T12:00:00`)) : "-";
+  const invoiceLabel = snapshot.title || `${copy.invoice} #${snapshot.invoiceNumber}`;
+  const paymentMethod = snapshot.paymentMethod ? (receiptPaymentMethods[invoice.locale][snapshot.paymentMethod] ?? snapshot.paymentMethod) : copy.notProvided;
   return <article className="receipt-paper">
-    <header><img className="issuer-logo" src={liegePaschoaliniLogo} alt="Liege Paschoalini Studio" /><div><p>RECIBO</p><h1>{snapshot.receiptNumber}</h1><span className="receipt-paid-badge">PAGO</span></div></header>
+    <header><img className="issuer-logo" src={liegePaschoaliniLogo} alt="Liege Paschoalini Studio" /><div><p>{copy.receipt}</p><h1>{snapshot.receiptNumber}</h1><span className="receipt-paid-badge">{copy.paid}</span></div></header>
     <div className="receipt-rule" />
-    <section className="receipt-lead"><small>RECEBEMOS DE</small><h2>{snapshot.clientName || "Cliente"}</h2><p>o valor de <strong>{money(snapshot.total, snapshot.currency)}</strong>, referente a <strong>{snapshot.title || `Fatura #${snapshot.invoiceNumber}`}</strong>.</p></section>
-    <div className="receipt-meta"><span><small>FATURA</small><b>#{snapshot.invoiceNumber}</b></span><span><small>DATA DO PAGAMENTO</small><b>{date(snapshot.paidAt)}</b></span><span><small>FORMA DE PAGAMENTO</small><b>{snapshot.paymentMethod || "Não informada"}</b></span></div>
-    <div className="receipt-lines">{snapshot.lines.map((line, index) => <div key={line.id ?? index}><span>{line.description}</span><span>{line.quantity} × {money(line.unitPrice, snapshot.currency)}</span><strong>{money(line.quantity * line.unitPrice, snapshot.currency)}</strong></div>)}</div>
-    <div className="receipt-total"><span>VALOR RECEBIDO</span><strong>{money(snapshot.total, snapshot.currency)}</strong></div>
-    {snapshot.period ? <p className="receipt-period">Período: {snapshot.period}</p> : null}
-    <footer><div><strong>LIEGE PASCHOALINI STUDIO</strong><span>hello@liegepaschoalini.design · liegestudio.com</span></div><span>Documento emitido digitalmente pelo Design Hub.</span></footer>
+    <section className="receipt-lead"><small>{copy.receivedFrom}</small><h2>{snapshot.clientName || copy.clientFallback}</h2><p>{copy.amountPrefix} <strong>{receiptMoney(snapshot.total)}</strong>, {copy.referencePrefix} <strong>{invoiceLabel}</strong>.</p></section>
+    <div className="receipt-meta"><span><small>{copy.invoice}</small><b>#{snapshot.invoiceNumber}</b></span><span><small>{copy.paymentDate}</small><b>{receiptDate(snapshot.paidAt)}</b></span><span><small>{copy.paymentMethod}</small><b>{paymentMethod}</b></span></div>
+    <div className="receipt-lines">{snapshot.lines.map((line, index) => <div key={line.id ?? index}><span>{line.description}</span><span>{line.quantity} × {receiptMoney(line.unitPrice)}</span><strong>{receiptMoney(line.quantity * line.unitPrice)}</strong></div>)}</div>
+    <div className="receipt-total"><span>{copy.amountReceived}</span><strong>{receiptMoney(snapshot.total)}</strong></div>
+    {snapshot.period ? <p className="receipt-period">{copy.period}: {snapshot.period}</p> : null}
+    <footer><div><strong>LIEGE PASCHOALINI STUDIO</strong><span>hello@liegepaschoalini.design · liegestudio.com</span></div><span>{copy.digitalDocument}</span></footer>
   </article>;
 }
 
