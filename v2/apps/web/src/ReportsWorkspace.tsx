@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createAdminReport, deleteAdminReport, extractAdminReportMetrics, listAdminClients, listAdminReports,
   listPortalReportsBySlug, loadClientMetaAdsInsights, loadClientMetaAssets, loadClientMetaInsights, loadMetaStatus,
@@ -68,6 +68,98 @@ function visibleReportNotes(value: string | null) {
   try { const parsed = JSON.parse(raw.slice(jsonStart, jsonEnd < 0 ? undefined : jsonEnd)) as { text?: unknown }; const observation = typeof parsed.text === "string" ? parsed.text.trim() : ""; const remainder = jsonEnd < 0 ? "" : raw.slice(jsonEnd + 2).trim(); return [observation ? `Observações:\n${observation}` : "", remainder].filter(Boolean).join("\n\n"); } catch { return raw; }
 }
 
+const reportNotesAllowedTags = new Set(["P", "BR", "H2", "H3", "STRONG", "B", "EM", "I", "U", "UL", "OL", "LI", "BLOCKQUOTE", "A"]);
+function sanitizeReportNotesHtml(value: string) {
+  if (typeof window === "undefined") return value;
+  const source = value.trim();
+  const looksLikeHtml = /<\/?[a-z][\s\S]*>/i.test(source);
+  const html = looksLikeHtml
+    ? source
+    : source.split(/\n{2,}/).map((paragraph) => `<p>${paragraph.replace(/\n/g, "<br>")}</p>`).join("");
+  const doc = new DOMParser().parseFromString(`<div>${html}</div>`, "text/html");
+  const root = doc.body.firstElementChild as HTMLElement | null;
+  if (!root) return "";
+  const clean = (node: Node): Node | null => {
+    if (node.nodeType === Node.TEXT_NODE) return doc.createTextNode(node.textContent ?? "");
+    if (node.nodeType !== Node.ELEMENT_NODE) return null;
+    const element = node as HTMLElement;
+    if (!reportNotesAllowedTags.has(element.tagName)) {
+      const fragment = doc.createDocumentFragment();
+      Array.from(element.childNodes).forEach((child) => { const cleaned = clean(child); if (cleaned) fragment.appendChild(cleaned); });
+      return fragment;
+    }
+    const copy = doc.createElement(element.tagName.toLowerCase());
+    if (element.tagName === "A") {
+      const href = element.getAttribute("href") ?? "";
+      if (/^https?:\/\//i.test(href)) {
+        copy.setAttribute("href", href);
+        copy.setAttribute("target", "_blank");
+        copy.setAttribute("rel", "noreferrer");
+      }
+    }
+    Array.from(element.childNodes).forEach((child) => { const cleaned = clean(child); if (cleaned) copy.appendChild(cleaned); });
+    return copy;
+  };
+  const output = doc.createElement("div");
+  Array.from(root.childNodes).forEach((child) => { const cleaned = clean(child); if (cleaned) output.appendChild(cleaned); });
+  return output.innerHTML;
+}
+
+function ReportNotesEditor({ value, onChange }: { value: string | null; onChange: (value: string | null) => void }) {
+  const editorRef = useRef<HTMLDivElement>(null);
+  const selectionRef = useRef<Range | null>(null);
+  useEffect(() => {
+    if (!editorRef.current) return;
+    const html = sanitizeReportNotesHtml(visibleReportNotes(value));
+    if (editorRef.current.innerHTML !== html) editorRef.current.innerHTML = html;
+  }, [value]);
+  const rememberSelection = () => {
+    const selection = window.getSelection();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    if (range && editorRef.current?.contains(range.commonAncestorContainer)) selectionRef.current = range.cloneRange();
+  };
+  const format = (command: string, commandValue?: string) => {
+    editorRef.current?.focus();
+    if (selectionRef.current) {
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(selectionRef.current);
+    }
+    document.execCommand(command, false, commandValue);
+    rememberSelection();
+    onChange(sanitizeReportNotesHtml(editorRef.current?.innerHTML ?? "") || null);
+  };
+  return <section className="report-notes-rich-editor">
+    <div className="report-notes-toolbar" role="toolbar" aria-label="Ferramentas de formatação das considerações">
+      <select aria-label="Estilo do texto" defaultValue="p" onChange={(event) => format("formatBlock", event.target.value)}>
+        <option value="p">Texto normal</option>
+        <option value="h2">Título</option>
+        <option value="h3">Subtítulo</option>
+        <option value="blockquote">Citação</option>
+      </select>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("bold")}><b>B</b></button>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("italic")}><em>I</em></button>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("underline")}><u>U</u></button>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("insertUnorderedList")} title="Lista">☷</button>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("insertOrderedList")} title="Lista numerada">1.</button>
+      <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => { const href = window.prompt("Cole o link"); if (href) format("createLink", href); }} title="Inserir link">⌁</button>
+    </div>
+    <div
+      ref={editorRef}
+      className="report-notes-rich-paper"
+      contentEditable
+      suppressContentEditableWarning
+      onMouseUp={rememberSelection}
+      onKeyUp={rememberSelection}
+      onInput={() => {
+        rememberSelection();
+        onChange(sanitizeReportNotesHtml(editorRef.current?.innerHTML ?? "") || null);
+      }}
+      data-placeholder="Escreva considerações, destaques e próximos passos para o cliente."
+    />
+  </section>;
+}
+
 function reportPlatformRows(report: Pick<ClientReport, "metrics">, channel: "instagram" | "facebook") {
   if (channel === "instagram") return METRICS.map(([key]) => [key, report.metrics.instagram[key]] as const);
   return [...METRICS.map(([key]) => [key, report.metrics.facebook[key]] as const), ...FACEBOOK_EXTRAS.map(([key]) => [key, report.metrics.facebook[key]] as const)];
@@ -106,7 +198,7 @@ function ReportDocument({ report, clientName, locale = "pt", printable = false }
     <section className="report-organic"><span>{copy.organic}</span><div className="report-platform-grid"><PlatformMetrics report={report} channel="instagram" locale={language} /><PlatformMetrics report={report} channel="facebook" locale={language} /></div></section>
     {report.metrics.ads ? <AdsMetricsSection report={report} locale={language} /> : null}
     {report.highlights.length ? <section className="report-highlights"><span>{copy.highlights}</span><div className="report-highlight-grid">{report.highlights.map((item, index) => <article className="report-highlight-card" key={`${item.channel}-${item.title}-${index}`}><HighlightThumbnail item={item} /><div><p>{item.title}</p><footer><span>{item.channel === "instagram" ? "Instagram" : "Facebook"}</span><strong>{number(item.value, language)} {metricText[language].engagement.toLocaleLowerCase(browserLocale[language])}</strong></footer></div></article>)}</div></section> : null}
-    {notes ? <section className="report-notes"><strong>{copy.teamNotes}</strong><p>{notes}</p></section> : null}
+    {notes ? <section className="report-notes"><strong>{copy.teamNotes}</strong><div className="report-notes-content" dangerouslySetInnerHTML={{ __html: sanitizeReportNotesHtml(notes) }} /></section> : null}
   </article>;
 }
 
@@ -321,7 +413,7 @@ export function ReportsWorkspace({ newReportSignal = 0 }: { newReportSignal?: nu
     <section className="report-metrics-editor">{(["instagram", "facebook"] as const).map((channel) => <article key={channel}><h3>{channel === "instagram" ? "Instagram" : "Facebook"}</h3>{METRICS.map(([key, label]) => <label className={importedFields.includes(`${channel}.${key}`) ? "meta-imported" : ""} key={key}><span>{label}{importedFields.includes(`${channel}.${key}`) ? <small>Meta</small> : null}</span><input type="number" min="0" value={editing.metrics[channel][key] ?? ""} placeholder="Não disponível" onChange={(event) => changeMetric(channel, key, event.target.value)} /></label>)}{channel === "facebook" ? FACEBOOK_EXTRAS.map(([key, label]) => <label className={importedFields.includes(`facebook.${key}`) ? "meta-imported" : ""} key={key}><span>{label}{importedFields.includes(`facebook.${key}`) ? <small>Meta</small> : null}</span><input type="number" min="0" value={editing.metrics.facebook[key] ?? ""} placeholder="Não disponível" onChange={(event) => changeMetric("facebook", key, event.target.value)} /></label>) : null}</article>)}</section>
     {editing.metrics.ads ? <section className="report-ads-editor"><header><div><span>META ADS</span><h3>Dados pagos importados</h3><p>{editing.metrics.ads.accountName || "Conta de anúncios"}{editing.metrics.ads.currency ? ` · ${editing.metrics.ads.currency}` : ""}</p></div></header><div className="report-ads-kpis">{[["Investimento", currency(editing.metrics.ads.spend, editing.metrics.ads.currency, "pt")], ["Alcance pago", displayMetric(editing.metrics.ads.reach, "pt")], ["Impressões", displayMetric(editing.metrics.ads.impressions, "pt")], ["Cliques no link", displayMetric(editing.metrics.ads.inlineLinkClicks ?? editing.metrics.ads.clicks, "pt")], ["CTR", percent(editing.metrics.ads.ctr, "pt")], ["CPC", currency(editing.metrics.ads.cpc, editing.metrics.ads.currency, "pt")], ["CPM", currency(editing.metrics.ads.cpm, editing.metrics.ads.currency, "pt")], ["Frequência", decimal(editing.metrics.ads.frequency, "pt")]].map(([label, value]) => <article key={label}><span>{label}</span><strong>{value}</strong></article>)}</div></section> : null}
     <details className="report-advanced"><summary>Opções avançadas · importar por screenshots</summary><section className="report-checklist"><header><div><span>FALLBACK POR IMAGEM</span><h3>Checklist de capturas</h3><p>Use esta opção quando os dados da Meta não estiverem disponíveis.</p></div><button className="ghost-button" disabled={reading || !Object.keys(files).length} onClick={() => void readScreenshots()}>{reading ? "Lendo capturas..." : "Analisar com IA"}</button></header>{(["instagram", "facebook"] as const).map((channel) => <div className="report-checklist-channel" key={channel}><strong>{channel === "instagram" ? "Instagram" : "Facebook"}</strong>{CHECKLIST.map((item) => { const key = `${channel}-${item}`; return <label key={key}><input type="file" accept="image/png,image/jpeg,image/webp" onChange={(event) => { const file = event.target.files?.[0]; if (file) setFiles({ ...files, [key]: file }); }} /><span>{files[key] ? "✓" : "+"}</span>{item}</label>; })}</div>)}</section></details>
-    <label className="report-notes-editor">Observações da equipe<textarea value={editing.notes ?? ""} onChange={(event) => setEditing({ ...editing, notes: event.target.value || null })} placeholder="Contexto, campanhas ou pontos a destacar para o cliente." /></label>
+    <label className="report-notes-editor">Considerações do relatório<span>Use títulos, subtítulos, parágrafos, listas e destaques. A formatação aparecerá também na área do cliente.</span></label><ReportNotesEditor value={editing.notes} onChange={(notes) => setEditing({ ...editing, notes })} />
     <div className="report-actions"><button className="ghost-button" onClick={() => setEditing(null)}>Fechar</button>{editing.id ? <button className="danger-button" onClick={() => { if (window.confirm("Excluir este relatório?")) void deleteAdminReport(clientId, editing.id).then(() => { setEditing(null); void refresh(); }).catch(() => { const next = reports.filter((report) => report.id !== editing.id); writeLocalReports(clientId, next); setReports(next); setEditing(null); }); }}>Excluir</button> : null}<button className="gradient-button" onClick={() => void save()}>Salvar rascunho</button>{editing.id && editing.status !== "published" ? <button className="gradient-button" onClick={() => void publish()}>Publicar para cliente</button> : null}</div>{message ? <p className={`report-message ${messageTone}`}>{message}</p> : null}<ReportDocument report={editing} clientName={selectedClient?.name ?? "Cliente"} />
   </div> : <div className="reports-empty">Escolha um relatório ou crie um novo para começar.</div>}</main></div></section>;
 }
