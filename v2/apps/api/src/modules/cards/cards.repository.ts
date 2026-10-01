@@ -440,7 +440,12 @@ export async function archiveDueScheduledCards(
       `UPDATE kanban_cards SET archived = 1, archived_at = NOW(), published_at = COALESCE(published_at, scheduled_at) WHERE id IN (${placeholders})`,
       cardIds,
     );
-    await connection.query(`DELETE FROM card_calendar_events WHERE card_id IN (${placeholders})`, cardIds);
+    // Publication is a calendar state transition, not removal. Keeping the
+    // event makes the published post survive refreshes and API restarts.
+    await connection.query(
+      `UPDATE card_calendar_events SET status = 'published', updated_at = CURRENT_TIMESTAMP WHERE card_id IN (${placeholders})`,
+      cardIds,
+    );
     await connection.commit();
   } catch (error) {
     await connection.rollback();
