@@ -4255,11 +4255,7 @@ button {
 .dashboard-client-card span { display: block; margin-top: 3px; color: #7c87a3; font-size: 0.84rem; }
 .dashboard-client-card .dashboard-client-arrow { margin: 0 0 0 auto; color: #526fff; font-size: 1.25rem; }
 .dashboard-empty { padding: 30px; border: 1px dashed #c9d4ef; border-radius: 20px; text-align: center; color: #7b86a3; }
-.dashboard-grid, .dashboard-bottom-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-flow: row dense; align-items: stretch; gap: 14px; margin-top: 14px; }
-.dashboard-bottom-grid { grid-template-columns: .9fr .9fr 1.2fr; }
 
-@media (max-width: 1080px) {
-  
 .dashboard-meta-expiry-alert { display: grid; grid-template-columns: auto minmax(0,1fr) auto; align-items: center; gap: 14px; margin: 0 0 16px; padding: 15px 17px; border: 1px solid rgba(214,155,57,.25); border-radius: 18px; background: linear-gradient(135deg,rgba(255,250,236,.97),rgba(255,246,226,.92)); box-shadow: 0 10px 28px rgba(91,67,26,.07); }
 .dashboard-meta-expiry-alert.is-expired { border-color: rgba(205,78,96,.22); background: linear-gradient(135deg,rgba(255,244,246,.98),rgba(255,238,242,.94)); }
 .dashboard-meta-expiry-icon { display: grid; width: 38px; height: 38px; place-items: center; border-radius: 12px; background: #1877f2; color: #fff; box-shadow: 0 6px 16px rgba(24,119,242,.2); }
@@ -4273,6 +4269,11 @@ button {
 .dashboard-meta-expiry-alert button:disabled { opacity: .6; cursor: default; }
 @media (max-width: 680px) { .dashboard-meta-expiry-alert { grid-template-columns: auto minmax(0,1fr); } .dashboard-meta-expiry-alert button { grid-column: 1 / -1; width: 100%; } .dashboard-meta-expiry-copy span { white-space: normal; } }
 
+.dashboard-grid, .dashboard-bottom-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-auto-flow: row dense; align-items: stretch; gap: 14px; margin-top: 14px; }
+.dashboard-bottom-grid { grid-template-columns: .9fr .9fr 1.2fr; }
+
+@media (max-width: 1080px) {
+  
 .dashboard-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .dashboard-list, .dashboard-clients-panel { border: 1px solid #e6eaf5; border-radius: 20px; background: rgba(255,255,255,.82); padding: 16px; min-height: 230px; }
