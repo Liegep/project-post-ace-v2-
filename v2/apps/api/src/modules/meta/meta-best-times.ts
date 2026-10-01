@@ -14,6 +14,7 @@ type SlotContext = {
 };
 
 export const META_ONLINE_FOLLOWERS_SOURCE_TIME_ZONE = "UTC-07:00";
+export const INSTAGRAM_ONLINE_FOLLOWERS_LOOKBACK_DAYS = 7;
 
 const EMPTY_CONTEXT: SlotContext = { weekday: null, startTimeMs: null, endTimeMs: null };
 
@@ -248,6 +249,6 @@ export function summarizeInstagramOnlineFollowersPayload(payload: unknown, conte
 
 export function instagramOnlineFollowersDateRange(now = new Date()) {
   const untilDate = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const sinceDate = new Date(untilDate.getTime() - 30 * 24 * 60 * 60_000);
+  const sinceDate = new Date(untilDate.getTime() - INSTAGRAM_ONLINE_FOLLOWERS_LOOKBACK_DAYS * 24 * 60 * 60_000);
   return { since: sinceDate.toISOString().slice(0, 10), until: untilDate.toISOString().slice(0, 10) };
 }

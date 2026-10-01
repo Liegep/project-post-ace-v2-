@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { instagramOnlineFollowersDateRange, META_ONLINE_FOLLOWERS_SOURCE_TIME_ZONE, parseInstagramBestPublishingTimes, summarizeInstagramOnlineFollowersPayload } from "./meta-best-times.js";
+import { instagramOnlineFollowersDateRange, INSTAGRAM_ONLINE_FOLLOWERS_LOOKBACK_DAYS, META_ONLINE_FOLLOWERS_SOURCE_TIME_ZONE, parseInstagramBestPublishingTimes, summarizeInstagramOnlineFollowersPayload } from "./meta-best-times.js";
 
 const currentMetaFormatFixture = {
   data: [{
@@ -112,8 +112,17 @@ test("parses combined weekday and hour breakdown results", () => {
 });
 
 test("safe response logging exposes only bounded diagnostic data and no secrets or ids", () => {
-  const summary = summarizeInstagramOnlineFollowersPayload(currentMetaFormatFixture, { since: "2026-08-31", until: "2026-09-30", targetTimeZone: "Europe/Stockholm" });
+  const summary = summarizeInstagramOnlineFollowersPayload(currentMetaFormatFixture, { since: "2026-09-23", until: "2026-09-30", targetTimeZone: "Europe/Stockholm" });
   const serialized = JSON.stringify(summary);
+  assert.deepEqual(summary.query, { since: "2026-09-23", until: "2026-09-30", period: "lifetime" });
+  assert.equal(summary.sourceTimeZone, "UTC-07:00");
+  assert.equal(summary.targetTimeZone, "Europe/Stockholm");
+  assert.equal(summary.metrics[0]?.values[0]?.endTime, "2026-09-01T07:00:00+0000");
+  assert.deepEqual(summary.metrics[0]?.values[1]?.topHours, [
+    { hour: 12, followers: 100 },
+    { hour: 13, followers: 80 },
+    { hour: 9, followers: 20 },
+  ]);
   assert.match(serialized, /online_followers/);
   assert.match(serialized, /valuesCount/);
   assert.match(serialized, /valueShape/);
@@ -124,9 +133,21 @@ test("safe response logging exposes only bounded diagnostic data and no secrets 
   assert.doesNotMatch(serialized, /access_token|appsecret_proof/i);
 });
 
-test("requests the explicit 30-day historical window", () => {
+test("requests the explicit seven-day historical window", () => {
+  assert.equal(INSTAGRAM_ONLINE_FOLLOWERS_LOOKBACK_DAYS, 7);
   assert.deepEqual(instagramOnlineFollowersDateRange(new Date("2026-09-30T22:00:00Z")), {
-    since: "2026-08-31",
+    since: "2026-09-23",
     until: "2026-09-30",
+  });
+});
+
+test("uses UTC date boundaries independently of the caller offset", () => {
+  assert.deepEqual(instagramOnlineFollowersDateRange(new Date("2026-10-01T00:30:00+14:00")), {
+    since: "2026-09-23",
+    until: "2026-09-30",
+  });
+  assert.deepEqual(instagramOnlineFollowersDateRange(new Date("2026-09-30T23:30:00-10:00")), {
+    since: "2026-09-24",
+    until: "2026-10-01",
   });
 });
