@@ -56,11 +56,11 @@ export async function reconcileApprovedCardColumns(app: FastifyInstance) {
     ].join(" "),
   );
 
-  const [rows] = await app.db.query<Array<RowDataPacket & { clientAccountId: string }>>(
+  // This is a legacy repair, not a workflow rule. Cards that already have a\n  // column may have been moved deliberately and must never be routed again at\n  // startup.\n  const [rows] = await app.db.query<Array<RowDataPacket & { clientAccountId: string }>>(
     [
       "SELECT DISTINCT c.client_account_id AS clientAccountId",
       "FROM kanban_cards c",
-      "WHERE c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.is_brief_approval = 0 AND (c.approval_state = 'approved' OR (c.approval_revision = 0 AND LOWER(c.client_label) LIKE '%aprovad%') OR EXISTS (",
+      "WHERE c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.column_id IS NULL AND c.is_brief_approval = 0 AND (c.approval_state = 'approved' OR (c.approval_revision = 0 AND LOWER(c.client_label) LIKE '%aprovad%') OR EXISTS (",
       "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL AND c.approval_revision = 0 AND LOWER(c.client_label) NOT LIKE '%altera%' AND LOWER(COALESCE(c.status_json, '')) NOT LIKE '%solicitad%'",
       "AND (c.approval_reset_at IS NULL OR al.created_at >= c.approval_reset_at)",
       "))",
@@ -77,9 +77,9 @@ export async function reconcileApprovedCardColumns(app: FastifyInstance) {
         "WHERE c.client_account_id = ? AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND (c.approval_state = 'approved' OR (c.approval_revision = 0 AND LOWER(c.client_label) LIKE '%aprovad%') OR EXISTS (",
         "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL AND c.approval_revision = 0 AND LOWER(c.client_label) NOT LIKE '%altera%' AND LOWER(COALESCE(c.status_json, '')) NOT LIKE '%solicitad%'",
         "AND (c.approval_reset_at IS NULL OR al.created_at >= c.approval_reset_at)",
-        ")) AND c.is_brief_approval = 0 AND (c.column_id IS NULL OR c.column_id <> ?)",
+        ")) AND c.is_brief_approval = 0 AND c.column_id IS NULL",
       ].join(" "),
-      [approvedColumn.id, row.clientAccountId, approvedColumn.id],
+      [approvedColumn.id, row.clientAccountId],
     );
     moved += Number(result.affectedRows ?? 0);
   }
@@ -87,7 +87,7 @@ export async function reconcileApprovedCardColumns(app: FastifyInstance) {
   const [briefRows] = await app.db.query<Array<RowDataPacket & { clientAccountId: string }>>(
     [
       "SELECT DISTINCT c.client_account_id AS clientAccountId FROM kanban_cards c",
-      "WHERE c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.is_brief_approval = 1",
+      "WHERE c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.column_id IS NULL AND c.is_brief_approval = 1",
       "AND (c.approval_state = 'approved' OR (c.approval_revision = 0 AND LOWER(c.client_label) LIKE '%aprovad%') OR EXISTS (",
       "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL AND c.approval_revision = 0 AND LOWER(c.client_label) NOT LIKE '%altera%' AND LOWER(COALESCE(c.status_json, '')) NOT LIKE '%solicitad%'",
       "AND (c.approval_reset_at IS NULL OR al.created_at >= c.approval_reset_at)",
@@ -104,9 +104,9 @@ export async function reconcileApprovedCardColumns(app: FastifyInstance) {
         "AND (c.approval_state = 'approved' OR (c.approval_revision = 0 AND LOWER(c.client_label) LIKE '%aprovad%') OR EXISTS (",
         "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL AND c.approval_revision = 0 AND LOWER(c.client_label) NOT LIKE '%altera%' AND LOWER(COALESCE(c.status_json, '')) NOT LIKE '%solicitad%'",
         "AND (c.approval_reset_at IS NULL OR al.created_at >= c.approval_reset_at)",
-        ")) AND (c.column_id IS NULL OR c.column_id <> ?)",
+        ")) AND c.column_id IS NULL",
       ].join(" "),
-      [approvedBriefsColumn.id, row.clientAccountId, approvedBriefsColumn.id],
+      [approvedBriefsColumn.id, row.clientAccountId],
     );
     moved += Number(result.affectedRows ?? 0);
   }
