@@ -44,142 +44,15 @@ function calendarPostSignature(title: string, value: string | Date | null | unde
   return `${title.trim().toLocaleLowerCase()}|${calendarDateKey(localValue)}`;
 }
 
-function groupPortalCards(
-  columns: Awaited<ReturnType<typeof listColumnsByClientAccountId>>,
-  cards: Awaited<ReturnType<typeof listCardsByClientAccountId>>,
-  includeAllCards = false,
-) {
-  const visibleColumns = columns.filter((column) => column.visibleToClient);
-  const cardsSentToClient = includeAllCards
-    ? cards
-    : cards.filter((card) => card.status.includes("Enviar para Cliente") || card.isBriefApproval);
-  const visibleIds = new Set(visibleColumns.map((column) => column.id));
-  const cardsByColumnId = new Map<string, typeof cards>();
-  const withoutColumn: typeof cards = [];
+type PortalCard = Awaited<ReturnType<typeof listCardsByClientAccountId>>[number];
+type PortalMetaPublication = Awaited<ReturnType<typeof listScheduledPublicationsForClient>>[number];
 
-  for (const card of cardsSentToClient) {
-    if (!card.columnId || !visibleIds.has(card.columnId)) {
-      withoutColumn.push(card);
-      continue;
-    }
+export function composePortalMetaCalendarCards(portalCards: PortalCard[], metaPublications: PortalMetaPublication[]) {
+  const metaCalendarCards = composePortalMetaCalendarCards(portalCards, metaPublications);
 
-    const current = cardsByColumnId.get(card.columnId) ?? [];
-    current.push(card);
-    cardsByColumnId.set(card.columnId, current);
-  }
-
-  return {
-    columns: visibleColumns.map((column) => ({
-      ...column,
-      cards: cardsByColumnId.get(column.id) ?? [],
-      cardsCount: (cardsByColumnId.get(column.id) ?? []).length,
-    })),
-    withoutColumn: {
-      id: "without-column",
-      name: "Sem coluna",
-      cards: withoutColumn,
-      cardsCount: withoutColumn.length,
-    },
-  };
-}
-
-export async function getPortalHome(
-  app: FastifyInstance,
-  clientAccountId: string,
-  accessLevel: PortalAccessLevel = "approver",
-) {
-  const [client, permissions] = await Promise.all([
-    findClientAccountById(app.db, clientAccountId),
-    findClientPermissionsByAccountId(app.db, clientAccountId),
-  ]);
-  if (!client) {
-    throw app.httpErrors.notFound("Conta do cliente não encontrada.");
-  }
-
-  if (!permissions) {
-    throw app.httpErrors.notFound("Permissões da conta não encontradas.");
-  }
-
-  const [portalCards, legacyCalendarEvents, postCreationColumns, metaPublications] = await Promise.all([
-    listCardsByClientAccountId(app.db, clientAccountId, {}),
-    listCalendarEvents(app.db, { clientAccountIds: [clientAccountId] }),
-    listColumnsByClientAccountId(app.db, clientAccountId),
-    listScheduledPublicationsForClient(app.db, clientAccountId),
-  ]);
-  const today = currentDateKey(app.appEnv.APP_TIMEZONE);
-  const now = Date.now();
-  const nativeCalendarCards = portalCards
-    .filter((card) => Boolean(card.scheduledAt || card.publishedAt))
-    .map((card) => {
-      const calendarDate = card.scheduledAt || card.publishedAt;
-      const instant = calendarDate ? new Date(calendarDate).getTime() : Number.NaN;
-      const isPast = !Number.isNaN(instant) && instant < now;
-      return isPast && !card.publishedAt ? { ...card, publishedAt: card.scheduledAt } : card;
-    });
-  const nativeCalendarSignatures = new Set(nativeCalendarCards.map((card) =>
-    calendarPostSignature(card.title, card.scheduledAt || card.publishedAt, card.scheduledTimeZone),
-  ));
-  const importedCalendarCards = legacyCalendarEvents
-    .filter((event) => !event.cardId)
-    .filter((event) => !nativeCalendarSignatures.has(calendarPostSignature(event.title, event.publishDate)))
-    .map((event) => {
-      const wallClock = calendarDateTime(event.publishDate, event.publishTime);
-      const scheduledAt = event.scheduledAt ?? zonedWallClockToIso(wallClock, event.scheduledTimeZone ?? app.appEnv.APP_TIMEZONE);
-      return {
-        id: `calendar:${event.id}`,
-        title: event.title,
-        caption: event.caption,
-        mediaType: event.mediaType,
-        primaryMediaUrl: event.mediaUrls[0] ?? null,
-        mediaUrls: event.mediaUrls,
-        externalLinkUrl: null,
-        artType: event.mediaType || "Post",
-        status: [event.status],
-        tags: [],
-        hashtags: [],
-        isBriefApproval: false,
-        keepFiles: false,
-        deadlineAt: null,
-        scheduledAt,
-        scheduledTimeZone: event.scheduledTimeZone ?? app.appEnv.APP_TIMEZONE,
-        publishedAt: event.status === "published" || calendarDateKey(event.publishDate) < today ? scheduledAt : null,
-        archived: false,
-        archivedAt: null,
-        clientLabel: "",
-        priorityLevel: null,
-        eventColor: event.eventColor,
-        commentsCount: 0,
-        createdByUserId: event.createdByUserId,
-        position: 0,
-        legacyId: event.id,
-        calendarOnly: true,
-      };
-    });
-  const cardsById = new Map(portalCards.map((card) => [card.id, card]));
-  const metaCalendarCards = Array.from(
-    metaPublications
-      .filter((publication) => publication.cardId && (publication.status === "scheduled" || publication.status === "publishing"))
-      .reduce((groups, publication) => {
-        const key = `${publication.cardId}|${publication.scheduledAt}`;
-        if (!groups.has(key)) groups.set(key, publication);
-        return groups;
-      }, new Map<string, (typeof metaPublications)[number]>()),
-  ).flatMap(([, publication]) => {
-    const card = publication.cardId ? cardsById.get(publication.cardId) : null;
-    if (!card) return [];
-    return [{
-      ...card,
-      scheduledAt: publication.scheduledAt,
-      scheduledTimeZone: publication.timezone,
-      publishedAt: null,
-      status: ["Agendado", ...card.status.filter((status) => !/^agendados?$/i.test(status.trim()))],
-      clientLabel: card.clientLabel || "Agendado",
-    }];
-  });
-
-  const metaScheduledCardIds = new Set(metaCalendarCards.map((card) => card.id));
+  const metaCalendarCardIds = new Set(metaCalendarCards.map((card) => card.id));
   const calendarPosts = [
-    ...nativeCalendarCards.filter((card) => !metaScheduledCardIds.has(card.id)),
+    ...nativeCalendarCards.filter((card) => !metaCalendarCardIds.has(card.id)),
     ...metaCalendarCards,
     ...importedCalendarCards,
   ];
