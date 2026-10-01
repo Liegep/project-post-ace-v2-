@@ -1,8 +1,8 @@
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { findClientAccountById } from "../clients/clients.repository.js";
 import { findCardById } from "../cards/cards.repository.js";
-import { clientMetaAssetsSchema, clientMetaPublicationsQuerySchema, createMetaPublicationSchema, createMetaSavedLocationSchema, manageMetaPublicationsSchema, metaBestTimesQuerySchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema, metaPlaceSearchQuerySchema, metaPublicationsQuerySchema, rescheduleMetaPublicationsSchema, updateMetaSavedLocationSchema } from "./meta.schemas.js";
-import { cancelScheduledPublication, cancelScheduledPublicationGroup, consumeMetaOAuthState, createMetaSavedLocation, deleteMetaSavedLocation, findClientMetaAssets, findMetaSavedLocation, findScheduledPublication, listGlobalScheduledPublications, listMetaSavedLocations, listScheduledPublicationsForClient, rescheduleScheduledPublications, updateMetaSavedLocation, upsertClientMetaAssets } from "./meta.repository.js";
+import { clientMetaAssetsSchema, clientMetaPublicationsQuerySchema, createMetaPublicationSchema, createMetaPublishDestinationSchema, createMetaSavedLocationSchema, manageMetaPublicationsSchema, metaBestTimesQuerySchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema, metaPlaceSearchQuerySchema, metaPublicationsQuerySchema, rescheduleMetaPublicationsSchema, updateMetaPublishDestinationSchema, updateMetaSavedLocationSchema } from "./meta.schemas.js";
+import { cancelScheduledPublication, cancelScheduledPublicationGroup, consumeMetaOAuthState, countActivePublicationsForDestination, createMetaPublishDestination, createMetaSavedLocation, deleteMetaPublishDestination, deleteMetaSavedLocation, findClientMetaAssets, findDefaultMetaPublishDestination, findMetaPublishDestination, findMetaSavedLocation, findScheduledPublication, listGlobalScheduledPublications, listMetaPublishDestinations, listMetaSavedLocations, listScheduledPublicationsForClient, rescheduleScheduledPublications, updateMetaPublishDestination, updateMetaSavedLocation, upsertClientMetaAssets } from "./meta.repository.js";
 import { archiveMetaCardIfPublicationGroupComplete, completeMetaAuthorization, createMetaAuthorizationUrl, getInstagramBestPublishingTimes, getMetaAdsInsights, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets, scheduleMetaCardPublications, searchMetaPlaces } from "./meta.service.js";
 
 function assertSuperAdmin(request: FastifyRequest) {
@@ -27,6 +27,8 @@ function publicationResponse(publication: NonNullable<Awaited<ReturnType<typeof 
   return {
     id: publication.id,
     cardId: publication.cardId,
+    destinationId: publication.destinationId,
+    destinationName: publication.destinationName,
     platform: publication.platform,
     scheduledAt: publication.scheduledAt,
     timezone: publication.timezone,
@@ -48,6 +50,23 @@ function publicationResponse(publication: NonNullable<Awaited<ReturnType<typeof 
     publishedAt: publication.publishedAt,
     cardTitle: publication.cardTitle,
   };
+}
+
+async function validateDestinationAssets(app: Parameters<typeof listMetaAssets>[0], userId: string, input: { facebookPageId?: string | null; facebookPageName?: string | null; instagramAccountId?: string | null; instagramUsername?: string | null }) {
+  const available = await listMetaAssets(app, userId);
+  const page = input.facebookPageId ? available.pages.find((item) => item.id === input.facebookPageId) : null;
+  if (input.facebookPageId && (!page || page.name !== input.facebookPageName)) {
+    throw app.httpErrors.badRequest("A Página selecionada não está disponível na conexão Meta.");
+  }
+  const instagramPage = input.instagramAccountId
+    ? available.pages.find((item) => item.instagramAccount?.id === input.instagramAccountId && item.instagramAccount?.username === input.instagramUsername)
+    : null;
+  if (input.instagramAccountId && !instagramPage) {
+    throw app.httpErrors.badRequest("A conta do Instagram não está disponível na conexão Meta.");
+  }
+  if (page && input.instagramAccountId && page.instagramAccount?.id !== input.instagramAccountId) {
+    throw app.httpErrors.badRequest("A conta do Instagram não pertence à Página selecionada.");
+  }
 }
 
 export const metaRoutes: FastifyPluginAsync = async (app) => {
@@ -189,20 +208,80 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
     return { assets: await findClientMetaAssets(app.db, clientAccountId) };
   });
 
+  app.get("/clients/:clientAccountId/meta-destinations", async (request) => {
+    assertSuperAdmin(request);
+    const { clientAccountId } = request.params as { clientAccountId: string };
+    if (!await findClientAccountById(app.db, clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
+    return { destinations: await listMetaPublishDestinations(app.db, clientAccountId) };
+  });
+
+  app.post("/clients/:clientAccountId/meta-destinations", async (request, reply) => {
+    const auth = assertSuperAdmin(request);
+    const { clientAccountId } = request.params as { clientAccountId: string };
+    if (!await findClientAccountById(app.db, clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
+    const parsed = createMetaPublishDestinationSchema.safeParse(request.body);
+    if (!parsed.success) throw app.httpErrors.badRequest(parsed.error.issues[0]?.message ?? "Destino Meta inválido.");
+    await validateDestinationAssets(app, auth.user.id, parsed.data);
+    try {
+      const destination = await createMetaPublishDestination(app.db, clientAccountId, parsed.data);
+      return reply.code(201).send({ destination });
+    } catch (error) {
+      if (isDuplicateEntry(error)) throw app.httpErrors.conflict("Já existe um destino Meta com esse nome para o cliente.");
+      throw error;
+    }
+  });
+
+  app.patch("/clients/:clientAccountId/meta-destinations/:destinationId", async (request) => {
+    const auth = assertSuperAdmin(request);
+    const { clientAccountId, destinationId } = request.params as { clientAccountId: string; destinationId: string };
+    if (!await findClientAccountById(app.db, clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
+    const current = await findMetaPublishDestination(app.db, destinationId, clientAccountId);
+    if (!current) throw app.httpErrors.notFound("Destino Meta não encontrado.");
+    const patch = updateMetaPublishDestinationSchema.safeParse(request.body);
+    if (!patch.success) throw app.httpErrors.badRequest(patch.error.issues[0]?.message ?? "Destino Meta inválido.");
+    const merged = createMetaPublishDestinationSchema.safeParse({ ...current, ...patch.data });
+    if (!merged.success) throw app.httpErrors.badRequest(merged.error.issues[0]?.message ?? "Destino Meta inválido.");
+    await validateDestinationAssets(app, auth.user.id, merged.data);
+    try {
+      const destination = await updateMetaPublishDestination(app.db, clientAccountId, destinationId, patch.data);
+      if (!destination) throw app.httpErrors.notFound("Destino Meta não encontrado.");
+      return { destination };
+    } catch (error) {
+      if (isDuplicateEntry(error)) throw app.httpErrors.conflict("Já existe um destino Meta com esse nome para o cliente.");
+      throw error;
+    }
+  });
+
+  app.delete("/clients/:clientAccountId/meta-destinations/:destinationId", async (request) => {
+    assertSuperAdmin(request);
+    const { clientAccountId, destinationId } = request.params as { clientAccountId: string; destinationId: string };
+    if (!await findClientAccountById(app.db, clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
+    if (!await findMetaPublishDestination(app.db, destinationId, clientAccountId)) throw app.httpErrors.notFound("Destino Meta não encontrado.");
+    if (await countActivePublicationsForDestination(app.db, clientAccountId, destinationId) > 0) {
+      throw app.httpErrors.conflict("Este destino possui publicações agendadas ou pendentes e não pode ser removido.");
+    }
+    await deleteMetaPublishDestination(app.db, clientAccountId, destinationId);
+    return { ok: true };
+  });
+
   app.get("/clients/:clientAccountId/meta-best-times", async (request) => {
     const auth = assertSuperAdmin(request);
     const query = metaBestTimesQuerySchema.safeParse(request.query);
     if (!query.success) throw app.httpErrors.badRequest(query.error.issues[0]?.message ?? "Timezone inválido.");
     const { clientAccountId } = request.params as { clientAccountId: string };
     if (!await findClientAccountById(app.db, clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
-    const assets = await findClientMetaAssets(app.db, clientAccountId);
-    if (!assets?.instagramAccountId) {
+    const destination = query.data.destinationId
+      ? await findMetaPublishDestination(app.db, query.data.destinationId, clientAccountId)
+      : await findDefaultMetaPublishDestination(app.db, clientAccountId);
+    if (query.data.destinationId && !destination) throw app.httpErrors.notFound("Destino Meta não encontrado para este cliente.");
+    const instagramAccountId = destination?.instagramAccountId ?? (!query.data.destinationId ? (await findClientMetaAssets(app.db, clientAccountId))?.instagramAccountId : null);
+    if (!instagramAccountId) {
       return { available: false, source: "instagram_online_followers", sourceTimeZone: "UTC-07:00", timeZone: query.data.timeZone, recommendations: [], message: "O cliente não possui Instagram profissional vinculado." };
     }
     const startedAt = Date.now();
     request.log.info({ timeZone: query.data.timeZone }, "Meta best publishing times request started");
     try {
-      const result = await getInstagramBestPublishingTimes(app, auth.user.id, assets.instagramAccountId, query.data.timeZone);
+      const result = await getInstagramBestPublishingTimes(app, auth.user.id, instagramAccountId, query.data.timeZone);
       request.log.info({ durationMs: Date.now() - startedAt, available: result.available, recommendationCount: result.recommendations.length, timeZone: query.data.timeZone }, "Meta best publishing times request completed");
       return result;
     } catch (error) {
@@ -274,7 +353,11 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
     if (!await findClientAccountById(app.db, clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
     const parsed = createMetaPublicationSchema.safeParse(request.body);
     if (!parsed.success) throw app.httpErrors.badRequest(parsed.error.issues[0]?.message ?? "Agendamento inválido.");
-    const assets = await findClientMetaAssets(app.db, clientAccountId);
+    const destination = parsed.data.destinationId
+      ? await findMetaPublishDestination(app.db, parsed.data.destinationId, clientAccountId)
+      : await findDefaultMetaPublishDestination(app.db, clientAccountId);
+    if (parsed.data.destinationId && !destination) throw app.httpErrors.badRequest("O destino Meta selecionado não pertence a este cliente.");
+    const assets = destination ?? await findClientMetaAssets(app.db, clientAccountId);
     const platforms = parsed.data.platforms.map((platform) => ({
       platform,
       metaAssetId: platform === "instagram" ? assets?.instagramAccountId : assets?.facebookPageId,
@@ -288,6 +371,8 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
     const results = await scheduleMetaCardPublications(app, {
       userId: auth.user.id,
       clientAccountId,
+      destinationId: destination?.id ?? null,
+      destinationName: destination?.name ?? null,
       platforms: platforms.map((item) => ({ platform: item.platform, metaAssetId: item.metaAssetId! })),
       card,
       scheduledAt: parsed.data.scheduledAt,

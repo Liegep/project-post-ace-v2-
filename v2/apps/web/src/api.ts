@@ -460,10 +460,24 @@ export type ClientMetaAssets = {
   metaAdAccountName: string | null;
   updatedAt?: string;
 };
+export type MetaPublishDestination = {
+  id: string;
+  clientAccountId: string;
+  name: string;
+  facebookPageId: string | null;
+  facebookPageName: string | null;
+  instagramAccountId: string | null;
+  instagramUsername: string | null;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
 export type InstagramUserTag = { username: string; x: number; y: number };
 export type MetaScheduledPublication = {
   id: string;
   cardId: string | null;
+  destinationId: string | null;
+  destinationName: string | null;
   platform: "instagram" | "facebook";
   scheduledAt: string;
   timezone: string;
@@ -1350,10 +1364,31 @@ export async function loadClientMetaAssetsBySlug(slug: string) {
   return fetchJson<{ assets: ClientMetaAssets | null }>(`/api/clients/${client.id}/meta-assets`);
 }
 
-export async function loadClientMetaBestTimesBySlug(slug: string, timeZone: string) {
+export async function loadClientMetaBestTimesBySlug(slug: string, timeZone: string, destinationId?: string) {
   const client = await findAdminClientBySlug(slug);
   const query = new URLSearchParams({ timeZone });
+  if (destinationId) query.set("destinationId", destinationId);
   return fetchJson<MetaBestPublishingTimes>(`/api/clients/${client.id}/meta-best-times?${query.toString()}`, 18_000);
+}
+
+export async function loadClientMetaDestinationsBySlug(slug: string) {
+  const client = await findAdminClientBySlug(slug);
+  return fetchJson<{ destinations: MetaPublishDestination[] }>(`/api/clients/${client.id}/meta-destinations`);
+}
+
+export async function createClientMetaDestinationBySlug(slug: string, input: Omit<MetaPublishDestination, "id" | "clientAccountId" | "createdAt" | "updatedAt">) {
+  const client = await findAdminClientBySlug(slug);
+  return sendJson<{ destination: MetaPublishDestination }>(`/api/clients/${client.id}/meta-destinations`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function updateClientMetaDestinationBySlug(slug: string, destinationId: string, input: Partial<Omit<MetaPublishDestination, "id" | "clientAccountId" | "createdAt" | "updatedAt">>) {
+  const client = await findAdminClientBySlug(slug);
+  return sendJson<{ destination: MetaPublishDestination }>(`/api/clients/${client.id}/meta-destinations/${destinationId}`, { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export async function deleteClientMetaDestinationBySlug(slug: string, destinationId: string) {
+  const client = await findAdminClientBySlug(slug);
+  return sendJson<{ ok: true }>(`/api/clients/${client.id}/meta-destinations/${destinationId}`, { method: "DELETE" });
 }
 
 export async function loadClientMetaAssets(clientAccountId: string) {
@@ -1389,7 +1424,7 @@ export async function listMetaPublicationsBySlug(slug: string, range: { from?: s
   return fetchJson<{ publications: MetaScheduledPublication[] }>(`/api/clients/${client.id}/meta-publications${suffix}`);
 }
 
-export async function createMetaPublicationBySlug(slug: string, input: { cardId: string; platforms: ("instagram" | "facebook")[]; scheduledAt: string; timezone: string; publicationFormat?: "story" | null; reelCoverUrl?: string | null; locationId?: string | null; locationName?: string | null; instagramUserTags?: InstagramUserTag[] }) {
+export async function createMetaPublicationBySlug(slug: string, input: { cardId: string; destinationId?: string; platforms: ("instagram" | "facebook")[]; scheduledAt: string; timezone: string; publicationFormat?: "story" | null; reelCoverUrl?: string | null; locationId?: string | null; locationName?: string | null; instagramUserTags?: InstagramUserTag[] }) {
   const client = await findAdminClientBySlug(slug);
   return sendJson<{ publications: MetaScheduledPublication[]; created: boolean }>(`/api/clients/${client.id}/meta-publications`, {
     method: "POST",

@@ -46,6 +46,7 @@ export function dashboardMetaDateTime(scheduleDate: string, scheduleTime: string
 }
 
 export type DashboardMetaScheduleOptions = {
+  destinationId: string;
   publicationFormat: "story" | null;
   reelCoverUrl: string | null;
   locationId: string | null;
@@ -84,12 +85,14 @@ export function scheduledMetaPlatformsAt(
   publications: MetaScheduledPublication[],
   cardId: string,
   localDateTime: string,
+  destinationId?: string | null,
 ) {
   const targetMinute = minute(localDateTime);
   if (targetMinute === null) return [];
   return (["instagram", "facebook"] as const).filter((platform) => publications.some((publication) =>
     publication.cardId === cardId
     && publication.platform === platform
+    && (publication.destinationId ?? null) === (destinationId ?? null)
     && minute(publication.scheduledAt) === targetMinute
   ));
 }

@@ -16,6 +16,8 @@ export type ClientMetaCalendarEvent = {
   color?: string;
   imageUrl?: string;
   details?: string;
+  destinationId?: string | null;
+  destinationName?: string | null;
   platforms: ClientMetaCalendarPlatform[];
   publications: MetaScheduledPublication[];
 };
@@ -88,26 +90,38 @@ export function composeClientMetaCalendarEvents(internalPosts: CalendarEvent[], 
   });
 
   groups.forEach((publications, key) => {
-    const first = publications[0];
-    const existing = events.get(key);
-    if (existing) {
-      existing.source = "combined";
-      existing.publications = publications;
-      existing.platforms = platformSummary(publications);
-      existing.imageUrl ||= first.reelCoverUrl || first.mediaUrls[0] || first.mediaUrl || undefined;
-      existing.details ||= first.caption?.trim() || undefined;
-      return;
-    }
-    events.set(key, {
-      id: `meta:${key}`,
-      cardId: first.cardId,
-      title: metaTitle(first),
-      scheduledAt: first.scheduledAt,
-      source: "meta",
-      imageUrl: first.reelCoverUrl || first.mediaUrls[0] || first.mediaUrl || undefined,
-      details: first.caption?.trim() || undefined,
-      platforms: platformSummary(publications),
-      publications,
+    const destinationGroups = new Map<string, MetaScheduledPublication[]>();
+    publications.forEach((publication) => {
+      const destinationKey = publication.destinationId ?? "legacy";
+      destinationGroups.set(destinationKey, [...(destinationGroups.get(destinationKey) ?? []), publication]);
+    });
+    destinationGroups.forEach((destinationPublications, destinationKey) => {
+      const first = destinationPublications[0];
+      const eventKey = destinationGroups.size === 1 ? key : `${key}:destination:${destinationKey}`;
+      const existing = destinationGroups.size === 1 ? events.get(key) : undefined;
+      if (existing) {
+        existing.source = "combined";
+        existing.destinationId = first.destinationId;
+        existing.destinationName = first.destinationName;
+        existing.publications = destinationPublications;
+        existing.platforms = platformSummary(destinationPublications);
+        existing.imageUrl ||= first.reelCoverUrl || first.mediaUrls[0] || first.mediaUrl || undefined;
+        existing.details ||= first.caption?.trim() || undefined;
+        return;
+      }
+      events.set(eventKey, {
+        id: `meta:${eventKey}`,
+        cardId: first.cardId,
+        title: metaTitle(first),
+        scheduledAt: first.scheduledAt,
+        source: "meta",
+        imageUrl: first.reelCoverUrl || first.mediaUrls[0] || first.mediaUrl || undefined,
+        details: first.caption?.trim() || undefined,
+        destinationId: first.destinationId,
+        destinationName: first.destinationName,
+        platforms: platformSummary(destinationPublications),
+        publications: destinationPublications,
+      });
     });
   });
 

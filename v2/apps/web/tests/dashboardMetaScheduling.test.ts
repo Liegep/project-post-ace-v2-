@@ -23,6 +23,8 @@ const publication = (overrides: Partial<MetaScheduledPublication> = {}): MetaSch
   id: "publication-1",
   cardId: "card-1",
   cardTitle: "Post Primavera",
+  destinationId: "destination-a",
+  destinationName: "Marca A",
   platform: "instagram",
   scheduledAt: new Date("2026-09-30T16:00").toISOString(),
   timezone: "Europe/Stockholm",
@@ -77,11 +79,12 @@ test("Meta request keeps the feedback client, card and prefilled time", () => {
     platforms: ["instagram", "facebook"],
     localDateTime: "2026-09-30T16:00",
     timezone: "Europe/Stockholm",
-    options: { publicationFormat: null, reelCoverUrl: null, locationId: null, locationName: null, instagramUserTags: [] },
+    options: { destinationId: "destination-a", publicationFormat: null, reelCoverUrl: null, locationId: null, locationName: null, instagramUserTags: [] },
   });
   assert.equal(request.clientSlug, "minas-home");
   assert.equal(request.publication.cardId, "card-1");
   assert.deepEqual(request.publication.platforms, ["instagram", "facebook"]);
+  assert.equal(request.publication.destinationId, "destination-a");
   assert.equal(request.publication.scheduledAt, new Date("2026-09-30T16:00").toISOString());
 });
 
@@ -90,14 +93,15 @@ test("Reel and Story use the same existing Meta modal media context", () => {
   assert.equal(dashboardMetaMediaContext(card({ typeLabel: "Story" })).mediaMode, "story");
 });
 
-test("Instagram and Facebook duplicates are blocked only for the same card and minute", () => {
+test("Instagram and Facebook duplicates are blocked only for the same card, destination and minute", () => {
   const publications = [
     publication(),
     publication({ id: "publication-2", platform: "facebook", scheduledAt: new Date("2026-09-30T16:00:45").toISOString() }),
     publication({ id: "publication-3", cardId: "card-2", platform: "facebook" }),
   ];
-  assert.deepEqual(scheduledMetaPlatformsAt(publications, "card-1", "2026-09-30T16:00"), ["instagram", "facebook"]);
-  assert.deepEqual(scheduledMetaPlatformsAt(publications, "card-1", "2026-09-30T17:00"), []);
+  assert.deepEqual(scheduledMetaPlatformsAt(publications, "card-1", "2026-09-30T16:00", "destination-a"), ["instagram", "facebook"]);
+  assert.deepEqual(scheduledMetaPlatformsAt(publications, "card-1", "2026-09-30T16:00", "destination-b"), []);
+  assert.deepEqual(scheduledMetaPlatformsAt(publications, "card-1", "2026-09-30T17:00", "destination-a"), []);
 });
 
 test("successful Meta scheduling updates local state without duplicating returned records", () => {

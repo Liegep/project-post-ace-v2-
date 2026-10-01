@@ -6,7 +6,6 @@ import { instagramOnlineFollowersDateRange, META_ONLINE_FOLLOWERS_SOURCE_TIME_ZO
 import {
   canArchiveScheduledPublicationCard,
   createScheduledPublications,
-  findClientMetaAssets,
   findMetaConnection,
   listDueScheduledPublications,
   markPublicationFailed,
@@ -1138,6 +1137,8 @@ async function getPublishingContext(app: FastifyInstance, userId: string) {
 export async function scheduleMetaCardPublications(app: FastifyInstance, input: {
   userId: string;
   clientAccountId: string;
+  destinationId: string | null;
+  destinationName: string | null;
   platforms: { platform: "instagram" | "facebook"; metaAssetId: string }[];
   card: SchedulableCard;
   scheduledAt: string;
@@ -1168,6 +1169,8 @@ export async function scheduleMetaCardPublications(app: FastifyInstance, input: 
   return createScheduledPublications(app.db, planned.plans.map((plan) => ({
     clientAccountId: input.clientAccountId,
     cardId: input.card.id,
+    destinationId: input.destinationId,
+    destinationName: input.destinationName,
     platform: plan.platform,
     metaAssetId: input.platforms.find(({ platform }) => platform === plan.platform)!.metaAssetId,
     scheduledAt,
@@ -1182,7 +1185,7 @@ export async function scheduleMetaCardPublications(app: FastifyInstance, input: 
     instagramUserTags: plan.instagramUserTags,
     createdByUserId: input.userId,
     idempotencyKey: crypto.createHash("sha256")
-      .update([input.clientAccountId, input.card.id, plan.platform, scheduledAt].join(":"))
+      .update([input.clientAccountId, input.destinationId ?? "legacy", input.card.id, plan.platform, scheduledAt].join(":"))
       .digest("hex"),
   })));
 }
@@ -2461,13 +2464,9 @@ export async function processDueMetaPublications(app: FastifyInstance, limit = 1
       if (!publication.mediaUrl || !publication.createdByUserId) {
         throw new Error("O agendamento não possui todos os dados necessários para publicação.");
       }
-      const assets = await findClientMetaAssets(app.db, publication.clientAccountId);
-      const linkedAssetId = publication.platform === "instagram" ? assets?.instagramAccountId : assets?.facebookPageId;
-      if (!linkedAssetId || linkedAssetId !== publication.metaAssetId) {
-        throw new Error(publication.platform === "instagram"
-          ? "A conta do Instagram vinculada ao cliente mudou desde o agendamento."
-          : "A Página do Facebook vinculada ao cliente mudou desde o agendamento.");
-      }
+      // `metaAssetId` is an immutable scheduling snapshot. Never resolve the
+      // current default destination here: changing a default or editing a
+      // destination must not redirect an already scheduled publication.
       const commonInput = {
         userId: publication.createdByUserId,
         imageUrl: publication.mediaUrl,
