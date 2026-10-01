@@ -8,6 +8,7 @@ import { CardTimeTracker, TimeTrackingWorkspace } from "./TimeTrackingWorkspace"
 import { normalizeExternalHttpUrl } from "./externalUrl";
 import { metaPublicationPreviewSource, type MetaPublicationPreview } from "./metaPublicationPreview";
 import { adminCardRoute } from "./metaCenterNavigation";
+import { metaConnectionPresentation } from "./metaConnectionStatus";
 import {
   addAdminCardCommentBySlug,
   addPortalCardCommentBySlug,
@@ -694,6 +695,77 @@ function PageContextBanner({ eyebrow, title, description, metrics, action, middl
     {middle ? <div className="page-context-middle">{middle}</div> : null}
     {metrics.length || action ? <div className="page-context-aside"><div className="dashboard-orbs page-context-orbs" aria-hidden="true"><i /><i /><i /></div>{metrics.length ? <div className="dashboard-metrics dashboard-metrics-inline">{metrics.map((metric) => <article className={metric.tone ?? ""} key={metric.label}>{metric.icon}<div><span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.note}</small></div></article>)}</div> : null}{action}</div> : null}
   </section>;
+}
+
+function MetaConnectionHeaderCards() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [status, setStatus] = useState<Awaited<ReturnType<typeof loadMetaStatus>> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [statusError, setStatusError] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const [connectionError, setConnectionError] = useState("");
+  const [oauthResult] = useState<"connected" | "error" | null>(() => {
+    const result = new URLSearchParams(location.search).get("meta");
+    return result === "connected" || result === "error" ? result : null;
+  });
+
+  const refreshStatus = useCallback(async () => {
+    setLoading(true);
+    setStatusError("");
+    try {
+      setStatus(await loadMetaStatus());
+    } catch (caught) {
+      setStatus(null);
+      setStatusError(caught instanceof Error ? caught.message : "Não foi possível carregar o status da conexão Meta.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void refreshStatus(); }, [refreshStatus]);
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (!params.has("meta")) return;
+    params.delete("meta");
+    const search = params.toString();
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : "" }, { replace: true });
+  }, [location.pathname, location.search, navigate]);
+
+  const connect = async () => {
+    if (connecting) return;
+    setConnecting(true);
+    setConnectionError("");
+    try {
+      const result = await beginMetaConnection("#/area/publicacoes-meta");
+      window.location.assign(result.authorizationUrl);
+    } catch (caught) {
+      setConnectionError(caught instanceof Error ? caught.message : "Não foi possível iniciar a conexão Meta.");
+      setConnecting(false);
+    }
+  };
+
+  const presentation = status ? metaConnectionPresentation(status) : null;
+  const state = statusError ? "error" : loading ? "loading" : presentation?.state ?? "disconnected";
+  const statusLabel = statusError ? "Status indisponível" : loading ? "Carregando conexão…" : presentation?.label ?? "Meta não conectada";
+  const accountName = status?.accountName?.trim() || null;
+  const expiryText = presentation?.expiresAt
+    ? `${presentation.state === "expired" ? "Expirou em" : "Válida até"} ${new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(presentation.expiresAt)}`
+    : presentation?.state === "healthy" ? "Conexão sem data de expiração informada" : null;
+  const actionLabel = presentation?.actionLabel ?? "Atualizar conexão";
+  const feedback = connectionError
+    || (oauthResult === "connected" ? "Conexão Meta atualizada com sucesso." : oauthResult === "error" ? "Não foi possível concluir a conexão Meta." : "Use o fluxo seguro já configurado para renovar o acesso.");
+
+  return <div className="dashboard-metrics dashboard-metrics-inline meta-connection-banner-cards page-context-action">
+    <article className={`meta-connection-card ${state}`} role="status">
+      <UiIcon name={state === "healthy" ? "check" : state === "warning" ? "clock" : "link"} />
+      <div><span>Conexão Meta</span><strong>{state === "healthy" ? "✓ " : state === "warning" ? "⚠ " : ""}{statusLabel}</strong>{accountName ? <small className="meta-connection-account">{accountName}</small> : null}{expiryText ? <small className="meta-connection-expiry">{expiryText}</small> : null}{statusError ? <small className="meta-connection-error">{statusError}</small> : null}</div>
+    </article>
+    <article className="meta-connection-card meta-connection-action-card">
+      <UiIcon name="link" />
+      <div><span>Atualização da conexão</span><button type="button" className="gradient-button" disabled={connecting || loading} onClick={() => void connect()}>{connecting ? "Abrindo Meta…" : actionLabel}</button><small className={connectionError || oauthResult === "error" ? "meta-connection-error" : oauthResult === "connected" ? "meta-connection-success" : undefined}>{feedback}</small></div>
+    </article>
+  </div>;
 }
 
 function WorkspaceSelector({ clientName, slug, options }: { clientName: string; slug: string; options: AdminClientOption[] }) {
@@ -10090,9 +10162,9 @@ function InternalAreaPage({ session, onLogout }: { session: SessionUser | null; 
   if (!session || session.role === "client") return <Navigate to={getDefaultRoute(session)} replace />;
   if (area === "publicacoes-meta" && session.role !== "super_admin") return <Navigate to="/dashboard" replace />;
   if (!page || (page.restricted && session.role === "collaborator")) return <Navigate to="/dashboard" replace />;
-  const metrics = area === "equipe" ? [{ label: "Papéis", value: "4", note: "Níveis de acesso", icon: <UiIcon name="users" />, tone: "clients" }, { label: "Clientes", value: "—", note: "Atribuições ativas", icon: <UiIcon name="link" />, tone: "posts" }] : area === "relatorios" ? [{ label: "Relatórios", value: "—", note: "Períodos disponíveis", icon: <UiIcon name="file" />, tone: "posts" }, { label: "Indicadores", value: "—", note: "Acompanhe resultados", icon: <UiIcon name="check" />, tone: "approved" }] : area === "faturamento" ? [{ label: "Faturas", value: "—", note: "Lançamentos da operação", icon: <UiIcon name="receipt" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Cobranças centralizadas", icon: <UiIcon name="check" />, tone: "approved" }] : area === "controle-de-tempo" ? [{ label: "Cronômetro", value: "◷", note: "Continua após sair", icon: <UiIcon name="clock" />, tone: "posts" }, { label: "Relatórios", value: "✓", note: "Separados por cliente", icon: <UiIcon name="file" />, tone: "approved" }] : [{ label: "Em andamento", value: "—", note: "Dados desta área", icon: <UiIcon name="clock" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Operação centralizada", icon: <UiIcon name="check" />, tone: "approved" }];
+  const metrics = area === "publicacoes-meta" ? [] : area === "equipe" ? [{ label: "Papéis", value: "4", note: "Níveis de acesso", icon: <UiIcon name="users" />, tone: "clients" }, { label: "Clientes", value: "—", note: "Atribuições ativas", icon: <UiIcon name="link" />, tone: "posts" }] : area === "relatorios" ? [{ label: "Relatórios", value: "—", note: "Períodos disponíveis", icon: <UiIcon name="file" />, tone: "posts" }, { label: "Indicadores", value: "—", note: "Acompanhe resultados", icon: <UiIcon name="check" />, tone: "approved" }] : area === "faturamento" ? [{ label: "Faturas", value: "—", note: "Lançamentos da operação", icon: <UiIcon name="receipt" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Cobranças centralizadas", icon: <UiIcon name="check" />, tone: "approved" }] : area === "controle-de-tempo" ? [{ label: "Cronômetro", value: "◷", note: "Continua após sair", icon: <UiIcon name="clock" />, tone: "posts" }, { label: "Relatórios", value: "✓", note: "Separados por cliente", icon: <UiIcon name="file" />, tone: "approved" }] : [{ label: "Em andamento", value: "—", note: "Dados desta área", icon: <UiIcon name="clock" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Operação centralizada", icon: <UiIcon name="check" />, tone: "approved" }];
   const content = area === "relatorios" ? <ReportsWorkspace newReportSignal={reportCreationVersion} /> : area === "faturamento" ? <BillingWorkspace session={session} newInvoiceSignal={invoiceCreationVersion} /> : area === "controle-de-tempo" ? <TimeTrackingWorkspace /> : area === "propostas" ? <ProposalsWorkspace newProposalSignal={proposalCreationVersion} /> : area === "contratos" ? <ContractsWorkspace newContractSignal={contractCreationVersion} /> : area === "equipe" ? <TeamManagementWorkspace session={session} newMemberSignal={memberCreationVersion} /> : area === "datas-comemorativas" ? <CommemorativeDatesWorkspace /> : area === "calendario-social" ? <SocialCalendarWorkspace session={session} /> : area === "publicacoes-meta" ? <MetaPublicationsWorkspace /> : area === "briefs-design" ? <DesignBriefsWorkspace /> : <section className="internal-area-card glass"><div className="internal-area-empty"><UiIcon name="spark" /><strong>Esta página é privada para o seu nível de acesso.</strong><span>O conteúdo desta área será organizado aqui.</span></div></section>;
-  const action = area === "relatorios" ? <button className="gradient-button page-context-action" onClick={() => setReportCreationVersion((current) => current + 1)}>+ Novo relatório</button> : area === "faturamento" ? <button className="gradient-button page-context-action" onClick={() => setInvoiceCreationVersion((current) => current + 1)}>+ Nova fatura</button> : area === "propostas" ? <button className="gradient-button page-context-action" onClick={() => setProposalCreationVersion((current) => current + 1)}>+ Nova proposta</button> : area === "contratos" ? <button className="gradient-button page-context-action" onClick={() => setContractCreationVersion((current) => current + 1)}>+ Novo contrato</button> : area === "equipe" && session.role === "super_admin" ? <button className="gradient-button page-context-action" onClick={() => setMemberCreationVersion((current) => current + 1)}>+ Novo membro</button> : null;
+  const action = area === "publicacoes-meta" ? <MetaConnectionHeaderCards /> : area === "relatorios" ? <button className="gradient-button page-context-action" onClick={() => setReportCreationVersion((current) => current + 1)}>+ Novo relatório</button> : area === "faturamento" ? <button className="gradient-button page-context-action" onClick={() => setInvoiceCreationVersion((current) => current + 1)}>+ Nova fatura</button> : area === "propostas" ? <button className="gradient-button page-context-action" onClick={() => setProposalCreationVersion((current) => current + 1)}>+ Nova proposta</button> : area === "contratos" ? <button className="gradient-button page-context-action" onClick={() => setContractCreationVersion((current) => current + 1)}>+ Novo contrato</button> : area === "equipe" && session.role === "super_admin" ? <button className="gradient-button page-context-action" onClick={() => setMemberCreationVersion((current) => current + 1)}>+ Novo membro</button> : null;
   const titleIcon = area === "equipe" ? <UiIcon name="users" /> : area === "briefs-design" ? <UiIcon name="brush" /> : area === "relatorios" ? <UiIcon name="file" /> : area === "faturamento" ? <UiIcon name="receipt" /> : area === "controle-de-tempo" ? <UiIcon name="clock" /> : area === "propostas" ? <UiIcon name="send" /> : area === "contratos" ? <UiIcon name="check" /> : area === "calendario-social" ? <UiIcon name="calendar" /> : area === "publicacoes-meta" ? <UiIcon name="layers" /> : area === "datas-comemorativas" ? <UiIcon name="spark" /> : undefined;
   return <div className="page-grid admin-layout internal-area-layout"><AdminRail session={session} /><main className="main-column"><WorkspaceNavbar session={session} onLogout={onLogout} />{area !== "controle-de-tempo" ? <PageContextBanner eyebrow="Área da operação" title={page.title} description={page.description} metrics={metrics} action={action} titleClassName={["relatorios", "faturamento", "propostas", "equipe", "calendario-social", "publicacoes-meta", "briefs-design", "datas-comemorativas", "contratos"].includes(area) ? "billing-banner-title" : undefined} titleIcon={titleIcon} /> : null}{content}</main></div>;
 }
