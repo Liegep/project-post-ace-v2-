@@ -32,6 +32,10 @@ export const invoiceFieldsSchema = z.object({
   visibleToClient: z.boolean(),
   sentToClient: z.boolean(),
   notes: z.string().max(20_000),
+  paidAt: z.string().date().nullable().optional(),
+  paymentMethod: z.string().trim().max(120).nullable().optional(),
+  paymentProofName: z.string().trim().max(255).nullable().optional(),
+  paymentProofUrl: z.string().trim().max(2_000).nullable().optional(),
   lines: z.array(invoiceLineSchema).max(200),
   attachments: z.array(invoiceAttachmentSchema).max(30),
 });
