@@ -10835,6 +10835,10 @@ button {
 .client-calendar-day > .client-calendar-event-item.combined {
   box-shadow: inset 0 0 0 1px rgba(92, 76, 190, .22);
 }
+.client-calendar-day > .client-calendar-event-item.published {
+  opacity: .86;
+  box-shadow: inset 0 0 0 1px rgba(38, 173, 120, .24);
+}
 .client-calendar-event-item > em {
   flex: 1 1 auto;
 }
@@ -10870,6 +10874,7 @@ button {
 .client-calendar-meta-chips i.failed { background: #d84f69; }
 .client-kanban-calendar > p i.instagram { background: #a555c8; }
 .client-kanban-calendar > p i.facebook { background: #3979cc; }
+.client-kanban-calendar > p i.published { background: #26ad78; }
 .client-calendar-meta-error {
   display: block;
   margin-top: 8px;
