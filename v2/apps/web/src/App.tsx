@@ -1405,6 +1405,9 @@ function ClientMetaIntegrationPanel({ slug }: { slug: string }) {
   const [editingDestinationId, setEditingDestinationId] = useState<string | "new" | null>(null);
   const [destinationForm, setDestinationForm] = useState({ name: "", facebookPageId: "", instagramAccountId: "", isDefault: false });
   const [loading, setLoading] = useState(true);
+  const [dashboardMetaStatus, setDashboardMetaStatus] = useState<Awaited<ReturnType<typeof loadMetaStatus>> | null>(null);
+  const [metaRenewing, setMetaRenewing] = useState(false);
+  const [metaRenewError, setMetaRenewError] = useState("");
   const [loadingAssets, setLoadingAssets] = useState(false);
   const [assetsLoaded, setAssetsLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -2160,6 +2163,21 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
     return () => window.clearTimeout(timeout);
   }, [scheduledNotice]);
 
+  useEffect(() => {
+    if (session.role !== "super_admin") {
+      setDashboardMetaStatus(null);
+      return;
+    }
+    let active = true;
+    const refreshMetaStatus = () => loadMetaStatus()
+      .then((status) => { if (active) setDashboardMetaStatus(status); })
+      .catch(() => { if (active) setDashboardMetaStatus(null); });
+    void refreshMetaStatus();
+    const timer = window.setInterval(refreshMetaStatus, 60 * 60_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [session.role]);
+
+
   const playDashboardNotificationTone = useCallback(() => {
     try {
       const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -2214,6 +2232,29 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
   }, []);
 
   const greeting = currentTime.getHours() < 12 ? "Bom dia" : currentTime.getHours() < 18 ? "Boa tarde" : "Boa noite";
+
+  const dashboardMetaExpiry = useMemo(() => {
+    if (!dashboardMetaStatus?.expiresAt) return null;
+    const expiresAt = new Date(dashboardMetaStatus.expiresAt);
+    if (Number.isNaN(expiresAt.getTime())) return null;
+    const remainingMs = expiresAt.getTime() - currentTime.getTime();
+    const daysRemaining = Math.max(0, Math.ceil(remainingMs / 86_400_000));
+    return { expiresAt, daysRemaining, shouldWarn: remainingMs <= 7 * 86_400_000 };
+  }, [currentTime, dashboardMetaStatus]);
+
+  const renewDashboardMeta = async () => {
+    if (metaRenewing) return;
+    setMetaRenewing(true);
+    setMetaRenewError("");
+    try {
+      const result = await beginMetaConnection("#/dashboard");
+      window.location.assign(result.authorizationUrl);
+    } catch (caught) {
+      setMetaRenewError(caught instanceof Error ? caught.message : "Não foi possível iniciar a renovação da conexão Meta.");
+      setMetaRenewing(false);
+    }
+  };
+
 
   const refreshKanbanLinks = useCallback(async () => {
     setLinksLoading(true);
@@ -2467,6 +2508,15 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
             </div>
           </div>
 
+          {session.role === "super_admin" && dashboardMetaStatus && dashboardMetaExpiry?.shouldWarn ? <section className={`dashboard-meta-expiry-alert${dashboardMetaStatus.connected ? "" : " is-expired"}`} role="status">
+            <div className="dashboard-meta-expiry-icon"><span>f</span></div>
+            <div className="dashboard-meta-expiry-copy">
+              <strong>{dashboardMetaStatus.connected ? `Meta expira em ${dashboardMetaExpiry.daysRemaining} ${dashboardMetaExpiry.daysRemaining === 1 ? "dia" : "dias"}` : "Conexão Meta expirada"}</strong>
+              <span>{dashboardMetaStatus.accountName || "Conta Meta"} · {dashboardMetaStatus.connected ? "conexão válida até" : "expirou em"} {new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(dashboardMetaExpiry.expiresAt)}</span>
+              {metaRenewError ? <small>{metaRenewError}</small> : null}
+            </div>
+            <button type="button" onClick={() => void renewDashboardMeta()} disabled={metaRenewing}>{metaRenewing ? "Abrindo Meta…" : "Atualizar conexão"}</button>
+          </section> : null}
           <div className="dashboard-grid" ref={dashboardMasonryRef}>
             <DashboardClockWidget currentTime={currentTime} />
             <DashboardNotesWidget userId={session.id} canPersist={session.source === "api"} />
