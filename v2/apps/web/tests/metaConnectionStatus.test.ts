@@ -48,3 +48,13 @@ test("Central Meta reuses the existing status and OAuth flow with its own return
   assert.match(app, /oauthResult === "connected"/);
   assert.match(app, /area === "publicacoes-meta" \? \[\]/);
 });
+
+test("super admin Meta diagnostics load only on demand through the authenticated API client", () => {
+  const app = readFileSync(new URL("../src/App.tsx", import.meta.url), "utf8");
+  const api = readFileSync(new URL("../src/api.ts", import.meta.url), "utf8");
+  assert.match(api, /loadMetaExpiryDiagnostics[\s\S]*fetchJson<[^;]+>\("\/api\/meta\/status\/debug"\)/);
+  assert.match(app, /MetaConnectionHeaderCards showDiagnostics=\{session\.role === "super_admin"\}/);
+  assert.match(app, /onClick=\{\(\) => void refreshDiagnostics\(\)\}/);
+  assert.match(app, /JSON\.stringify\(diagnostics, null, 2\)/);
+  assert.doesNotMatch(app, /useEffect\(\(\) => \{ void refreshDiagnostics\(\)/);
+});
