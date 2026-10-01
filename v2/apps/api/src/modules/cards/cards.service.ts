@@ -74,6 +74,25 @@ type KanbanAutomation = {
 
 type KanbanCard = NonNullable<Awaited<ReturnType<typeof findCardById>>>;
 
+function isScheduledColumnName(name: string) {
+  return /^agendados?$/i.test(name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim());
+}
+
+async function ensureScheduledColumn(app: FastifyInstance, clientAccountId: string) {
+  const connection = await app.db.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.query("SELECT id FROM client_accounts WHERE id = ? FOR UPDATE", [clientAccountId]);
+    const columns = await listColumnsByClientAccountId(connection, clientAccountId);
+    const existing = columns.find((column) => isScheduledColumnName(column.name));
+    if (existing) { await connection.commit(); return existing; }
+    const created = await createColumn(connection, clientAccountId, { name: "Agendados", color: "#3c8ee9", visibleToClient: true, autoCreated: true });
+    await connection.commit();
+    return created;
+  } catch (error) { await connection.rollback(); throw error; }
+  finally { connection.release(); }
+}
+
 function parseAutomations(value: unknown): KanbanAutomation[] {
   if (!value) return [];
   try {
@@ -376,17 +395,7 @@ export async function updateKanbanCard(
     : [];
   let result = await runAutomationActions(app, clientAccountId, updated, automations);
   if (isBeingScheduled) {
-    const normalizeColumnName = (name: string) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-    const columns = await listColumnsByClientAccountId(app.db, clientAccountId);
-    let scheduledColumn = columns.find((column) => /^agendados?$/i.test(normalizeColumnName(column.name)));
-    if (!scheduledColumn) {
-      scheduledColumn = await createColumn(app.db, clientAccountId, {
-        name: "Agendados",
-        color: "#3c8ee9",
-        visibleToClient: true,
-        autoCreated: true,
-      }) ?? undefined;
-    }
+    const scheduledColumn = await ensureScheduledColumn(app, clientAccountId);
     if (scheduledColumn && result.columnId !== scheduledColumn.id) {
       const moved = await moveCard(app.db, cardId, result, { columnId: scheduledColumn.id });
       if (moved) {
@@ -467,6 +476,20 @@ export async function moveKanbanCard(
   const result = await runAutomationActions(app, clientAccountId, moved, automations);
   await upsertCalendarEventFromCard(app.db, result);
   return result;
+}
+
+export async function moveKanbanCardToScheduledColumn(
+  app: FastifyInstance,
+  clientAccountId: string,
+  cardId: string,
+  actor: { id: string; fullName: string; globalRole: string },
+) {
+  const card = await findCardById(app.db, cardId);
+  if (!card || card.clientAccountId !== clientAccountId) throw app.httpErrors.notFound("Card não encontrado nesta conta.");
+  if (card.isBriefApproval && inferredApprovalState(card) !== "approved") return card;
+  const scheduledColumn = await ensureScheduledColumn(app, clientAccountId);
+  if (!scheduledColumn || card.columnId === scheduledColumn.id) return card;
+  return moveKanbanCard(app, clientAccountId, cardId, { columnId: scheduledColumn.id }, actor);
 }
 
 export async function archiveKanbanCard(
