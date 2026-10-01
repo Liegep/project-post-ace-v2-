@@ -18,7 +18,7 @@ export const metaCallbackSchema = z.object({
 });
 
 export const metaConnectQuerySchema = z.object({
-  returnTo: z.string().trim().regex(/^#\/(dashboard|admin\/[a-z0-9-]+)$/).optional(),
+  returnTo: z.string().trim().regex(/^#\/(dashboard|admin\/[a-z0-9-]+|area\/publicacoes-meta)$/).optional(),
 });
 
 const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use uma data no formato AAAA-MM-DD.").refine(
