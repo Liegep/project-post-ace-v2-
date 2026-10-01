@@ -105,7 +105,7 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
 
     return {
       ok: true,
-      card: await moveKanbanCard(app, params.clientAccountId, params.cardId, input),
+      card: await moveKanbanCard(app, params.clientAccountId, params.cardId, input, request.auth!.user),
     };
   });
 

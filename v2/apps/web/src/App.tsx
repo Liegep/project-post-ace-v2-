@@ -163,6 +163,7 @@ import {
   type TextComment,
   type TextDocument,
   type TextTag,
+  type ClientReport,
   beginMetaConnection,
   loadMetaAdAccounts,
   loadMetaAssets,
@@ -6500,7 +6501,8 @@ function ClientPortalWorkspacePage({
   const [portalAppointments, setPortalAppointments] = useState<AgendaEvent[]>([]);
   const [portalInvoices, setPortalInvoices] = useState<BillingInvoice[]>([]);
   const [viewedInvoiceIds, setViewedInvoiceIds] = useState<string[]>([]);
-  const [portalReportsCount, setPortalReportsCount] = useState(0);
+  const [portalReports, setPortalReports] = useState<ClientReport[]>([]);
+  const [viewedReportIds, setViewedReportIds] = useState<string[]>([]);
   const [portalTexts, setPortalTexts] = useState<TextDocument[]>([]);
   const [selectedPortalTextId, setSelectedPortalTextId] = useState<string | null>(null);
   const [portalTextTagFilters, setPortalTextTagFilters] = useState<string[]>([]);
@@ -6604,18 +6606,43 @@ function ClientPortalWorkspacePage({
   }, [resource.loading, slug, refreshKey]);
   useEffect(() => {
     if (!data.permissions.allowClientViewReports) {
-      setPortalReportsCount(0);
+      setPortalReports([]);
       return;
     }
     void listPortalReportsBySlug(slug)
-      .then((response) => setPortalReportsCount(response.items.length))
-      .catch(() => setPortalReportsCount(0));
+      .then((response) => setPortalReports(response.items))
+      .catch(() => setPortalReports([]));
   }, [data.permissions.allowClientViewReports, slug, refreshKey]);
+  useEffect(() => {
+    try {
+      setViewedReportIds(JSON.parse(window.localStorage.getItem(`designhub-v2-viewed-reports:${slug}`) ?? "[]") as string[]);
+    } catch {
+      setViewedReportIds([]);
+    }
+  }, [slug]);
+  const markReportViewed = useCallback((reportId: string) => {
+    setViewedReportIds((current) => {
+      if (current.includes(reportId)) return current;
+      const next = [...current, reportId];
+      try {
+        window.localStorage.setItem(`designhub-v2-viewed-reports:${slug}`, JSON.stringify(next));
+      } catch {
+        // The badge still clears for the current visit if storage is unavailable.
+      }
+      return next;
+    });
+  }, [slug]);
+  const latestPortalReport = portalReports[0] ?? null;
+  const latestPortalReportIsNew = Boolean(latestPortalReport && !viewedReportIds.includes(latestPortalReport.id));
+  const unreadPortalReportCount = latestPortalReportIsNew ? 1 : 0;
   useEffect(() => {
     if ((portalView === "texts" && !data.permissions.allowClientViewTexts) || (portalView === "invoices" && !data.permissions.allowClientViewInvoices) || (portalView === "reports" && !data.permissions.allowClientViewReports) || (portalView === "brand" && !data.permissions.allowClientViewBrandBrain)) {
       setPortalView("board");
     }
   }, [data.permissions.allowClientViewBrandBrain, data.permissions.allowClientViewInvoices, data.permissions.allowClientViewReports, data.permissions.allowClientViewTexts, portalView]);
+  useEffect(() => {
+    if (portalView === "reports" && latestPortalReport) markReportViewed(latestPortalReport.id);
+  }, [latestPortalReport, markReportViewed, portalView]);
   useEffect(() => {
     if (resource.loading) return;
     if (!data.permissions.allowClientViewTexts) {
@@ -6790,9 +6817,9 @@ function ClientPortalWorkspacePage({
             ...(portalTrackerEnabled ? [{ view: "tracker" as const, label: "Tracker", count: portalCardsWithLocalApprovals.length }] : []),
             ...(data.showArchivedToClient ? [{ view: "archived" as const, label: tr("Arquivados"), count: portalArchivedCards.length }] : []),
             ...(data.permissions.allowClientViewInvoices ? [{ view: "invoices" as const, label: tr("Faturas"), count: portalInvoices.filter((invoice) => !viewedInvoiceIds.includes(invoice.id)).length }] : []),
-            ...(data.permissions.allowClientViewReports ? [{ view: "reports" as const, label: tr("Relatórios"), count: portalReportsCount }] : []),
+            ...(data.permissions.allowClientViewReports ? [{ view: "reports" as const, label: tr("Relatórios"), count: unreadPortalReportCount }] : []),
           ].map(({ view, label, count }) => (
-            <button key={view} data-portal-view={view === "approved" ? "approved" : undefined} onClick={() => { setPortalView(view); setPortalMobileMenuOpen(false); }} className={`${portalView === view ? "portal-nav-item active" : "portal-nav-item"}${view === "approved" && approvedTransfer ? " receiving-approval" : ""}`}>
+            <button key={view} data-portal-view={view === "approved" ? "approved" : undefined} onClick={() => { if (view === "reports" && latestPortalReport) markReportViewed(latestPortalReport.id); setPortalView(view); setPortalMobileMenuOpen(false); }} className={`${portalView === view ? "portal-nav-item active" : "portal-nav-item"}${view === "approved" && approvedTransfer ? " receiving-approval" : ""}`}>
               <span>{label}</span>
               {count > 0 ? <b className="portal-nav-count">{count}</b> : null}
             </button>
@@ -6891,14 +6918,25 @@ function ClientPortalWorkspacePage({
             ) : null}
 
             {data.widgets.reports ? (
-              <section className="glass widget-card">
+              <section className="glass widget-card portal-latest-report-widget">
                 <div className="widget-head">
                   <h3>{tr("Relatórios")}</h3>
                   <span>{tr("Mensal")}</span>
                 </div>
-                <p className="widget-paragraph">
-                  {tr("O cliente encontra aqui os relatórios liberados por permissão, sem ver nada do restante da operação interna.")}
-                </p>
+                {latestPortalReport ? (
+                  <button type="button" className="portal-latest-report-card" onClick={() => { markReportViewed(latestPortalReport.id); setPortalView("reports"); }}>
+                    <span className="portal-latest-report-icon"><UiIcon name="file" /></span>
+                    <span className="portal-latest-report-copy">
+                      <small>{tr("Último relatório")}</small>
+                      <strong>{latestPortalReport.title}</strong>
+                      <em>{new Intl.DateTimeFormat(clientLocaleTag, { day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${latestPortalReport.periodEnd}T12:00:00`))}</em>
+                    </span>
+                    {latestPortalReportIsNew ? <b className="portal-latest-report-new">{tr("Novo")}</b> : null}
+                    <span className="portal-latest-report-open">{tr("Ver relatório")} <UiIcon name="chevron-right" /></span>
+                  </button>
+                ) : (
+                  <p className="widget-paragraph">{tr("Nenhum relatório publicado ainda.")}</p>
+                )}
               </section>
             ) : null}
           </div>
@@ -8078,7 +8116,7 @@ ${internalMessage.trim()}`, isInternal: true });
                 </div>
               </EditorField>
             </div>
-            {detail.approvalEvents?.length ? <section className="approval-history-panel"><h4>Histórico de aprovação</h4>{detail.approvalEvents.map((event) => <article key={event.id}><strong>{event.action === "converted_to_post" ? "Pauta convertida em post — nova aprovação" : event.action === "resubmitted" ? "Enviado novamente para aprovação" : event.action === "approved" ? "Aprovado pelo cliente" : event.action === "changes_requested" ? "Alteração solicitada" : "Estado anterior preservado"}</strong><small>{event.actorName} · {event.source === "public_link" ? "Link público" : event.source === "portal" ? "Portal" : event.source === "legacy" ? "Registro anterior" : "Equipe"} · {new Date(event.createdAt).toLocaleString("pt-BR")}</small>{event.commentText ? <p>{event.commentText}</p> : null}</article>)}</section> : null}
+            {detail.approvalEvents?.some((event) => event.action !== "legacy_snapshot") ? <section className="approval-history-panel"><h4>Histórico de aprovação</h4>{detail.approvalEvents.filter((event) => event.action !== "legacy_snapshot").map((event) => <article key={event.id}><strong>{event.action === "converted_to_post" ? "Pauta convertida em post — nova aprovação" : event.action === "resubmitted" ? "Enviado novamente para aprovação" : event.action === "approved" ? "Aprovado pelo cliente" : "Alteração solicitada"}</strong><small>{event.actorName} · {event.source === "public_link" ? "Link público" : event.source === "portal" ? "Portal" : "Equipe"} · {new Date(event.createdAt).toLocaleString("pt-BR")}</small>{event.commentText ? <p>{event.commentText}</p> : null}</article>)}</section> : null}
             <section className="editor-comments">
             <h4>Comentários ({detail.comments.length})</h4>
             {detail.comments.map((comment) => (

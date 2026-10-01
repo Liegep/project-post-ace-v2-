@@ -245,6 +245,33 @@ const brandBrainTranslations: Record<Exclude<PortalLocale, "pt">, Record<string,
   }
 };
 
+const portalExtraTranslations: Record<Exclude<PortalLocale, "pt">, Record<string, string>> = {
+  en: {
+    "Último relatório": "Latest report",
+    "Novo": "New",
+    "Ver relatório": "View report",
+    "Nenhum relatório publicado ainda.": "No reports have been published yet.",
+  },
+  es: {
+    "Último relatório": "Último informe",
+    "Novo": "Nuevo",
+    "Ver relatório": "Ver informe",
+    "Nenhum relatório publicado ainda.": "Aún no hay informes publicados.",
+  },
+  it: {
+    "Último relatório": "Ultimo report",
+    "Novo": "Nuovo",
+    "Ver relatório": "Vedi report",
+    "Nenhum relatório publicado ainda.": "Nessun report pubblicato.",
+  },
+  sv: {
+    "Último relatório": "Senaste rapporten",
+    "Novo": "Ny",
+    "Ver relatório": "Visa rapport",
+    "Nenhum relatório publicado ainda.": "Inga rapporter har publicerats ännu.",
+  },
+};
+
 export function normalizePortalLocale(value?: string | null): PortalLocale {
   const locale = (value ?? "pt").trim().toLocaleLowerCase();
   if (locale.startsWith("en") || locale.includes("ingl")) return "en";
@@ -260,5 +287,5 @@ export function portalLocaleTag(value?: string | null) {
 
 export function portalText(locale: string | null | undefined, source: string) {
   const normalized = normalizePortalLocale(locale);
-  return normalized === "pt" ? source : translations[normalized][source] ?? brandBrainTranslations[normalized][source] ?? source;
+  return normalized === "pt" ? source : translations[normalized][source] ?? brandBrainTranslations[normalized][source] ?? portalExtraTranslations[normalized][source] ?? source;
 }
