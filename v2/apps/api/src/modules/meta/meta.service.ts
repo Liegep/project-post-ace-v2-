@@ -34,6 +34,10 @@ const META_SCOPES = [
 ];
 
 type MetaTokenResponse = { access_token?: string; token_type?: string; expires_in?: number; error?: { message?: string } };
+type MetaDebugTokenResponse = {
+  data?: { expires_at?: number; data_access_expires_at?: number; is_valid?: boolean };
+  error?: { message?: string };
+};
 type MetaProfileResponse = { id?: string; name?: string; error?: { message?: string } };
 type MetaAccountsResponse = {
   data?: Array<{ id?: string; name?: string; instagram_business_account?: { id?: string; username?: string } | null }>;
@@ -243,11 +247,29 @@ function appSecretProof(accessToken: string, appSecret: string) {
   return crypto.createHmac("sha256", appSecret).update(accessToken).digest("hex");
 }
 
-async function getMetaJson<T>(url: URL): Promise<T> {
-  const response = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15_000) });
+async function getMetaJson<T>(url: URL, timeoutMs = 15_000): Promise<T> {
+  const response = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(timeoutMs) });
   const payload = await response.json().catch(() => ({})) as T & { error?: { message?: string } };
   if (!response.ok || payload.error) throw new Error(payload.error?.message || `Meta Graph API respondeu com HTTP ${response.status}`);
   return payload;
+}
+
+async function debugMetaTokenExpiry(app: FastifyInstance, input: { accessToken: string; appId: string; appSecret: string }) {
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/debug_token`);
+  url.searchParams.set("input_token", input.accessToken);
+  url.searchParams.set("access_token", `${input.appId}|${input.appSecret}`);
+  try {
+    const payload = await getMetaJson<MetaDebugTokenResponse>(url, 5_000);
+    const expiresAtSeconds = payload.data?.expires_at;
+    if (payload.data?.is_valid !== true || typeof expiresAtSeconds !== "number" || !Number.isFinite(expiresAtSeconds) || expiresAtSeconds <= 0) return null;
+    const expiresAt = new Date(expiresAtSeconds * 1000);
+    return Number.isNaN(expiresAt.getTime()) ? null : expiresAt;
+  } catch {
+    // Best-effort fallback: never expose the URL or either credential through
+    // logs or OAuth errors, and never fail an otherwise successful renewal.
+    app.log.warn({ endpoint: "/debug_token", operation: "meta.token_expiry" }, "Meta token expiry lookup failed; continuing without debug expiry");
+    return null;
+  }
 }
 
 function redactMetaSecrets(message: string, accessToken: string, appSecret: string) {
@@ -425,6 +447,14 @@ export async function completeMetaAuthorization(app: FastifyInstance, input: { c
   const longToken = await getMetaJson<MetaTokenResponse>(longUrl).catch(() => shortToken);
   const accessToken = longToken.access_token ?? shortToken.access_token;
   const expiresIn = longToken.expires_in ?? shortToken.expires_in;
+  const oauthExpiresAt = typeof expiresIn === "number" && Number.isFinite(expiresIn) && expiresIn > 0
+    ? new Date(Date.now() + expiresIn * 1000)
+    : null;
+  const debugExpiresAt = oauthExpiresAt ? null : await debugMetaTokenExpiry(app, {
+    accessToken,
+    appId: config.appId,
+    appSecret: config.appSecret,
+  });
 
   const profileUrl = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/me`);
   profileUrl.searchParams.set("fields", "id,name");
@@ -437,10 +467,9 @@ export async function completeMetaAuthorization(app: FastifyInstance, input: { c
   await upsertMetaConnection(app.db, {
     userId: input.userId,
     encryptedToken: encryptToken(accessToken, config.encryptionKey),
-    // Some successful Meta exchanges omit expires_in. Do not erase a known
-    // expiration in that case; keeping the last known date is safer than
-    // turning expiry monitoring off entirely.
-    expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : existingConnection?.expiresAt ? new Date(existingConnection.expiresAt) : null,
+    // Prefer OAuth, then the official debugger, then the last known value.
+    // A successful connection remains usable even when all three are absent.
+    expiresAt: oauthExpiresAt ?? debugExpiresAt ?? (existingConnection?.expiresAt ? new Date(existingConnection.expiresAt) : null),
     metaUserId: profile.id,
     accountName: profile.name ?? null,
   });
