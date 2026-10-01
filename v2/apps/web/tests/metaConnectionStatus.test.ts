@@ -13,7 +13,7 @@ const status = (overrides: Partial<MetaConnectionStatusInput> = {}): MetaConnect
   ...overrides,
 });
 
-test("classifies a healthy Meta connection with more than seven days remaining", () => {
+test("classifies a healthy Meta connection with more than fourteen days remaining", () => {
   assert.deepEqual(metaConnectionPresentation(status(), NOW), {
     state: "healthy",
     label: "Conectada",
@@ -41,11 +41,11 @@ test("an active connection without either expiry stays healthy", () => {
   assert.equal(presentation.expiryKind, null);
 });
 
-test("warns when a Meta connection expires in seven days or less", () => {
-  const sevenDays = metaConnectionPresentation(status({ expiresAt: "2026-10-08T12:00:00.000Z" }), NOW);
+test("warns when a Meta connection expires in fourteen days or less", () => {
+  const fourteenDays = metaConnectionPresentation(status({ expiresAt: "2026-10-15T12:00:00.000Z" }), NOW);
   const oneDay = metaConnectionPresentation(status({ expiresAt: "2026-10-02T01:00:00.000Z" }), NOW);
-  assert.equal(sevenDays.state, "warning");
-  assert.equal(sevenDays.label, "Expira em 7 dias");
+  assert.equal(fourteenDays.state, "warning");
+  assert.equal(fourteenDays.label, "Expira em 14 dias");
   assert.equal(oneDay.label, "Expira em 1 dia");
 });
 
