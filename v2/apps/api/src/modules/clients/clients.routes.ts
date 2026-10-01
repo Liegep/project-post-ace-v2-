@@ -187,7 +187,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     const brandScopeSql = scope.mode === "global" ? "" : ` AND r.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")})`;
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const tomorrowStart = new Date(todayStart); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
-    const upcomingEnd = new Date(todayStart); upcomingEnd.setDate(upcomingEnd.getDate() + 4);
+    const upcomingEnd = new Date(todayStart); upcomingEnd.setDate(upcomingEnd.getDate() + 8);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -284,8 +284,19 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         "ORDER BY e.occurred_at DESC LIMIT 8",
       ].join(" "), params),
       app.db.query<RowDataPacket[]>(
-        ["SELECT c.id, c.title, c.scheduled_at AS scheduledAt, a.name AS clientName, a.logo_url AS clientLogoUrl FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id WHERE c.archived = 0 AND c.scheduled_at >= ? AND c.scheduled_at < ?", scopeSql, "ORDER BY c.scheduled_at ASC LIMIT 20"].join(" "),
-        [tomorrowStart, upcomingEnd, ...params],
+        [
+          "SELECT p.id, MAX(p.title) AS title, p.scheduledAt, MAX(p.clientName) AS clientName, MAX(p.clientLogoUrl) AS clientLogoUrl FROM (",
+          "SELECT c.id, c.title, c.scheduled_at AS scheduledAt, a.name AS clientName, a.logo_url AS clientLogoUrl",
+          "FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id",
+          "WHERE c.archived = 0 AND c.scheduled_at >= ? AND c.scheduled_at < ?", scopeSql,
+          "UNION ALL",
+          "SELECT COALESCE(mp.card_id, CONCAT('meta-', mp.id)) AS id, COALESCE(kc.title, 'Publicação Meta') AS title, mp.scheduled_at AS scheduledAt, a.name AS clientName, a.logo_url AS clientLogoUrl",
+          "FROM meta_scheduled_publications mp LEFT JOIN kanban_cards kc ON kc.id = mp.card_id JOIN client_accounts a ON a.id = mp.client_account_id",
+          "WHERE mp.status IN ('scheduled', 'publishing', 'published') AND mp.scheduled_at >= ? AND mp.scheduled_at < ?",
+          scope.mode === "global" ? "" : `AND mp.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")})`,
+          ") p GROUP BY p.id, p.scheduledAt ORDER BY p.scheduledAt ASC, title ASC LIMIT 20",
+        ].join(" "),
+        [tomorrowStart, upcomingEnd, ...params, tomorrowStart, upcomingEnd, ...params],
       ),
       app.db.query<RowDataPacket[]>(
         [
