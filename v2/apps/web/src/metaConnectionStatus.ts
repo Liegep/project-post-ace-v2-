@@ -39,7 +39,7 @@ export function metaConnectionPresentation(status: MetaConnectionStatusInput, no
   if (validExpiry) {
     const remainingMs = validExpiry.getTime() - now.getTime();
     const daysRemaining = Math.max(0, Math.ceil(remainingMs / DAY_MS));
-    if (remainingMs <= 7 * DAY_MS) {
+    if (remainingMs <= 14 * DAY_MS) {
       return {
         state: "warning",
         label: `Expira em ${daysRemaining} ${daysRemaining === 1 ? "dia" : "dias"}`,
