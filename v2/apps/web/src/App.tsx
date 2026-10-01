@@ -168,7 +168,6 @@ import {
   type TextTag,
   type ClientReport,
   beginMetaConnection,
-  loadMetaExpiryDiagnostics,
   loadMetaAdAccounts,
   loadMetaAssets,
   loadMetaStatus,
@@ -698,7 +697,7 @@ function PageContextBanner({ eyebrow, title, description, metrics, action, middl
   </section>;
 }
 
-function MetaConnectionHeaderCards({ showDiagnostics }: { showDiagnostics: boolean }) {
+function MetaConnectionHeaderCards() {
   const location = useLocation();
   const navigate = useNavigate();
   const [status, setStatus] = useState<Awaited<ReturnType<typeof loadMetaStatus>> | null>(null);
@@ -706,9 +705,6 @@ function MetaConnectionHeaderCards({ showDiagnostics }: { showDiagnostics: boole
   const [statusError, setStatusError] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [connectionError, setConnectionError] = useState("");
-  const [diagnostics, setDiagnostics] = useState<Awaited<ReturnType<typeof loadMetaExpiryDiagnostics>>["expiryDiagnostics"] | undefined>(undefined);
-  const [diagnosticsLoading, setDiagnosticsLoading] = useState(false);
-  const [diagnosticsError, setDiagnosticsError] = useState("");
   const [oauthResult] = useState<"connected" | "error" | null>(() => {
     const result = new URLSearchParams(location.search).get("meta");
     return result === "connected" || result === "error" ? result : null;
@@ -749,33 +745,18 @@ function MetaConnectionHeaderCards({ showDiagnostics }: { showDiagnostics: boole
     }
   };
 
-  const refreshDiagnostics = async () => {
-    if (!showDiagnostics || diagnosticsLoading) return;
-    setDiagnosticsLoading(true);
-    setDiagnosticsError("");
-    try {
-      const result = await loadMetaExpiryDiagnostics();
-      setDiagnostics(result.expiryDiagnostics);
-    } catch (caught) {
-      setDiagnosticsError(caught instanceof Error ? caught.message : "Não foi possível carregar o diagnóstico Meta.");
-    } finally {
-      setDiagnosticsLoading(false);
-    }
-  };
-
   const presentation = status ? metaConnectionPresentation(status) : null;
   const state = statusError ? "error" : loading ? "loading" : presentation?.state ?? "disconnected";
   const statusLabel = statusError ? "Status indisponível" : loading ? "Carregando conexão…" : presentation?.label ?? "Meta não conectada";
   const accountName = status?.accountName?.trim() || null;
   const expiryText = presentation?.expiresAt
-    ? `${presentation.state === "expired" ? "Expirou em" : "Válida até"} ${new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(presentation.expiresAt)}`
-    : presentation?.state === "healthy" ? "Conexão sem data de expiração informada" : null;
+    ? `${presentation.expiryKind === "data_access" ? presentation.state === "expired" ? "Acesso aos dados expirou em" : "Acesso aos dados válido até" : presentation.state === "expired" ? "Expirou em" : "Válida até"} ${new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(presentation.expiresAt)}`
+    : presentation?.state === "healthy" ? "Conexão ativa" : null;
   const actionLabel = presentation?.actionLabel ?? "Atualizar conexão";
   const feedback = connectionError
     || (oauthResult === "connected" ? "Conexão Meta atualizada com sucesso." : oauthResult === "error" ? "Não foi possível concluir a conexão Meta." : "Use o fluxo seguro já configurado para renovar o acesso.");
 
-  return <div className="meta-connection-header page-context-action">
-    <div className="dashboard-metrics dashboard-metrics-inline meta-connection-banner-cards">
+  return <div className="dashboard-metrics dashboard-metrics-inline meta-connection-banner-cards page-context-action">
       <article className={`meta-connection-card ${state}`} role="status">
         <UiIcon name={state === "healthy" ? "check" : state === "warning" ? "clock" : "link"} />
         <div><span>Conexão Meta</span><strong>{state === "healthy" ? "✓ " : state === "warning" ? "⚠ " : ""}{statusLabel}</strong>{accountName ? <small className="meta-connection-account">{accountName}</small> : null}{expiryText ? <small className="meta-connection-expiry">{expiryText}</small> : null}{statusError ? <small className="meta-connection-error">{statusError}</small> : null}</div>
@@ -784,11 +765,6 @@ function MetaConnectionHeaderCards({ showDiagnostics }: { showDiagnostics: boole
         <UiIcon name="link" />
         <div><span>Atualização da conexão</span><button type="button" className="gradient-button" disabled={connecting || loading} onClick={() => void connect()}>{connecting ? "Abrindo Meta…" : actionLabel}</button><small className={connectionError || oauthResult === "error" ? "meta-connection-error" : oauthResult === "connected" ? "meta-connection-success" : undefined}>{feedback}</small></div>
       </article>
-    </div>
-    {showDiagnostics ? <section className="meta-expiry-diagnostics" aria-live="polite">
-      <header><div><strong>Diagnóstico Meta</strong><small>Metadados seguros da última autorização.</small></div><button type="button" disabled={diagnosticsLoading} onClick={() => void refreshDiagnostics()}>{diagnosticsLoading ? "Atualizando…" : "Atualizar diagnóstico"}</button></header>
-      {diagnosticsError ? <p>{diagnosticsError}</p> : diagnostics === null ? <p>Nenhum diagnóstico foi registrado ainda. Reconecte a Meta e atualize novamente.</p> : diagnostics ? <pre>{JSON.stringify(diagnostics, null, 2)}</pre> : null}
-    </section> : null}
   </div>;
 }
 
@@ -2331,12 +2307,16 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
   const greeting = currentTime.getHours() < 12 ? "Bom dia" : currentTime.getHours() < 18 ? "Boa tarde" : "Boa noite";
 
   const dashboardMetaExpiry = useMemo(() => {
-    if (!dashboardMetaStatus?.expiresAt) return null;
-    const expiresAt = new Date(dashboardMetaStatus.expiresAt);
-    if (Number.isNaN(expiresAt.getTime())) return null;
-    const remainingMs = expiresAt.getTime() - currentTime.getTime();
-    const daysRemaining = Math.max(0, Math.ceil(remainingMs / 86_400_000));
-    return { expiresAt, daysRemaining, shouldWarn: remainingMs <= 7 * 86_400_000 };
+    if (!dashboardMetaStatus) return null;
+    const presentation = metaConnectionPresentation(dashboardMetaStatus, currentTime);
+    if (!presentation.expiresAt) return null;
+    return {
+      state: presentation.state,
+      daysRemaining: presentation.daysRemaining,
+      expiresAt: presentation.expiresAt,
+      expiryKind: presentation.expiryKind,
+      shouldWarn: presentation.state === "warning" || presentation.state === "expired",
+    };
   }, [currentTime, dashboardMetaStatus]);
 
   const renewDashboardMeta = async () => {
@@ -2605,11 +2585,11 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
             </div>
           </div>
 
-          {session.role === "super_admin" && dashboardMetaStatus && dashboardMetaExpiry?.shouldWarn ? <section className={`dashboard-meta-expiry-alert${dashboardMetaStatus.connected ? "" : " is-expired"}`} role="status">
+          {session.role === "super_admin" && dashboardMetaStatus && dashboardMetaExpiry?.shouldWarn ? <section className={`dashboard-meta-expiry-alert${dashboardMetaExpiry.state === "expired" ? " is-expired" : ""}`} role="status">
             <div className="dashboard-meta-expiry-icon"><span>f</span></div>
             <div className="dashboard-meta-expiry-copy">
-              <strong>{dashboardMetaStatus.connected ? `Meta expira em ${dashboardMetaExpiry.daysRemaining} ${dashboardMetaExpiry.daysRemaining === 1 ? "dia" : "dias"}` : "Conexão Meta expirada"}</strong>
-              <span>{dashboardMetaStatus.accountName || "Conta Meta"} · {dashboardMetaStatus.connected ? "conexão válida até" : "expirou em"} {new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(dashboardMetaExpiry.expiresAt)}</span>
+              <strong>{dashboardMetaExpiry.state === "expired" ? dashboardMetaExpiry.expiryKind === "data_access" ? "Acesso aos dados Meta expirado" : "Conexão Meta expirada" : `${dashboardMetaExpiry.expiryKind === "data_access" ? "Acesso aos dados Meta" : "Meta"} expira em ${dashboardMetaExpiry.daysRemaining} ${dashboardMetaExpiry.daysRemaining === 1 ? "dia" : "dias"}`}</strong>
+              <span>{dashboardMetaStatus.accountName || "Conta Meta"} · {dashboardMetaExpiry.expiryKind === "data_access" ? dashboardMetaExpiry.state === "expired" ? "acesso aos dados expirou em" : "acesso aos dados válido até" : dashboardMetaExpiry.state === "expired" ? "expirou em" : "conexão válida até"} {new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(dashboardMetaExpiry.expiresAt)}</span>
               {metaRenewError ? <small>{metaRenewError}</small> : null}
             </div>
             <button type="button" onClick={() => void renewDashboardMeta()} disabled={metaRenewing}>{metaRenewing ? "Abrindo Meta…" : "Atualizar conexão"}</button>
@@ -10188,7 +10168,7 @@ function InternalAreaPage({ session, onLogout }: { session: SessionUser | null; 
   if (!page || (page.restricted && session.role === "collaborator")) return <Navigate to="/dashboard" replace />;
   const metrics = area === "publicacoes-meta" ? [] : area === "equipe" ? [{ label: "Papéis", value: "4", note: "Níveis de acesso", icon: <UiIcon name="users" />, tone: "clients" }, { label: "Clientes", value: "—", note: "Atribuições ativas", icon: <UiIcon name="link" />, tone: "posts" }] : area === "relatorios" ? [{ label: "Relatórios", value: "—", note: "Períodos disponíveis", icon: <UiIcon name="file" />, tone: "posts" }, { label: "Indicadores", value: "—", note: "Acompanhe resultados", icon: <UiIcon name="check" />, tone: "approved" }] : area === "faturamento" ? [{ label: "Faturas", value: "—", note: "Lançamentos da operação", icon: <UiIcon name="receipt" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Cobranças centralizadas", icon: <UiIcon name="check" />, tone: "approved" }] : area === "controle-de-tempo" ? [{ label: "Cronômetro", value: "◷", note: "Continua após sair", icon: <UiIcon name="clock" />, tone: "posts" }, { label: "Relatórios", value: "✓", note: "Separados por cliente", icon: <UiIcon name="file" />, tone: "approved" }] : [{ label: "Em andamento", value: "—", note: "Dados desta área", icon: <UiIcon name="clock" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Operação centralizada", icon: <UiIcon name="check" />, tone: "approved" }];
   const content = area === "relatorios" ? <ReportsWorkspace newReportSignal={reportCreationVersion} /> : area === "faturamento" ? <BillingWorkspace session={session} newInvoiceSignal={invoiceCreationVersion} /> : area === "controle-de-tempo" ? <TimeTrackingWorkspace /> : area === "propostas" ? <ProposalsWorkspace newProposalSignal={proposalCreationVersion} /> : area === "contratos" ? <ContractsWorkspace newContractSignal={contractCreationVersion} /> : area === "equipe" ? <TeamManagementWorkspace session={session} newMemberSignal={memberCreationVersion} /> : area === "datas-comemorativas" ? <CommemorativeDatesWorkspace /> : area === "calendario-social" ? <SocialCalendarWorkspace session={session} /> : area === "publicacoes-meta" ? <MetaPublicationsWorkspace /> : area === "briefs-design" ? <DesignBriefsWorkspace /> : <section className="internal-area-card glass"><div className="internal-area-empty"><UiIcon name="spark" /><strong>Esta página é privada para o seu nível de acesso.</strong><span>O conteúdo desta área será organizado aqui.</span></div></section>;
-  const action = area === "publicacoes-meta" ? <MetaConnectionHeaderCards showDiagnostics={session.role === "super_admin"} /> : area === "relatorios" ? <button className="gradient-button page-context-action" onClick={() => setReportCreationVersion((current) => current + 1)}>+ Novo relatório</button> : area === "faturamento" ? <button className="gradient-button page-context-action" onClick={() => setInvoiceCreationVersion((current) => current + 1)}>+ Nova fatura</button> : area === "propostas" ? <button className="gradient-button page-context-action" onClick={() => setProposalCreationVersion((current) => current + 1)}>+ Nova proposta</button> : area === "contratos" ? <button className="gradient-button page-context-action" onClick={() => setContractCreationVersion((current) => current + 1)}>+ Novo contrato</button> : area === "equipe" && session.role === "super_admin" ? <button className="gradient-button page-context-action" onClick={() => setMemberCreationVersion((current) => current + 1)}>+ Novo membro</button> : null;
+  const action = area === "publicacoes-meta" ? <MetaConnectionHeaderCards /> : area === "relatorios" ? <button className="gradient-button page-context-action" onClick={() => setReportCreationVersion((current) => current + 1)}>+ Novo relatório</button> : area === "faturamento" ? <button className="gradient-button page-context-action" onClick={() => setInvoiceCreationVersion((current) => current + 1)}>+ Nova fatura</button> : area === "propostas" ? <button className="gradient-button page-context-action" onClick={() => setProposalCreationVersion((current) => current + 1)}>+ Nova proposta</button> : area === "contratos" ? <button className="gradient-button page-context-action" onClick={() => setContractCreationVersion((current) => current + 1)}>+ Novo contrato</button> : area === "equipe" && session.role === "super_admin" ? <button className="gradient-button page-context-action" onClick={() => setMemberCreationVersion((current) => current + 1)}>+ Novo membro</button> : null;
   const titleIcon = area === "equipe" ? <UiIcon name="users" /> : area === "briefs-design" ? <UiIcon name="brush" /> : area === "relatorios" ? <UiIcon name="file" /> : area === "faturamento" ? <UiIcon name="receipt" /> : area === "controle-de-tempo" ? <UiIcon name="clock" /> : area === "propostas" ? <UiIcon name="send" /> : area === "contratos" ? <UiIcon name="check" /> : area === "calendario-social" ? <UiIcon name="calendar" /> : area === "publicacoes-meta" ? <UiIcon name="layers" /> : area === "datas-comemorativas" ? <UiIcon name="spark" /> : undefined;
   return <div className="page-grid admin-layout internal-area-layout"><AdminRail session={session} /><main className="main-column"><WorkspaceNavbar session={session} onLogout={onLogout} />{area !== "controle-de-tempo" ? <PageContextBanner eyebrow="Área da operação" title={page.title} description={page.description} metrics={metrics} action={action} titleClassName={["relatorios", "faturamento", "propostas", "equipe", "calendario-social", "publicacoes-meta", "briefs-design", "datas-comemorativas", "contratos"].includes(area) ? "billing-banner-title" : undefined} titleIcon={titleIcon} /> : null}{content}</main></div>;
 }

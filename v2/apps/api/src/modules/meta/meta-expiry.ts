@@ -71,6 +71,17 @@ export function resolveMetaTokenExpiry(input: {
   return { expiresAt: null, diagnostics };
 }
 
+export function resolveMetaDataAccessExpiry(input: {
+  debug: MetaDebugExpiryMetadata;
+  persistedDataAccessExpiresAt: Date | string | null | undefined;
+}) {
+  const debugDataAccessExpiresAt = finiteNumber(input.debug.dataAccessExpiresAt);
+  if (input.debug.isValid === true && debugDataAccessExpiresAt !== null && debugDataAccessExpiresAt > 0) {
+    return new Date(debugDataAccessExpiresAt * 1000);
+  }
+  return validDate(input.persistedDataAccessExpiresAt);
+}
+
 export function parseMetaExpiryDiagnostics(value: unknown): MetaExpiryDiagnostics | null {
   let parsed = value;
   if (typeof value === "string") {

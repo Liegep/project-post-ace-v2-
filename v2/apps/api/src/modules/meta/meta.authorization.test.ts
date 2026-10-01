@@ -5,7 +5,7 @@ import type { Pool } from "mysql2/promise";
 import Fastify from "fastify";
 import { httpErrorsPluginRegistered } from "../../plugins/http-errors.js";
 import { metaRoutes } from "./meta.routes.js";
-import { completeMetaAuthorization } from "./meta.service.js";
+import { completeMetaAuthorization, getMetaStatus } from "./meta.service.js";
 import { resolveMetaTokenExpiry, type MetaExpiryDiagnostics } from "./meta-expiry.js";
 
 const APP_ID = "test-app-id";
@@ -18,22 +18,24 @@ type AuthorizationScenario = {
   longExpiresIn?: number;
   debug?: { expires_at?: number; data_access_expires_at?: number; is_valid?: boolean } | Error;
   existingExpiresAt?: Date | null;
+  existingDataAccessExpiresAt?: Date | null;
 };
 
 function authorizationHarness(scenario: AuthorizationScenario) {
-  const saved: { expiresAt?: Date | null; diagnostics?: MetaExpiryDiagnostics } = {};
+  const saved: { expiresAt?: Date | null; dataAccessExpiresAt?: Date | null; diagnostics?: MetaExpiryDiagnostics } = {};
   const logs: unknown[] = [];
   const requests: URL[] = [];
   const db = {
     async query(sql: string, params: unknown[] = []) {
       if (sql.includes("FROM meta_connections")) {
-        return scenario.existingExpiresAt === undefined
+        return scenario.existingExpiresAt === undefined && scenario.existingDataAccessExpiresAt === undefined
           ? [[], []]
-          : [[{ access_token_encrypted: "existing", token_expires_at: scenario.existingExpiresAt, meta_user_id: "meta-existing", meta_account_name: "Existing account", expiry_diagnostics_json: null }], []];
+          : [[{ access_token_encrypted: "existing", token_expires_at: scenario.existingExpiresAt ?? null, data_access_expires_at: scenario.existingDataAccessExpiresAt ?? null, meta_user_id: "meta-existing", meta_account_name: "Existing account", expiry_diagnostics_json: null }], []];
       }
       if (sql.startsWith("INSERT INTO meta_connections")) {
         saved.expiresAt = params[3] as Date | null;
-        saved.diagnostics = JSON.parse(String(params[6])) as MetaExpiryDiagnostics;
+        saved.dataAccessExpiresAt = params[4] as Date | null;
+        saved.diagnostics = JSON.parse(String(params[7])) as MetaExpiryDiagnostics;
         return [{ affectedRows: 1 }, []];
       }
       throw new Error(`Unexpected SQL: ${sql}`);
@@ -118,6 +120,7 @@ test("debug_token expires_at supplies expiry when OAuth omits expires_in", async
   assert.equal(result.saved.diagnostics?.debugIsValid, true);
   assert.equal(result.saved.diagnostics?.debugExpiresAt, expiresAt);
   assert.equal(result.saved.diagnostics?.debugDataAccessExpiresAt, 1_800_000_000);
+  assert.equal(result.saved.dataAccessExpiresAt?.toISOString(), new Date(1_800_000_000 * 1000).toISOString());
 });
 
 test("a debug failure preserves the previous expiry", async () => {
@@ -134,6 +137,19 @@ test("zero debug expiry is diagnostic only and data-access expiry is never used 
   assert.equal(result.saved.diagnostics?.source, "none");
   assert.equal(result.saved.diagnostics?.debugExpiresAt, 0);
   assert.equal(result.saved.diagnostics?.debugDataAccessExpiresAt, 1_800_000_000);
+  assert.equal(result.saved.dataAccessExpiresAt?.toISOString(), new Date(1_800_000_000 * 1000).toISOString());
+});
+
+test("missing or zero data-access expiry preserves the previous separate value", async () => {
+  const existingDataAccessExpiresAt = new Date("2026-12-30T12:00:00.000Z");
+  const missing = await runAuthorization({ debug: { is_valid: true, expires_at: 0 }, existingDataAccessExpiresAt });
+  const zero = await runAuthorization({ debug: { is_valid: true, expires_at: 0, data_access_expires_at: 0 }, existingDataAccessExpiresAt });
+  const noPreviousValue = await runAuthorization({ debug: { is_valid: true, expires_at: 0, data_access_expires_at: 0 } });
+  assert.equal(missing.saved.dataAccessExpiresAt?.toISOString(), existingDataAccessExpiresAt.toISOString());
+  assert.equal(zero.saved.dataAccessExpiresAt?.toISOString(), existingDataAccessExpiresAt.toISOString());
+  assert.equal(noPreviousValue.saved.dataAccessExpiresAt, null);
+  assert.equal(missing.saved.expiresAt, null);
+  assert.equal(zero.saved.expiresAt, null);
 });
 
 test("an invalid debug token never contributes an expiry", async () => {
@@ -141,6 +157,25 @@ test("an invalid debug token never contributes an expiry", async () => {
   assert.equal(result.saved.expiresAt, null);
   assert.equal(result.saved.diagnostics?.source, "none");
   assert.equal(result.saved.diagnostics?.debugIsValid, false);
+});
+
+test("Meta status exposes token and data-access expiries separately with operational fallback", async () => {
+  const dataAccessExpiresAt = new Date(Date.now() + 20 * 86_400_000);
+  const db = { async query(sql: string) {
+    if (!sql.includes("FROM meta_connections")) throw new Error(`Unexpected SQL: ${sql}`);
+    return [[{
+      access_token_encrypted: "encrypted", token_expires_at: null, data_access_expires_at: dataAccessExpiresAt,
+      meta_user_id: "meta-user", meta_account_name: "Meta Account",
+      expiry_diagnostics_json: JSON.stringify({
+        source: "none", oauthExpiresInPresent: false, oauthExpiresInSeconds: null, debugLookupStatus: "succeeded",
+        debugIsValid: true, debugExpiresAt: 0, debugDataAccessExpiresAt: Math.floor(dataAccessExpiresAt.getTime() / 1000), persistedExpiryPresent: false,
+      }),
+    }], []];
+  } } as unknown as Pool;
+  const status = await getMetaStatus({ db } as FastifyInstance, "user-1");
+  assert.equal(status.connected, true);
+  assert.equal(status.expiresAt, null);
+  assert.equal(status.dataAccessExpiresAt, dataAccessExpiresAt.toISOString());
 });
 
 test("a debug network failure never blocks reconnection or leaks credentials", async () => {
@@ -164,6 +199,7 @@ test("expiry diagnostics endpoint is restricted to super_admin and never returns
     if (!sql.includes("FROM meta_connections")) throw new Error(`Unexpected SQL: ${sql}`);
     return [[{
       access_token_encrypted: `encrypted-${USER_TOKEN}`, token_expires_at: new Date(1_790_000_000 * 1000),
+      data_access_expires_at: new Date(1_800_000_000 * 1000),
       meta_user_id: "meta-user", meta_account_name: "Meta Account",
       expiry_diagnostics_json: JSON.stringify({ ...diagnostics, access_token: USER_TOKEN, app_secret: APP_SECRET }),
     }], []];

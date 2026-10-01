@@ -448,17 +448,7 @@ export type DashboardStatistics = {
 export type AgendaLabel = { id: string; name: string; color: string };
 export type AgendaRecurrence = "none" | "weekdays" | "weekly" | "monthly_nth_weekday";
 export type AgendaEvent = { id: string; sourceEventId?: string; title: string; taskDescription?: string | null; startsAt: string; endsAt?: string | null; recurrenceType?: AgendaRecurrence; repeatUntil?: string | null; color: string; isCompleted: boolean; clientAccountId?: string | null; clientName?: string | null; labelId?: string | null; labelName?: string | null; meetLink?: string | null };
-export type MetaStatus = { connected: boolean; expiresAt: string | null; accountName: string | null; metaUserId: string | null };
-export type MetaExpiryDiagnostics = {
-  source: "oauth" | "debug_token" | "persisted" | "none";
-  oauthExpiresInPresent: boolean;
-  oauthExpiresInSeconds: number | null;
-  debugLookupStatus: "not_needed" | "succeeded" | "failed";
-  debugIsValid: boolean | null;
-  debugExpiresAt: number | null;
-  debugDataAccessExpiresAt: number | null;
-  persistedExpiryPresent: boolean;
-};
+export type MetaStatus = { connected: boolean; expiresAt: string | null; dataAccessExpiresAt: string | null; accountName: string | null; metaUserId: string | null };
 export type MetaAssetPage = { id: string; name: string; instagramAccount: { id: string; username: string } | null };
 export type MetaAdAccount = {
   id: string;
@@ -1360,10 +1350,6 @@ export async function saveAdminTrackerSettingsBySlug(slug: string, settings: Cli
 
 export async function loadMetaStatus() {
   return fetchJson<MetaStatus>("/api/meta/status");
-}
-
-export async function loadMetaExpiryDiagnostics() {
-  return fetchJson<{ expiryDiagnostics: MetaExpiryDiagnostics | null }>("/api/meta/status/debug");
 }
 
 export async function beginMetaConnection(returnTo: string) {

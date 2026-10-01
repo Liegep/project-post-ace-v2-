@@ -4,7 +4,7 @@ export async function ensureMetaStorage(db: Pool) {
   await db.query([
     "CREATE TABLE IF NOT EXISTS meta_connections (",
     "id CHAR(36) NOT NULL PRIMARY KEY, user_id CHAR(36) NOT NULL, access_token_encrypted TEXT NOT NULL,",
-    "token_expires_at DATETIME NULL, meta_user_id VARCHAR(190) NOT NULL, meta_account_name VARCHAR(255) NULL, expiry_diagnostics_json JSON NULL,",
+    "token_expires_at DATETIME NULL, data_access_expires_at DATETIME NULL, meta_user_id VARCHAR(190) NOT NULL, meta_account_name VARCHAR(255) NULL, expiry_diagnostics_json JSON NULL,",
     "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,",
     "UNIQUE KEY uq_meta_connections_user (user_id), KEY idx_meta_connections_expiry (token_expires_at),",
     "CONSTRAINT fk_meta_connections_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE",
@@ -12,6 +12,13 @@ export async function ensureMetaStorage(db: Pool) {
   ].join(" "));
   const [connectionDiagnosticsColumns] = await db.query<RowDataPacket[]>("SHOW COLUMNS FROM meta_connections LIKE 'expiry_diagnostics_json'");
   if (connectionDiagnosticsColumns.length === 0) await db.query("ALTER TABLE meta_connections ADD COLUMN expiry_diagnostics_json JSON NULL AFTER meta_account_name");
+  const [dataAccessExpiryColumns] = await db.query<RowDataPacket[]>("SHOW COLUMNS FROM meta_connections LIKE 'data_access_expires_at'");
+  if (dataAccessExpiryColumns.length === 0) await db.query("ALTER TABLE meta_connections ADD COLUMN data_access_expires_at DATETIME NULL AFTER token_expires_at");
+  await db.query([
+    "UPDATE meta_connections SET data_access_expires_at = TIMESTAMPADD(SECOND, CAST(JSON_UNQUOTE(JSON_EXTRACT(expiry_diagnostics_json, '$.debugDataAccessExpiresAt')) AS UNSIGNED), '1970-01-01 00:00:00')",
+    "WHERE data_access_expires_at IS NULL AND JSON_UNQUOTE(JSON_EXTRACT(expiry_diagnostics_json, '$.debugIsValid')) = 'true'",
+    "AND CAST(JSON_UNQUOTE(JSON_EXTRACT(expiry_diagnostics_json, '$.debugDataAccessExpiresAt')) AS UNSIGNED) > 0",
+  ].join(" "));
   await db.query([
     "CREATE TABLE IF NOT EXISTS meta_oauth_states (",
     "state_hash CHAR(64) NOT NULL PRIMARY KEY, user_id CHAR(36) NOT NULL, return_path VARCHAR(255) NOT NULL, expires_at_ms BIGINT UNSIGNED NOT NULL,",

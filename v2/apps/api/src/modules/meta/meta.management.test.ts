@@ -249,6 +249,8 @@ test("storage bootstrap contains idempotent legacy backfill for destinations and
   await ensureMetaStorage(db);
   assert.equal(statements.some((sql) => sql.includes("CREATE TABLE IF NOT EXISTS meta_publish_destinations")), true);
   assert.equal(statements.some((sql) => sql.includes("ALTER TABLE meta_connections ADD COLUMN expiry_diagnostics_json")), true);
+  assert.equal(statements.some((sql) => sql.includes("ALTER TABLE meta_connections ADD COLUMN data_access_expires_at")), true);
+  assert.equal(statements.some((sql) => sql.includes("UPDATE meta_connections SET data_access_expires_at = TIMESTAMPADD")), true);
   assert.equal(statements.some((sql) => sql.includes("INSERT INTO meta_publish_destinations") && sql.includes("NOT EXISTS")), true);
   assert.equal(statements.some((sql) => sql.includes("UPDATE meta_scheduled_publications") && sql.includes("p.destination_id IS NULL")), true);
 });

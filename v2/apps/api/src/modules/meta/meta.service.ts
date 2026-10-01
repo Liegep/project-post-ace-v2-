@@ -18,7 +18,7 @@ import {
 import { planMetaCardPublications } from "./meta.publication.js";
 import { completeMetaScheduling } from "./meta-schedule-completion.js";
 import type { MetaInsightsPeriod } from "./meta.schemas.js";
-import { hasUsableOAuthExpiry, resolveMetaTokenExpiry, type MetaDebugExpiryMetadata } from "./meta-expiry.js";
+import { hasUsableOAuthExpiry, resolveMetaDataAccessExpiry, resolveMetaTokenExpiry, type MetaDebugExpiryMetadata } from "./meta-expiry.js";
 
 const GRAPH_VERSION = "v26.0";
 const META_SCOPES = [
@@ -465,12 +465,17 @@ export async function completeMetaAuthorization(app: FastifyInstance, input: { c
     debug: debugMetadata,
     persistedExpiresAt: existingConnection?.expiresAt,
   });
+  const dataAccessExpiresAt = resolveMetaDataAccessExpiry({
+    debug: debugMetadata,
+    persistedDataAccessExpiresAt: existingConnection?.dataAccessExpiresAt,
+  });
   await upsertMetaConnection(app.db, {
     userId: input.userId,
     encryptedToken: encryptToken(accessToken, config.encryptionKey),
     // Prefer OAuth, then the official debugger, then the last known value.
     // A successful connection remains usable even when all three are absent.
     expiresAt: expiryResolution.expiresAt,
+    dataAccessExpiresAt,
     metaUserId: profile.id,
     accountName: profile.name ?? null,
     expiryDiagnostics: expiryResolution.diagnostics,
@@ -480,10 +485,14 @@ export async function completeMetaAuthorization(app: FastifyInstance, input: { c
 
 export async function getMetaStatus(app: FastifyInstance, userId: string) {
   const connection = await findMetaConnection(app.db, userId);
-  if (!connection) return { connected: false, expiresAt: null, accountName: null, metaUserId: null };
+  if (!connection) return { connected: false, expiresAt: null, dataAccessExpiresAt: null, accountName: null, metaUserId: null };
+  const tokenExpiresAt = connection.expiresAt ? new Date(connection.expiresAt) : null;
+  const dataAccessExpiresAt = connection.dataAccessExpiresAt ? new Date(connection.dataAccessExpiresAt) : null;
+  const operationalExpiresAt = tokenExpiresAt ?? dataAccessExpiresAt;
   return {
-    connected: !connection.expiresAt || new Date(connection.expiresAt).getTime() > Date.now(),
-    expiresAt: connection.expiresAt ? new Date(connection.expiresAt).toISOString() : null,
+    connected: connection.expiryDiagnostics?.debugIsValid !== false && (!operationalExpiresAt || operationalExpiresAt.getTime() > Date.now()),
+    expiresAt: tokenExpiresAt?.toISOString() ?? null,
+    dataAccessExpiresAt: dataAccessExpiresAt?.toISOString() ?? null,
     accountName: connection.accountName,
     metaUserId: connection.metaUserId,
   };

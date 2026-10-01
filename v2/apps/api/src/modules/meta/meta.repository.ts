@@ -6,6 +6,7 @@ import { parseMetaExpiryDiagnostics, type MetaExpiryDiagnostics } from "./meta-e
 type ConnectionRow = RowDataPacket & {
   access_token_encrypted: string;
   token_expires_at: Date | string | null;
+  data_access_expires_at: Date | string | null;
   meta_user_id: string;
   meta_account_name: string | null;
   expiry_diagnostics_json: unknown;
@@ -217,24 +218,25 @@ export async function consumeMetaOAuthState(db: Pool, state: string) {
   }
 }
 
-export async function upsertMetaConnection(db: Pool, input: { userId: string; encryptedToken: string; expiresAt: Date | null; metaUserId: string; accountName: string | null; expiryDiagnostics: MetaExpiryDiagnostics }) {
+export async function upsertMetaConnection(db: Pool, input: { userId: string; encryptedToken: string; expiresAt: Date | null; dataAccessExpiresAt: Date | null; metaUserId: string; accountName: string | null; expiryDiagnostics: MetaExpiryDiagnostics }) {
   await db.query([
-    "INSERT INTO meta_connections (id, user_id, access_token_encrypted, token_expires_at, meta_user_id, meta_account_name, expiry_diagnostics_json)",
-    "VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE access_token_encrypted = VALUES(access_token_encrypted),",
-    "token_expires_at = VALUES(token_expires_at), meta_user_id = VALUES(meta_user_id), meta_account_name = VALUES(meta_account_name),",
+    "INSERT INTO meta_connections (id, user_id, access_token_encrypted, token_expires_at, data_access_expires_at, meta_user_id, meta_account_name, expiry_diagnostics_json)",
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE access_token_encrypted = VALUES(access_token_encrypted),",
+    "token_expires_at = VALUES(token_expires_at), data_access_expires_at = VALUES(data_access_expires_at), meta_user_id = VALUES(meta_user_id), meta_account_name = VALUES(meta_account_name),",
     "expiry_diagnostics_json = VALUES(expiry_diagnostics_json), updated_at = CURRENT_TIMESTAMP",
-  ].join(" "), [crypto.randomUUID(), input.userId, input.encryptedToken, input.expiresAt, input.metaUserId, input.accountName, JSON.stringify(input.expiryDiagnostics)]);
+  ].join(" "), [crypto.randomUUID(), input.userId, input.encryptedToken, input.expiresAt, input.dataAccessExpiresAt, input.metaUserId, input.accountName, JSON.stringify(input.expiryDiagnostics)]);
 }
 
 export async function findMetaConnection(db: Pool, userId: string) {
   const [rows] = await db.query<ConnectionRow[]>(
-    "SELECT access_token_encrypted, token_expires_at, meta_user_id, meta_account_name, expiry_diagnostics_json FROM meta_connections WHERE user_id = ? LIMIT 1",
+    "SELECT access_token_encrypted, token_expires_at, data_access_expires_at, meta_user_id, meta_account_name, expiry_diagnostics_json FROM meta_connections WHERE user_id = ? LIMIT 1",
     [userId],
   );
   const row = rows[0];
   return row ? {
     encryptedToken: row.access_token_encrypted,
     expiresAt: row.token_expires_at,
+    dataAccessExpiresAt: row.data_access_expires_at ?? null,
     metaUserId: row.meta_user_id,
     accountName: row.meta_account_name,
     expiryDiagnostics: parseMetaExpiryDiagnostics(row.expiry_diagnostics_json),
