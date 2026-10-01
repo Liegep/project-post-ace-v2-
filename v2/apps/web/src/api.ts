@@ -161,7 +161,7 @@ export type ReportMetrics = {
   facebook: ReportChannelMetrics & { posts?: number | null; reactions?: number | null; comments?: number | null; shares?: number | null };
   ads?: ReportAdsMetrics | null;
 };
-export type ClientReport = { id: string; clientAccountId: string; title: string; periodStart: string; periodEnd: string; status: "draft" | "published"; metrics: ReportMetrics; highlights: Array<{ channel: "instagram" | "facebook"; title: string; value: number; thumbnailUrl?: string | null; permalink?: string | null; metricLabel?: "interactions" }>; evidenceUrls: string[]; notes: string | null; publishedAt: string | null; createdAt: string; updatedAt: string };
+export type ClientReport = { id: string; clientAccountId: string; metaDestinationId: string | null; metaDestinationName: string | null; title: string; periodStart: string; periodEnd: string; status: "draft" | "published"; metrics: ReportMetrics; highlights: Array<{ channel: "instagram" | "facebook"; title: string; value: number; thumbnailUrl?: string | null; permalink?: string | null; metricLabel?: "interactions" }>; evidenceUrls: string[]; notes: string | null; publishedAt: string | null; createdAt: string; updatedAt: string };
 export type MetaBestPublishingTimes = {
   available: boolean;
   source: "instagram_online_followers";
@@ -893,8 +893,8 @@ export async function submitPortalTextDecisionBySlug(slug: string, textId: strin
 }
 
 export async function listAdminReports(clientAccountId: string) { return fetchJson<{ items: ClientReport[] }>(`/api/clients/${clientAccountId}/reports`); }
-export async function createAdminReport(clientAccountId: string, input: Omit<ClientReport, "id" | "clientAccountId" | "status" | "publishedAt" | "createdAt" | "updatedAt">) { return sendJson<{ report: ClientReport }>(`/api/clients/${clientAccountId}/reports`, { method: "POST", body: JSON.stringify(input) }); }
-export async function updateAdminReport(clientAccountId: string, reportId: string, input: Partial<Omit<ClientReport, "id" | "clientAccountId" | "status" | "publishedAt" | "createdAt" | "updatedAt">>) { return sendJson<{ report: ClientReport }>(`/api/clients/${clientAccountId}/reports/${reportId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+export async function createAdminReport(clientAccountId: string, input: Omit<ClientReport, "id" | "clientAccountId" | "metaDestinationName" | "status" | "publishedAt" | "createdAt" | "updatedAt">) { return sendJson<{ report: ClientReport }>(`/api/clients/${clientAccountId}/reports`, { method: "POST", body: JSON.stringify(input) }); }
+export async function updateAdminReport(clientAccountId: string, reportId: string, input: Partial<Omit<ClientReport, "id" | "clientAccountId" | "metaDestinationName" | "status" | "publishedAt" | "createdAt" | "updatedAt">>) { return sendJson<{ report: ClientReport }>(`/api/clients/${clientAccountId}/reports/${reportId}`, { method: "PATCH", body: JSON.stringify(input) }); }
 export async function publishAdminReport(clientAccountId: string, reportId: string) { return sendJson<{ report: ClientReport }>(`/api/clients/${clientAccountId}/reports/${reportId}/publish`, { method: "POST" }); }
 export async function deleteAdminReport(clientAccountId: string, reportId: string) { return sendJson<{ ok: boolean }>(`/api/clients/${clientAccountId}/reports/${reportId}`, { method: "DELETE" }); }
 export async function extractAdminReportMetrics(clientAccountId: string, evidenceUrls: string[]) { return sendJson<{ metrics: ReportMetrics; highlights: ClientReport["highlights"] }>(`/api/clients/${clientAccountId}/reports/extract`, { method: "POST", body: JSON.stringify({ evidenceUrls }) }); }
@@ -1395,8 +1395,13 @@ export async function loadClientMetaAssets(clientAccountId: string) {
   return fetchJson<{ assets: ClientMetaAssets | null }>(`/api/clients/${clientAccountId}/meta-assets`);
 }
 
-export async function loadClientMetaInsights(clientAccountId: string, since: string, until: string) {
+export async function loadClientMetaDestinations(clientAccountId: string) {
+  return fetchJson<{ destinations: MetaPublishDestination[] }>(`/api/clients/${clientAccountId}/meta-destinations`);
+}
+
+export async function loadClientMetaInsights(clientAccountId: string, since: string, until: string, destinationId?: string) {
   const query = new URLSearchParams({ since, until });
+  if (destinationId) query.set("destinationId", destinationId);
   // This endpoint fans out to bounded Meta requests; its deadline is explicit
   // and slightly above the backend's maximum per-request phases.
   return fetchJson<ClientMetaInsights>(`/api/clients/${clientAccountId}/meta-insights?${query.toString()}`, 28_000);

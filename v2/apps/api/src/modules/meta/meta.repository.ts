@@ -304,6 +304,44 @@ export async function findDefaultMetaPublishDestination(db: Pool, clientAccountI
   return rows[0] ? mapMetaPublishDestination(rows[0]) : null;
 }
 
+export async function findClientMetaInsightsContext(db: Pool, clientAccountId: string, destinationId?: string) {
+  if (destinationId) {
+    const destination = await findMetaPublishDestination(db, destinationId, clientAccountId);
+    return destination ? {
+      destinationId: destination.id,
+      destinationName: destination.name,
+      assets: {
+        facebookPageId: destination.facebookPageId,
+        facebookPageName: destination.facebookPageName,
+        instagramAccountId: destination.instagramAccountId,
+        instagramUsername: destination.instagramUsername,
+      },
+    } : null;
+  }
+  const destination = await findDefaultMetaPublishDestination(db, clientAccountId);
+  if (destination) return {
+    destinationId: destination.id,
+    destinationName: destination.name,
+    assets: {
+      facebookPageId: destination.facebookPageId,
+      facebookPageName: destination.facebookPageName,
+      instagramAccountId: destination.instagramAccountId,
+      instagramUsername: destination.instagramUsername,
+    },
+  };
+  const legacy = await findClientMetaAssets(db, clientAccountId);
+  return legacy ? {
+    destinationId: null,
+    destinationName: null,
+    assets: {
+      facebookPageId: legacy.facebookPageId,
+      facebookPageName: legacy.facebookPageName,
+      instagramAccountId: legacy.instagramAccountId,
+      instagramUsername: legacy.instagramUsername,
+    },
+  } : null;
+}
+
 async function lockDestinationClient(connection: Awaited<ReturnType<Pool["getConnection"]>>, clientAccountId: string) {
   await connection.query("SELECT id FROM client_accounts WHERE id = ? FOR UPDATE", [clientAccountId]);
 }

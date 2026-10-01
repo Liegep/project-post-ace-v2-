@@ -28,6 +28,7 @@ import { importSerenaLegacyHashtagGroups } from "./modules/hashtags/serena-legac
 import { agendaRoutes } from "./modules/agenda/agenda.routes.js";
 import { textRoutes } from "./modules/texts/texts.routes.js";
 import { reportRoutes } from "./modules/reports/reports.routes.js";
+import { ensureReportStorage } from "./modules/reports/reports.storage.js";
 import { invoiceRoutes } from "./modules/invoices/invoices.routes.js";
 import { contractRoutes } from "./modules/contracts/contracts.routes.js";
 import { ensureMcpStorage } from "./modules/mcp/mcp.repository.js";
@@ -122,6 +123,7 @@ export async function buildApp() {
     try {
       await ensureMcpStorage(app.db);
       await ensureMetaStorage(app.db);
+      await ensureReportStorage(app.db);
       await ensureCardTimeZoneStorage(app.db, appEnv.APP_TIMEZONE);
       await ensureApprovalStorage(app.db);
       const importedHashtagGroups = await importSerenaLegacyHashtagGroups(app.db);
