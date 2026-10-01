@@ -11107,3 +11107,5 @@ button {
 .report-meta-destination>strong{color:#293555;font-size:.9rem}
 .report-meta-destination>small{color:#7f899d;font-size:.76rem;line-height:1.45}
 .report-document header>div>small{display:block;margin-top:5px;color:#758098;font-size:.76rem;font-weight:600}
+
+.portal-invoice-actions{flex-wrap:wrap}.portal-invoice-actions .receipt{border-color:#cce9dd;background:#f3fbf7;color:#247d5d}.portal-invoice-receipt-note{color:#24875d!important;font-size:.68rem!important;font-weight:650}.portal-invoice-preview-modal .receipt-paper{max-width:none;min-height:0;margin:0;padding:34px 38px 28px;box-shadow:none}
