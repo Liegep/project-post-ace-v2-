@@ -216,7 +216,7 @@ function normalizeTextTags(tags: unknown): TextTag[] {
 }
 import { usePreviewResource } from "./usePreviewResource";
 import { PortalReports, ReportsWorkspace } from "./ReportsWorkspace";
-import { BILLING_PENDING_LINE_KEY, BillingInvoiceDocument, BillingWorkspace, formatBillingDate, formatBillingMoney, getBillingInvoiceTotal, type BillingInvoice, type BillingLineRequest } from "./BillingWorkspace";
+import { BILLING_PENDING_LINE_KEY, BillingInvoiceDocument, BillingReceiptDocument, BillingWorkspace, formatBillingDate, formatBillingMoney, getBillingInvoiceTotal, type BillingInvoice, type BillingLineRequest } from "./BillingWorkspace";
 import liegePaschoaliniLogo from "./assets/liege-paschoalini-logo.png";
 import designHubV2Logo from "./assets/design-hub-v2-logo.png";
 import { normalizePortalLocale, portalLocaleTag, portalText, type PortalLocale } from "./portalI18n";
@@ -5933,16 +5933,19 @@ function ClientProfileMenu({ session, slug, onLogout, clientLogoUrl, accountName
 function ClientPortalInvoicesView({ invoices, onViewInvoice }: { invoices: BillingInvoice[]; onViewInvoice?: (invoiceId: string) => void }) {
   const { t, localeTag } = usePortalTranslation();
   const [previewInvoice, setPreviewInvoice] = useState<BillingInvoice | null>(null);
+  const [previewKind, setPreviewKind] = useState<"invoice" | "receipt">("invoice");
   const [printRequested, setPrintRequested] = useState(false);
   const invoiceRef = useRef<HTMLDivElement>(null);
-  const printInvoice = () => {
-    const paper = invoiceRef.current?.querySelector(".invoice-paper");
+  const printDocument = () => {
+    const selector = previewKind === "receipt" ? ".receipt-paper" : ".invoice-paper";
+    const paper = invoiceRef.current?.querySelector(selector);
     if (!paper) return;
     const headMarkup = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]')).map((el) => el.outerHTML).join("");
     const printWindow = window.open("", "_blank", "width=880,height=1120");
     if (!printWindow) return;
+    const title = previewKind === "receipt" ? t("Recibo") : t("Fatura");
     printWindow.document.open();
-    printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8" /><title>Fatura</title>${headMarkup}<style>html,body{margin:0;background:#fbfaf8;}body{display:flex;justify-content:center;padding:24px;}.invoice-paper{max-width:720px;min-height:0;margin:0;box-shadow:none;}@media print{@page{size:A4;margin:14mm;}body{padding:0;background:#fff;}.invoice-paper{max-width:none;}}</style></head><body>${paper.outerHTML}</body></html>`);
+    printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8" /><title>${title}</title>${headMarkup}<style>html,body{margin:0;background:#fbfaf8;}body{display:flex;justify-content:center;padding:24px;}.invoice-paper,.receipt-paper{max-width:720px;min-height:0;margin:0;box-shadow:none;}@media print{@page{size:A4;margin:14mm;}body{padding:0;background:#fff;}.invoice-paper,.receipt-paper{max-width:none;}}</style></head><body>${paper.outerHTML}</body></html>`);
     printWindow.document.close();
     const triggerPrint = () => { printWindow.focus(); printWindow.print(); };
     printWindow.onload = triggerPrint;
@@ -5951,29 +5954,25 @@ function ClientPortalInvoicesView({ invoices, onViewInvoice }: { invoices: Billi
   useEffect(() => {
     if (!previewInvoice || !printRequested) return;
     const timer = window.setTimeout(() => {
-      printInvoice();
+      printDocument();
       setPrintRequested(false);
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [previewInvoice, printRequested]);
-  const downloadInvoice = (invoice: BillingInvoice) => {
+  }, [previewInvoice, previewKind, printRequested]);
+  const openDocument = (invoice: BillingInvoice, kind: "invoice" | "receipt", print = false) => {
     onViewInvoice?.(invoice.id);
     setPreviewInvoice(invoice);
-    setPrintRequested(true);
-  };
-  const previewInvoiceForClient = (invoice: BillingInvoice) => {
-    onViewInvoice?.(invoice.id);
-    setPreviewInvoice(invoice);
+    setPreviewKind(kind);
+    setPrintRequested(print);
   };
 
   const date = (value: string) => new Intl.DateTimeFormat(localeTag).format(new Date(`${value.slice(0, 10)}T12:00:00`));
   return <section className="portal-invoices-view glass">
     <header className="portal-invoices-head"><div><p className="eyebrow">{t("Financeiro")}</p><h1>{t("Faturas")}</h1><p>{t("Consulte os lançamentos disponibilizados para sua conta.")}</p></div><span>{invoices.length} {t(invoices.length === 1 ? "fatura" : "faturas")}</span></header>
-    {invoices.length ? <div className="portal-invoices-list">{invoices.map((invoice) => <article key={invoice.id} className="portal-invoice-row"><div className="portal-invoice-number">#{invoice.number}</div><div className="portal-invoice-main"><strong>{invoice.title}</strong><span>{t("Emitida em")} {date(invoice.issueDate)} · {t("Vencimento")} {date(invoice.dueDate)}</span></div><div className="portal-invoice-value"><strong>{formatBillingMoney(getBillingInvoiceTotal(invoice), invoice.currency)}</strong><em className={`invoice-status ${invoice.status}`}>{t(invoice.status === "paid" ? "Paga" : invoice.status === "overdue" ? "Atrasada" : invoice.status === "cancelled" ? "Cancelada" : "Aberta")}</em></div><div className="portal-invoice-actions"><button className="ghost-button" onClick={() => previewInvoiceForClient(invoice)}><UiIcon name="eye" />{t("Visualizar")}</button><button className="ghost-button" onClick={() => downloadInvoice(invoice)}><UiIcon name="file" />{t("Baixar")}</button></div></article>)}</div> : <div className="portal-invoices-empty"><span>▣</span><h2>{t("Nenhuma fatura disponível")}</h2><p>{t("Quando uma fatura for liberada para esta conta, ela aparecerá aqui.")}</p></div>}
-    {previewInvoice ? <div className="modal-backdrop" onClick={() => setPreviewInvoice(null)}><section className="portal-invoice-preview-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">{t("Visualização da fatura")}</p><h2>{previewInvoice.title}</h2><span>{t("Fatura")} #{previewInvoice.number}</span></div><button className="icon-close" onClick={() => setPreviewInvoice(null)} aria-label={t("Fechar")}>×</button></header><div ref={invoiceRef}><BillingInvoiceDocument invoice={previewInvoice} /></div><footer><button className="ghost-button" onClick={() => setPreviewInvoice(null)}>{t("Fechar")}</button><button className="gradient-button" onClick={printInvoice}><UiIcon name="file" />{t("Baixar")}</button></footer></section></div> : null}
+    {invoices.length ? <div className="portal-invoices-list">{invoices.map((invoice) => <article key={invoice.id} className="portal-invoice-row"><div className="portal-invoice-number">#{invoice.number}</div><div className="portal-invoice-main"><strong>{invoice.title}</strong><span>{t("Emitida em")} {date(invoice.issueDate)} · {t("Vencimento")} {date(invoice.dueDate)}</span>{invoice.receiptSnapshot ? <small className="portal-invoice-receipt-note">{t("Recibo disponível")} · {invoice.receiptNumber}</small> : null}</div><div className="portal-invoice-value"><strong>{formatBillingMoney(getBillingInvoiceTotal(invoice), invoice.currency)}</strong><em className={`invoice-status ${invoice.status}`}>{t(invoice.status === "paid" ? "Paga" : invoice.status === "overdue" ? "Atrasada" : invoice.status === "cancelled" ? "Cancelada" : "Aberta")}</em></div><div className="portal-invoice-actions"><button className="ghost-button" onClick={() => openDocument(invoice, "invoice")}><UiIcon name="eye" />{t("Visualizar")}</button><button className="ghost-button" onClick={() => openDocument(invoice, "invoice", true)}><UiIcon name="file" />{t("Baixar")}</button>{invoice.receiptSnapshot ? <><button className="ghost-button receipt" onClick={() => openDocument(invoice, "receipt")}><UiIcon name="receipt" />{t("Ver recibo")}</button><button className="ghost-button receipt" onClick={() => openDocument(invoice, "receipt", true)}><UiIcon name="file" />{t("Baixar recibo")}</button></> : null}</div></article>)}</div> : <div className="portal-invoices-empty"><span>▣</span><h2>{t("Nenhuma fatura disponível")}</h2><p>{t("Quando uma fatura for liberada para esta conta, ela aparecerá aqui.")}</p></div>}
+    {previewInvoice ? <div className="modal-backdrop" onClick={() => setPreviewInvoice(null)}><section className="portal-invoice-preview-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">{t(previewKind === "receipt" ? "Visualização do recibo" : "Visualização da fatura")}</p><h2>{previewKind === "receipt" ? (previewInvoice.receiptNumber ?? t("Recibo")) : previewInvoice.title}</h2><span>{previewKind === "receipt" ? `${t("Fatura")} #${previewInvoice.number}` : `${t("Fatura")} #${previewInvoice.number}`}</span></div><button className="icon-close" onClick={() => setPreviewInvoice(null)} aria-label={t("Fechar")}>×</button></header><div ref={invoiceRef}>{previewKind === "receipt" ? <BillingReceiptDocument invoice={previewInvoice} /> : <BillingInvoiceDocument invoice={previewInvoice} />}</div><footer><button className="ghost-button" onClick={() => setPreviewInvoice(null)}>{t("Fechar")}</button><button className="gradient-button" onClick={printDocument}><UiIcon name="file" />{t(previewKind === "receipt" ? "Baixar recibo" : "Baixar")}</button></footer></section></div> : null}
   </section>;
 }
-
 function changesRequestedPortalLabel(locale: string) {
   const normalized = locale.toLocaleLowerCase("pt-BR");
   if (normalized.startsWith("it") || normalized.includes("ital")) return "Modifica richiesta";
