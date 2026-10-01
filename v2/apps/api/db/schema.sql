@@ -342,6 +342,8 @@ CREATE TABLE IF NOT EXISTS text_comments (
 CREATE TABLE IF NOT EXISTS client_reports (
   id CHAR(36) NOT NULL PRIMARY KEY,
   client_account_id CHAR(36) NOT NULL,
+  meta_destination_id CHAR(36) NULL,
+  meta_destination_name VARCHAR(255) NULL,
   title VARCHAR(255) NOT NULL,
   period_start DATE NOT NULL,
   period_end DATE NOT NULL,
@@ -356,6 +358,7 @@ CREATE TABLE IF NOT EXISTS client_reports (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_client_reports_account_period (client_account_id, period_end),
   KEY idx_client_reports_account_status (client_account_id, status),
+  KEY idx_client_reports_meta_destination (meta_destination_id),
   CONSTRAINT fk_client_reports_account FOREIGN KEY (client_account_id) REFERENCES client_accounts (id) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_client_reports_creator FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

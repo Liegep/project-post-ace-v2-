@@ -7,6 +7,7 @@ import type { RowDataPacket } from "mysql2/promise";
 import { hashPassword } from "../modules/auth/auth.crypto.js";
 import { loadEnv } from "../config/env.js";
 import { ensureBrandBrainTables } from "../modules/clients/brand-brain.service.js";
+import { ensureReportStorage } from "../modules/reports/reports.storage.js";
 
 type SeedUser = {
   id: string;
@@ -89,6 +90,7 @@ async function main() {
   });
 
   await ensureApprovalStorage(db);
+  await ensureReportStorage(db);
 
   const [externalLinkColumn] = await db.query<RowDataPacket[]>(
     "SHOW COLUMNS FROM kanban_cards LIKE 'external_link_url'",

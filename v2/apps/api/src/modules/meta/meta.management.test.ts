@@ -3,8 +3,8 @@ import crypto from "node:crypto";
 import test from "node:test";
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "mysql2/promise";
-import { cancelScheduledPublicationGroup, countActivePublicationsForDestination, createMetaSavedLocation, createScheduledPublications, deleteMetaSavedLocation, findMetaPublishDestination, listGlobalScheduledPublications, listMetaPublishDestinations, listMetaSavedLocations, listScheduledPublicationsForClient, rescheduleScheduledPublications, updateMetaPublishDestination, updateMetaSavedLocation } from "./meta.repository.js";
-import { clientMetaPublicationsQuerySchema, createMetaPublicationSchema, createMetaPublishDestinationSchema, createMetaSavedLocationSchema, metaBestTimesQuerySchema, metaPublicationsQuerySchema, updateMetaSavedLocationSchema } from "./meta.schemas.js";
+import { cancelScheduledPublicationGroup, countActivePublicationsForDestination, createMetaSavedLocation, createScheduledPublications, deleteMetaSavedLocation, findClientMetaInsightsContext, findMetaPublishDestination, listGlobalScheduledPublications, listMetaPublishDestinations, listMetaSavedLocations, listScheduledPublicationsForClient, rescheduleScheduledPublications, updateMetaPublishDestination, updateMetaSavedLocation } from "./meta.repository.js";
+import { clientMetaPublicationsQuerySchema, createMetaPublicationSchema, createMetaPublishDestinationSchema, createMetaSavedLocationSchema, metaBestTimesQuerySchema, metaInsightsQuerySchema, metaPublicationsQuerySchema, updateMetaSavedLocationSchema } from "./meta.schemas.js";
 import { searchMetaPlaces } from "./meta.service.js";
 import { ensureMetaStorage } from "./meta.storage.js";
 
@@ -130,6 +130,51 @@ test("one or two destinations remain scoped to their client, including missing a
   assert.equal((await findMetaPublishDestination(db, "destination-2", "client-1"))?.name, "Marca secundária");
   assert.equal(await findMetaPublishDestination(db, "destination-2", "client-2"), null);
   assert.equal(await findMetaPublishDestination(db, "missing", "client-1"), null);
+});
+
+test("organic insights resolve the requested destination, default destination and legacy fallback", async () => {
+  const commercial = destinationRow({ id: "destination-commercial", name: "Commercial", facebook_page_id: "page-commercial", facebook_page_name: "Commercial Facebook", instagram_account_id: "ig-commercial", instagram_username: "commercial.instagram" });
+  const detection = destinationRow({ id: "destination-detection", name: "Detection", facebook_page_id: "page-detection", facebook_page_name: "Detection Facebook", instagram_account_id: "ig-detection", instagram_username: "detection.instagram", is_default: 0 });
+  const destinationDb = { async query(sql: string, params: unknown[] = []) {
+    if (sql.includes("WHERE id = ? AND client_account_id = ?")) {
+      const row = [commercial, detection].find((item) => item.id === params[0] && item.client_account_id === params[1]);
+      return [row ? [row] : [], []];
+    }
+    if (sql.includes("WHERE client_account_id = ? ORDER BY")) return [params[0] === "client-1" ? [commercial] : [], []];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } } as unknown as Pool;
+
+  const explicit = await findClientMetaInsightsContext(destinationDb, "client-1", "destination-detection");
+  assert.deepEqual(explicit, {
+    destinationId: "destination-detection", destinationName: "Detection",
+    assets: { facebookPageId: "page-detection", facebookPageName: "Detection Facebook", instagramAccountId: "ig-detection", instagramUsername: "detection.instagram" },
+  });
+  assert.equal(await findClientMetaInsightsContext(destinationDb, "other-client", "destination-detection"), null);
+  assert.equal(await findClientMetaInsightsContext(destinationDb, "client-1", "missing"), null);
+  assert.equal((await findClientMetaInsightsContext(destinationDb, "client-1"))?.destinationId, "destination-commercial");
+
+  const legacyDb = { async query(sql: string) {
+    if (sql.includes("FROM meta_publish_destinations")) return [[], []];
+    if (sql.includes("FROM client_accounts")) return [[{
+      facebook_page_id: "legacy-page", facebook_page_name: "Legacy Facebook",
+      instagram_account_id: "legacy-ig", instagram_username: "legacy.instagram",
+      meta_ad_account_id: "act-legacy", meta_ad_account_name: "Legacy Ads", updated_at: "2026-09-30T10:00:00Z",
+    }], []];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } } as unknown as Pool;
+  assert.deepEqual(await findClientMetaInsightsContext(legacyDb, "client-legacy"), {
+    destinationId: null, destinationName: null,
+    assets: { facebookPageId: "legacy-page", facebookPageName: "Legacy Facebook", instagramAccountId: "legacy-ig", instagramUsername: "legacy.instagram" },
+  });
+});
+
+test("insights query accepts an optional destination without changing the reporting period", () => {
+  assert.deepEqual(metaInsightsQuerySchema.parse({ since: "2026-09-01", until: "2026-09-30", destinationId: "destination-detection" }), {
+    since: "2026-09-01", until: "2026-09-30", destinationId: "destination-detection",
+  });
+  assert.deepEqual(metaInsightsQuerySchema.parse({ since: "2026-09-01", until: "2026-09-30" }), {
+    since: "2026-09-01", until: "2026-09-30",
+  });
 });
 
 test("changing the default clears the previous default and keeps exactly one selected", async () => {

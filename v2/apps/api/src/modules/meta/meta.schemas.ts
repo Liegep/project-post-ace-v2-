@@ -32,12 +32,13 @@ const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use uma data no f
 export const metaInsightsQuerySchema = z.object({
   since: isoDateSchema,
   until: isoDateSchema,
+  destinationId: z.string().trim().min(1).max(190).optional(),
 }).refine((value) => value.since <= value.until, {
   message: "A data inicial deve ser anterior ou igual à data final.",
   path: ["until"],
 });
 
-export type MetaInsightsPeriod = z.infer<typeof metaInsightsQuerySchema>;
+export type MetaInsightsPeriod = Pick<z.infer<typeof metaInsightsQuerySchema>, "since" | "until">;
 
 export const metaBestTimesQuerySchema = z.object({
   destinationId: z.string().trim().min(1).max(190).optional(),

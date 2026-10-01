@@ -11101,3 +11101,9 @@ button {
 .report-notes-content blockquote{margin:12px 0;padding:10px 14px;border-left:3px solid #7257dc;border-radius:0 9px 9px 0;background:#f4f1ff;color:#56617a}
 .report-notes-content a{color:#5c4fd2;text-decoration:underline}
 .report-notes-content strong{color:#43506c}
+.report-meta-destination{display:grid;gap:6px;padding:14px 16px;border:1px solid #e0e5ee;border-radius:14px;background:#fff}
+.report-meta-destination>span{color:#65718a;font-size:.76rem;font-weight:650}
+.report-meta-destination select{width:100%;padding:10px 12px;border:1px solid #d9e0ec;border-radius:10px;color:#263451;background:#fbfcff;font:inherit}
+.report-meta-destination>strong{color:#293555;font-size:.9rem}
+.report-meta-destination>small{color:#7f899d;font-size:.76rem;line-height:1.45}
+.report-document header>div>small{display:block;margin-top:5px;color:#758098;font-size:.76rem;font-weight:600}

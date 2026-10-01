@@ -2,7 +2,7 @@ import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { findClientAccountById } from "../clients/clients.repository.js";
 import { findCardById } from "../cards/cards.repository.js";
 import { clientMetaAssetsSchema, clientMetaPublicationsQuerySchema, createMetaPublicationSchema, createMetaPublishDestinationSchema, createMetaSavedLocationSchema, manageMetaPublicationsSchema, metaBestTimesQuerySchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema, metaPlaceSearchQuerySchema, metaPublicationsQuerySchema, rescheduleMetaPublicationsSchema, updateMetaPublishDestinationSchema, updateMetaSavedLocationSchema } from "./meta.schemas.js";
-import { cancelScheduledPublication, cancelScheduledPublicationGroup, consumeMetaOAuthState, countActivePublicationsForDestination, createMetaPublishDestination, createMetaSavedLocation, deleteMetaPublishDestination, deleteMetaSavedLocation, findClientMetaAssets, findDefaultMetaPublishDestination, findMetaPublishDestination, findMetaSavedLocation, findScheduledPublication, listGlobalScheduledPublications, listMetaPublishDestinations, listMetaSavedLocations, listScheduledPublicationsForClient, rescheduleScheduledPublications, updateMetaPublishDestination, updateMetaSavedLocation, upsertClientMetaAssets } from "./meta.repository.js";
+import { cancelScheduledPublication, cancelScheduledPublicationGroup, consumeMetaOAuthState, countActivePublicationsForDestination, createMetaPublishDestination, createMetaSavedLocation, deleteMetaPublishDestination, deleteMetaSavedLocation, findClientMetaAssets, findClientMetaInsightsContext, findDefaultMetaPublishDestination, findMetaPublishDestination, findMetaSavedLocation, findScheduledPublication, listGlobalScheduledPublications, listMetaPublishDestinations, listMetaSavedLocations, listScheduledPublicationsForClient, rescheduleScheduledPublications, updateMetaPublishDestination, updateMetaSavedLocation, upsertClientMetaAssets } from "./meta.repository.js";
 import { archiveMetaCardIfPublicationGroupComplete, completeMetaAuthorization, createMetaAuthorizationUrl, getInstagramBestPublishingTimes, getMetaAdsInsights, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets, scheduleMetaCardPublications, searchMetaPlaces } from "./meta.service.js";
 
 function assertSuperAdmin(request: FastifyRequest) {
@@ -296,14 +296,16 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
     if (!await findClientAccountById(app.db, clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
     const parsed = metaInsightsQuerySchema.safeParse(request.query);
     if (!parsed.success) throw app.httpErrors.badRequest(parsed.error.issues[0]?.message ?? "Período inválido.");
-    const assets = await findClientMetaAssets(app.db, clientAccountId);
+    const context = await findClientMetaInsightsContext(app.db, clientAccountId, parsed.data.destinationId);
+    if (parsed.data.destinationId && !context) throw app.httpErrors.notFound("Destino Meta não encontrado para este cliente.");
+    const assets = context?.assets;
     if (!assets || (!assets.facebookPageId && !assets.instagramAccountId)) {
       throw app.httpErrors.badRequest("O cliente ainda não possui ativos Meta vinculados.");
     }
     const startedAt = Date.now();
     request.log.info({ clientAccountId, since: parsed.data.since, until: parsed.data.until, hasInstagram: Boolean(assets.instagramAccountId), hasFacebook: Boolean(assets.facebookPageId) }, "Meta Insights import started");
     try {
-      const result = await getMetaInsights(app, auth.user.id, assets, parsed.data);
+      const result = await getMetaInsights(app, auth.user.id, assets, { since: parsed.data.since, until: parsed.data.until });
       request.log.info({ clientAccountId, durationMs: Date.now() - startedAt, status: result.status, sources: result.sources, warningCount: result.warnings.length }, "Meta Insights import completed");
       return result;
     } catch (error) {
@@ -328,7 +330,7 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
       const result = await getMetaAdsInsights(app, auth.user.id, {
         metaAdAccountId: assets.metaAdAccountId,
         metaAdAccountName: assets.metaAdAccountName,
-      }, parsed.data);
+      }, { since: parsed.data.since, until: parsed.data.until });
       request.log.info({ clientAccountId, durationMs: Date.now() - startedAt, campaignCount: result.campaigns.length, adCount: result.topAds.length, warningCount: result.warnings.length }, "Meta Ads Insights request completed");
       return result;
     } catch (error) {
