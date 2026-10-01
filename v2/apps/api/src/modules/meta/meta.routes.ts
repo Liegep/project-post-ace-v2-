@@ -3,7 +3,7 @@ import { findClientAccountById } from "../clients/clients.repository.js";
 import { findCardById } from "../cards/cards.repository.js";
 import { clientMetaAssetsSchema, clientMetaPublicationsQuerySchema, createMetaPublicationSchema, createMetaPublishDestinationSchema, createMetaSavedLocationSchema, manageMetaPublicationsSchema, metaBestTimesQuerySchema, metaCallbackSchema, metaConnectQuerySchema, metaInsightsQuerySchema, metaPlaceSearchQuerySchema, metaPublicationsQuerySchema, rescheduleMetaPublicationsSchema, updateMetaPublishDestinationSchema, updateMetaSavedLocationSchema } from "./meta.schemas.js";
 import { cancelScheduledPublication, cancelScheduledPublicationGroup, consumeMetaOAuthState, countActivePublicationsForDestination, createMetaPublishDestination, createMetaSavedLocation, deleteMetaPublishDestination, deleteMetaSavedLocation, findClientMetaAssets, findClientMetaInsightsContext, findDefaultMetaPublishDestination, findMetaPublishDestination, findMetaSavedLocation, findScheduledPublication, listGlobalScheduledPublications, listMetaPublishDestinations, listMetaSavedLocations, listScheduledPublicationsForClient, rescheduleScheduledPublications, updateMetaPublishDestination, updateMetaSavedLocation, upsertClientMetaAssets } from "./meta.repository.js";
-import { archiveMetaCardIfPublicationGroupComplete, completeMetaAuthorization, createMetaAuthorizationUrl, getInstagramBestPublishingTimes, getMetaAdsInsights, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets, scheduleMetaCardPublications, searchMetaPlaces } from "./meta.service.js";
+import { archiveMetaCardIfPublicationGroupComplete, completeMetaAuthorization, createMetaAuthorizationUrl, getInstagramBestPublishingTimes, getMetaAdsInsights, getMetaExpiryDiagnostics, getMetaInsights, getMetaStatus, listMetaAdAccounts, listMetaAssets, scheduleMetaCardPublications, searchMetaPlaces } from "./meta.service.js";
 
 function assertSuperAdmin(request: FastifyRequest) {
   if (!request.auth) throw request.server.httpErrors.unauthorized("Sessão obrigatória.");
@@ -98,6 +98,11 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
   app.get("/meta/status", async (request) => {
     const auth = assertSuperAdmin(request);
     return getMetaStatus(app, auth.user.id);
+  });
+
+  app.get("/meta/status/debug", async (request) => {
+    const auth = assertSuperAdmin(request);
+    return getMetaExpiryDiagnostics(app, auth.user.id);
   });
 
   app.get("/meta/assets", async (request) => {

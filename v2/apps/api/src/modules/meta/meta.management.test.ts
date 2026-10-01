@@ -240,6 +240,7 @@ test("storage bootstrap contains idempotent legacy backfill for destinations and
   const db = { async query(sql: string | { sql: string }) {
     const text = typeof sql === "string" ? sql : sql.sql;
     statements.push(text);
+    if (text.includes("SHOW COLUMNS FROM meta_connections")) return [[], []];
     if (text.startsWith("SHOW COLUMNS")) return [[{ Field: "present" }], []];
     if (text.startsWith("SHOW INDEX")) return [[{ Key_name: "idx_meta_sched_pub_destination" }], []];
     if (text.includes("information_schema.REFERENTIAL_CONSTRAINTS")) return [[{ CONSTRAINT_NAME: "fk_meta_sched_pub_destination" }], []];
@@ -247,6 +248,7 @@ test("storage bootstrap contains idempotent legacy backfill for destinations and
   } } as unknown as Pool;
   await ensureMetaStorage(db);
   assert.equal(statements.some((sql) => sql.includes("CREATE TABLE IF NOT EXISTS meta_publish_destinations")), true);
+  assert.equal(statements.some((sql) => sql.includes("ALTER TABLE meta_connections ADD COLUMN expiry_diagnostics_json")), true);
   assert.equal(statements.some((sql) => sql.includes("INSERT INTO meta_publish_destinations") && sql.includes("NOT EXISTS")), true);
   assert.equal(statements.some((sql) => sql.includes("UPDATE meta_scheduled_publications") && sql.includes("p.destination_id IS NULL")), true);
 });

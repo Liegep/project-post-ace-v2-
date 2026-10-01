@@ -18,6 +18,7 @@ import {
 import { planMetaCardPublications } from "./meta.publication.js";
 import { completeMetaScheduling } from "./meta-schedule-completion.js";
 import type { MetaInsightsPeriod } from "./meta.schemas.js";
+import { hasUsableOAuthExpiry, resolveMetaTokenExpiry, type MetaDebugExpiryMetadata } from "./meta-expiry.js";
 
 const GRAPH_VERSION = "v26.0";
 const META_SCOPES = [
@@ -254,21 +255,21 @@ async function getMetaJson<T>(url: URL, timeoutMs = 15_000): Promise<T> {
   return payload;
 }
 
-async function debugMetaTokenExpiry(app: FastifyInstance, input: { accessToken: string; appId: string; appSecret: string }) {
+async function debugMetaTokenExpiry(input: { accessToken: string; appId: string; appSecret: string }): Promise<MetaDebugExpiryMetadata> {
   const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/debug_token`);
   url.searchParams.set("input_token", input.accessToken);
   url.searchParams.set("access_token", `${input.appId}|${input.appSecret}`);
   try {
     const payload = await getMetaJson<MetaDebugTokenResponse>(url, 5_000);
-    const expiresAtSeconds = payload.data?.expires_at;
-    if (payload.data?.is_valid !== true || typeof expiresAtSeconds !== "number" || !Number.isFinite(expiresAtSeconds) || expiresAtSeconds <= 0) return null;
-    const expiresAt = new Date(expiresAtSeconds * 1000);
-    return Number.isNaN(expiresAt.getTime()) ? null : expiresAt;
+    return {
+      lookupStatus: "succeeded",
+      isValid: typeof payload.data?.is_valid === "boolean" ? payload.data.is_valid : null,
+      expiresAt: typeof payload.data?.expires_at === "number" ? payload.data.expires_at : null,
+      dataAccessExpiresAt: typeof payload.data?.data_access_expires_at === "number" ? payload.data.data_access_expires_at : null,
+    };
   } catch {
-    // Best-effort fallback: never expose the URL or either credential through
-    // logs or OAuth errors, and never fail an otherwise successful renewal.
-    app.log.warn({ endpoint: "/debug_token", operation: "meta.token_expiry" }, "Meta token expiry lookup failed; continuing without debug expiry");
-    return null;
+    // Best-effort fallback: never expose the URL, error, or either credential.
+    return { lookupStatus: "failed", isValid: null, expiresAt: null, dataAccessExpiresAt: null };
   }
 }
 
@@ -447,14 +448,9 @@ export async function completeMetaAuthorization(app: FastifyInstance, input: { c
   const longToken = await getMetaJson<MetaTokenResponse>(longUrl).catch(() => shortToken);
   const accessToken = longToken.access_token ?? shortToken.access_token;
   const expiresIn = longToken.expires_in ?? shortToken.expires_in;
-  const oauthExpiresAt = typeof expiresIn === "number" && Number.isFinite(expiresIn) && expiresIn > 0
-    ? new Date(Date.now() + expiresIn * 1000)
-    : null;
-  const debugExpiresAt = oauthExpiresAt ? null : await debugMetaTokenExpiry(app, {
-    accessToken,
-    appId: config.appId,
-    appSecret: config.appSecret,
-  });
+  const debugMetadata: MetaDebugExpiryMetadata = hasUsableOAuthExpiry(expiresIn)
+    ? { lookupStatus: "not_needed", isValid: null, expiresAt: null, dataAccessExpiresAt: null }
+    : await debugMetaTokenExpiry({ accessToken, appId: config.appId, appSecret: config.appSecret });
 
   const profileUrl = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/me`);
   profileUrl.searchParams.set("fields", "id,name");
@@ -464,15 +460,22 @@ export async function completeMetaAuthorization(app: FastifyInstance, input: { c
   if (!profile.id) throw new Error("A Meta não retornou a identificação da conta.");
 
   const existingConnection = await findMetaConnection(app.db, input.userId);
+  const expiryResolution = resolveMetaTokenExpiry({
+    oauthExpiresIn: expiresIn,
+    debug: debugMetadata,
+    persistedExpiresAt: existingConnection?.expiresAt,
+  });
   await upsertMetaConnection(app.db, {
     userId: input.userId,
     encryptedToken: encryptToken(accessToken, config.encryptionKey),
     // Prefer OAuth, then the official debugger, then the last known value.
     // A successful connection remains usable even when all three are absent.
-    expiresAt: oauthExpiresAt ?? debugExpiresAt ?? (existingConnection?.expiresAt ? new Date(existingConnection.expiresAt) : null),
+    expiresAt: expiryResolution.expiresAt,
     metaUserId: profile.id,
     accountName: profile.name ?? null,
+    expiryDiagnostics: expiryResolution.diagnostics,
   });
+  app.log.info(expiryResolution.diagnostics, "Meta token expiry resolution completed");
 }
 
 export async function getMetaStatus(app: FastifyInstance, userId: string) {
@@ -484,6 +487,11 @@ export async function getMetaStatus(app: FastifyInstance, userId: string) {
     accountName: connection.accountName,
     metaUserId: connection.metaUserId,
   };
+}
+
+export async function getMetaExpiryDiagnostics(app: FastifyInstance, userId: string) {
+  const connection = await findMetaConnection(app.db, userId);
+  return { expiryDiagnostics: connection?.expiryDiagnostics ?? null };
 }
 
 export async function listMetaAssets(app: FastifyInstance, userId: string) {

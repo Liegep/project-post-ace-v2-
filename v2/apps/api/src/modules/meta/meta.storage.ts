@@ -4,12 +4,14 @@ export async function ensureMetaStorage(db: Pool) {
   await db.query([
     "CREATE TABLE IF NOT EXISTS meta_connections (",
     "id CHAR(36) NOT NULL PRIMARY KEY, user_id CHAR(36) NOT NULL, access_token_encrypted TEXT NOT NULL,",
-    "token_expires_at DATETIME NULL, meta_user_id VARCHAR(190) NOT NULL, meta_account_name VARCHAR(255) NULL,",
+    "token_expires_at DATETIME NULL, meta_user_id VARCHAR(190) NOT NULL, meta_account_name VARCHAR(255) NULL, expiry_diagnostics_json JSON NULL,",
     "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,",
     "UNIQUE KEY uq_meta_connections_user (user_id), KEY idx_meta_connections_expiry (token_expires_at),",
     "CONSTRAINT fk_meta_connections_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE",
     ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
   ].join(" "));
+  const [connectionDiagnosticsColumns] = await db.query<RowDataPacket[]>("SHOW COLUMNS FROM meta_connections LIKE 'expiry_diagnostics_json'");
+  if (connectionDiagnosticsColumns.length === 0) await db.query("ALTER TABLE meta_connections ADD COLUMN expiry_diagnostics_json JSON NULL AFTER meta_account_name");
   await db.query([
     "CREATE TABLE IF NOT EXISTS meta_oauth_states (",
     "state_hash CHAR(64) NOT NULL PRIMARY KEY, user_id CHAR(36) NOT NULL, return_path VARCHAR(255) NOT NULL, expires_at_ms BIGINT UNSIGNED NOT NULL,",
