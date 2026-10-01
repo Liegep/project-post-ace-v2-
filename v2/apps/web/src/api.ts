@@ -223,6 +223,13 @@ export type BillingInvoice = {
   clientAddress: string; clientCountry: string; clientTaxId: string; issueDate: string; dueDate: string; period: string;
   currency: BillingCurrency; locale: "pt" | "en" | "it" | "es" | "sv"; status: BillingInvoiceStatus;
   recurring: boolean; fixedAmount: boolean; visibleToClient: boolean; sentToClient: boolean; notes: string;
+  paidAt?: string | null; paymentMethod?: string | null; paymentProofName?: string | null; paymentProofUrl?: string | null;
+  receiptNumber?: string | null; receiptGeneratedAt?: string | null;
+  receiptSnapshot?: {
+    receiptNumber: string; invoiceNumber: number; clientName: string; clientEmail: string; clientAddress: string; clientCountry: string;
+    clientTaxId: string; paidAt: string; paymentMethod: string | null; currency: BillingCurrency; period: string; title: string; notes: string;
+    lines: Array<{ id?: string; description: string; quantity: number; unitPrice: number }>; total: number;
+  } | null;
   lines: Array<{ id: string; description: string; quantity: number; unitPrice: number }>;
   attachments: Array<{ id: string; fileName: string; fileUrl: string }>;
   createdAt?: string; updatedAt?: string;
@@ -901,7 +908,8 @@ export async function extractAdminReportMetrics(clientAccountId: string, evidenc
 export async function listPortalReportsBySlug(slug: string) { const account = await findPortalAccountBySlug(slug); return fetchJson<{ items: ClientReport[] }>(`/api/portal/accounts/${account.clientAccountId}/reports`); }
 export async function listAdminInvoices() { return fetchJson<{ items: BillingInvoice[] }>("/api/invoices"); }
 export async function createAdminInvoice(input: Omit<BillingInvoice, "id" | "number" | "createdAt" | "updatedAt">) { return sendJson<{ invoice: BillingInvoice }>("/api/invoices", { method: "POST", body: JSON.stringify(input) }); }
-export async function updateAdminInvoice(invoiceId: string, input: Partial<Omit<BillingInvoice, "id" | "number" | "createdAt" | "updatedAt">>) { return sendJson<{ invoice: BillingInvoice }>(`/api/invoices/${invoiceId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+export async function updateAdminInvoice(invoiceId: string, input: Partial<Omit<BillingInvoice, "id" | "number" | "receiptNumber" | "receiptGeneratedAt" | "receiptSnapshot" | "createdAt" | "updatedAt">>) { return sendJson<{ invoice: BillingInvoice }>(`/api/invoices/${invoiceId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+export async function generateAdminInvoiceReceipt(invoiceId: string) { return sendJson<{ invoice: BillingInvoice }>(`/api/invoices/${invoiceId}/receipt`, { method: "POST" }); }
 export async function deleteAdminInvoice(invoiceId: string) { return sendJson<{ ok: true }>(`/api/invoices/${invoiceId}`, { method: "DELETE" }); }
 export async function listPortalInvoicesBySlug(slug: string) { const account = await findPortalAccountBySlug(slug); return fetchJson<{ items: BillingInvoice[] }>(`/api/portal/accounts/${account.clientAccountId}/invoices`); }
 export async function listAdminContracts() { return fetchJson<{ items: ContractRecord[] }>("/api/contracts"); }
