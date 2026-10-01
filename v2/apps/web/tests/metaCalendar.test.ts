@@ -5,7 +5,8 @@ import type { CalendarEvent } from "../src/types";
 import { composeClientMetaCalendarEvents } from "../src/metaCalendar";
 
 const internal = (overrides: Partial<CalendarEvent> = {}): CalendarEvent => ({
-  id: "card-1",
+  id: "calendar-event-1",
+  cardId: "card-1",
   title: "Post Primavera",
   publishDate: "2026-09-30",
   publishTime: "14:30:00",
@@ -71,6 +72,26 @@ test("Instagram and Facebook group once while preserving individual status", () 
   ]);
   assert.equal(events.length, 1);
   assert.deepEqual(events[0]?.platforms.map((item) => [item.platform, item.status]), [["instagram", "published"], ["facebook", "failed"]]);
+  assert.equal(events[0]?.published, true);
+});
+
+test("an internally published post remains visible with its published visual state", () => {
+  const events = composeClientMetaCalendarEvents([internal({ status: "published" })], []);
+  assert.equal(events.length, 1);
+  assert.equal(events[0]?.scheduledAt, "2026-09-30T12:30:20.000Z");
+  assert.equal(events[0]?.published, true);
+});
+
+test("published Instagram and Facebook remain one event after a refresh", () => {
+  const publications = [
+    publication({ status: "published", publishedAt: "2026-09-30T12:31:00.000Z" }),
+    publication({ id: "publication-2", platform: "facebook", status: "published", publishedAt: "2026-09-30T12:32:00.000Z" }),
+  ];
+  const firstLoad = composeClientMetaCalendarEvents([], publications);
+  const refreshed = composeClientMetaCalendarEvents([], publications);
+  assert.equal(firstLoad.length, 1);
+  assert.equal(firstLoad[0]?.published, true);
+  assert.deepEqual(refreshed, firstLoad);
 });
 
 test("two destinations at the same card and minute remain separate calendar events", () => {

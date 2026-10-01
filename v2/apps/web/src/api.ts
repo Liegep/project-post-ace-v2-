@@ -388,6 +388,7 @@ type ApiPortalBoardResponse = {
 
 type ApiCalendarEvent = {
   id: string;
+  cardId?: string | null;
   title: string;
   caption?: string | null;
   mediaType?: string;
@@ -764,6 +765,7 @@ function mapCalendarEvent(event: ApiCalendarEvent): CalendarEvent {
   const hasInstant = scheduled && !Number.isNaN(scheduled.getTime());
   return {
     id: event.id,
+    cardId: event.cardId ?? null,
     title: event.title,
     caption: event.caption ?? null,
     mediaType: event.mediaType,

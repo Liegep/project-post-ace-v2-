@@ -44,6 +44,36 @@ function calendarPostSignature(title: string, value: string | Date | null | unde
   return `${title.trim().toLocaleLowerCase()}|${calendarDateKey(localValue)}`;
 }
 
+type PortalCard = Awaited<ReturnType<typeof listCardsByClientAccountId>>[number];
+type PortalMetaPublication = Awaited<ReturnType<typeof listScheduledPublicationsForClient>>[number];
+
+export function composePortalMetaCalendarCards(portalCards: PortalCard[], metaPublications: PortalMetaPublication[]) {
+  const cardsById = new Map(portalCards.map((card) => [card.id, card]));
+  return Array.from(
+    metaPublications
+      .filter((publication) => publication.cardId && ["scheduled", "publishing", "published"].includes(publication.status))
+      .reduce((groups, publication) => {
+        const key = `${publication.cardId}|${publication.scheduledAt}`;
+        groups.set(key, [...(groups.get(key) ?? []), publication]);
+        return groups;
+      }, new Map<string, PortalMetaPublication[]>()),
+  ).flatMap(([, publications]) => {
+    const publication = publications[0];
+    const card = publication.cardId ? cardsById.get(publication.cardId) : null;
+    if (!card) return [];
+    const published = publications.some((item) => item.status === "published");
+    const publishedAt = publications.find((item) => item.publishedAt)?.publishedAt ?? publication.scheduledAt;
+    return [{
+      ...card,
+      scheduledAt: publication.scheduledAt,
+      scheduledTimeZone: publication.timezone,
+      publishedAt: published ? publishedAt : null,
+      status: [published ? "Publicado" : "Agendado", ...card.status.filter((status) => !/^agendados?$|^publicado$/i.test(status.trim()))],
+      clientLabel: card.clientLabel || (published ? "Publicado" : "Agendado"),
+    }];
+  });
+}
+
 function groupPortalCards(
   columns: Awaited<ReturnType<typeof listColumnsByClientAccountId>>,
   cards: Awaited<ReturnType<typeof listCardsByClientAccountId>>,
@@ -155,31 +185,11 @@ export async function getPortalHome(
         calendarOnly: true,
       };
     });
-  const cardsById = new Map(portalCards.map((card) => [card.id, card]));
-  const metaCalendarCards = Array.from(
-    metaPublications
-      .filter((publication) => publication.cardId && (publication.status === "scheduled" || publication.status === "publishing"))
-      .reduce((groups, publication) => {
-        const key = `${publication.cardId}|${publication.scheduledAt}`;
-        if (!groups.has(key)) groups.set(key, publication);
-        return groups;
-      }, new Map<string, (typeof metaPublications)[number]>()),
-  ).flatMap(([, publication]) => {
-    const card = publication.cardId ? cardsById.get(publication.cardId) : null;
-    if (!card) return [];
-    return [{
-      ...card,
-      scheduledAt: publication.scheduledAt,
-      scheduledTimeZone: publication.timezone,
-      publishedAt: null,
-      status: ["Agendado", ...card.status.filter((status) => !/^agendados?$/i.test(status.trim()))],
-      clientLabel: card.clientLabel || "Agendado",
-    }];
-  });
+  const metaCalendarCards = composePortalMetaCalendarCards(portalCards, metaPublications);
 
-  const metaScheduledCardIds = new Set(metaCalendarCards.map((card) => card.id));
+  const metaCalendarCardIds = new Set(metaCalendarCards.map((card) => card.id));
   const calendarPosts = [
-    ...nativeCalendarCards.filter((card) => !metaScheduledCardIds.has(card.id)),
+    ...nativeCalendarCards.filter((card) => !metaCalendarCardIds.has(card.id)),
     ...metaCalendarCards,
     ...importedCalendarCards,
   ];
