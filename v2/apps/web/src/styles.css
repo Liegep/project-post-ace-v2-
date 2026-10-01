@@ -11109,3 +11109,143 @@ button {
 .report-document header>div>small{display:block;margin-top:5px;color:#758098;font-size:.76rem;font-weight:600}
 
 .portal-invoice-actions{flex-wrap:wrap}.portal-invoice-actions .receipt{border-color:#cce9dd;background:#f3fbf7;color:#247d5d}.portal-invoice-receipt-note{color:#24875d!important;font-size:.68rem!important;font-weight:650}.portal-invoice-preview-modal .receipt-paper{max-width:none;min-height:0;margin:0;padding:34px 38px 28px;box-shadow:none}
+
+/* Dashboard · Datas comemorativas — mais respiro e hierarquia visual */
+.commemorative-dashboard-widget {
+  padding: 20px;
+  border-radius: 22px;
+}
+.commemorative-dashboard-widget > header {
+  padding: 0 0 16px;
+}
+.commemorative-dashboard-widget > header > div {
+  gap: 12px;
+}
+.commemorative-dashboard-widget .dashboard-task-icon {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 12px;
+  font-size: 20px;
+  background: linear-gradient(135deg,#4fc7e9,#6f58e6);
+  color: #fff;
+  box-shadow: 0 8px 18px rgba(89,103,224,.18);
+}
+.commemorative-dashboard-widget h3 {
+  font-size: 1rem !important;
+  letter-spacing: -.02em;
+}
+.commemorative-dashboard-widget .dashboard-task-count {
+  padding: 7px 12px;
+  font-size: .72rem !important;
+}
+.commemorative-dashboard-widget .dashboard-task-rows {
+  gap: 10px;
+}
+.commemorative-dashboard-widget .dashboard-task-rows article {
+  grid-template-columns: 8px 62px minmax(0,1fr) auto;
+  gap: 12px;
+  min-height: 68px;
+  padding: 10px 12px;
+  border-color: #f6dfbd;
+  border-radius: 14px;
+  background: linear-gradient(135deg,#fffaf4,#fffdf9);
+}
+.commemorative-dashboard-widget .commemorative-dot {
+  width: 8px;
+  height: 8px;
+  box-shadow: 0 0 0 4px rgba(249,162,26,.11);
+}
+.commemorative-dashboard-widget .commemorative-date-box {
+  display: grid;
+  width: 58px;
+  min-width: 58px;
+  min-height: 50px;
+  place-content: center;
+  gap: 1px;
+  padding: 0;
+  border: 1px solid #e4ddff;
+  border-radius: 12px;
+  background: linear-gradient(145deg,#f4f1ff,#eceaff);
+  text-align: center;
+}
+.commemorative-dashboard-widget .commemorative-date-box strong {
+  overflow: visible;
+  color: #5e50c7 !important;
+  font-size: 1rem !important;
+  line-height: 1;
+  text-overflow: clip;
+  white-space: normal;
+}
+.commemorative-dashboard-widget .commemorative-date-box small {
+  margin: 2px 0 0;
+  color: #7a6fd5 !important;
+  font-size: .63rem !important;
+  font-weight: 700;
+  letter-spacing: .08em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+.commemorative-event-copy {
+  min-width: 0;
+}
+.commemorative-dashboard-widget .commemorative-event-copy strong {
+  overflow: visible;
+  color: #34415f !important;
+  font-size: .82rem !important;
+  line-height: 1.25;
+  text-overflow: clip;
+  white-space: normal;
+}
+.commemorative-dashboard-widget .commemorative-event-copy small {
+  margin-top: 5px;
+  color: #7f8ba2 !important;
+  font-size: .7rem !important;
+}
+.commemorative-dashboard-widget .dashboard-brief-button {
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 11px;
+  font-size: .72rem;
+  box-shadow: 0 7px 16px rgba(96,79,218,.16);
+}
+.commemorative-dashboard-widget .dashboard-task-link {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 34px;
+  margin: 14px 0 0;
+  padding: 0 12px;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid rgba(92,104,223,.14);
+  border-radius: 999px;
+  background: rgba(247,248,255,.9);
+  color: #5966db;
+  font-size: .72rem !important;
+  font-weight: 650;
+  text-decoration: none;
+}
+.commemorative-dashboard-widget .dashboard-task-link:hover {
+  border-color: rgba(92,104,223,.28);
+  background: #f0f1ff;
+}
+@media (max-width: 760px) {
+  .commemorative-dashboard-widget {
+    padding: 16px;
+  }
+  .commemorative-dashboard-widget .dashboard-task-rows article {
+    grid-template-columns: 8px 54px minmax(0,1fr);
+    align-items: start;
+  }
+  .commemorative-dashboard-widget .commemorative-date-box {
+    width: 50px;
+    min-width: 50px;
+    min-height: 46px;
+  }
+  .commemorative-dashboard-widget .dashboard-brief-button {
+    grid-column: 3;
+    justify-self: start;
+    min-height: 34px;
+    margin-top: 2px;
+  }
+}
