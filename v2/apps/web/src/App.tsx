@@ -2008,8 +2008,11 @@ function DashboardCommemorativeWidget({ clients }: { clients: AdminClientOption[
           const isCreated = createdIds.some((id) => id.startsWith(`${holiday.id}-`));
           return <article key={holiday.id}>
             <span className="dashboard-task-dot commemorative-dot" />
-            <span className="commemorative-date-box">{new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(new Date(`${holiday.date}T12:00:00`))}</span>
-            <div><strong>{holiday.localName}</strong><small>{holiday.countryName}</small></div>
+            <time className="commemorative-date-box" dateTime={holiday.date}>
+              <strong>{new Intl.DateTimeFormat("pt-BR", { day: "2-digit" }).format(new Date(`${holiday.date}T12:00:00`))}</strong>
+              <small>{new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(new Date(`${holiday.date}T12:00:00`)).replace(".", "")}</small>
+            </time>
+            <div className="commemorative-event-copy"><strong>{holiday.localName}</strong><small>{holiday.countryName}</small></div>
             <button className="dashboard-brief-button" disabled={isCreated || clients.length === 0} onClick={() => setSelectedHoliday(holiday)}>{isCreated ? "Pauta criada" : "Virar pauta"}</button>
           </article>;
         })}
