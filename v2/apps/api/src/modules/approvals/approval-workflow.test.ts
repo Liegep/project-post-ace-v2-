@@ -9,6 +9,7 @@ import { approvalHistoryTableSql } from "./approval-history.repository.js";
 import { convertBriefApprovalToPost, decideCardApproval, resubmitCardApproval } from "./approval-workflow.service.js";
 import { approvalStatuses, inferredApprovalState, resendBlockedReason } from "./approval-state.js";
 import { findCardById, updateCard } from "../cards/cards.repository.js";
+import { moveKanbanCard, moveKanbanCardToScheduledColumn } from "../cards/cards.service.js";
 import { reconcileApprovedCardColumns } from "./approvals.service.js";
 import { approvalRoutes } from "./approvals.routes.js";
 import { portalRoutes } from "../portal/portal.routes.js";
@@ -27,13 +28,13 @@ async function fixture() {
       .map((line) => line.trim().replace(/,$/, "").replace(/ENUM\([^)]*\)/g, "TEXT").replace(/ ON UPDATE CURRENT_TIMESTAMP(?:\(3\))?/g, "").replace(/CURRENT_TIMESTAMP\(3\)/g, "CURRENT_TIMESTAMP").replace(/\bUNSIGNED\b/g, ""));
     sql.exec(`CREATE TABLE ${name} (${columns.join(", ")})`);
   };
-  for (const name of ["kanban_cards", "kanban_columns", "card_comments", "approval_links"]) {
+  for (const name of ["kanban_cards", "kanban_columns", "card_comments", "approval_links", "card_calendar_events"]) {
     create(schema.match(new RegExp(`CREATE TABLE IF NOT EXISTS ${name} \\([\\s\\S]*?\\) ENGINE[^;]*;`))![0]);
   }
   create(approvalHistoryTableSql);
   sql.exec("CREATE UNIQUE INDEX approval_revision_unique ON card_approval_events(card_id, revision)");
-  sql.exec("CREATE TABLE client_accounts (id TEXT, name TEXT, logo_url TEXT, workspace_drawer_json TEXT); CREATE TABLE users (id TEXT, avatar_url TEXT)");
-  sql.exec("INSERT INTO client_accounts VALUES ('account', 'Conta', NULL, '{}'); INSERT INTO users VALUES ('client-user', NULL)");
+  sql.exec("CREATE TABLE client_accounts (id TEXT, name TEXT, logo_url TEXT, workspace_drawer_json TEXT, kanban_automations_json TEXT); CREATE TABLE users (id TEXT, avatar_url TEXT)");
+  sql.exec("INSERT INTO client_accounts VALUES ('account', 'Conta', NULL, '{}', '[]'); INSERT INTO users VALUES ('client-user', NULL)");
   sql.exec(`INSERT INTO kanban_columns (id, client_account_id, name, position, visible_to_client, auto_created) VALUES ('work', 'account', 'Em criação', 0, 1, 0), ('approved', 'account', 'Aprovados', 1, 1, 0)`);
   sql.exec(`INSERT INTO kanban_cards (id, client_account_id, column_id, title, caption, status_json, tags_json, media_urls_json, client_label)
     VALUES ('post', 'account', 'work', 'Post de teste', 'Legenda original', '["Enviar para Cliente","Design Pronto"]', '["Campanha"]', '["/api/uploads/art.png"]', 'Pendente')`);
@@ -114,6 +115,34 @@ test("historical approval never revives a resent card; old links cannot decide a
     assert.equal(decision.card.status.includes("Aprovado"), false);
     assert.equal(decision.approvalLink!.isActive, false);
     await assert.rejects(decideCardApproval(f.app, "account", "post", client, { approved: true }, result.approvalLink.token), { statusCode: 403 });
+  } finally { await f.close(); }
+});
+
+test("a deliberate card move survives secondary updates and startup reconciliation", async () => {
+  const f = await fixture();
+  try {
+    await decideCardApproval(f.app, "account", "post", client, { approved: true });
+    const moved = await moveKanbanCard(f.app, "account", "post", { columnId: "work" }, { id: "admin", fullName: "Equipe", globalRole: "admin" });
+    assert.equal(moved.columnId, "work");
+    await updateCard(f.pool, "post", { caption: "Legenda depois da movimentação", status: ["Design Pronto"] });
+    assert.equal((await findCardById(f.pool, "post"))!.columnId, "work");
+    await reconcileApprovedCardColumns(f.app);
+    assert.equal((await findCardById(f.pool, "post"))!.columnId, "work");
+  } finally { await f.close(); }
+});
+
+test("Meta scheduling destination is reused, does not touch internal schedule and skips pending pautas", async () => {
+  const f = await fixture();
+  const actor = { id: "admin", fullName: "Equipe", globalRole: "admin" };
+  try {
+    const first = await moveKanbanCardToScheduledColumn(f.app, "account", "post", actor);
+    assert.equal(f.sql.prepare("SELECT name FROM kanban_columns WHERE id = ?").get(first.columnId!)!.name, "Agendados");
+    assert.equal(first.scheduledAt, null);
+    await moveKanbanCardToScheduledColumn(f.app, "account", "post", actor);
+    assert.equal(f.sql.prepare("SELECT COUNT(*) AS n FROM kanban_columns WHERE LOWER(name) = 'agendados'").get()!.n, 1);
+    f.sql.exec("INSERT INTO kanban_cards (id, client_account_id, column_id, title, status_json, tags_json, media_urls_json, client_label, is_brief_approval) VALUES ('pending-pauta', 'account', 'work', 'Pauta', '[\"Enviar para Cliente\"]', '[]', '[]', 'Pendente', 1)");
+    const pending = await moveKanbanCardToScheduledColumn(f.app, "account", "pending-pauta", actor);
+    assert.equal(pending.columnId, "work");
   } finally { await f.close(); }
 });
 
