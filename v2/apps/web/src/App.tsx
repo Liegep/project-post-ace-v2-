@@ -62,6 +62,7 @@ import {
   listAdminHashtagGroupsBySlug,
   type HashtagGroup,
   loadDashboardOverview,
+  dismissDashboardItem,
   loadDashboardNotes,
   createDashboardNote,
   updateDashboardNote,
@@ -2648,6 +2649,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
             } catch {
               // The dashboard still removes the scheduled feedback for this visit.
             }
+            void Promise.all(matchingFeedbackIds.map((id) => dismissDashboardItem("client_feedback", id))).catch(() => undefined);
           }
           setClientActivities((current) => current.filter((item) => item.cardId !== scheduleActivity.cardId));
           setScheduledNotice({ title: scheduleActivity.title, clientName: scheduleActivity.clientName });
@@ -3222,11 +3224,14 @@ function DashboardApprovedPautasWidget({ items, userId }: { items: DashboardAppr
   const [expanded, setExpanded] = useState(false);
   const visibleItems = items.filter((item) => !dismissedIds.includes(item.id));
   const displayedItems = expanded ? visibleItems : visibleItems.slice(0, 4);
-  const dismiss = (id: string) => setDismissedIds((current) => {
-    const next = current.includes(id) ? current : [...current, id];
-    window.localStorage.setItem(storageKey, JSON.stringify(next));
-    return next;
-  });
+  const dismiss = (id: string) => {
+    setDismissedIds((current) => {
+      const next = current.includes(id) ? current : [...current, id];
+      window.localStorage.setItem(storageKey, JSON.stringify(next));
+      return next;
+    });
+    void dismissDashboardItem("approved_pauta", id).catch(() => undefined);
+  };
   const formatDate = (value: string) => {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? "Aprovada" : new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(date).replace(".", "");
@@ -3288,6 +3293,7 @@ function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items:
       }
       return next;
     });
+    void dismissDashboardItem("client_feedback", id).catch(() => undefined);
   };
   const openCard = (item: DashboardClientActivity) => {
     if (!item.cardId) return;
