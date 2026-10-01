@@ -53,6 +53,13 @@ export function BillingInvoiceDocument({ invoice }: { invoice: BillingInvoice })
 }
 
 const receiptLocaleTag: Record<BillingInvoice["locale"], string> = { pt: "pt-BR", en: "en-US", it: "it-IT", es: "es-ES", sv: "sv-SE" };
+const receiptPaymentMethods: Record<BillingInvoice["locale"], Record<string, string>> = {
+  pt: { "Transferência bancária": "Transferência bancária", Pix: "Pix", PayPal: "PayPal", Cartão: "Cartão", Dinheiro: "Dinheiro", Outro: "Outro" },
+  en: { "Transferência bancária": "Bank transfer", Pix: "Pix", PayPal: "PayPal", Cartão: "Card", Dinheiro: "Cash", Outro: "Other" },
+  it: { "Transferência bancária": "Bonifico bancario", Pix: "Pix", PayPal: "PayPal", Cartão: "Carta", Dinheiro: "Contanti", Outro: "Altro" },
+  es: { "Transferência bancária": "Transferencia bancaria", Pix: "Pix", PayPal: "PayPal", Cartão: "Tarjeta", Dinheiro: "Efectivo", Outro: "Otro" },
+  sv: { "Transferência bancária": "Banköverföring", Pix: "Pix", PayPal: "PayPal", Cartão: "Kort", Dinheiro: "Kontant", Outro: "Annat" },
+};
 const receiptLabels: Record<BillingInvoice["locale"], {
   receipt: string; paid: string; receivedFrom: string; clientFallback: string; amountPrefix: string; referencePrefix: string;
   invoice: string; paymentDate: string; paymentMethod: string; notProvided: string; amountReceived: string; period: string; digitalDocument: string;
@@ -72,11 +79,12 @@ export function BillingReceiptDocument({ invoice }: { invoice: BillingInvoice })
   const receiptMoney = (value: number) => new Intl.NumberFormat(locale, { style: "currency", currency: snapshot.currency }).format(value);
   const receiptDate = (value: string) => value ? new Intl.DateTimeFormat(locale).format(new Date(`${value}T12:00:00`)) : "-";
   const invoiceLabel = snapshot.title || `${copy.invoice} #${snapshot.invoiceNumber}`;
+  const paymentMethod = snapshot.paymentMethod ? (receiptPaymentMethods[invoice.locale][snapshot.paymentMethod] ?? snapshot.paymentMethod) : copy.notProvided;
   return <article className="receipt-paper">
     <header><img className="issuer-logo" src={liegePaschoaliniLogo} alt="Liege Paschoalini Studio" /><div><p>{copy.receipt}</p><h1>{snapshot.receiptNumber}</h1><span className="receipt-paid-badge">{copy.paid}</span></div></header>
     <div className="receipt-rule" />
     <section className="receipt-lead"><small>{copy.receivedFrom}</small><h2>{snapshot.clientName || copy.clientFallback}</h2><p>{copy.amountPrefix} <strong>{receiptMoney(snapshot.total)}</strong>, {copy.referencePrefix} <strong>{invoiceLabel}</strong>.</p></section>
-    <div className="receipt-meta"><span><small>{copy.invoice}</small><b>#{snapshot.invoiceNumber}</b></span><span><small>{copy.paymentDate}</small><b>{receiptDate(snapshot.paidAt)}</b></span><span><small>{copy.paymentMethod}</small><b>{snapshot.paymentMethod || copy.notProvided}</b></span></div>
+    <div className="receipt-meta"><span><small>{copy.invoice}</small><b>#{snapshot.invoiceNumber}</b></span><span><small>{copy.paymentDate}</small><b>{receiptDate(snapshot.paidAt)}</b></span><span><small>{copy.paymentMethod}</small><b>{paymentMethod}</b></span></div>
     <div className="receipt-lines">{snapshot.lines.map((line, index) => <div key={line.id ?? index}><span>{line.description}</span><span>{line.quantity} × {receiptMoney(line.unitPrice)}</span><strong>{receiptMoney(line.quantity * line.unitPrice)}</strong></div>)}</div>
     <div className="receipt-total"><span>{copy.amountReceived}</span><strong>{receiptMoney(snapshot.total)}</strong></div>
     {snapshot.period ? <p className="receipt-period">{copy.period}: {snapshot.period}</p> : null}
