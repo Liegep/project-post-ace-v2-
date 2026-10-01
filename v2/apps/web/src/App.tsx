@@ -7,6 +7,7 @@ import webPackage from "../package.json";
 import { CardTimeTracker, TimeTrackingWorkspace } from "./TimeTrackingWorkspace";
 import { normalizeExternalHttpUrl } from "./externalUrl";
 import { metaPublicationPreviewSource, type MetaPublicationPreview } from "./metaPublicationPreview";
+import { adminCardRoute } from "./metaCenterNavigation";
 import {
   addAdminCardCommentBySlug,
   addPortalCardCommentBySlug,
@@ -9935,6 +9936,7 @@ function metaCenterDateKey(value: Date | string) {
 }
 
 function MetaPublicationsWorkspace() {
+  const navigate = useNavigate();
   const [anchor, setAnchor] = useState(() => new Date());
   const [view, setView] = useState<"calendar" | "list">("calendar");
   const [clients, setClients] = useState<AdminClientOption[]>([]);
@@ -9954,6 +9956,7 @@ function MetaPublicationsWorkspace() {
   const [rescheduleOpen, setRescheduleOpen] = useState(false);
   const [rescheduleAt, setRescheduleAt] = useState("");
   const [actionPending, setActionPending] = useState(false);
+  const rescheduleTriggerRef = useRef<HTMLButtonElement>(null);
   const limit = view === "calendar" ? 200 : 100;
 
   const refresh = useCallback(async () => {
@@ -9999,6 +10002,7 @@ function MetaPublicationsWorkspace() {
 
   const groups = useMemo(() => groupMetaPublications(publications), [publications]);
   const selected = selectedKey ? groups.find((group) => group.key === selectedKey) ?? null : null;
+  const selectedCardRoute = selected ? adminCardRoute(selected.clientSlug, selected.cardId) : null;
   const calendarStart = useMemo(() => {
     const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
     first.setDate(first.getDate() - first.getDay());
@@ -10038,6 +10042,19 @@ function MetaPublicationsWorkspace() {
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível reagendar."); }
     finally { setActionPending(false); }
   };
+  const closeReschedule = () => {
+    setRescheduleOpen(false);
+    window.requestAnimationFrame(() => rescheduleTriggerRef.current?.focus());
+  };
+  const keepRescheduleFocus = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Tab") return;
+    const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled)"));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  };
   const openReschedule = () => {
     if (!selected) return;
     const date = new Date(selected.scheduledAt);
@@ -10057,8 +10074,8 @@ function MetaPublicationsWorkspace() {
     {error ? <p className="meta-center-error">{error}</p> : null}
     {view === "calendar" ? <div className="meta-center-calendar"><header><button onClick={() => moveMonth(-1)} aria-label="Mês anterior">‹</button><h3>{anchor.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</h3><button onClick={() => moveMonth(1)} aria-label="Próximo mês">›</button></header><div className="meta-center-weekdays">{["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => <span key={day}>{day}</span>)}</div><div className="meta-center-month">{calendarDays.map((day) => { const dayGroups = groupsByDay.get(metaCenterDateKey(day)) ?? []; return <div key={day.toISOString()} className={day.getMonth() === anchor.getMonth() ? "" : "outside"}><b>{day.getDate()}</b>{dayGroups.map((group) => <button key={group.key} onClick={() => openGroup(group)}><time>{new Date(group.scheduledAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</time><strong>{group.cardTitle}</strong>{platformChips(group)}</button>)}</div>; })}</div></div> : <div className="meta-center-list"><div className="meta-center-list-head"><span>Conteúdo</span><span>Cliente</span><span>Data / hora</span><span>Tipo</span><span>Plataformas</span><span>Status</span></div>{groups.map((group) => <button key={group.key} className="meta-center-row" onClick={() => openGroup(group)}>{thumbnail(group)}<div><strong>{group.cardTitle}</strong><small>{group.caption || "Sem legenda"}</small></div><span>{group.clientName}</span><time>{new Date(group.scheduledAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</time><span>{metaPublicationTypeLabel(group.mediaType)}</span>{platformChips(group)}<span>{group.publications.map((item) => metaPublicationStatusLabel(item.status)).join(" · ")}</span></button>)}{!loading && groups.length === 0 ? <p className="meta-center-empty">Nenhuma publicação encontrada neste período.</p> : null}<footer><button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Anterior</button><span>{total ? `${offset + 1}–${Math.min(offset + limit, total)} de ${total}` : "0 resultados"}</span><button disabled={offset + limit >= total} onClick={() => setOffset(offset + limit)}>Próxima</button></footer></div>}
     {loading ? <div className="meta-center-loading">Carregando publicações…</div> : null}
-    {selected ? createPortal(<div className="meta-center-backdrop" onMouseDown={() => setSelectedKey(null)}><aside className="meta-center-detail" onMouseDown={(event) => event.stopPropagation()}><header><div><span>PUBLICAÇÃO META</span><h2>{selected.cardTitle}</h2><p>{selected.clientName}</p></div><button onClick={() => setSelectedKey(null)}>×</button></header>{thumbnail(selected)}<dl><div><dt>Data e hora</dt><dd>{new Date(selected.scheduledAt).toLocaleString("pt-BR")} · {selected.timezone}</dd></div>{selected.destinationName && selected.destinationName !== selected.clientName ? <div><dt>Destino</dt><dd>{selected.destinationName}</dd></div> : null}<div><dt>Tipo</dt><dd>{metaPublicationTypeLabel(selected.mediaType)}</dd></div>{selected.locationName ? <div><dt>Localização</dt><dd>⌖ {selected.locationName}</dd></div> : null}{selected.caption ? <div><dt>Legenda</dt><dd>{selected.caption}</dd></div> : null}</dl><section className="meta-center-platform-detail">{selected.publications.map((item) => <article key={item.id} className={item.status}><div><strong>{item.platform === "instagram" ? "Instagram" : "Facebook"}</strong><span>{metaPublicationStatusLabel(item.status)}</span></div>{item.lastError ? <p>{item.lastError}</p> : null}<footer>{item.publishedPermalink ? <a href={item.publishedPermalink} target="_blank" rel="noreferrer">Abrir publicação</a> : null}{["scheduled", "failed"].includes(item.status) ? <button disabled={actionPending} onClick={() => void performCancel([item.id])}>Cancelar {item.platform === "instagram" ? "Instagram" : "Facebook"}</button> : null}</footer></article>)}</section><footer className="meta-center-detail-actions">{selected.cardId ? <a className="ghost-button" href={`/admin/${selected.clientSlug}?card=${encodeURIComponent(selected.cardId)}`}>Abrir card</a> : null}{selected.publications.some((item) => item.status === "scheduled") ? <button className="ghost-button" disabled={actionPending} onClick={openReschedule}>Reagendar</button> : null}{selected.publications.filter((item) => ["scheduled", "failed"].includes(item.status)).length > 1 ? <button className="danger-button" disabled={actionPending} onClick={() => void performCancel(selected.publications.filter((item) => ["scheduled", "failed"].includes(item.status)).map((item) => item.id))}>Cancelar ambos</button> : null}</footer></aside></div>, document.body) : null}
-    {selected && rescheduleOpen ? createPortal(<div className="modal-backdrop" onMouseDown={() => setRescheduleOpen(false)}><section className="meta-reschedule-modal" onMouseDown={(event) => event.stopPropagation()}><header><div><span>REAGENDAR</span><h3>{selected.cardTitle}</h3></div><button onClick={() => setRescheduleOpen(false)}>×</button></header><label>Nova data e hora<input type="datetime-local" value={rescheduleAt} onChange={(event) => setRescheduleAt(event.target.value)} /></label><small>As plataformas ainda agendadas serão movidas juntas.</small><footer><button className="ghost-button" onClick={() => setRescheduleOpen(false)}>Cancelar</button><button className="gradient-button" disabled={!rescheduleAt || actionPending} onClick={() => void performReschedule()}>{actionPending ? "Salvando…" : "Confirmar"}</button></footer></section></div>, document.body) : null}
+    {selected ? createPortal(<div className="meta-center-backdrop" onMouseDown={() => setSelectedKey(null)}><aside className="meta-center-detail" onMouseDown={(event) => event.stopPropagation()}><header><div><span>PUBLICAÇÃO META</span><h2>{selected.cardTitle}</h2><p>{selected.clientName}</p></div><button onClick={() => setSelectedKey(null)}>×</button></header>{thumbnail(selected)}<dl><div><dt>Data e hora</dt><dd>{new Date(selected.scheduledAt).toLocaleString("pt-BR")} · {selected.timezone}</dd></div>{selected.destinationName && selected.destinationName !== selected.clientName ? <div><dt>Destino</dt><dd>{selected.destinationName}</dd></div> : null}<div><dt>Tipo</dt><dd>{metaPublicationTypeLabel(selected.mediaType)}</dd></div>{selected.locationName ? <div><dt>Localização</dt><dd>⌖ {selected.locationName}</dd></div> : null}{selected.caption ? <div><dt>Legenda</dt><dd>{selected.caption}</dd></div> : null}</dl><section className="meta-center-platform-detail">{selected.publications.map((item) => <article key={item.id} className={item.status}><div><strong>{item.platform === "instagram" ? "Instagram" : "Facebook"}</strong><span>{metaPublicationStatusLabel(item.status)}</span></div>{item.lastError ? <p>{item.lastError}</p> : null}<footer>{item.publishedPermalink ? <a href={item.publishedPermalink} target="_blank" rel="noreferrer">Abrir publicação</a> : null}{["scheduled", "failed"].includes(item.status) ? <button disabled={actionPending} onClick={() => void performCancel([item.id])}>Cancelar {item.platform === "instagram" ? "Instagram" : "Facebook"}</button> : null}</footer></article>)}</section><footer className="meta-center-detail-actions">{selectedCardRoute ? <button className="ghost-button" onClick={() => navigate(selectedCardRoute)}>Abrir card</button> : null}{selected.publications.some((item) => item.status === "scheduled") ? <button ref={rescheduleTriggerRef} className="ghost-button" disabled={actionPending} onClick={openReschedule}>Reagendar</button> : null}{selected.publications.filter((item) => ["scheduled", "failed"].includes(item.status)).length > 1 ? <button className="danger-button" disabled={actionPending} onClick={() => void performCancel(selected.publications.filter((item) => ["scheduled", "failed"].includes(item.status)).map((item) => item.id))}>Cancelar ambos</button> : null}</footer></aside></div>, document.body) : null}
+    {selected && rescheduleOpen ? createPortal(<div className="modal-backdrop meta-reschedule-backdrop" onMouseDown={closeReschedule}><section className="meta-reschedule-modal" role="dialog" aria-modal="true" aria-labelledby="meta-reschedule-title" onKeyDown={keepRescheduleFocus} onMouseDown={(event) => event.stopPropagation()}><header><div><span>REAGENDAR</span><h3 id="meta-reschedule-title">{selected.cardTitle}</h3></div><button aria-label="Fechar reagendamento" onClick={closeReschedule}>×</button></header><label>Nova data e hora<input autoFocus type="datetime-local" value={rescheduleAt} onChange={(event) => setRescheduleAt(event.target.value)} /></label><small>As plataformas ainda agendadas serão movidas juntas.</small><footer><button className="ghost-button" onClick={closeReschedule}>Cancelar</button><button className="gradient-button" disabled={!rescheduleAt || actionPending} onClick={() => void performReschedule()}>{actionPending ? "Salvando…" : "Confirmar"}</button></footer></section></div>, document.body) : null}
   </section>;
 }
 
