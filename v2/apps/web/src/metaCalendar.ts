@@ -20,6 +20,7 @@ export type ClientMetaCalendarEvent = {
   destinationName?: string | null;
   platforms: ClientMetaCalendarPlatform[];
   publications: MetaScheduledPublication[];
+  published: boolean;
 };
 
 function validDate(value: string | undefined) {
@@ -66,10 +67,10 @@ export function composeClientMetaCalendarEvents(internalPosts: CalendarEvent[], 
   internalPosts.forEach((post) => {
     const instant = internalPostDate(post);
     if (!instant) return;
-    const key = minuteKey(post.id, instant, post.id);
+    const key = minuteKey(post.cardId ?? null, instant, post.id);
     events.set(key, {
       id: `internal:${post.id}:${Math.floor(instant.getTime() / 60_000)}`,
-      cardId: post.id,
+      cardId: post.cardId ?? null,
       title: post.title,
       scheduledAt: instant.toISOString(),
       source: "internal",
@@ -78,6 +79,7 @@ export function composeClientMetaCalendarEvents(internalPosts: CalendarEvent[], 
       details: post.caption?.trim() || undefined,
       platforms: [],
       publications: [],
+      published: post.status === "published",
     });
   });
 
@@ -97,6 +99,7 @@ export function composeClientMetaCalendarEvents(internalPosts: CalendarEvent[], 
     });
     destinationGroups.forEach((destinationPublications, destinationKey) => {
       const first = destinationPublications[0];
+      const platforms = platformSummary(destinationPublications);
       const eventKey = destinationGroups.size === 1 ? key : `${key}:destination:${destinationKey}`;
       const existing = destinationGroups.size === 1 ? events.get(key) : undefined;
       if (existing) {
@@ -104,7 +107,8 @@ export function composeClientMetaCalendarEvents(internalPosts: CalendarEvent[], 
         existing.destinationId = first.destinationId;
         existing.destinationName = first.destinationName;
         existing.publications = destinationPublications;
-        existing.platforms = platformSummary(destinationPublications);
+        existing.platforms = platforms;
+        existing.published ||= existing.platforms.some((item) => item.status === "published");
         existing.imageUrl ||= first.reelCoverUrl || first.mediaUrls[0] || first.mediaUrl || undefined;
         existing.details ||= first.caption?.trim() || undefined;
         return;
@@ -119,8 +123,9 @@ export function composeClientMetaCalendarEvents(internalPosts: CalendarEvent[], 
         details: first.caption?.trim() || undefined,
         destinationId: first.destinationId,
         destinationName: first.destinationName,
-        platforms: platformSummary(destinationPublications),
+        platforms,
         publications: destinationPublications,
+        published: platforms.some((item) => item.status === "published"),
       });
     });
   });
