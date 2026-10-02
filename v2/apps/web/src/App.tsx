@@ -1,3 +1,4 @@
+import { printWhenImagesReady } from "./printDocument";
 import { commemorativeAlerts, daysUntilDate } from "./commemorativeAlerts";
 import { DashboardMetrics } from "./DashboardMetrics";
 import { MetaPreflightPanel } from "./MetaPreflightPanel";
@@ -6088,9 +6089,7 @@ function ClientPortalInvoicesView({ invoices, onViewInvoice }: { invoices: Billi
     printWindow.document.open();
     printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8" /><title>${title}</title>${headMarkup}<style>html,body{margin:0;background:#fbfaf8;}body{display:flex;justify-content:center;padding:24px;}.invoice-paper,.receipt-paper{max-width:720px;min-height:0;margin:0;box-shadow:none;}@media print{@page{size:A4;margin:14mm;}body{padding:0;background:#fff;}.invoice-paper,.receipt-paper{max-width:none;}}</style></head><body>${paper.outerHTML}</body></html>`);
     printWindow.document.close();
-    const triggerPrint = () => { printWindow.focus(); printWindow.print(); };
-    printWindow.onload = triggerPrint;
-    window.setTimeout(triggerPrint, 400);
+    void printWhenImagesReady(printWindow);
   };
   useEffect(() => {
     if (!previewInvoice || !printRequested) return;

@@ -229,6 +229,7 @@ export type BillingInvoice = {
   paidAt?: string | null; paymentMethod?: string | null; paymentProofName?: string | null; paymentProofUrl?: string | null;
   receiptNumber?: string | null; receiptGeneratedAt?: string | null;
   receiptSnapshot?: {
+    signatureUrl?: string | null;
     receiptNumber: string; invoiceNumber: number; clientName: string; clientEmail: string; clientAddress: string; clientCountry: string;
     clientTaxId: string; paidAt: string; paymentMethod: string | null; currency: BillingCurrency; period: string; title: string; notes: string;
     lines: Array<{ id?: string; description: string; quantity: number; unitPrice: number }>; total: number;
@@ -1867,4 +1868,18 @@ export async function checkMetaDestination(clientAccountId: string, destinationI
   const query = new URLSearchParams({ clientAccountId, destinationId });
   if (cardId) query.set("cardId", cardId);
   return fetchJson<MetaPreflightResult>(`/api/meta/preflight?${query}`);
+}
+
+export async function loadBillingSettings() { return fetchJson<{ signatureUrl: string | null }>("/api/billing/settings"); }
+export async function removeReceiptSignature() { return sendJson<{ signatureUrl: null }>("/api/billing/settings/receipt-signature", { method: "DELETE" }); }
+export async function uploadReceiptSignature(file: File) {
+  const headers = new Headers();
+  const token = getAccessToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const body = new FormData();
+  body.set("file", file);
+  const response = await fetchWithTimeout(`${getApiBaseUrl()}/api/uploads/receipt-signature`, { method: "POST", headers, body });
+  const result = await response.json() as { signatureUrl: string; message?: string };
+  if (!response.ok) throw new Error(result.message ?? "Não foi possível salvar a assinatura.");
+  return result;
 }

@@ -1,3 +1,5 @@
+import { BillingSettings } from "./BillingSettings";
+import { printWhenImagesReady } from "./printDocument";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionUser } from "./types";
 import "./BillingWorkspace.css";
@@ -88,7 +90,7 @@ export function BillingReceiptDocument({ invoice }: { invoice: BillingInvoice })
     <div className="receipt-lines">{snapshot.lines.map((line, index) => <div key={line.id ?? index}><span>{line.description}</span><span>{line.quantity} × {receiptMoney(line.unitPrice)}</span><strong>{receiptMoney(line.quantity * line.unitPrice)}</strong></div>)}</div>
     <div className="receipt-total"><span>{copy.amountReceived}</span><strong>{receiptMoney(snapshot.total)}</strong></div>
     {snapshot.period ? <p className="receipt-period">{copy.period}: {snapshot.period}</p> : null}
-    <footer><div><strong>LIEGE PASCHOALINI STUDIO</strong><span>hello@liegepaschoalini.design · liegestudio.com</span></div><span>{copy.digitalDocument}</span></footer>
+    <footer><div>{snapshot.signatureUrl ? <img className="receipt-signature" src={snapshot.signatureUrl} alt="Assinatura da emissora" /> : null}<strong>LIEGE PASCHOALINI STUDIO</strong><span>hello@liegepaschoalini.design · liegestudio.com</span></div><span>{copy.digitalDocument}</span></footer>
   </article>;
 }
 
@@ -159,13 +161,30 @@ export function BillingWorkspace({ session, newInvoiceSignal = 0 }: { session: S
 
   const create = useCallback(async () => { const draft = emptyInvoice(0); const { id: _id, number: _number, ...input } = draft; try { const response = await createAdminInvoice(input); setInvoices((current) => [response.invoice, ...current]); setSelectedId(response.invoice.id); } catch (error) { setLoadError(error instanceof Error ? error.message : "Não foi possível criar a fatura."); } }, []);
   useEffect(() => { if (newInvoiceSignal > 0 && loaded) void create(); }, [newInvoiceSignal, loaded, create]);
-  const save = useCallback((next: BillingInvoice) => { setInvoices((current) => current.map((invoice) => invoice.id === next.id ? next : invoice)); const previous = saveTimers.current.get(next.id); if (previous) window.clearTimeout(previous); saveTimers.current.set(next.id, window.setTimeout(() => { const { id, number: _number, createdAt: _createdAt, updatedAt: _updatedAt, ...input } = next; void updateAdminInvoice(id, input).catch((error) => setLoadError(error instanceof Error ? error.message : "Não foi possível salvar a fatura.")); }, 500)); }, []);
+  const save = useCallback((next: BillingInvoice) => {
+    setInvoices((current) => current.map((invoice) => invoice.id === next.id ? next : invoice));
+    const previous = saveTimers.current.get(next.id);
+    if (previous) window.clearTimeout(previous);
+    saveTimers.current.set(next.id, window.setTimeout(() => {
+      const { id, number: _number, createdAt: _createdAt, updatedAt: _updatedAt, ...input } = next;
+      void updateAdminInvoice(id, input).then((response) => {
+        setInvoices((current) => current.map((item) => {
+          if (item.id !== id) return item;
+          if (item === next) return response.invoice;
+          // Preserve newer edits while accepting the server's immutable receipt.
+          return { ...item, receiptNumber: response.invoice.receiptNumber,
+            receiptGeneratedAt: response.invoice.receiptGeneratedAt, receiptSnapshot: response.invoice.receiptSnapshot };
+        }));
+      }).catch((error) => setLoadError(error instanceof Error ? error.message : "Não foi possível salvar a fatura."));
+    }, 500));
+  }, []);
   const remove = async (id: string) => { if (!window.confirm("Excluir esta fatura?")) return; try { await deleteAdminInvoice(id); setInvoices((current) => current.filter((invoice) => invoice.id !== id)); setSelectedId(null); } catch (error) { setLoadError(error instanceof Error ? error.message : "Não foi possível excluir a fatura."); } };
 
   if (selected) return <InvoiceEditor invoice={selected} clients={clients} session={session} onBack={() => setSelectedId(null)} onChange={save} onDelete={() => remove(selected.id)} />;
 
   if (!loaded) return <section className="billing-workspace"><div className="billing-empty">Carregando faturas...</div></section>;
   return <section className="billing-workspace">
+    <details className="billing-settings-panel"><summary>Configurações · Dados de faturamento</summary><BillingSettings /></details>
     {loadError ? <div className="billing-empty">{loadError}</div> : null}
     <section className="billing-metrics">
       <Metric label="Total faturado" values={totals.all} tone="violet" />
@@ -248,9 +267,7 @@ function InvoiceEditor({ invoice, clients, session, onBack, onChange, onDelete }
     printWindow.document.open();
     printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8" /><title>${title}</title>${headMarkup}<style>html,body{margin:0;background:#fbfaf8;}body{display:flex;justify-content:center;padding:24px;}.invoice-paper,.receipt-paper{box-sizing:border-box;width:100%;max-width:720px;min-height:0;margin:0;box-shadow:none;}@media print{@page{size:A4;margin:14mm;}html,body{width:auto;min-height:0;margin:0;padding:0;background:#fff;}body{display:block;}.invoice-paper,.receipt-paper{width:100%;max-width:none;min-height:0;margin:0;box-shadow:none;break-inside:avoid-page;}}</style></head><body>${paper.outerHTML}</body></html>`);
     printWindow.document.close();
-    const triggerPrint = () => { printWindow.focus(); printWindow.print(); };
-    printWindow.onload = triggerPrint;
-    window.setTimeout(triggerPrint, 450);
+    void printWhenImagesReady(printWindow);
   };
   const printInvoice = () => printDocument(".invoice-paper", `${text.invoice} #${invoice.number}`);
   const printReceipt = () => printDocument(".receipt-paper", invoice.receiptNumber ?? `Recibo #${invoice.number}`);
