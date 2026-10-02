@@ -11283,3 +11283,17 @@ button {
     margin-top: 2px;
   }
 }
+
+
+.meta-preflight-list { display: grid; gap: 12px; margin-top: 20px; }
+.meta-preflight-list > h4, .meta-preflight-list > p { margin: 0; }
+.meta-preflight-list > p, .meta-preflight-result small { color: var(--text-muted, #64748b); font-size: 12px; }
+.meta-preflight-panel { padding: 14px; border: 1px solid var(--border, #dbe1e8); border-radius: 10px; }
+.meta-preflight-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.meta-preflight-result { margin-top: 12px; padding: 12px; border-left: 3px solid #16865b; background: #f1faf5; color: #1e4636; border-radius: 6px; }
+.meta-preflight-result.warning { border-color: #b9790c; background: #fffbeb; color: #75500c; }
+.meta-preflight-result.blocked { border-color: #c24646; background: #fff4f4; color: #853333; }
+.meta-preflight-result ul { padding-left: 18px; margin: 8px 0; }
+.meta-preflight-result > ul:first-of-type { list-style: none; padding-left: 0; }
+.meta-preflight-result li { margin: 5px 0; overflow-wrap: anywhere; }
+.meta-preflight-result small { display: block; }

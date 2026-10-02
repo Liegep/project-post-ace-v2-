@@ -1,3 +1,5 @@
+import { validateMetaSchedulingRouting } from "./meta-routing.js";
+import type { PreflightAssetRead } from "./meta-preflight.js";
 import { followerGrowth, metricNumber, metricStatus, parseInsightNumber, parseInstagramFollowerGrowth, summarizeMetricPayload, type MetricMetadata } from "./meta-insight-metrics.js";
 import crypto from "node:crypto";
 import net from "node:net";
@@ -1227,6 +1229,62 @@ async function getPublishingContext(app: FastifyInstance, userId: string) {
   return { token: decryptToken(connection.encryptedToken, config.encryptionKey), appSecret: config.appSecret };
 }
 
+/** Only GET requests; no raw Meta error, token or sensitive URL leaves this reader. */
+export async function readMetaPreflightAssets(app: FastifyInstance, userId: string, assets: {
+  facebookPageId: string | null; instagramAccountId: string | null;
+}): Promise<PreflightAssetRead> {
+  const result: PreflightAssetRead = { facebook: null, instagram: null, accessiblePages: [], accessListComplete: false, issues: [] };
+  let context: Awaited<ReturnType<typeof getPublishingContext>>;
+  try { context = await getPublishingContext(app, userId); }
+  catch { result.issues.push({ platform: "connection", code: "connection_unavailable" }); return result; }
+  const signal = AbortSignal.timeout(15_000);
+  const text = (value: unknown) => typeof value === "string" ? redactMetaSecrets(value, context.token, context.appSecret).slice(0, 255) : null;
+  type ReadPayload = { id?: unknown; name?: unknown; username?: unknown; instagram_business_account?: { id?: unknown }; data?: ReadPayload[]; paging?: { next?: unknown; cursors?: { after?: unknown } }; error?: { code?: unknown } };
+  const read = async (path: string, fields: string, platform: "facebook" | "instagram" | "connection", after?: string): Promise<ReadPayload | null> => {
+    const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${path}`);
+    url.searchParams.set("fields", fields);
+    url.searchParams.set("access_token", context.token);
+    url.searchParams.set("appsecret_proof", appSecretProof(context.token, context.appSecret));
+    if (path === "me/accounts") url.searchParams.set("limit", "200");
+    if (after) url.searchParams.set("after", after);
+    try {
+      const response = await fetch(url, { method: "GET", headers: { Accept: "application/json" }, signal });
+      const payload = await response.json() as ReadPayload;
+      if (!payload || typeof payload !== "object" || !response.ok || payload.error) {
+        const denied = response.status === 401 || response.status === 403 || [10, 102, 190, 200].includes(Number(payload?.error?.code));
+        result.issues.push({ platform, code: denied ? "access_denied" : "asset_unavailable" });
+        return null;
+      }
+      return payload;
+    } catch { result.issues.push({ platform, code: "meta_read_failed" }); return null; }
+  };
+  const asset = async (id: string | null, platform: "facebook" | "instagram") => {
+    if (!id) return null;
+    if (!/^\d+$/.test(id)) { result.issues.push({ platform, code: "invalid_asset_id" }); return null; }
+    return read(id, platform === "facebook" ? (assets.instagramAccountId ? "id,name,instagram_business_account{id}" : "id,name") : "id,username", platform);
+  };
+  const listAccess = async () => {
+    let after: string | undefined;
+    const seen = new Set<string>();
+    for (let page = 0; page < 20; page++) {
+      const payload = await read("me/accounts", assets.instagramAccountId ? "id,instagram_business_account{id}" : "id", "connection", after);
+      if (!payload || !Array.isArray(payload.data)) break;
+      for (const item of payload.data) {
+        if (item && typeof item.id === "string" && /^\d+$/.test(item.id)) result.accessiblePages.push({ id: item.id, instagramAccountId: typeof item.instagram_business_account?.id === "string" && /^\d+$/.test(item.instagram_business_account.id) ? item.instagram_business_account.id : null });
+      }
+      if (!payload.paging?.next) { result.accessListComplete = true; return; }
+      const cursor = payload.paging.cursors?.after;
+      if (typeof cursor !== "string" || !cursor || seen.has(cursor)) break;
+      seen.add(cursor); after = cursor;
+    }
+    result.issues.push({ platform: "connection", code: "access_list_incomplete" });
+  };
+  const [facebook, instagram] = await Promise.all([asset(assets.facebookPageId, "facebook"), asset(assets.instagramAccountId, "instagram"), listAccess()]);
+  if (typeof facebook?.id === "string" && /^\d+$/.test(facebook.id) && text(facebook.name)) result.facebook = { id: facebook.id, name: text(facebook.name)!, instagramAccountId: typeof facebook.instagram_business_account?.id === "string" ? facebook.instagram_business_account.id : null };
+  if (typeof instagram?.id === "string" && /^\d+$/.test(instagram.id) && typeof instagram.username === "string" && /^[a-zA-Z0-9._]+$/.test(instagram.username)) result.instagram = { id: instagram.id, username: text(instagram.username)! };
+  return result;
+}
+
 export async function scheduleMetaCardPublications(app: FastifyInstance, input: {
   userId: string;
   actor: { id: string; fullName: string; globalRole: string };
@@ -1243,8 +1301,8 @@ export async function scheduleMetaCardPublications(app: FastifyInstance, input: 
   locationName?: string | null;
   instagramUserTags?: Array<{ username: string; x: number; y: number }>;
 }) {
+  const routing = await validateMetaSchedulingRouting(app, input);
   await getPublishingContext(app, input.userId);
-  if (input.card.clientAccountId !== input.clientAccountId) throw app.httpErrors.badRequest("O card não pertence a este cliente.");
   const planned = planMetaCardPublications({
     platforms: input.platforms.map(({ platform }) => platform),
     mediaUrls: input.card.mediaUrls.length ? input.card.mediaUrls : input.card.primaryMediaUrl ? [input.card.primaryMediaUrl] : [],
@@ -1264,7 +1322,7 @@ export async function scheduleMetaCardPublications(app: FastifyInstance, input: 
     clientAccountId: input.clientAccountId,
     cardId: input.card.id,
     destinationId: input.destinationId,
-    destinationName: input.destinationName,
+    destinationName: routing.destinationName,
     platform: plan.platform,
     metaAssetId: input.platforms.find(({ platform }) => platform === plan.platform)!.metaAssetId,
     scheduledAt,

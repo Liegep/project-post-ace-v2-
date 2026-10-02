@@ -1,3 +1,5 @@
+import { getMetaPreflight } from "./meta-preflight.js";
+import { metaPreflightQuerySchema } from "./meta.schemas.js";
 import { safeInsightsDiagnostics } from "./meta-insight-metrics.js";
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { findClientAccountById } from "../clients/clients.repository.js";
@@ -71,6 +73,14 @@ async function validateDestinationAssets(app: Parameters<typeof listMetaAssets>[
 }
 
 export const metaRoutes: FastifyPluginAsync = async (app) => {
+  app.get("/meta/preflight", async (request) => {
+    const auth = assertSuperAdmin(request);
+    const parsed = metaPreflightQuerySchema.safeParse(request.query);
+    if (!parsed.success) throw app.httpErrors.badRequest("Selecione um cliente e um destino Meta válidos.");
+    if (!await findClientAccountById(app.db, parsed.data.clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
+    return getMetaPreflight(app, { userId: auth.user.id, ...parsed.data });
+  });
+
   app.get("/meta/connect", async (request) => {
     const auth = assertSuperAdmin(request);
     const parsed = metaConnectQuerySchema.safeParse(request.query);

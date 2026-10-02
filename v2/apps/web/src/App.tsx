@@ -1,3 +1,4 @@
+import { MetaPreflightPanel } from "./MetaPreflightPanel";
 import { PortalAccountPicker } from "./PortalAccountPicker";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -1637,6 +1638,7 @@ function ClientMetaIntegrationPanel({ slug }: { slug: string }) {
       </div> : null}
       {assetsLoaded ? <div className="meta-assets-form meta-ad-account-form"><label>Conta de anúncios<select value={selection.metaAdAccountId ?? ""} onChange={(event) => chooseAdAccount(event.target.value)}><option value="">Sem Conta de anúncios vinculada</option>{selection.metaAdAccountId && !adAccounts.some((account) => account.id === selection.metaAdAccountId) ? <option value={selection.metaAdAccountId}>{selection.metaAdAccountName ?? selection.metaAdAccountId} · vínculo atual</option> : null}{adAccounts.map((account) => <option key={account.id} value={account.id}>{[account.name ?? account.account_id ?? account.id, account.currency, account.business?.name].filter(Boolean).join(" · ")}</option>)}</select></label><button className="drawer-secondary-action" type="button" disabled={saving} onClick={() => void saveAdAccount()}>Salvar conta de anúncios</button></div> : null}
     </> : <p className="drawer-helper">Conecte a conta corporativa da Liege Studio para selecionar as Páginas e contas profissionais dos clientes.</p>}
+    {destinations.length ? <section className="meta-preflight-list" aria-label="Verificação Meta"><h4>Verificação Meta</h4><p>Confira cada destino sem publicar ou alterar cards.</p>{destinations.map((destination) => <MetaPreflightPanel key={`${destination.clientAccountId}:${destination.id}`} destination={destination} />)}</section> : null}
     {message ? <p className="client-access-message">{message}</p> : null}
     {error ? <p className="tracker-error">{error}</p> : null}
   </section>;

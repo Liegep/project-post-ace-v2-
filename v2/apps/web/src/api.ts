@@ -1847,3 +1847,24 @@ export async function resubmitAdminApprovalBySlug(slug: string, cardId: string, 
   );
   return { card: mapCard(result.card), approvalLink: result.approvalLink };
 }
+
+export type MetaPreflightResult = {
+  clientAccountId: string; destinationId: string; destinationName: string | null; cardId: string | null;
+  status: "safe" | "warning" | "blocked";
+  checks: {
+    destinationBelongsToClient: boolean; cardBelongsToClient: boolean | null;
+    facebookAssetMatches: boolean | null; instagramAssetMatches: boolean | null;
+    facebookAccessOk: boolean | null; instagramAccessOk: boolean | null;
+    instagramLinkedToFacebook: boolean | null; noCrossClientCollision: boolean | null;
+  };
+  facebook: { savedId: string | null; savedName: string | null; liveId: string | null; liveName: string | null };
+  instagram: { savedId: string | null; savedUsername: string | null; liveId: string | null; liveUsername: string | null };
+  issues: { platform: string; code: string }[];
+  collisions: { platform: string; assetId: string; clientAccountId: string; clientName: string; destinationId: string | null; destinationName: string | null }[];
+};
+
+export async function checkMetaDestination(clientAccountId: string, destinationId: string, cardId?: string) {
+  const query = new URLSearchParams({ clientAccountId, destinationId });
+  if (cardId) query.set("cardId", cardId);
+  return fetchJson<MetaPreflightResult>(`/api/meta/preflight?${query}`);
+}

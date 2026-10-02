@@ -223,3 +223,9 @@ export const updateMetaSavedLocationSchema = z.object(savedLocationFields).parti
 
 export type CreateMetaSavedLocationInput = z.infer<typeof createMetaSavedLocationSchema>;
 export type UpdateMetaSavedLocationInput = z.infer<typeof updateMetaSavedLocationSchema>;
+
+export const metaPreflightQuerySchema = z.object({
+  clientAccountId: z.string().trim().min(1).max(190),
+  destinationId: z.string().trim().min(1).max(190),
+  cardId: z.string().trim().min(1).max(190).optional(),
+});

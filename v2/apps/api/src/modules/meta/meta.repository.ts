@@ -779,3 +779,33 @@ export async function markStalePublishingFailed(db: Pool, input: { updatedBefore
   );
   return result.affectedRows;
 }
+
+export async function findMetaRoutingCard(db: Pool, cardId: string) {
+  const [rows] = await db.query<(RowDataPacket & { id: string; client_account_id: string })[]>(
+    "SELECT id, client_account_id FROM kanban_cards WHERE id = ? LIMIT 1", [cardId],
+  );
+  return rows[0] ? { id: rows[0].id, clientAccountId: rows[0].client_account_id } : null;
+}
+
+/** Audit both explicit destinations and legacy bindings, without rejecting shared assets. */
+export async function findMetaCrossClientLinks(db: Pool, input: { clientAccountId: string; facebookPageId: string | null; instagramAccountId: string | null }) {
+  const [rows] = await db.query<(RowDataPacket & {
+    client_account_id: string; client_name: string; destination_id: string | null; destination_name: string | null;
+    facebook_page_id: string | null; instagram_account_id: string | null;
+  })[]>([
+    "SELECT d.client_account_id, c.name AS client_name, d.id AS destination_id, d.name AS destination_name, d.facebook_page_id, d.instagram_account_id",
+    "FROM meta_publish_destinations d INNER JOIN client_accounts c ON c.id = d.client_account_id",
+    "WHERE d.client_account_id <> ? AND ((? IS NOT NULL AND d.facebook_page_id = ?) OR (? IS NOT NULL AND d.instagram_account_id = ?))",
+    "UNION ALL",
+    "SELECT a.client_account_id, c.name AS client_name, NULL AS destination_id, NULL AS destination_name, a.facebook_page_id, a.instagram_account_id",
+    "FROM client_meta_assets a INNER JOIN client_accounts c ON c.id = a.client_account_id",
+    "WHERE a.client_account_id <> ? AND ((? IS NOT NULL AND a.facebook_page_id = ?) OR (? IS NOT NULL AND a.instagram_account_id = ?))",
+  ].join(" "), [input.clientAccountId, input.facebookPageId, input.facebookPageId, input.instagramAccountId, input.instagramAccountId,
+    input.clientAccountId, input.facebookPageId, input.facebookPageId, input.instagramAccountId, input.instagramAccountId]);
+  return rows.flatMap((row) => (["facebook", "instagram"] as const).flatMap((platform) => {
+    const assetId = platform === "facebook" ? row.facebook_page_id : row.instagram_account_id;
+    const expectedId = platform === "facebook" ? input.facebookPageId : input.instagramAccountId;
+    return assetId && assetId === expectedId ? [{ platform, assetId, clientAccountId: row.client_account_id,
+      clientName: row.client_name, destinationId: row.destination_id, destinationName: row.destination_name }] : [];
+  }));
+}
