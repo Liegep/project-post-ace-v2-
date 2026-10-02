@@ -19,6 +19,8 @@ function harness(signature: string | null = "/api/uploads/aaaa.webp") {
   let failSnapshot = false;
   const query = async (sql: string, values: unknown[] = []) => {
     statements.push(sql);
+    if (sql.includes("GET_LOCK")) return [[{ acquired: 1 }], []];
+    if (sql.includes("RELEASE_LOCK")) return [[{ released: 1 }], []];
     if (sql.includes("AS next_number")) return [[{ next_number: 1 }], []];
     if (sql.startsWith("INSERT INTO invoices")) { Object.assign(row, { id: values[0], status: values[14], paid_at: values[21], payment_method: values[22] }); return [{ affectedRows: 1 }, []]; }
     if (sql.startsWith("DELETE FROM invoice_") || sql.startsWith("INSERT INTO invoice_")) return [{ affectedRows: 1 }, []];

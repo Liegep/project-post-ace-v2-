@@ -1,3 +1,4 @@
+import { invoiceRecurringWorkerRegistered } from "./plugins/invoice-recurring-worker.js";
 import Fastify from "fastify";
 import { ensureApprovalStorage } from "./modules/approvals/approval-history.repository.js";
 import fastifyStatic from "@fastify/static";
@@ -161,6 +162,7 @@ export async function buildApp() {
     await app.register(metaRoutes, { prefix: "/api" });
     await app.register(scheduledCardArchiverPluginRegistered);
     await app.register(metaPublicationWorkerRegistered);
+    await app.register(invoiceRecurringWorkerRegistered);
 
     if (databaseAvailableAtStartup) {
       try {
