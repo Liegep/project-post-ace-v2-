@@ -1,3 +1,4 @@
+import { DashboardMetrics } from "./DashboardMetrics";
 import { MetaPreflightPanel } from "./MetaPreflightPanel";
 import { PortalAccountPicker } from "./PortalAccountPicker";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
@@ -2154,13 +2155,7 @@ function loadInternalApprovalMessages(userId?: string) {
   try { const records = JSON.parse(window.localStorage.getItem(INTERNAL_APPROVALS_STORAGE_KEY) ?? "[]") as InternalApprovalRecord[]; return userId ? records.filter((record) => record.recipients.includes(userId)) : records; } catch { return []; }
 }
 
-const EMPTY_DASHBOARD_STATISTICS: DashboardStatistics = { trackingStartsAt: "2026-10-01", trackingStarted: false, postsThisMonth: 0, postsPreviousMonth: 0, pending: 0, dueToday: 0, approvedThisMonth: 0, approvedPreviousMonth: 0 };
-
-function monthlyComparison(current: number, previous: number) {
-  if (previous === 0) return current === 0 ? "Nenhum registro este mês" : "Sem registros no mês anterior";
-  const change = Math.round(((current - previous) / previous) * 100);
-  return `${change > 0 ? "+" : ""}${change}% vs mês anterior`;
-}
+const EMPTY_DASHBOARD_STATISTICS: DashboardStatistics = { timeZone: "", month: "", postsThisMonth: 0, postsPreviousMonth: 0, pending: 0, scheduled: 0, published: 0, publishedPreviousMonth: 0 };
 
 function DashboardInternalMessagesWidget({ items, onOpen }: { items: InternalApprovalRecord[]; onOpen: (item: InternalApprovalRecord) => void }) {
   const [dismissedIds, setDismissedIds] = useState<string[]>(() => { try { return JSON.parse(window.localStorage.getItem(DISMISSED_INTERNAL_MESSAGES_KEY) ?? "[]") as string[]; } catch { return []; } });
@@ -2584,7 +2579,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
             <div className="dashboard-welcome">
               <div className="dashboard-liquid-field" aria-hidden="true"><i /><i /><i /></div>
               <div className="dashboard-welcome-copy"><p className="eyebrow">Seu estúdio hoje</p><h1>{greeting}, {session.name.split(" ")[0]}</h1><p className="dashboard-date">{new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(currentTime)}</p></div>
-              <div className="dashboard-welcome-aside"><div className="dashboard-orbs" aria-hidden="true"><i /><i /><i /></div><div className="dashboard-metrics dashboard-metrics-inline"><article className="dashboard-metric clients"><UiIcon name="users" /><div><span>Clientes ativos</span><strong>{loading ? "-" : clients.length}</strong><small>Contas em andamento</small></div></article><article className="dashboard-metric posts"><UiIcon name="calendar" /><div><span>Posts este mês</span><strong>{loading ? "-" : statistics.postsThisMonth}</strong><small>{statistics.trackingStarted ? monthlyComparison(statistics.postsThisMonth, statistics.postsPreviousMonth) : "Contagem inicia em outubro"}</small></div></article><article className="dashboard-metric pending"><UiIcon name="clock" /><div><span>Pendentes</span><strong>{loading ? "-" : statistics.pending}</strong><small className={statistics.trackingStarted && statistics.dueToday > 0 ? "dashboard-alert" : undefined}>{!statistics.trackingStarted ? "Contagem inicia em outubro" : statistics.dueToday > 0 ? `${statistics.dueToday} ${statistics.dueToday === 1 ? "vence" : "vencem"} hoje` : "Nenhum vence hoje"}</small></div></article><article className="dashboard-metric approved"><UiIcon name="check" /><div><span>Aprovados</span><strong>{loading ? "-" : statistics.approvedThisMonth}</strong><small>{statistics.trackingStarted ? monthlyComparison(statistics.approvedThisMonth, statistics.approvedPreviousMonth) : "Contagem inicia em outubro"}</small></div></article></div></div>
+              <div className="dashboard-welcome-aside"><div className="dashboard-orbs" aria-hidden="true"><i /><i /><i /></div><DashboardMetrics activeClients={clients.length} statistics={statistics} loading={loading} renderIcon={(name) => <UiIcon name={name} />} /></div>
             </div>
           </div>
 
