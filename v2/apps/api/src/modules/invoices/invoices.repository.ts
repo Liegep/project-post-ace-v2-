@@ -1,3 +1,4 @@
+import { ensureBillingSettings, getReceiptSignature } from "./billing-settings.repository.js";
 import crypto from "node:crypto";
 import type { Pool, PoolConnection, RowDataPacket } from "mysql2/promise";
 import type { CreateInvoiceInput, UpdateInvoiceInput } from "./invoices.schemas.js";
@@ -19,6 +20,7 @@ const columns = "id, client_account_id, invoice_number, title, recipient_name, r
 const dateOnly = (value: string | Date) => value instanceof Date ? value.toISOString().slice(0, 10) : value.match(/^\d{4}-\d{2}-\d{2}/)?.[0] ?? value;
 
 export async function ensureInvoiceTables(db: Pool) {
+  await ensureBillingSettings(db);
   await db.query(`CREATE TABLE IF NOT EXISTS invoices (
     id CHAR(36) NOT NULL PRIMARY KEY, client_account_id CHAR(36) NULL, invoice_number INT NOT NULL,
     title VARCHAR(255) NOT NULL, recipient_name VARCHAR(255) NOT NULL DEFAULT '', recipient_email VARCHAR(255) NOT NULL DEFAULT '',
@@ -97,8 +99,8 @@ async function replaceChildren(connection: PoolConnection, id: string, input: Pi
 export async function createInvoice(db: Pool, userId: string, input: CreateInvoiceInput) {
   const connection = await db.getConnection(); const id = crypto.randomUUID();
   try { await connection.beginTransaction(); const [numberRows] = await connection.query<(RowDataPacket & { next_number: number })[]>("SELECT COALESCE(MAX(invoice_number), 0) + 1 AS next_number FROM invoices FOR UPDATE"); const number = Number(numberRows[0]?.next_number ?? 1);
-    await connection.query(`INSERT INTO invoices (id, client_account_id, invoice_number, title, recipient_name, recipient_email, recipient_address, recipient_country, recipient_tax_id, issue_date, due_date, period_label, currency, locale, status, recurring, fixed_amount, visible_to_client, sent_at, notes, created_by_user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, input.clientAccountId, number, input.title, input.clientName, input.clientEmail, input.clientAddress, input.clientCountry, input.clientTaxId, input.issueDate, input.dueDate, input.period, input.currency, input.locale, input.status, input.recurring, input.fixedAmount, input.visibleToClient, input.sentToClient ? new Date() : null, input.notes, userId]);
-    await replaceChildren(connection, id, input, userId); await connection.commit(); return findInvoice(db, id);
+    await connection.query(`INSERT INTO invoices (id, client_account_id, invoice_number, title, recipient_name, recipient_email, recipient_address, recipient_country, recipient_tax_id, issue_date, due_date, period_label, currency, locale, status, recurring, fixed_amount, visible_to_client, sent_at, notes, created_by_user_id, paid_at, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, input.clientAccountId, number, input.title, input.clientName, input.clientEmail, input.clientAddress, input.clientCountry, input.clientTaxId, input.issueDate, input.dueDate, input.period, input.currency, input.locale, input.status, input.recurring, input.fixedAmount, input.visibleToClient, input.sentToClient ? new Date() : null, input.notes, userId, input.paidAt ?? null, input.paymentMethod ?? null]);
+    await replaceChildren(connection, id, input, userId); if (input.status === "paid") await issueReceipt(connection, id); await connection.commit(); return findInvoice(db, id);
   } catch (error) { await connection.rollback(); throw error; } finally { connection.release(); }
 }
 
@@ -110,53 +112,44 @@ export async function updateInvoice(db: Pool, id: string, userId: string, input:
     if (typeof input.sentToClient !== "undefined") { fields.push("sent_at = ?"); values.push(input.sentToClient ? new Date() : null); }
     if (fields.length) { values.push(id); await connection.query(`UPDATE invoices SET ${fields.join(", ")} WHERE id = ?`, values); }
     if (input.lines || input.attachments) { const existing = await findInvoice(db, id); if (!existing) throw new Error("Invoice not found"); await replaceChildren(connection, id, { lines: input.lines ?? existing.lines, attachments: input.attachments ?? existing.attachments }, userId); }
+    if (input.status === "paid") await issueReceipt(connection, id);
     await connection.commit(); return findInvoice(db, id);
   } catch (error) { await connection.rollback(); throw error; } finally { connection.release(); }
 }
 export async function deleteInvoice(db: Pool, id: string) { const [result] = await db.query("DELETE FROM invoices WHERE id = ?", [id]) as [{ affectedRows: number }, unknown]; return result.affectedRows > 0; }
 
 
+async function issueReceipt(connection: PoolConnection, id: string) {
+  const [rows] = await connection.query<InvoiceRow[]>(`SELECT ${columns} FROM invoices WHERE id = ? FOR UPDATE`, [id]);
+  const current = (await hydrate(connection, rows))[0] ?? null;
+  if (!current || current.receiptNumber) return current;
+  const paidAt = current.paidAt ?? new Date().toISOString().slice(0, 10);
+  const receiptNumber = `REC-${paidAt.slice(0, 4)}-${String(current.number).padStart(4, "0")}`;
+  const snapshot = {
+    receiptNumber, invoiceNumber: current.number,
+    clientName: current.clientName, clientEmail: current.clientEmail,
+    clientAddress: current.clientAddress, clientCountry: current.clientCountry, clientTaxId: current.clientTaxId,
+    paidAt, paymentMethod: current.paymentMethod, currency: current.currency,
+    period: current.period, title: current.title, notes: current.notes, lines: current.lines,
+    total: current.lines.reduce((sum: number, line: { quantity: number; unitPrice: number }) => sum + line.quantity * line.unitPrice, 0),
+    signatureUrl: await getReceiptSignature(connection),
+  };
+  await connection.query(
+    "UPDATE invoices SET status = 'paid', paid_at = ?, receipt_number = ?, receipt_generated_at = NOW(), receipt_snapshot_json = ? WHERE id = ?",
+    [paidAt, receiptNumber, JSON.stringify(snapshot), id],
+  );
+  return current;
+}
+
 export async function generateInvoiceReceipt(db: Pool, id: string) {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
-    const [rows] = await connection.query<InvoiceRow[]>(`SELECT ${columns} FROM invoices WHERE id = ? FOR UPDATE`, [id]);
-    const current = (await hydrate(connection, rows))[0] ?? null;
-    if (!current) return null;
-    if (current.receiptNumber) {
-      await connection.commit();
-      return current;
-    }
-    const paidAt = current.paidAt ?? new Date().toISOString().slice(0, 10);
-    const year = paidAt.slice(0, 4);
-    const receiptNumber = `REC-${year}-${String(current.number).padStart(4, "0")}`;
-    const snapshot = {
-      receiptNumber,
-      invoiceNumber: current.number,
-      clientName: current.clientName,
-      clientEmail: current.clientEmail,
-      clientAddress: current.clientAddress,
-      clientCountry: current.clientCountry,
-      clientTaxId: current.clientTaxId,
-      paidAt,
-      paymentMethod: current.paymentMethod,
-      currency: current.currency,
-      period: current.period,
-      title: current.title,
-      notes: current.notes,
-      lines: current.lines,
-      total: current.lines.reduce((sum: number, line: { quantity: number; unitPrice: number }) => sum + line.quantity * line.unitPrice, 0),
-    };
-    await connection.query(
-      "UPDATE invoices SET status = 'paid', paid_at = ?, receipt_number = ?, receipt_generated_at = NOW(), receipt_snapshot_json = ? WHERE id = ?",
-      [paidAt, receiptNumber, JSON.stringify(snapshot), id],
-    );
+    const current = await issueReceipt(connection, id);
     await connection.commit();
-    return findInvoice(db, id);
+    return current ? findInvoice(db, id) : null;
   } catch (error) {
     await connection.rollback();
     throw error;
-  } finally {
-    connection.release();
-  }
+  } finally { connection.release(); }
 }

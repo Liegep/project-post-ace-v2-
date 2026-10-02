@@ -1,3 +1,5 @@
+import { printWhenImagesReady } from "./printDocument";
+import { commemorativeAlerts, daysUntilDate } from "./commemorativeAlerts";
 import { DashboardMetrics } from "./DashboardMetrics";
 import { MetaPreflightPanel } from "./MetaPreflightPanel";
 import { PortalAccountPicker } from "./PortalAccountPicker";
@@ -2026,15 +2028,9 @@ function formatCommemorativeDate(date: string) {
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long" }).format(new Date(`${date}T12:00:00`));
 }
 
-function daysUntilDate(date: string) {
-  const today = new Date();
-  const target = new Date(`${date}T12:00:00`);
-  const start = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-  return Math.round((target.getTime() - start.getTime()) / 86_400_000);
-}
-
 function DashboardCommemorativeWidget({ clients }: { clients: AdminClientOption[] }) {
   const [holidays, setHolidays] = useState<CommemorativeHoliday[]>([]);
+  const [today, setToday] = useState(() => new Date());
   const [selectedHoliday, setSelectedHoliday] = useState<CommemorativeHoliday | null>(null);
   const [selectedClientSlug, setSelectedClientSlug] = useState(clients[0]?.slug ?? "");
   const [saving, setSaving] = useState(false);
@@ -2045,13 +2041,25 @@ function DashboardCommemorativeWidget({ clients }: { clients: AdminClientOption[
   }, [clients]);
 
   useEffect(() => {
+    // Keep the alert accurate when the dashboard stays open across midnight.
+    const timer = window.setInterval(() => setToday(new Date()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const year = today.getFullYear();
+  const windowEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 4);
+  const lastYear = windowEnd.getFullYear();
+  useEffect(() => {
     let active = true;
     const countryCodes = readCommemorativeCountries();
-    loadCommemorativeHolidays(new Date().getFullYear(), countryCodes)
-      .then((items) => { if (active) setHolidays(items.filter((item) => daysUntilDate(item.date) === 4)); })
+    const years = year === lastYear ? [year] : [year, lastYear];
+    Promise.all(years.map((value) => loadCommemorativeHolidays(value, countryCodes)))
+      .then((items) => { if (active) setHolidays(items.flat()); })
       .catch(() => { if (active) setHolidays([]); });
     return () => { active = false; };
-  }, []);
+  }, [year, lastYear]);
+
+  const alerts = commemorativeAlerts(holidays, today);
 
   const createPauta = async () => {
     if (!selectedHoliday || !selectedClientSlug || saving) return;
@@ -2077,12 +2085,12 @@ function DashboardCommemorativeWidget({ clients }: { clients: AdminClientOption[
     }
   };
 
-  if (holidays.length === 0) return null;
+  if (alerts.holidays.length === 0) return null;
   return <>
     <section className="dashboard-tasks-widget commemorative-dashboard-widget">
-      <header><div><span className="dashboard-task-icon">✦</span><h3>Datas comemorativas</h3></div><span className="dashboard-task-count">Em 4 dias</span></header>
+      <header><div><span className="dashboard-task-icon">✦</span><h3>Datas comemorativas</h3></div><span className="dashboard-task-count">{alerts.badge}</span></header>
       <div className="dashboard-task-rows">
-        {holidays.map((holiday) => {
+        {alerts.holidays.map((holiday) => {
           const isCreated = createdIds.some((id) => id.startsWith(`${holiday.id}-`));
           return <article key={holiday.id}>
             <span className="dashboard-task-dot commemorative-dot" />
@@ -6081,9 +6089,7 @@ function ClientPortalInvoicesView({ invoices, onViewInvoice }: { invoices: Billi
     printWindow.document.open();
     printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8" /><title>${title}</title>${headMarkup}<style>html,body{margin:0;background:#fbfaf8;}body{display:flex;justify-content:center;padding:24px;}.invoice-paper,.receipt-paper{max-width:720px;min-height:0;margin:0;box-shadow:none;}@media print{@page{size:A4;margin:14mm;}body{padding:0;background:#fff;}.invoice-paper,.receipt-paper{max-width:none;}}</style></head><body>${paper.outerHTML}</body></html>`);
     printWindow.document.close();
-    const triggerPrint = () => { printWindow.focus(); printWindow.print(); };
-    printWindow.onload = triggerPrint;
-    window.setTimeout(triggerPrint, 400);
+    void printWhenImagesReady(printWindow);
   };
   useEffect(() => {
     if (!previewInvoice || !printRequested) return;

@@ -1,3 +1,4 @@
+import { getReceiptSignature, setReceiptSignature } from "./billing-settings.repository.js";
 import type { FastifyPluginAsync } from "fastify";
 import { assertClientAccess, assertSuperAdmin } from "../auth/auth.access.js";
 import { findClientPermissionsByAccountId } from "../clients/clients.repository.js";
@@ -6,6 +7,8 @@ import { createInvoiceSchema, updateInvoiceSchema } from "./invoices.schemas.js"
 
 export const invoiceRoutes: FastifyPluginAsync = async (app) => {
   await ensureInvoiceTables(app.db);
+  app.get("/billing/settings", async (request) => { assertSuperAdmin(request); return { signatureUrl: await getReceiptSignature(app.db) }; });
+  app.delete("/billing/settings/receipt-signature", async (request) => { assertSuperAdmin(request); await setReceiptSignature(app.db, null); return { signatureUrl: null }; });
   app.get("/invoices", async (request) => { assertSuperAdmin(request); return { items: await listInvoices(app.db, null) }; });
   app.post("/invoices", async (request) => { assertSuperAdmin(request); const input = createInvoiceSchema.parse(request.body); return { invoice: await createInvoice(app.db, request.auth!.user.id, input) }; });
   app.patch("/invoices/:invoiceId", async (request) => { assertSuperAdmin(request); const { invoiceId } = request.params as { invoiceId: string }; const current = await findInvoice(app.db, invoiceId); if (!current) throw app.httpErrors.notFound("Fatura não encontrada."); return { invoice: await updateInvoice(app.db, invoiceId, request.auth!.user.id, updateInvoiceSchema.parse(request.body)) }; });
