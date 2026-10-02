@@ -225,6 +225,8 @@ export type BillingInvoice = {
   id: string; clientAccountId: string | null; number: number; title: string; clientName: string; clientEmail: string;
   clientAddress: string; clientCountry: string; clientTaxId: string; issueDate: string; dueDate: string; period: string;
   currency: BillingCurrency; locale: "pt" | "en" | "it" | "es" | "sv"; status: BillingInvoiceStatus;
+  recurringSourceInvoiceId?: string | null; recurringPeriod?: string | null;
+  recurrence?: { eligible: boolean; currentPeriod: string; currentInvoiceId: string | null; nextIssueDate: string; timeZone: string } | null;
   recurring: boolean; fixedAmount: boolean; visibleToClient: boolean; sentToClient: boolean; notes: string;
   paidAt?: string | null; paymentMethod?: string | null; paymentProofName?: string | null; paymentProofUrl?: string | null;
   receiptNumber?: string | null; receiptGeneratedAt?: string | null;
@@ -1883,3 +1885,5 @@ export async function uploadReceiptSignature(file: File) {
   if (!response.ok) throw new Error(result.message ?? "Não foi possível salvar a assinatura.");
   return result;
 }
+
+export async function generateCurrentRecurringInvoices() { return sendJson<{ period: string; created: number; skipped: number; failedSourceIds: string[]; busy: boolean }>("/api/invoices/recurring/generate", { method: "POST" }); }

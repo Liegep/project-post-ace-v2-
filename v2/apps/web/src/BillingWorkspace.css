@@ -20,3 +20,6 @@
 .billing-signature-preview { display: block; max-width: 100%; width: 220px; height: auto; max-height: 100px; object-fit: contain; object-position: left center; }
 .receipt-paper .receipt-signature { display: block; width: auto; height: auto; max-width: min(220px, 100%); max-height: 85px; object-fit: contain; object-position: left center; margin-bottom: 8px; }
 .receipt-paper footer { break-inside: avoid; }
+
+.billing-toolbar { flex-wrap: wrap; }
+.billing-toolbar .ghost-button { flex: 0 0 auto; white-space: normal; }
