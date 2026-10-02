@@ -1,3 +1,5 @@
+import { calculateDashboardStatistics, loadDashboardStatistics } from "./dashboard-statistics.js";
+import { validTimeZone } from "../../lib/zoned-date-time.js";
 import type { FastifyPluginAsync } from "fastify";
 import {
   assertCanCreateClients,
@@ -185,13 +187,12 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
 
     const auth = request.auth!;
     const scope = getClientScope(auth.user.globalRole, auth.user.id, auth.memberships);
-    const statisticsStart = new Date(2026, 9, 1);
-    const statisticsStartDate = "2026-10-01";
     const now = new Date();
-    const statisticsStarted = now >= statisticsStart;
+    const query = request.query as { timeZone?: string };
+    const timeZone = validTimeZone(typeof query.timeZone === "string" ? query.timeZone : undefined);
     if (scope.mode === "scoped" && scope.clientIds.length === 0) {
       return {
-        statistics: { trackingStartsAt: statisticsStartDate, trackingStarted: statisticsStarted, postsThisMonth: 0, postsPreviousMonth: 0, pending: 0, dueToday: 0, approvedThisMonth: 0, approvedPreviousMonth: 0 },
+        statistics: calculateDashboardStatistics([], [], { now, timeZone }),
         dueTasks: [], upcomingPosts: [], postsToday: [], agendaToday: [], clientSubmissions: [], clientActivities: [], approvedPautas: [],
       };
     }
@@ -204,14 +205,8 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const tomorrowStart = new Date(todayStart); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
     const upcomingEnd = new Date(todayStart); upcomingEnd.setDate(upcomingEnd.getDate() + 8);
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const currentStatisticsStart = monthStart > statisticsStart ? monthStart : statisticsStart;
-    const previousStatisticsStart = previousMonthStart > statisticsStart ? previousMonthStart : statisticsStart;
     const [
-      [cardStatisticRows],
-      [approvalStatisticRows],
+      statistics,
       [dueTasks],
       [clientSubmissions],
       [clientActivities],
@@ -223,28 +218,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
       [approvedPautas],
       [dashboardDismissals],
     ] = await Promise.all([
-      app.db.query<RowDataPacket[]>([
-        "SELECT",
-        "COALESCE(SUM(CASE WHEN c.created_at >= ? AND c.created_at < ? THEN 1 ELSE 0 END), 0) AS postsThisMonth,",
-        "COALESCE(SUM(CASE WHEN c.created_at >= ? AND c.created_at < ? THEN 1 ELSE 0 END), 0) AS postsPreviousMonth,",
-        "COALESCE(SUM(CASE WHEN c.created_at >= ? AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL THEN 1 ELSE 0 END), 0) AS pending,",
-        "COALESCE(SUM(CASE WHEN c.created_at >= ? AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.deadline_at >= ? AND c.deadline_at < ? THEN 1 ELSE 0 END), 0) AS dueToday",
-        "FROM kanban_cards c WHERE c.is_brief_approval = 0 AND c.legacy_id IS NULL", scopeSql,
-      ].join(" "), [currentStatisticsStart, nextMonthStart, previousStatisticsStart, monthStart, statisticsStart, statisticsStart, todayStart, tomorrowStart, ...params]),
-      app.db.query<RowDataPacket[]>([
-        "SELECT",
-        "COUNT(DISTINCT CASE WHEN approvedAt >= ? AND approvedAt < ? THEN cardId END) AS approvedThisMonth,",
-        "COUNT(DISTINCT CASE WHEN approvedAt >= ? AND approvedAt < ? THEN cardId END) AS approvedPreviousMonth",
-        "FROM (",
-        "SELECT c.id AS cardId, ae.created_at AS approvedAt FROM kanban_cards c",
-        "JOIN card_approval_events ae ON ae.card_id = c.id AND ae.action = 'approved'",
-        "WHERE c.is_brief_approval = 0", scopeSql,
-        "UNION ALL",
-        "SELECT c.id AS cardId, al.approved_at AS approvedAt FROM kanban_cards c",
-        "JOIN approval_links al ON al.card_id = c.id AND al.approved_at IS NOT NULL",
-        "WHERE c.is_brief_approval = 0", scopeSql,
-        ") approvedCards",
-      ].join(" "), [currentStatisticsStart, nextMonthStart, previousStatisticsStart, monthStart, ...params, ...params]),
+      loadDashboardStatistics(app.db, scope.mode === "global" ? null : scope.clientIds, { now, timeZone }),
       app.db.query<RowDataPacket[]>([
         "SELECT c.id, c.title, c.deadline_at AS deadlineAt, c.client_label AS clientLabel,",
         "a.name AS clientName, a.logo_url AS clientLogoUrl",
@@ -343,18 +317,6 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
       .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
       .slice(0, 24);
     const visibleApprovedPautas = filterDismissedDashboardItems(approvedPautas, dismissedPautaIds);
-    const cardStatistics = cardStatisticRows[0] ?? {};
-    const approvalStatistics = approvalStatisticRows[0] ?? {};
-    const statistics = {
-      trackingStartsAt: statisticsStartDate,
-      trackingStarted: statisticsStarted,
-      postsThisMonth: Number(cardStatistics.postsThisMonth ?? 0),
-      postsPreviousMonth: Number(cardStatistics.postsPreviousMonth ?? 0),
-      pending: Number(cardStatistics.pending ?? 0),
-      dueToday: Number(cardStatistics.dueToday ?? 0),
-      approvedThisMonth: Number(approvalStatistics.approvedThisMonth ?? 0),
-      approvedPreviousMonth: Number(approvalStatistics.approvedPreviousMonth ?? 0),
-    };
     return { statistics, dueTasks, upcomingPosts, postsToday, agendaToday, clientSubmissions, clientActivities: combinedClientActivities, approvedPautas: visibleApprovedPautas };
   });
 

@@ -11297,3 +11297,30 @@ button {
 .meta-preflight-result > ul:first-of-type { list-style: none; padding-left: 0; }
 .meta-preflight-result li { margin: 5px 0; overflow-wrap: anywhere; }
 .meta-preflight-result small { display: block; }
+
+/* The dashboard workflow is five posts/card counters, independent of channels. */
+.dashboard-layout .dashboard-hero-panel .dashboard-workflow-metrics {
+  width: 100%;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.dashboard-layout .dashboard-hero-panel .dashboard-workflow-metrics article {
+  min-width: 0;
+  justify-content: stretch;
+  grid-template-columns: 16px minmax(0, 1fr);
+}
+.dashboard-workflow-metrics .scheduled > svg { color: #7566cb; }
+.dashboard-workflow-metrics .published > svg { color: #45b574; }
+.dashboard-workflow-metrics span, .dashboard-workflow-metrics small { overflow-wrap: anywhere; }
+@media (min-width: 1351px) {
+  .dashboard-layout .dashboard-hero-panel .dashboard-welcome { grid-template-columns: minmax(200px, .6fr) minmax(740px, 1.4fr); }
+}
+@media (max-width: 1350px) {
+  .dashboard-layout .dashboard-hero-panel .dashboard-welcome { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 760px) {
+  .dashboard-layout .dashboard-hero-panel .dashboard-workflow-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dashboard-layout .dashboard-hero-panel .dashboard-workflow-metrics article:last-child { grid-column: 1 / -1; }
+}
+@media (max-width: 360px) {
+  .dashboard-layout .dashboard-hero-panel .dashboard-workflow-metrics { grid-template-columns: minmax(0, 1fr); }
+}
