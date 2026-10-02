@@ -1,6 +1,6 @@
 import type { MetaPublishDestination, ReportMetrics } from "./api";
 
-const emptyChannel = () => ({ reach: null, impressions: null, engagement: null, followers: null, visits: null, clicks: null });
+const emptyChannel = () => ({ reach: null, impressions: null, engagement: null, followers: null, followersGained: null, followersLost: null, followersNet: null, visits: null, clicks: null });
 
 export function emptyReportMetrics(): ReportMetrics {
   return { instagram: emptyChannel(), facebook: { ...emptyChannel(), posts: null, reactions: null, comments: null, shares: null } };

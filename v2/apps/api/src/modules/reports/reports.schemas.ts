@@ -6,6 +6,14 @@ const channelMetricsSchema = z.object({
   impressions: metricValueSchema,
   engagement: metricValueSchema,
   followers: metricValueSchema,
+  followersGained: metricValueSchema.optional(),
+  followersLost: metricValueSchema.optional(),
+  followersNet: z.number().nullable().optional(),
+  metricMetadata: z.record(z.string(), z.object({
+    status: z.enum(["available", "empty", "invalid_metric", "permission_error", "api_error"]),
+    source: z.string().max(120), aggregation: z.string().max(80), code: z.number().nullable(),
+    structure: z.object({ entries: z.number(), dailyValues: z.number(), totalValue: z.boolean(), breakdowns: z.number() }),
+  })).optional(),
   visits: metricValueSchema,
   clicks: metricValueSchema,
 });
@@ -51,6 +59,11 @@ const metricsSchema = z.object({
     shares: metricValueSchema.optional(),
   }),
   ads: adsMetricsSchema.nullable().optional(),
+}).transform((metrics) => {
+  for (const channel of [metrics.instagram, metrics.facebook]) {
+    if (channel.followersGained !== undefined || channel.followersLost !== undefined) channel.followersNet = channel.followersGained == null || channel.followersLost == null ? null : channel.followersGained - channel.followersLost;
+  }
+  return metrics;
 });
 
 const highlightsSchema = z.array(z.object({

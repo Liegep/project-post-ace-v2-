@@ -124,8 +124,9 @@ export type BrandBrain = {
 export type BrandBrainRevision = { id: string; status: "pending" | "approved" | "rejected"; summary: string | null; data: BrandBrain; authorName: string; authorRole: string; reviewerName: string | null; createdAt: string; reviewedAt: string | null };
 export type BrandBrainComment = { id: string; revisionId: string | null; sectionKey: string; commentText: string; authorName: string; authorRole: string; isInternal: boolean; createdAt: string };
 export type BrandBrainSnapshot = { data: BrandBrain | null; meta: { version: number; updatedAt: string | null; updatedBy: string | null }; revisions: BrandBrainRevision[]; history: Array<{ id: string; version: number; authorName: string; createdAt: string }>; comments: BrandBrainComment[] };
-export type ReportMetricKey = "reach" | "impressions" | "engagement" | "followers" | "visits" | "clicks";
-export type ReportChannelMetrics = Record<ReportMetricKey, number | null>;
+export type ReportMetricMetadata = { status: "available" | "empty" | "invalid_metric" | "permission_error" | "api_error"; source: string; aggregation: string; code: number | null; structure: { entries: number; dailyValues: number; totalValue: boolean; breakdowns: number } };
+export type ReportMetricKey = "reach" | "impressions" | "engagement" | "followers" | "visits" | "clicks" | "followersGained" | "followersLost" | "followersNet";
+export type ReportChannelMetrics = Record<Exclude<ReportMetricKey, "followersGained" | "followersLost" | "followersNet">, number | null> & Partial<Record<"followersGained" | "followersLost" | "followersNet", number | null>> & { metricMetadata?: Record<string, ReportMetricMetadata> };
 export type ReportAdsCampaign = {
   campaignId: string | null;
   campaignName: string | null;
@@ -177,12 +178,14 @@ export type ClientMetaInsights = {
   sources: { instagram: "complete" | "partial" | "empty" | "failed" | "not_linked"; facebook: "complete" | "partial" | "empty" | "failed" | "not_linked" };
   instagram: null | {
     accountId: string; username: string | null;
-    metrics: { reach: number | null; views: number | null; followers: number | null; profileViews: number | null; interactions: number | null; linkClicks: number | null; accountsEngaged: number | null };
+    metricMetadata?: Record<string, ReportMetricMetadata>;
+    metrics: { followersGained?: number | null; followersLost?: number | null; followersNet?: number | null; reach: number | null; views: number | null; followers: number | null; profileViews: number | null; interactions: number | null; linkClicks: number | null; accountsEngaged: number | null };
     topContent: Array<{ id: string; caption: string | null; timestamp: string | null; permalink: string | null; thumbnailUrl: string | null; likes: number | null; comments: number | null; shares: number | null; totalInteractions: number | null }>;
   };
   facebook: null | {
     pageId: string; pageName: string | null;
-    metrics: { reach: number | null; views: number | null; impressions: number | null; engagement: number | null; followers: number | null; fans: number | null; pageViews: number | null };
+    metricMetadata?: Record<string, ReportMetricMetadata>;
+    metrics: { followersGained?: number | null; followersLost?: number | null; followersNet?: number | null; interactions?: number | null; linkClicks?: number | null; reach: number | null; views: number | null; impressions: number | null; engagement: number | null; followers: number | null; fans: number | null; pageViews: number | null };
     topContent: Array<{ id: string; message: string | null; timestamp: string | null; permalink: string | null; thumbnailUrl: string | null; reactions: number | null; comments: number | null; shares: number | null; interactions: number | null; reach: number | null; views: number | null; clicks: number | null }>;
   };
   warnings: Array<{ endpoint: string; code: number | null; message: string; metricOrOperation: string; kind: "api_error" | "network_error" | "timeout" | "unavailable"; httpStatus?: number; durationMs?: number }>;

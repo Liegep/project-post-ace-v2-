@@ -1,3 +1,4 @@
+import { safeInsightsDiagnostics } from "./meta-insight-metrics.js";
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import { findClientAccountById } from "../clients/clients.repository.js";
 import { findCardById } from "../cards/cards.repository.js";
@@ -293,6 +294,19 @@ export const metaRoutes: FastifyPluginAsync = async (app) => {
       request.log.error({ err: error, durationMs: Date.now() - startedAt }, "Meta best publishing times request failed");
       return { available: false, source: "instagram_online_followers", sourceTimeZone: "UTC-07:00", timeZone: query.data.timeZone, recommendations: [], message: "Os melhores horários estão temporariamente indisponíveis." };
     }
+  });
+
+  app.get("/meta/insights/debug", async (request) => {
+    const auth = assertSuperAdmin(request);
+    const query = request.query as Record<string, unknown>;
+    const clientAccountId = typeof query.clientAccountId === "string" ? query.clientAccountId : "";
+    const parsed = metaInsightsQuerySchema.safeParse(query);
+    if (!clientAccountId || !parsed.success) throw app.httpErrors.badRequest("Informe cliente e período válidos.");
+    if (!await findClientAccountById(app.db, clientAccountId)) throw app.httpErrors.notFound("Cliente não encontrado.");
+    const context = await findClientMetaInsightsContext(app.db, clientAccountId, parsed.data.destinationId);
+    if (!context) throw app.httpErrors.notFound("Destino Meta não encontrado para este cliente.");
+    const result = await getMetaInsights(app, auth.user.id, context.assets, { since: parsed.data.since, until: parsed.data.until });
+    return { version: "v26.0", period: result.period, metrics: safeInsightsDiagnostics(result) };
   });
 
   app.get("/clients/:clientAccountId/meta-insights", async (request) => {

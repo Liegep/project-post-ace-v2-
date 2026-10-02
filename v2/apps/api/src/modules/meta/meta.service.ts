@@ -1,3 +1,4 @@
+import { followerGrowth, metricNumber, metricStatus, parseInsightNumber, parseInstagramFollowerGrowth, summarizeMetricPayload, type MetricMetadata } from "./meta-insight-metrics.js";
 import crypto from "node:crypto";
 import net from "node:net";
 import type { FastifyInstance } from "fastify";
@@ -24,6 +25,7 @@ const GRAPH_VERSION = "v26.0";
 const META_SCOPES = [
   "pages_show_list",
   "pages_read_engagement",
+  "read_insights",
   "pages_read_user_content",
   "pages_manage_posts",
   "pages_manage_engagement",
@@ -308,17 +310,18 @@ async function fetchMetaResult<T extends MetaApiError>(input: {
     const payload = await response.json().catch(() => ({})) as T;
     const durationMs = Date.now() - startedAt;
     if (!response.ok || payload.error) {
+      const code = typeof payload.error?.code === "number" && Number.isFinite(payload.error.code) ? payload.error.code : null;
       const message = redactMetaSecrets(
-        payload.error?.message ?? `Meta Graph API respondeu com HTTP ${response.status}`,
+        typeof payload.error?.message === "string" ? payload.error.message : `Meta Graph API respondeu com HTTP ${response.status}`,
         input.token,
         input.appSecret,
       );
-      input.app.log.warn({ endpoint: input.path, operation: input.metricOrOperation, durationMs, httpStatus: response.status, metaCode: payload.error?.code ?? null }, "Meta Graph request failed");
+      input.app.log.warn({ endpoint: input.path, operation: input.metricOrOperation, durationMs, httpStatus: response.status, metaCode: code }, "Meta Graph request failed");
       return {
         payload: null,
         warning: {
           endpoint: input.path,
-          code: payload.error?.code ?? null,
+          code,
           message,
           metricOrOperation: input.metricOrOperation,
           kind: "api_error",
@@ -360,7 +363,7 @@ async function getFacebookPageAccessContext(input: {
     path,
     token: input.userToken,
     appSecret: input.appSecret,
-    params: { fields: "id,name,access_token,followers_count,fan_count" },
+    params: { fields: "id,name,access_token" },
     metricOrOperation: "facebook.page",
     timeoutMs: input.timeoutMs,
   });
@@ -373,20 +376,6 @@ async function getFacebookPageAccessContext(input: {
   };
 }
 
-function insightNumber(payload: MetaInsightsPayload | null) {
-  const insight = payload?.data?.[0];
-  if (typeof insight?.total_value?.value === "number") return insight.total_value.value;
-  const values = insight?.values?.map((item) => item.value).filter((value): value is number => typeof value === "number") ?? [];
-  return values.length ? values.reduce((total, value) => total + value, 0) : null;
-}
-
-function insightNumbers<T extends string>(payload: MetaInsightsPayload | null, metrics: readonly T[]) {
-  return Object.fromEntries(metrics.map((metric) => {
-    const insight = payload?.data?.find((item) => item.name === metric);
-    return [metric, insightNumber(insight ? { data: [insight] } : null)];
-  })) as Record<T, number | null>;
-}
-
 async function fetchInsightMetric(input: {
   app: FastifyInstance;
   objectId: string;
@@ -395,6 +384,7 @@ async function fetchInsightMetric(input: {
   appSecret: string;
   period: MetaInsightsPeriod;
   totalValue?: boolean;
+  metadata?: Record<string, MetricMetadata>;
   warnings: MetaInsightsWarning[];
   operationPrefix: string;
 }) {
@@ -414,7 +404,25 @@ async function fetchInsightMetric(input: {
     metricOrOperation: `${input.operationPrefix}.${input.metric}`,
   });
   if (result.warning) input.warnings.push(result.warning);
-  return insightNumber(result.payload);
+  const value = parseInsightNumber(result.payload, input.metric, input.metric === "page_follows" ? "last" : "sum");
+  if (input.metadata) input.metadata[input.metric] = {
+    status: metricStatus(result.warning, value), value, source: input.metric,
+    aggregation: input.metric === "page_follows" ? "latest_available_snapshot" : input.totalValue ? "period_total" : "daily_sum",
+    code: result.warning?.code ?? null, structure: summarizeMetricPayload(result.payload, input.metric),
+  };
+  return value;
+}
+
+async function fetchContentInsightMetrics<T extends string>(input: {
+  app: FastifyInstance; objectId: string; metrics: readonly T[]; token: string; appSecret: string;
+  warnings: MetaInsightsWarning[]; operationPrefix: string; lifetime?: boolean;
+}) {
+  return Object.fromEntries(await Promise.all(input.metrics.map(async (metric) => {
+    const result = await fetchMetaResult<MetaInsightsPayload>({ app: input.app, path: `/${input.objectId}/insights`, token: input.token, appSecret: input.appSecret,
+      params: { metric, ...(input.lifetime ? { period: "lifetime" } : {}) }, metricOrOperation: `${input.operationPrefix}.${metric}` });
+    if (result.warning) input.warnings.push(result.warning);
+    return [metric, parseInsightNumber(result.payload, metric)] as const;
+  }))) as Record<T, number | null>;
 }
 
 export async function createMetaAuthorizationUrl(app: FastifyInstance, userId: string, returnPath: string) {
@@ -818,6 +826,13 @@ export async function getMetaAdsInsights(
   };
 }
 
+function fieldMetadata(source: string, value: number | null, warning?: MetaInsightsWarning | null): MetricMetadata {
+  return { status: metricStatus(warning, value), source, aggregation: "current_snapshot", code: warning?.code ?? null, structure: { entries: 0, dailyValues: 0, totalValue: false, breakdowns: 0 } };
+}
+function growthMetadata(growth: ReturnType<typeof followerGrowth>, source: MetricMetadata) {
+  return Object.fromEntries(Object.entries(growth).map(([key, value]) => [key, { ...source, status: source.status === "available" || source.status === "empty" ? metricStatus(null, value) : source.status }])) as Record<keyof ReturnType<typeof followerGrowth>, MetricMetadata>;
+}
+
 async function getInstagramInsights(input: {
   app: FastifyInstance;
   accountId: string;
@@ -827,14 +842,19 @@ async function getInstagramInsights(input: {
   period: MetaInsightsPeriod;
   warnings: MetaInsightsWarning[];
 }) {
+  const metadata: Record<string, MetricMetadata> = {};
   const profilePath = `/${input.accountId}`;
   const metricNames = ["reach", "views", "profile_views", "profile_links_taps", "total_interactions", "accounts_engaged"] as const;
   const mediaPath = `/${input.accountId}/media`;
-  const [profile, metricValues, mediaResult] = await Promise.all([
+  const [profile, metricValues, mediaResult, growthResult] = await Promise.all([
     fetchMetaResult<InstagramProfilePayload>({ app: input.app, path: profilePath, token: input.token, appSecret: input.appSecret, params: { fields: "id,username,followers_count" }, metricOrOperation: "instagram.account" }),
-    Promise.all(metricNames.map(async (metric) => [metric, await fetchInsightMetric({ app: input.app, objectId: input.accountId, metric, token: input.token, appSecret: input.appSecret, period: input.period, totalValue: true, warnings: input.warnings, operationPrefix: "instagram.account" })] as const)),
+    Promise.all(metricNames.map(async (metric) => [metric, await fetchInsightMetric({ app: input.app, objectId: input.accountId, metric, token: input.token, appSecret: input.appSecret, period: input.period, totalValue: true, metadata, warnings: input.warnings, operationPrefix: "instagram.account" })] as const)),
     fetchMetaResult<InstagramMediaPayload>({ app: input.app, path: mediaPath, token: input.token, appSecret: input.appSecret, params: { fields: "id,caption,media_type,timestamp,permalink,thumbnail_url,media_url,like_count,comments_count", since: input.period.since, until: input.period.until, limit: "100" }, metricOrOperation: "instagram.media.list" }),
+    fetchMetaResult<MetaInsightsPayload>({ app: input.app, path: `/${input.accountId}/insights`, token: input.token, appSecret: input.appSecret, params: { metric: "follows_and_unfollows", period: "day", metric_type: "total_value", breakdown: "follow_type", since: input.period.since, until: input.period.until }, metricOrOperation: "instagram.account.follows_and_unfollows" }),
   ]);
+  if (growthResult.warning) input.warnings.push(growthResult.warning);
+  const growth = parseInstagramFollowerGrowth(growthResult.payload);
+  metadata.follows_and_unfollows = { status: metricStatus(growthResult.warning, growth.followersGained ?? growth.followersLost), source: "follows_and_unfollows", aggregation: "period_total_by_follow_type", code: growthResult.warning?.code ?? null, structure: summarizeMetricPayload(growthResult.payload, "follows_and_unfollows") };
   if (profile.warning) input.warnings.push(profile.warning);
   const metrics = Object.fromEntries(metricValues) as Record<typeof metricNames[number], number | null>;
   if (mediaResult.warning) input.warnings.push(mediaResult.warning);
@@ -854,10 +874,7 @@ async function getInstagramInsights(input: {
     .slice(0, 10);
   const topContent = await Promise.all(candidates.map(async (media) => {
     const mediaMetrics = ["reach", "views", "saved", "shares", "total_interactions"] as const;
-    const path = `/${media.id}/insights`;
-    const result = await fetchMetaResult<MetaInsightsPayload>({ app: input.app, path, token: input.token, appSecret: input.appSecret, params: { metric: mediaMetrics.join(",") }, metricOrOperation: `instagram.media.${media.id}.insights` });
-    if (result.warning) input.warnings.push(result.warning);
-    const mediaInsight = insightNumbers(result.payload, mediaMetrics);
+    const mediaInsight = await fetchContentInsightMetrics({ app: input.app, objectId: media.id!, metrics: mediaMetrics, token: input.token, appSecret: input.appSecret, warnings: input.warnings, operationPrefix: `instagram.media.${media.id}.insights` });
     return {
       id: media.id,
       caption: media.caption ?? null,
@@ -882,10 +899,13 @@ async function getInstagramInsights(input: {
   return {
     accountId: input.accountId,
     username: profile.payload?.username ?? input.savedUsername,
+    metricMetadata: { reach: metadata.reach, views: metadata.views, profileViews: metadata.profile_views, interactions: metadata.total_interactions, linkClicks: metadata.profile_links_taps, accountsEngaged: metadata.accounts_engaged, followers: fieldMetadata("followers_count", metricNumber(profile.payload?.followers_count), profile.warning), ...growthMetadata(growth, metadata.follows_and_unfollows) },
+    metricDiagnostics: metadata,
     metrics: {
       reach: metrics.reach,
       views: metrics.views,
-      followers: profile.payload?.followers_count ?? null,
+      followers: metricNumber(profile.payload?.followers_count),
+      ...growth,
       profileViews: metrics.profile_views,
       interactions: metrics.total_interactions,
       linkClicks: metrics.profile_links_taps,
@@ -923,13 +943,26 @@ async function getFacebookInsights(input: {
     });
   }
 
-  const metricNames = ["page_total_media_view_unique", "page_media_view", "page_post_engagements", "page_views_total"] as const;
+  const metadata: Record<string, MetricMetadata> = {};
+  // Total followers is a current snapshot even when the report covers an older period.
+  const currentUntil = new Date(); currentUntil.setUTCDate(currentUntil.getUTCDate() + 1);
+  const currentSince = new Date(); currentSince.setUTCDate(currentSince.getUTCDate() - 3);
+  const currentFollowerPeriod = { since: currentSince.toISOString().slice(0, 10), until: currentUntil.toISOString().slice(0, 10) };
+  const metricNames = ["page_total_media_view_unique", "page_media_view", "page_post_engagements", "page_views_total", "page_daily_follows_unique", "page_daily_unfollows_unique", "page_follows"] as const;
   const postsPath = `/${input.pageId}/posts`;
-  const [metricValues, posts] = await Promise.all([
-    Promise.all(metricNames.map(async (metric) => [metric, await fetchInsightMetric({ app: input.app, objectId: input.pageId, metric, token: pageToken, appSecret: input.appSecret, period: input.period, warnings: input.warnings, operationPrefix: "facebook.page" })] as const)),
+  const [metricValues, posts, followerField, fanField] = await Promise.all([
+    Promise.all(metricNames.map(async (metric) => [metric, await fetchInsightMetric({ app: input.app, objectId: input.pageId, metric, token: pageToken, appSecret: input.appSecret, period: metric === "page_follows" ? currentFollowerPeriod : input.period, metadata, warnings: input.warnings, operationPrefix: "facebook.page" })] as const)),
     fetchMetaResult<FacebookPostsPayload>({ app: input.app, path: postsPath, token: pageToken, appSecret: input.appSecret, params: { fields: "id,message,created_time,permalink_url,full_picture,reactions.limit(0).summary(true),comments.limit(0).summary(true),shares", since: input.period.since, until: input.period.until, limit: "100" }, metricOrOperation: "facebook.posts.list" }),
+    fetchMetaResult<FacebookPagePayload>({ app: input.app, path: `/${input.pageId}`, token: pageToken, appSecret: input.appSecret, params: { fields: "followers_count" }, metricOrOperation: "facebook.page.followers_count" }),
+    fetchMetaResult<FacebookPagePayload>({ app: input.app, path: `/${input.pageId}`, token: pageToken, appSecret: input.appSecret, params: { fields: "fan_count" }, metricOrOperation: "facebook.page.fan_count" }),
   ]);
   const metrics = Object.fromEntries(metricValues) as Record<typeof metricNames[number], number | null>;
+  for (const result of [followerField, fanField]) if (result.warning) input.warnings.push(result.warning);
+  const growth = followerGrowth(metrics.page_daily_follows_unique, metrics.page_daily_unfollows_unique);
+  const followerCount = metricNumber(followerField.payload?.followers_count);
+  const followers = followerCount ?? metrics.page_follows;
+  const followersMetadata = followerCount !== null ? fieldMetadata("followers_count", followerCount) : metrics.page_follows !== null ? metadata.page_follows : fieldMetadata("followers_count", null, followerField.warning);
+  const unverifiedLinkClicks = { ...fieldMetadata("no_verified_period_link_click_metric", null), aggregation: "not_queried" };
   input.warnings.push({ endpoint: `/${input.pageId}/insights`, code: null, message: "page_impressions não é uma métrica válida na Graph API v26 e não possui equivalente direto. page_media_view é retornada separadamente como views.", metricOrOperation: "facebook.page.impressions", kind: "unavailable" });
   for (const metric of metricNames) { const operation = `facebook.page.${metric}`; if (metrics[metric] === null && !input.warnings.some((warning) => warning.metricOrOperation === operation)) input.warnings.push({ endpoint: `/${input.pageId}/insights`, code: null, message: "A Meta não retornou valor numérico para esta métrica no período informado.", metricOrOperation: operation, kind: "unavailable" }); }
   if (posts.warning) input.warnings.push(posts.warning);
@@ -952,10 +985,7 @@ async function getFacebookInsights(input: {
   }).sort((left, right) => right.interactions - left.interactions).slice(0, 10);
   const topContent = await Promise.all(postCandidates.map(async (post) => {
     const postMetrics = ["post_total_media_view_unique", "post_media_view", "post_clicks"] as const;
-    const path = `/${post.id}/insights`;
-    const result = await fetchMetaResult<MetaInsightsPayload>({ app: input.app, path, token: pageToken, appSecret: input.appSecret, params: { metric: postMetrics.join(","), period: "lifetime" }, metricOrOperation: `facebook.post.${post.id}.insights` });
-    if (result.warning) input.warnings.push(result.warning);
-    const postInsight = insightNumbers(result.payload, postMetrics);
+    const postInsight = await fetchContentInsightMetrics({ app: input.app, objectId: post.id!, metrics: postMetrics, token: pageToken, appSecret: input.appSecret, lifetime: true, warnings: input.warnings, operationPrefix: `facebook.post.${post.id}.insights` });
     return {
       ...post,
       reach: postInsight.post_total_media_view_unique,
@@ -970,13 +1000,25 @@ async function getFacebookInsights(input: {
   return {
     pageId: input.pageId,
     pageName: page?.name ?? input.savedPageName,
+    metricMetadata: {
+      reach: { ...metadata.page_total_media_view_unique, aggregation: "sum_of_daily_unique_viewers" }, views: metadata.page_media_view,
+      interactions: metadata.page_post_engagements, engagement: metadata.page_post_engagements, pageViews: metadata.page_views_total,
+      followers: followersMetadata, followersGained: metadata.page_daily_follows_unique, followersLost: metadata.page_daily_unfollows_unique,
+      followersNet: { ...metadata.page_daily_follows_unique, source: "page_daily_follows_unique - page_daily_unfollows_unique", status: growth.followersNet !== null ? "available" : [metadata.page_daily_follows_unique, metadata.page_daily_unfollows_unique].find((item) => item.status !== "available")?.status ?? "empty", aggregation: "difference" },
+      linkClicks: unverifiedLinkClicks, impressions: { ...unverifiedLinkClicks, status: "invalid_metric" as const, source: "page_impressions", aggregation: "unsupported" },
+      fans: fieldMetadata("fan_count", metricNumber(fanField.payload?.fan_count), fanField.warning),
+    },
+    metricDiagnostics: metadata,
     metrics: {
       reach: metrics.page_total_media_view_unique,
       views: metrics.page_media_view,
       impressions: null,
       engagement: metrics.page_post_engagements,
-      followers: page?.followers_count ?? null,
-      fans: page?.fan_count ?? null,
+      followers,
+      ...growth,
+      interactions: metrics.page_post_engagements,
+      linkClicks: null,
+      fans: metricNumber(fanField.payload?.fan_count),
       pageViews: metrics.page_views_total,
     },
     topContent,
@@ -1052,7 +1094,7 @@ export async function getMetaInsights(
   const runSource = async <T>(source: "instagram" | "facebook", operation: () => Promise<T>) => {
     try { return await operation(); }
     catch (error) {
-      app.log.error({ err: error, source }, "Meta Insights source failed unexpectedly");
+      app.log.error({ source }, "Meta Insights source failed unexpectedly");
       warnings.push({ endpoint: source, code: null, message: `Falha inesperada ao consultar ${source === "instagram" ? "o Instagram" : "o Facebook"}.`, metricOrOperation: `${source}.source`, kind: "api_error" });
       return null;
     }
