@@ -1,3 +1,4 @@
+import { ensureRecurringSources, registerNewRecurringSource } from "./invoice-recurring-sources.js";
 import { acquireInvoiceNumberLock, releaseInvoiceNumberLock } from "./invoice-number-lock.js";
 import { billingMonth, nextBillingIssueDate } from "./invoice-recurring.service.js";
 import { ensureBillingSettings, getReceiptSignature } from "./billing-settings.repository.js";
@@ -54,6 +55,7 @@ export async function ensureInvoiceTables(db: Pool) {
     try { await db.query("ALTER TABLE invoices ADD UNIQUE KEY uq_invoice_recurring_period (recurring_source_invoice_id, recurring_period)"); }
     catch (error) { if ((error as { code?: string }).code !== "ER_DUP_KEYNAME") throw error; }
   }
+  await ensureRecurringSources(db);
   await db.query(`CREATE TABLE IF NOT EXISTS invoice_items (
     id CHAR(36) NOT NULL PRIMARY KEY, invoice_id CHAR(36) NOT NULL, description TEXT NOT NULL, quantity DECIMAL(12,3) NOT NULL DEFAULT 1,
     unit_price DECIMAL(14,2) NOT NULL DEFAULT 0, position INT NOT NULL DEFAULT 0, legacy_id VARCHAR(120) NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -77,11 +79,16 @@ async function hydrate(db: Executor, rows: InvoiceRow[], timeZone = process.env.
   const currentPeriod = billingMonth(new Date(), timeZone);
   const sourceIds = rows.filter((row) => row.recurring && !row.recurring_source_invoice_id).map((row) => row.id);
   const generated = new Map<string, string>();
+  const confirmed = new Set<string>();
   if (sourceIds.length) {
     const [periodRows] = await db.query<(RowDataPacket & { id: string; recurring_source_invoice_id: string })[]>(
       `SELECT id, recurring_source_invoice_id FROM invoices WHERE recurring_source_invoice_id IN (${sourceIds.map(() => "?").join(",")}) AND recurring_period = ?`, [...sourceIds, currentPeriod],
     );
     for (const item of periodRows) generated.set(item.recurring_source_invoice_id, item.id);
+    const [sourceRows] = await db.query<(RowDataPacket & { source_invoice_id: string })[]>(
+      `SELECT source_invoice_id FROM invoice_recurring_sources WHERE source_invoice_id IN (${sourceIds.map(() => "?").join(",")})`, sourceIds,
+    );
+    for (const source of sourceRows) confirmed.add(source.source_invoice_id);
   }
   return rows.map((row) => ({
     id: row.id, clientAccountId: row.client_account_id, number: Number(row.invoice_number), title: row.title,
@@ -90,7 +97,7 @@ async function hydrate(db: Executor, rows: InvoiceRow[], timeZone = process.env.
     period: row.period_label, currency: row.currency, locale: row.locale, status: row.status, recurring: Boolean(row.recurring),
     recurringSourceInvoiceId: row.recurring_source_invoice_id ?? null, recurringPeriod: row.recurring_period ?? null,
     recurrence: row.recurring && !row.recurring_source_invoice_id ? {
-      currentPeriod, eligible: dateOnly(row.issue_date).slice(0, 7) <= currentPeriod, currentInvoiceId: dateOnly(row.issue_date).slice(0, 7) === currentPeriod ? row.id : generated.get(row.id) ?? null,
+      sourceConfirmed: confirmed.has(row.id), currentPeriod, eligible: dateOnly(row.issue_date).slice(0, 7) <= currentPeriod, currentInvoiceId: dateOnly(row.issue_date).slice(0, 7) === currentPeriod ? row.id : generated.get(row.id) ?? null,
       nextIssueDate: nextBillingIssueDate(dateOnly(row.issue_date).slice(0, 7) > currentPeriod ? dateOnly(row.issue_date).slice(0, 7) : currentPeriod), timeZone,
     } : null,
     fixedAmount: Boolean(row.fixed_amount), visibleToClient: Boolean(row.visible_to_client), sentToClient: Boolean(row.sent_at), notes: row.notes,
@@ -128,7 +135,7 @@ export async function createInvoice(db: Pool, userId: string, input: CreateInvoi
     if (!locked) throw new Error("A geração de faturas está ocupada. Tente novamente.");
     await connection.beginTransaction(); const [numberRows] = await connection.query<(RowDataPacket & { next_number: number })[]>("SELECT COALESCE(MAX(invoice_number), 0) + 1 AS next_number FROM invoices FOR UPDATE"); const number = Number(numberRows[0]?.next_number ?? 1);
     await connection.query(`INSERT INTO invoices (id, client_account_id, invoice_number, title, recipient_name, recipient_email, recipient_address, recipient_country, recipient_tax_id, issue_date, due_date, period_label, currency, locale, status, recurring, fixed_amount, visible_to_client, sent_at, notes, created_by_user_id, paid_at, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [id, input.clientAccountId, number, input.title, input.clientName, input.clientEmail, input.clientAddress, input.clientCountry, input.clientTaxId, input.issueDate, input.dueDate, input.period, input.currency, input.locale, input.status, input.recurring, input.fixedAmount, input.visibleToClient, input.sentToClient ? new Date() : null, input.notes, userId, input.paidAt ?? null, input.paymentMethod ?? null]);
-    await replaceChildren(connection, id, input, userId); if (input.status === "paid") await issueReceipt(connection, id); await connection.commit(); return findInvoice(db, id);
+    await replaceChildren(connection, id, input, userId); if (input.recurring) await registerNewRecurringSource(connection, id, userId); if (input.status === "paid") await issueReceipt(connection, id); await connection.commit(); return findInvoice(db, id);
   } catch (error) { await connection.rollback(); throw error; } finally { try { if (locked) await releaseInvoiceNumberLock(connection); } finally { connection.release(); } }
 }
 

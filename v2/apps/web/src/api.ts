@@ -226,7 +226,7 @@ export type BillingInvoice = {
   clientAddress: string; clientCountry: string; clientTaxId: string; issueDate: string; dueDate: string; period: string;
   currency: BillingCurrency; locale: "pt" | "en" | "it" | "es" | "sv"; status: BillingInvoiceStatus;
   recurringSourceInvoiceId?: string | null; recurringPeriod?: string | null;
-  recurrence?: { eligible: boolean; currentPeriod: string; currentInvoiceId: string | null; nextIssueDate: string; timeZone: string } | null;
+  recurrence?: { sourceConfirmed: boolean; eligible: boolean; currentPeriod: string; currentInvoiceId: string | null; nextIssueDate: string; timeZone: string } | null;
   recurring: boolean; fixedAmount: boolean; visibleToClient: boolean; sentToClient: boolean; notes: string;
   paidAt?: string | null; paymentMethod?: string | null; paymentProofName?: string | null; paymentProofUrl?: string | null;
   receiptNumber?: string | null; receiptGeneratedAt?: string | null;
@@ -1887,3 +1887,13 @@ export async function uploadReceiptSignature(file: File) {
 }
 
 export async function generateCurrentRecurringInvoices() { return sendJson<{ period: string; created: number; skipped: number; failedSourceIds: string[]; busy: boolean }>("/api/invoices/recurring/generate", { method: "POST" }); }
+
+export type RecurringAudit = {
+  period: string; needsSourceReview: number;
+  sources: Array<{ clientAccountId: string | null; clientName: string; suggestedSourceId: string; confirmedSourceIds: string[];
+    candidates: Array<{ id: string; number: number; title: string; issueDate: string; dueDate: string; legacy: boolean }> }>;
+  instances: Array<{ id: string; number: number; clientName: string; title: string; sourceId: string; period: string;
+    issueDate: string; dueDate: string; expectedTitle: string | null; expectedDueDate: string | null; problems: string[] }>;
+};
+export async function loadRecurringAudit() { return fetchJson<RecurringAudit>("/api/invoices/recurring/audit"); }
+export async function confirmInvoiceRecurringSource(invoiceId: string) { return sendJson<{ invoice: BillingInvoice }>(`/api/invoices/${invoiceId}/recurring-source`, { method: "POST" }); }

@@ -10,8 +10,10 @@ Esta entrega implementa e testa a recuperação de outubro; não executa geraç�
 
 ## Fonte e idempotência
 
-- Fonte ativa: fatura com `recurring = 1` e sem `recurring_source_invoice_id`.
-- Cada fonte é independente, inclusive duas fontes do mesmo cliente.
+- Fonte ativa: fatura cadastrada explicitamente em `invoice_recurring_sources`, com `recurring = 1` e sem `recurring_source_invoice_id`.
+- A tabela de fontes começa vazia na atualização. Flags históricas importadas não são promovidas automaticamente. Em **Revisar fontes de recorrência**, o operador analisa e confirma a base correta. A sugestão da fatura mais recente é apenas para revisão.
+- Uma nova fatura criada manualmente com recorrência ativa registra a própria fonte na mesma transação. Ativar a flag em uma fatura existente requer confirmação na revisão.
+- O cadastro impede duas fontes históricas importadas ativas para o mesmo cliente. Fontes novas explicitamente cadastradas podem representar contratos distintos. Nenhuma origem é inferida apenas pelo nome do cliente.
 - Fatura gerada: `recurring_source_invoice_id` aponta para a fonte e `recurring_period` contém o mês, como `2026-10`. Ela possui `recurring = 0`, evitando novas cadeias/explosão de recorrências.
 - UNIQUE `(recurring_source_invoice_id, recurring_period)` impede duplicatas persistentes. O inicializador de faturamento adiciona os campos/índice de forma idempotente.
 - Se a fatura-base já foi emitida no mês atual, ela já representa a cobrança desse mês e não é duplicada.
@@ -23,11 +25,11 @@ Esta entrega implementa e testa a recuperação de outubro; não executa geraç�
 
 ## Dados e datas
 
-Copiados diretamente da fonte: cliente, dados do destinatário, título, moeda, idioma, itens (preservando valores decimais), observações, `fixedAmount`, visibilidade e autoria. IDs de fatura e itens são novos.
+Copiados da fonte: cliente, dados do destinatário, moeda, idioma, itens (preservando valores decimais), observações, `fixedAmount`, visibilidade e autoria. IDs de fatura e itens são novos. O título recalcula referências ao mês/ano no idioma da fatura; títulos genéricos recebem o mês atual. Referências ao mês/ano nas descrições dos itens também são atualizadas, mantendo os demais dados comerciais.
 
 Novas faturas iniciam `open`. Pagamento, método, comprovante, envio e recibo/snapshot ficam nulos. Anexos antigos não são reaproveitados. A visibilidade configurada é mantida, mas, sem `sent_at`, a fatura ainda precisa ser enviada para aparecer no portal, preservando a regra existente.
 
-Emissão sempre no primeiro dia do mês atual. Vencimento preserva o dia da fonte e eventual distância de meses entre emissão e vencimento. Se o dia não existe no mês de destino, usa seu último dia; o próximo mês volta a considerar o dia original da base (por exemplo, 31 → 28 em fevereiro → 31 em março). O período é formatado em português, inglês, italiano, espanhol ou sueco conforme a fatura.
+Emissão sempre no primeiro dia do mês atual. Vencimento preserva o dia da fonte, aplicado ao mês gerado, sem transportar distâncias de meses históricas. Se o dia não existe no mês de destino, usa seu último dia; o próximo mês volta a considerar o dia original da base (por exemplo, 31 → 28 em fevereiro → 31 em março). O período é formatado em português, inglês, italiano, espanhol ou sueco conforme a fatura.
 
 Cada fatura e seus itens são criados em uma transação. Falha em uma fonte faz rollback e não impede as fontes saudáveis; a fonte faltante será tentada novamente. Falhas temporárias não interrompem o servidor, e timers são encerrados junto da API.
 
@@ -55,3 +57,9 @@ Os testes de repositório usam simulação das respostas do banco e verificam co
 - `v2/apps/web/src/api.ts`
 - Testes: `invoice-recurring.test.ts`, `invoice-recurring-worker.test.ts`, `invoiceRecurrence.test.ts` e adaptação do teste de recibo ao bloqueio compartilhado.
 - `v2/apps/api/package.json` registra os testes novos na suíte habitual.
+
+## Auditoria e recuperação após o incidente
+
+GET `/api/invoices/recurring/audit` é restrito ao super admin e executa somente SELECT. Expõe candidatos por cliente, fontes confirmadas, UUID da origem e instâncias do mês, incluindo inconsistências de título, datas, período, envio/recibo e origem. Datas retornadas pelo driver como `Date` são normalizadas. A confirmação explícita usa POST `/api/invoices/:invoiceId/recurring-source`, sob o mesmo bloqueio da geração.
+
+O job e o botão usam exclusivamente as fontes confirmadas. Instâncias existentes continuam cobertas pelo par origem/mês mesmo quando o título antigo estiver errado: não são substituídas silenciosamente. A regularização dos registros já emitidos é uma operação separada, sujeita à revisão dos UUIDs e autorização do responsável. Veja `recurring-invoices-incident-2026-10.md`.
