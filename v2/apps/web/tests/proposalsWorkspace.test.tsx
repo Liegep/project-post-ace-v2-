@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import React, { act } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { createRoot } from "react-dom/client";
 import { Simulate } from "react-dom/test-utils";
 import { JSDOM } from "jsdom";
@@ -38,6 +39,18 @@ test("proposal workspace persistence and existing commercial flows", async (t) =
   await t.test("typing a new proposal does not autosave or create", async () => {
    await change("Nome do cliente", "Cliente Exemplo"); await change("Escopo do projeto", "Conteúdo mensal"); await flush(550); assert.equal(calls.filter((c) => c.method !== "GET").length, 0); assert.doesNotMatch(document.querySelector(".proposal-editor-heading")!.textContent!, /salvas automaticamente/);
   });
+  await t.test("local preview preserves unsaved data without writes and supports tab keyboard navigation", async () => {
+   const before = calls.length;
+   await act(async () => button("Prévia do cliente").click());
+   assert.equal(document.querySelector('[role="tabpanel"]')?.getAttribute("aria-labelledby"), "proposal-preview-tab");
+   assert.match(document.querySelector(".proposal-document")!.textContent!, /Cliente Exemplo/);
+   assert.match(document.querySelector(".proposal-document")!.textContent!, /Conteúdo mensal/);
+   assert.equal(document.querySelectorAll('.proposal-preview-shell input,.proposal-preview-shell textarea').length, 0);
+   assert.ok([...document.querySelectorAll<HTMLButtonElement>('.public-proposal-decision button')].every((item) => item.disabled));
+   await act(async () => document.querySelector('#proposal-preview-tab')!.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
+   assert.equal(document.activeElement?.id, "proposal-edit-tab");
+   assert.equal(document.querySelector<HTMLInputElement>("input")!.value, "Cliente Exemplo"); assert.equal(calls.length, before);
+  });
   await t.test("unsaved confirmation protects a draft; new proposal clears locally without POST", async () => {
    dom.window.confirm = () => false; await render(1); assert.equal(document.querySelector<HTMLInputElement>("input")!.value, "Cliente Exemplo"); dom.window.confirm = () => true; await render(2); assert.equal(document.querySelector<HTMLInputElement>("input")!.value, ""); assert.equal(calls.filter((c) => c.method === "POST").length, 0);
   });
@@ -55,6 +68,23 @@ test("proposal workspace persistence and existing commercial flows", async (t) =
   await t.test("select existing is read-only; autosave retained; send wins over in-flight autosave", async () => {
    records = [{ ...emptyProposal(), id: "existing", token: "existing-token", clientName: "Cliente salvo" }]; await remount(); const before = calls.length; await act(async () => (document.querySelector(".proposal-library>button") as HTMLButtonElement).click()); await flush(); assert.equal(calls.length, before); assert.match(document.querySelector(".proposal-editor-heading")!.textContent!, /Alterações salvas automaticamente/);
    delay = true; await change("Escopo do projeto", "Escopo revisado"); await flush(550); assert.ok(hold); await act(async () => button("Enviar proposta").click()); await act(async () => hold!()); await flush(); const patches = calls.filter((c) => c.method === "PATCH"); assert.equal(patches.at(-1)!.body.status, "sent"); assert.equal(patches.at(-1)!.body.scope, "Escopo revisado"); assert.ok(document.querySelector(".proposal-preview-shell"));
+  });
+  await t.test("existing preview uses current edited values without a write from toggling", async () => {
+   await act(async () => button("Editar").click()); await change("Plano", "Plano atualizado"); const before = calls.length;
+   await act(async () => button("Prévia do cliente").click()); assert.equal(document.querySelector('.proposal-document h1')!.textContent, "Plano atualizado");
+   await act(async () => button("Editar").click()); assert.equal(document.querySelector<HTMLInputElement>('.proposal-fields.three input')!.value, "Plano atualizado"); assert.equal(calls.length, before);
+  });
+  await t.test("shared client document preserves commercial content, totals, validity and five languages", async () => {
+   const { ProposalClientPreview, getProposalLocale } = await server.ssrLoadModule("/src/proposalPresentation.tsx");
+   for (const locale of ["Português", "English", "Español", "Italiano", "Svenska"]) {
+    const proposal = { ...emptyProposal(), locale, clientName: "Cliente & Exemplo", proposalType: "Mensalidade", plan: "Plano editorial", pieces: 12, scope: "Escopo completo\nSegunda linha", investment: "Condições e observações finais", services: [{ name: "Conteúdo", value: 1200, description: "12 posts" }, { name: "Planejamento", value: 300, description: "Calendário editorial" }] };
+    const rendered = new JSDOM(renderToStaticMarkup(<ProposalClientPreview proposal={proposal} brandLogo="logo.png" />));
+    const doc = rendered.window.document, text = doc.body.textContent!;
+    for (const value of ["Cliente & Exemplo", "Plano editorial", "Mensalidade", "12", "Escopo completo\nSegunda linha", "Condições e observações finais", "12 posts", "Calendário editorial", getProposalLocale(locale).until]) assert.ok(text.includes(value));
+    assert.equal(doc.querySelectorAll('.proposal-document-service-list>div').length, 2);
+    assert.equal(doc.querySelector('.proposal-document-investment-amount strong')!.textContent, `R$ ${(1500).toLocaleString(getProposalLocale(locale).code, { minimumFractionDigits: 2 })}`);
+    assert.equal(doc.querySelectorAll('input,textarea,select').length, 0); assert.equal(doc.querySelector('article')?.getAttribute('lang'), getProposalLocale(locale).code); assert.equal(doc.querySelector('img')?.getAttribute('src'), 'logo.png'); rendered.window.close();
+   }
   });
   await t.test("library shows all six real statuses, client, existing title, value and validity", async () => {
    records = ["draft", "sent", "viewed", "accepted", "refused", "expired"].map((status) => ({ ...emptyProposal(), id: status, status, clientName: "Estúdio Exemplo", plan: "Plano editorial", services: [{ name: "Design", value: 2300, description: "" }] })); await remount(); assert.equal(document.querySelectorAll(".proposal-library>button").length, 6); const text = document.querySelector(".proposal-library")!.textContent!; for (const label of ["Rascunho", "Enviada", "Visualizada", "Aceita", "Recusada", "Expirada", "Plano editorial", "2.300,00", "Válida até"]) assert.ok(text.includes(label));

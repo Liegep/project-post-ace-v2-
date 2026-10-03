@@ -11,15 +11,25 @@ export const proposalLocales = {
 
 export function getProposalLocale(locale: string) { return proposalLocales[locale as keyof typeof proposalLocales] ?? proposalLocales["Português"]; }
 
-export function ProposalClientPreview({ proposal }: { proposal: LocalProposal }) {
+export function ProposalClientPreview({ proposal, brandLogo }: { proposal: LocalProposal; brandLogo?: string }) {
   const total = proposal.services.reduce((sum, service) => sum + Number(service.value || 0), 0);
   const copy = getProposalLocale(proposal.locale);
-  return <article className="proposal-client-preview">
-    <div className="proposal-client-hero"><span>{copy.commercial}</span><h1>{proposal.proposalType || "Projeto criativo"}</h1><p className="proposal-client-name">{copy.prepared} {proposal.clientName || "..."}</p></div>
-    <div className="proposal-client-content"><div className="proposal-client-meta"><span><b>{copy.plan}</b>{proposal.plan || "Personalizado"}</span><span><b>{copy.validity}</b>{copy.until} {new Date(proposal.expiresAt).toLocaleDateString(copy.code)}</span><span><b>{copy.pieces}</b>{proposal.pieces || 0} {copy.deliveries}</span></div>
-    <section><small>{copy.scope}</small><div className="proposal-preview-text">{proposal.scope || copy.emptyScope}</div></section>
-    <section><small>{copy.services}</small><div className="proposal-service-list">{proposal.services.filter((service) => service.name).map((service, index) => <div key={`${service.name}-${index}`}><span><b>{service.name}</b><small>{service.description}</small></span><strong>{proposal.currency} {Number(service.value || 0).toLocaleString(copy.code, { minimumFractionDigits: 2 })}</strong></div>)}{!proposal.services.some((service) => service.name) ? <p>{copy.emptyServices}</p> : null}</div></section>
-    <section className="proposal-investment-card"><small>{copy.investment}</small><div className="proposal-investment-total"><span>{copy.total}</span><strong>{proposal.currency} {total.toLocaleString(copy.code, { minimumFractionDigits: 2 })}</strong></div><div className="proposal-preview-text">{proposal.investment || copy.emptyInvestment}</div></section></div>
+  const money = (value: number) => `${proposal.currency} ${value.toLocaleString(copy.code, { minimumFractionDigits: 2 })}`;
+  const validity = new Date(proposal.expiresAt).toLocaleDateString(copy.code);
+  return <article className="proposal-client-preview proposal-document" lang={copy.code}>
+    <header className="proposal-document-brand">{brandLogo ? <img src={brandLogo} alt="Liege Paschoalini Studio" /> : null}<span>LIEGE PASCHOALINI<br /><b>STUDIO</b></span><small>{copy.commercial}</small></header>
+    <section className="proposal-document-cover">
+      <div className="proposal-document-cover-art" aria-hidden="true"><i /><i /><i /></div>
+      <p className="proposal-document-eyebrow">{copy.commercial} · {proposal.proposalType}</p>
+      <h1>{proposal.plan || proposal.proposalType || "Projeto criativo"}</h1>
+      <div className="proposal-document-recipient"><span>{copy.prepared}</span><strong>{proposal.clientName || "..."}</strong></div>
+      <div className="proposal-document-cover-bottom"><span>{copy.plan}<b>{proposal.plan || "Personalizado"}</b></span><span>{copy.pieces}<b>{proposal.pieces || 0} {copy.deliveries}</b></span></div>
+    </section>
+    <div className="proposal-document-body">
+      <section className="proposal-document-scope"><header className="proposal-document-section-heading"><span>01</span><h2>{copy.scope}</h2></header><div className="proposal-document-text">{proposal.scope || copy.emptyScope}</div></section>
+      <section className="proposal-document-services"><header className="proposal-document-section-heading"><span>02</span><h2>{copy.services}</h2></header><div className="proposal-document-service-list">{proposal.services.filter((service) => service.name).map((service, index) => <div key={`${service.name}-${index}`}><span className="proposal-document-service-number">{String(index + 1).padStart(2, "0")}</span><div><h3>{service.name}</h3>{service.description ? <p>{service.description}</p> : null}</div><strong>{money(Number(service.value || 0))}</strong></div>)}{!proposal.services.some((service) => service.name) ? <p>{copy.emptyServices}</p> : null}</div></section>
+      <section className="proposal-document-investment"><header className="proposal-document-section-heading"><span>03</span><h2>{copy.investment}</h2></header><div className="proposal-document-investment-amount"><span>{copy.total}</span><strong>{money(total)}</strong></div><div className="proposal-document-text">{proposal.investment || copy.emptyInvestment}</div></section>
+      <footer className="proposal-document-validity"><span>{copy.validity}<strong>{copy.until} {validity}</strong></span><b>LIEGE PASCHOALINI STUDIO</b></footer>
+    </div>
   </article>;
 }
-

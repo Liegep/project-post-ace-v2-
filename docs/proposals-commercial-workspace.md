@@ -58,3 +58,35 @@ arquivo de testes no comando da suíte.
   sem overflow horizontal. Ações mobile com 44px de altura e teclado chegando
   de Salvar rascunho a Enviar proposta.
 - API, banco e registros existentes preservados. Sem merge ou deploy.
+
+## Prévia do cliente — redesign
+
+A prévia anterior usava o mesmo componente da proposta pública, mas saía da
+workspace inteira e dependia de Voltar ao editor. O CSS escondia plano e
+quantidade de peças, e as seções dependiam de animação por IntersectionObserver.
+Os conteúdos existentes eram tipo, cliente, escopo, serviços/descrições,
+investimento/condições, validade e fechamento com aceite/recusa. O link público
+mantinha confirmação de resposta e tratamento de indisponibilidade/expiração.
+
+A alternância Editar / Prévia do cliente agora está no topo da área principal,
+com abas acessíveis por teclado. As duas visualizações usam o mesmo estado
+local, sem chamadas de gravação provocadas pela alternância. O rascunho ainda
+não salvo também pode ser visualizado. Envio, link e autosave permanecem iguais.
+
+A nova apresentação é compartilhada com o link público: capa com plano (ou tipo
+como fallback), cliente, tipo e quantidade de entregas; escopo; serviços com
+valores individuais; total/condições; validade e fechamento. Não existem campos
+separados de introdução ou observações finais no modelo; nenhum conteúdo
+comercial adicional foi inventado. O total continua somando todos os serviços,
+como antes. Os cinco idiomas existentes são preservados.
+
+Apenas na prévia interna os botões de aceite/recusa são demonstrativos e
+explicitamente desabilitados. No link público os handlers e estados de resposta
+permanecem idênticos. O novo documento não depende de animações para ficar visível.
+
+Validação: 348 testes aprovados, typecheck e build completos aprovados; testes de
+alternância local sem gravação, retenção de dados editados, teclado, conteúdo e
+idiomas. Conferência visual de editor e prévia em desktop e mobile (390/320px),
+sem overflow horizontal; link público local conferido com ações habilitadas.
+Prévias demonstrativas em docs/proposals-client-preview no workspace principal.
+Sem push, merge ou deploy.

@@ -98,18 +98,17 @@ export function ProposalsWorkspace({ newProposalSignal = 0, brandLogo }: { newPr
     try { await navigator.clipboard.writeText(`${window.location.origin}/#/proposta/${draft.token}`); setMessage("Link copiado."); }
     catch { setMessage("Não foi possível copiar o link."); }
   };
-  useEffect(() => {
-    if (view !== "preview") return;
-    const elements = Array.from(document.querySelectorAll(".proposal-preview-shell .proposal-client-content > section, .proposal-preview-shell .public-proposal-decision"));
-    const observer = new IntersectionObserver((entries) => entries.forEach((entry) => { if (entry.isIntersecting) { entry.target.classList.add("in-view"); observer.unobserve(entry.target); } }), { threshold: 0.18 });
-    elements.forEach((element) => observer.observe(element));
-    return () => observer.disconnect();
-  }, [view]);
-  if (view === "preview") return <section className="public-proposal-page proposal-preview-shell">
-    <button className="proposal-preview-back" onClick={() => setView("editor")}>← Voltar ao editor</button>
-    <header className="public-proposal-brand"><img src={brandLogo} alt="Liege Paschoalini Studio" /><div><b>LIEGE PASCHOALINI STUDIO</b></div></header>
-    <ProposalClientPreview proposal={draft} /><section className="public-proposal-decision"><p>{getProposalLocale(draft.locale).until} {new Date(draft.expiresAt).toLocaleDateString(getProposalLocale(draft.locale).code)}.</p><h2>{getProposalLocale(draft.locale).continueTogether}</h2><div><button className="gradient-button">{getProposalLocale(draft.locale).accept}</button><button className="public-proposal-refuse">{getProposalLocale(draft.locale).refuse}</button></div></section>
+  const preview = <section className="proposal-preview-shell proposal-premium-page" aria-label="Prévia da proposta para o cliente">
+    <ProposalClientPreview proposal={draft} brandLogo={brandLogo} />
+    <section className="public-proposal-decision">{draft.status === "accepted" || draft.status === "refused" ? <><span className={draft.status}>✓</span><h2>{draft.status === "accepted" ? getProposalLocale(draft.locale).accepted : getProposalLocale(draft.locale).refused}</h2><p>{getProposalLocale(draft.locale).answer}</p></> : <><p>{getProposalLocale(draft.locale).until} {new Date(draft.expiresAt).toLocaleDateString(getProposalLocale(draft.locale).code)}.</p><h2>{getProposalLocale(draft.locale).continueTogether}</h2><div><button className="gradient-button" disabled>{getProposalLocale(draft.locale).accept}</button><button className="public-proposal-refuse" disabled>{getProposalLocale(draft.locale).refuse}</button></div></>}</section>
   </section>;
+  const changeTabByKeyboard = (event: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const next = event.key === "Home" ? "editor" : event.key === "End" ? "preview" : view === "editor" ? "preview" : "editor";
+    setView(next);
+    event.currentTarget.parentElement?.querySelector<HTMLButtonElement>(`[data-mode="${next}"]`)?.focus();
+  };
   return <section className="proposals-workspace commercial-proposals">
     <div className="proposals-layout">
       <aside className="proposal-library" aria-label="Histórico de propostas">
@@ -120,7 +119,10 @@ export function ProposalsWorkspace({ newProposalSignal = 0, brandLogo }: { newPr
           <small>Válida até {new Date(proposal.expiresAt).toLocaleDateString("pt-BR")}</small>
         </button>)}
       </aside>
-      <main className="proposal-stage">
+      <main className={`proposal-stage ${view === "preview" ? "proposal-stage-preview" : ""}`}>
+        <div className="proposal-mode-switch" role="tablist" aria-label="Modo da proposta"><button id="proposal-edit-tab" role="tab" data-mode="editor" aria-selected={view === "editor"} aria-controls="proposal-mode-panel" tabIndex={view === "editor" ? 0 : -1} onKeyDown={changeTabByKeyboard} onClick={() => setView("editor")}>Editar</button><button id="proposal-preview-tab" role="tab" data-mode="preview" aria-selected={view === "preview"} aria-controls="proposal-mode-panel" tabIndex={view === "preview" ? 0 : -1} onKeyDown={changeTabByKeyboard} onClick={() => setView("preview")}>Prévia do cliente</button></div>
+        <div id="proposal-mode-panel" role="tabpanel" aria-labelledby={view === "editor" ? "proposal-edit-tab" : "proposal-preview-tab"}>
+        {view === "preview" ? preview : <>
         <header className="proposal-editor-heading"><div><small>{draft.id ? "PROPOSTA COMERCIAL" : "COMECE UMA NOVA CONVERSA"}</small><h2>{draft.id ? draft.clientName || "Proposta sem cliente" : "Nova proposta"}</h2><p>{draft.id ? dirty ? "Alterações aguardando salvamento" : "Alterações salvas automaticamente" : "Organize o escopo, as entregas e o investimento."}</p></div><span className={`proposal-status ${draft.status}`}>{draft.id ? statuses[draft.status] : "Ainda não salva"}</span></header>
         <fieldset className="proposal-editor" disabled={saving}>
           <section className="proposal-editor-section"><header><h3>Cliente e proposta</h3><p>Para quem estamos preparando esta proposta?</p></header>
@@ -139,6 +141,8 @@ export function ProposalsWorkspace({ newProposalSignal = 0, brandLogo }: { newPr
         </fieldset>
         <footer className="proposal-editor-actions"><div><button disabled={saving} onClick={() => setView("preview")}>Ver prévia</button>{draft.id ? <><button disabled={saving} onClick={() => void copyLink()}>Copiar link</button><button className="proposal-delete" disabled={saving} onClick={() => void remove()}>Excluir</button></> : null}</div><div><button disabled={saving} onClick={() => void save()}>{saving ? "Salvando…" : draft.id && draft.status !== "draft" ? "Salvar alterações" : "Salvar rascunho"}</button><button className="gradient-button" disabled={saving} onClick={() => void save(true)}>Enviar proposta</button></div></footer>
         <p className="proposal-save-note">{draft.id ? `Válida até ${new Date(draft.expiresAt).toLocaleDateString("pt-BR")}. O envio renova a validade por 7 dias.` : "A proposta só entra no histórico quando você salva ou envia."}</p>
+        </>}
+        </div>
         {message ? <p className="time-error" role="status">{message}</p> : null}
       </main>
     </div>
