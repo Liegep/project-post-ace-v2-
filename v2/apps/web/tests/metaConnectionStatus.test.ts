@@ -75,7 +75,7 @@ test("Central Meta reuses the existing status and OAuth flow with its own return
   assert.match(app, /setStatus\(await loadMetaStatus\(\)\)/);
   assert.match(app, /beginMetaConnection\("#\/area\/publicacoes-meta"\)/);
   assert.match(app, /oauthResult === "connected"/);
-  assert.match(app, /area === "publicacoes-meta" \? \[\]/);
+  assert.match(app, /const metrics: PageMetric\[\] = \[\];/);
 });
 
 test("temporary Meta diagnostics panel and frontend-only API call are removed", () => {
