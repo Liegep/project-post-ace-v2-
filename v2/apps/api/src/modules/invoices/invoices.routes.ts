@@ -1,3 +1,5 @@
+import { auditRecurringInvoices } from "./invoice-recurring-audit.js";
+import { confirmRecurringSource } from "./invoice-recurring-sources.js";
 import { generateRecurringInvoices } from "./invoice-recurring.service.js";
 import { getReceiptSignature, setReceiptSignature } from "./billing-settings.repository.js";
 import type { FastifyPluginAsync } from "fastify";
@@ -10,6 +12,14 @@ export const invoiceRoutes: FastifyPluginAsync = async (app) => {
   await ensureInvoiceTables(app.db);
   app.get("/billing/settings", async (request) => { assertSuperAdmin(request); return { signatureUrl: await getReceiptSignature(app.db) }; });
   app.delete("/billing/settings/receipt-signature", async (request) => { assertSuperAdmin(request); await setReceiptSignature(app.db, null); return { signatureUrl: null }; });
+  app.get("/invoices/recurring/audit", async (request) => { assertSuperAdmin(request); return auditRecurringInvoices(app.db, new Date(), app.appEnv.APP_TIMEZONE); });
+  app.post("/invoices/:invoiceId/recurring-source", async (request) => {
+    assertSuperAdmin(request);
+    const { invoiceId } = request.params as { invoiceId: string };
+    try { await confirmRecurringSource(app.db, invoiceId, request.auth!.user.id); }
+    catch (error) { throw app.httpErrors.badRequest(error instanceof Error ? error.message : "Não foi possível definir a fonte."); }
+    return { invoice: await findInvoice(app.db, invoiceId) };
+  });
   app.post("/invoices/recurring/generate", async (request) => { assertSuperAdmin(request); return generateRecurringInvoices(app.db, new Date(), app.appEnv.APP_TIMEZONE); });
   app.get("/invoices", async (request) => { assertSuperAdmin(request); return { items: await listInvoices(app.db, null, false, app.appEnv.APP_TIMEZONE) }; });
   app.post("/invoices", async (request) => { assertSuperAdmin(request); const input = createInvoiceSchema.parse(request.body); return { invoice: await createInvoice(app.db, request.auth!.user.id, input) }; });

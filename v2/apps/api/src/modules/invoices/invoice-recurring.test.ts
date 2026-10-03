@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Pool } from "mysql2/promise";
-import { billingMonth, generateRecurringInvoices, recurringDates } from "./invoice-recurring.service.js";
+import { billingMonth, generateRecurringInvoices, recurringDates, recurringInvoiceTitle, recurringDescription } from "./invoice-recurring.service.js";
 import { ensureInvoiceTables, listInvoices } from "./invoices.repository.js";
 
 const source = (id = "source", overrides: Record<string, unknown> = {}) => ({
@@ -13,7 +13,8 @@ const source = (id = "source", overrides: Record<string, unknown> = {}) => ({
   receipt_snapshot_json: { signatureUrl: "/signature" }, sent_at: "2026-09-01", created_by_user_id: "user", ...overrides,
 });
 
-export function recurringHarness(initial: ReturnType<typeof source>[] = [source()]) {
+export function recurringHarness(initial: ReturnType<typeof source>[] = [source()], confirmedIds = initial.map((row) => row.id)) {
+  const confirmed = new Set(confirmedIds);
   const rows: Record<string, unknown>[] = initial.map((item) => ({ ...item }));
   const items = initial.map((item) => ({ id: `${item.id}-item`, invoice_id: item.id, description: "Identidade visual", quantity: "2.500", unit_price: "123.45", position: 0 }));
   const statements: string[] = [];
@@ -24,8 +25,8 @@ export function recurringHarness(initial: ReturnType<typeof source>[] = [source(
     statements.push(sql);
     if (sql.includes("GET_LOCK")) { const acquired = locked ? 0 : 1; if (acquired) locked = true; return [[{ acquired }], []]; }
     if (sql.includes("RELEASE_LOCK")) { locked = false; return [[{ released: 1 }], []]; }
-    if (sql.startsWith("SELECT id FROM invoices WHERE recurring = 1")) return [rows.filter((row) => row.recurring === 1 && !row.recurring_source_invoice_id && String(row.issue_date) <= String(values[0])).map(({ id }) => ({ id })), []];
-    if (sql.startsWith("SELECT * FROM invoices")) return [rows.filter((row) => row.id === values[0] && row.recurring === 1 && !row.recurring_source_invoice_id), []];
+    if (sql.startsWith("SELECT i.id FROM invoice_recurring_sources")) return [rows.filter((row) => confirmed.has(String(row.id)) && row.recurring === 1 && !row.recurring_source_invoice_id && String(row.issue_date) <= String(values[0])).map(({ id }) => ({ id })), []];
+    if (sql.startsWith("SELECT i.* FROM invoice_recurring_sources")) return [rows.filter((row) => row.id === values[0] && confirmed.has(String(row.id)) && row.recurring === 1 && !row.recurring_source_invoice_id), []];
     if (sql.startsWith("SELECT id FROM invoices WHERE recurring_source_invoice_id")) return [rows.filter((row) => row.recurring_source_invoice_id === values[0] && row.recurring_period === values[1]), []];
     if (sql.includes("MAX(invoice_number)")) return [[{ next_number: Math.max(...rows.map((row) => Number(row.invoice_number)), 0) + 1 }], []];
     if (sql.startsWith("INSERT INTO invoices")) {
@@ -59,13 +60,14 @@ test("preserves billing data/items and resets all payment, receipt, delivery and
   const { db, rows, items } = recurringHarness([base]);
   await generateRecurringInvoices(db, october(2));
   const generated = rows[1];
-  for (const field of ["client_account_id", "title", "recipient_name", "recipient_email", "recipient_address", "recipient_country", "recipient_tax_id", "currency", "locale", "fixed_amount", "visible_to_client", "notes", "created_by_user_id"]) assert.equal(generated[field], base[field as keyof typeof base], field);
+  for (const field of ["client_account_id", "recipient_name", "recipient_email", "recipient_address", "recipient_country", "recipient_tax_id", "currency", "locale", "fixed_amount", "visible_to_client", "notes", "created_by_user_id"]) assert.equal(generated[field], base[field as keyof typeof base], field);
   for (const field of ["paid_at", "payment_method", "payment_proof_name", "payment_proof_url", "receipt_number", "receipt_snapshot_json", "receipt_generated_at", "sent_at"]) assert.equal(generated[field], null, field);
   assert.equal(generated.status, "open"); assert.equal(generated.recurring, 0);
   assert.equal(generated.recurring_source_invoice_id, base.id);
   assert.notEqual(items[1].id, items[0].id);
   for (const field of ["description", "quantity", "unit_price", "position"] as const) assert.equal(items[1][field], items[0][field]);
   assert.equal(generated.period_label, "outubro de 2026");
+  assert.equal(generated.title, "Design mensal · Outubro 2026");
 });
 
 test("repeated executions produce one invoice per root/month, without multiplying generated invoices", async () => {
@@ -111,11 +113,11 @@ test("billing period follows APP_TIMEZONE at the UTC month boundary", () => {
   assert.equal(billingMonth(now, "Europe/Stockholm"), "2026-11");
 });
 
-test("due day clamps short/leap months, restores base day later, and preserves due-month offset", () => {
+test("due day clamps short/leap months, restores base day later, and always uses the generated month", () => {
   assert.equal(recurringDates("2026-01-01", "2026-01-31", "2026-02", "pt").dueDate, "2026-02-28");
   assert.equal(recurringDates("2026-01-01", "2026-01-31", "2028-02", "pt").dueDate, "2028-02-29");
   assert.equal(recurringDates("2026-01-01", "2026-01-31", "2026-03", "pt").dueDate, "2026-03-31");
-  assert.equal(recurringDates("2026-09-01", "2026-10-10", "2026-12", "en").dueDate, "2027-01-10");
+  assert.equal(recurringDates("2026-09-01", "2026-10-10", "2026-12", "en").dueDate, "2026-12-10");
   assert.equal(recurringDates("2026-09-01", "2026-09-10", "2027-01", "en").period, "January 2027");
   for (const locale of ["pt", "en", "it", "es", "sv"]) assert.match(recurringDates("2026-09-01", "2026-09-10", "2026-10", locale).period, /2026/);
 });
@@ -157,6 +159,7 @@ test("API recurrence state identifies an existing current invoice or a pending m
   const sourceIds = ["pending", "generated", "base"];
   const db = { query: async (sql: string, values: unknown[]) => {
     if (sql.includes("FROM invoice_items") || sql.includes("FROM invoice_attachments")) return [[], []];
+    if (sql.startsWith("SELECT source_invoice_id FROM invoice_recurring_sources")) return [sourceIds.map((source_invoice_id) => ({ source_invoice_id })), []];
     if (sql.startsWith("SELECT id, recurring_source_invoice_id")) {
       assert.deepEqual(values, [...sourceIds, period]);
       return [[{ id: "current-invoice", recurring_source_invoice_id: "generated" }], []];
@@ -169,4 +172,53 @@ test("API recurrence state identifies an existing current invoice or a pending m
   assert.equal(invoices[1].recurrence?.currentInvoiceId, "current-invoice");
   assert.equal(invoices[2].recurrence?.currentInvoiceId, "base");
   assert.equal(invoices[0].recurrence?.currentPeriod, period);
+});
+
+test("historical recurring flags do not create sources, and only one confirmed legacy template generates", async () => {
+  const originals = [source("march", { title: "Invoice March 2026", legacy_id: "march", issue_date: "2026-03-01", due_date: "2026-03-31" }),
+    source("april", { title: "Abril 2026", legacy_id: "april", issue_date: "2026-04-01" }),
+    source("september", { title: "Setembro 2026", legacy_id: "september" })];
+  const unconfirmed = recurringHarness(originals, []);
+  assert.equal((await generateRecurringInvoices(unconfirmed.db, october(3))).created, 0);
+  assert.deepEqual(unconfirmed.rows, originals);
+  const reviewed = recurringHarness(originals, ["september"]);
+  assert.equal((await generateRecurringInvoices(reviewed.db, october(3))).created, 1);
+  assert.deepEqual(reviewed.rows.slice(0, 3), originals);
+  assert.equal(reviewed.rows[3].title, "Outubro 2026");
+  assert.equal(reviewed.rows[3].recurring_source_invoice_id, "september");
+  assert.equal((await generateRecurringInvoices(reviewed.db, october(3))).created, 0);
+  assert.equal((await generateRecurringInvoices(reviewed.db, new Date("2026-11-03T12:00:00Z"))).created, 1);
+  assert.equal(reviewed.rows[4].title, "Novembro 2026");
+  assert.equal(reviewed.rows[4].recurring_source_invoice_id, "september");
+  assert.ok(!reviewed.statements.some((sql) => /^(UPDATE|DELETE) .*invoices/.test(sql)));
+});
+
+test("generated instance cannot be a source even if an old recurring flag and source registry entry exist", async () => {
+  const child = source("child", { recurring_source_invoice_id: "root", recurring_period: "2026-09" });
+  const { db, rows } = recurringHarness([child], ["child"]);
+  assert.equal((await generateRecurringInvoices(db, october(3))).created, 0);
+  assert.equal(rows.length, 1);
+});
+
+test("monthly title and dated descriptions move to the current period in all supported languages", () => {
+  assert.equal(recurringInvoiceTitle("Setembro 2026", "2026-10", "pt"), "Outubro 2026");
+  assert.equal(recurringInvoiceTitle("Invoice March 2026", "2026-10", "en"), "Invoice October 2026");
+  assert.equal(recurringInvoiceTitle("Fattura Marzo 2026", "2026-10", "it"), "Fattura Ottobre 2026");
+  assert.equal(recurringInvoiceTitle("Factura septiembre 2026", "2026-10", "es"), "Factura Octubre 2026");
+  assert.equal(recurringInvoiceTitle("Faktura september 2026", "2026-10", "sv"), "Faktura Oktober 2026");
+  assert.equal(recurringInvoiceTitle("Social Media", "2026-10", "pt"), "Social Media · Outubro 2026");
+  assert.equal(recurringInvoiceTitle("Fatura 09/2026", "2026-10", "pt"), "Fatura Outubro 2026");
+  assert.equal(recurringDescription("Recorrência mensal - Setembro 2026", "2026-10", "it"), "Recorrência mensal - Ottobre 2026");
+  assert.equal(recurringDescription("Design comercial", "2026-10", "pt"), "Design comercial");
+  assert.equal(recurringInvoiceTitle("Dezembro 2026", "2027-01", "pt"), "Janeiro 2027");
+});
+
+test("an existing October pair with a historical title is preserved for review, never replaced or duplicated", async () => {
+  const base = source("september", { title: "Setembro 2026" });
+  const oldInstance = source("bad-october", { recurring: 0, recurring_source_invoice_id: "september", recurring_period: "2026-10", title: "Setembro 2026", issue_date: "2026-10-01", due_date: "2026-10-10" });
+  const h = recurringHarness([base, oldInstance], ["september"]);
+  const original = structuredClone(h.rows);
+  for (let retry = 0; retry < 3; retry++) assert.equal((await generateRecurringInvoices(h.db, october(3))).created, 0);
+  assert.deepEqual(h.rows, original);
+  assert.ok(!h.statements.some((sql) => /^(INSERT INTO invoices|UPDATE invoices|DELETE FROM invoices)/.test(sql)));
 });

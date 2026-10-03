@@ -1,3 +1,4 @@
+import { RecurringSourceReview } from "./RecurringSourceReview";
 import { invoiceRecurrenceLabel } from "./invoiceRecurrence";
 import { BillingSettings } from "./BillingSettings";
 import { printWhenImagesReady } from "./printDocument";
@@ -185,8 +186,10 @@ export function BillingWorkspace({ session, newInvoiceSignal = 0 }: { session: S
     setGeneratingRecurring(true); setRecurringNotice("");
     try {
       const result = await generateCurrentRecurringInvoices();
-      setInvoices((await listAdminInvoices()).items);
-      setRecurringNotice(result.busy ? "A geração já está em andamento. Atualize em instantes." : `${result.created} fatura(s) gerada(s) para ${result.period}.${result.failedSourceIds.length ? ` ${result.failedSourceIds.length} recorrência(s) aguardam nova tentativa.` : ""}`);
+      const items = (await listAdminInvoices()).items;
+      setInvoices(items);
+      const hasSources = items.some((invoice) => invoice.recurring && invoice.recurrence?.sourceConfirmed);
+      setRecurringNotice(result.busy ? "A geração já está em andamento. Atualize em instantes." : `${result.created} fatura(s) gerada(s) para ${result.period}. ${result.skipped} já coberta(s) ou não elegível(is).${!hasSources ? ' Defina as faturas-base em “Revisar fontes de recorrência”.' : ""}${result.failedSourceIds.length ? ` ${result.failedSourceIds.length} recorrência(s) aguardam nova tentativa.` : ""}`);
     } catch (error) { setLoadError(error instanceof Error ? error.message : "Não foi possível gerar as faturas recorrentes."); }
     finally { setGeneratingRecurring(false); }
   };
@@ -199,15 +202,16 @@ export function BillingWorkspace({ session, newInvoiceSignal = 0 }: { session: S
   return <section className="billing-workspace">
     <details className="billing-settings-panel"><summary>Configurações · Dados de faturamento</summary><BillingSettings /></details>
     {loadError ? <div className="billing-empty">{loadError}</div> : null}
+    <RecurringSourceReview onConfigured={async () => setInvoices((await listAdminInvoices()).items)} />
     <section className="billing-metrics">
       <Metric label="Total faturado" values={totals.all} tone="violet" />
       <Metric label="Total recebido" values={totals.paid} tone="green" />
       <Metric label="Pendente" values={totals.open} tone="orange" />
       <Metric label="Atrasado" values={totals.overdue} tone="red" />
     </section>
-    <div className="billing-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar fatura ou cliente" /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | InvoiceStatus)}><option value="all">Todos os status</option><option value="open">Abertas</option><option value="paid">Pagas</option><option value="overdue">Atrasadas</option><option value="cancelled">Canceladas</option></select><span>{invoices.filter((invoice) => invoice.recurring && !invoice.recurringSourceInvoiceId).length} recorrências ativas · verificação automática do mês atual</span><button className="ghost-button" disabled={generatingRecurring} onClick={() => void generateRecurring()}>{generatingRecurring ? "Gerando..." : "Gerar recorrentes deste mês"}</button></div>
+    <div className="billing-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar fatura ou cliente" /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | InvoiceStatus)}><option value="all">Todos os status</option><option value="open">Abertas</option><option value="paid">Pagas</option><option value="overdue">Atrasadas</option><option value="cancelled">Canceladas</option></select><span>{invoices.filter((invoice) => invoice.recurring && invoice.recurrence?.sourceConfirmed).length} recorrências ativas · verificação automática do mês atual</span><button className="ghost-button" disabled={generatingRecurring} onClick={() => void generateRecurring()}>{generatingRecurring ? "Gerando..." : "Gerar recorrentes deste mês"}</button></div>
     {recurringNotice ? <p role="status">{recurringNotice}</p> : null}
-    <div className="billing-list">{filtered.map((invoice) => <button key={invoice.id} className="billing-row" onClick={() => setSelectedId(invoice.id)}><span className="billing-row-mark">#{invoice.number}</span><ClientThumb name={invoice.clientName} logoUrl={logosByClient[invoice.clientName.trim().toLocaleLowerCase()]} /><span className="billing-row-main"><strong>{invoice.title}</strong><small>{invoice.clientName || "Cliente sem nome"} · Venc. {date(invoice.dueDate)}</small></span><span className="billing-row-repeat">{invoice.recurring || invoice.recurringSourceInvoiceId ? "Recorrente" : "Avulsa"}</span><span className="billing-row-value"><strong>{money(invoiceTotal(invoice), invoice.currency)}</strong><em className={`invoice-status ${invoice.status}`}>{statusLabel[invoice.status]}</em></span></button>)}{filtered.length === 0 && <div className="billing-empty">Nenhuma fatura encontrada.</div>}</div>
+    <div className="billing-list">{filtered.map((invoice) => <button key={invoice.id} className="billing-row" onClick={() => setSelectedId(invoice.id)}><span className="billing-row-mark">#{invoice.number}</span><ClientThumb name={invoice.clientName} logoUrl={logosByClient[invoice.clientName.trim().toLocaleLowerCase()]} /><span className="billing-row-main"><strong>{invoice.title}</strong><small>{invoice.clientName || "Cliente sem nome"} · Venc. {date(invoice.dueDate)}</small></span><span className="billing-row-repeat">{invoice.recurringSourceInvoiceId ? "Gerada" : invoice.recurring ? (invoice.recurrence?.sourceConfirmed ? "Fonte" : "Revisar fonte") : "Avulsa"}</span><span className="billing-row-value"><strong>{money(invoiceTotal(invoice), invoice.currency)}</strong><em className={`invoice-status ${invoice.status}`}>{statusLabel[invoice.status]}</em></span></button>)}{filtered.length === 0 && <div className="billing-empty">Nenhuma fatura encontrada.</div>}</div>
   </section>;
 }
 

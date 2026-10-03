@@ -23,3 +23,6 @@
 
 .billing-toolbar { flex-wrap: wrap; }
 .billing-toolbar .ghost-button { flex: 0 0 auto; white-space: normal; }
+.recurring-source-group { display: grid; gap: 10px; padding: 14px; border: 1px solid #e5e0ee; border-radius: 12px; width: 100%; box-sizing: border-box; }
+.recurring-source-group label { display: grid; gap: 6px; }
+.recurring-source-group select { max-width: 100%; width: 100%; min-width: 0; padding: 8px; }
