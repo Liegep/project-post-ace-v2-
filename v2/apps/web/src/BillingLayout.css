@@ -22,11 +22,21 @@
 .billing-settings-drawer h2{margin:4px 0 0;font-size:1.25rem;letter-spacing:-.035em}
 .billing-settings-drawer>header button{flex:none;width:36px;height:36px;border:1px solid #e1ddef;border-radius:50%;background:#fff;color:#52607a;font-size:1.5rem;cursor:pointer}
 .billing-settings-content{overflow-y:auto;min-height:0;padding:22px;overscroll-behavior:contain}
-.billing-settings-content .billing-settings-panel{margin-bottom:16px;overflow:hidden;border-radius:16px;background:rgba(255,255,255,.85)}
-.billing-settings-content .billing-company-settings{padding:0 16px 18px;gap:12px;font-size:.84rem;line-height:1.5}
-.billing-settings-content .billing-company-settings h2{display:none}.billing-settings-content .billing-company-settings h3{font-size:.92rem}
-.billing-settings-content .billing-company-settings>p{overflow-wrap:anywhere}.billing-settings-content button,.billing-settings-content input{font:inherit}
-.billing-settings-content input[type=file]{max-width:100%;min-width:0}
+.billing-settings-content .billing-settings-panel{margin:0 0 32px;overflow:visible;border:0;border-radius:0;background:transparent}
+.billing-settings-content .billing-settings-panel>summary{padding:0 0 16px;font-size:.95rem;font-weight:650;color:#26334d}
+.billing-settings-content .billing-company-settings{padding:0 0 4px;gap:14px;font-size:.84rem;line-height:1.6}
+.billing-settings-content .billing-company-settings h2{display:none}.billing-settings-content .billing-company-settings h3{font-size:.9rem;font-weight:600}
+.billing-settings-content .billing-company-settings>p{overflow-wrap:anywhere;color:#66728a}.billing-settings-content button,.billing-settings-content input{font:inherit}
+.billing-settings-content .billing-signature-upload{position:relative;display:inline-flex;align-items:center;justify-content:center;min-height:42px;padding:10px 18px;border:0;border-radius:10px;background:#ede9fc;color:#5142a5;font-weight:600;cursor:pointer;transition:background .15s}
+.billing-settings-content .billing-signature-upload:hover{background:#e3ddfa}
+.billing-settings-content .billing-signature-upload:focus-within{outline:2px solid #7564e8;outline-offset:3px}
+.billing-settings-content .billing-signature-upload:has(input:disabled){opacity:.55;cursor:default}
+.billing-settings-content .billing-signature-upload input[type=file]{position:absolute;inset:0;width:100%;height:100%;max-width:100%;min-width:0;opacity:0;cursor:inherit}
+.billing-settings-content .billing-signature-preview{padding:12px;background:rgba(255,255,255,.75);border-radius:10px;box-sizing:border-box}
+.billing-settings-content .billing-company-settings>button{border:0;border-radius:10px;padding:11px 18px;background:#ede9fc;color:#5142a5;font-weight:600;cursor:pointer}
+.billing-settings-content .billing-company-settings>button:hover{background:#e3ddfa}
+.billing-settings-content .billing-company-settings small{font-size:.74rem;line-height:1.5;color:#71809b}
+.billing-settings-content .recurring-source-group{border:0;border-radius:0;border-top:1px solid rgba(106,108,156,.12);padding:16px 0;gap:12px}
 @keyframes billing-drawer-enter{from{transform:translateX(100%)}to{transform:translateX(0)}}
 @media(max-width:1200px){.billing-workspace .billing-toolbar{grid-template-columns:minmax(0,1fr) minmax(140px,200px)}.billing-workspace .billing-toolbar>span{max-width:none}.billing-workspace .billing-toolbar>button{justify-self:end}}
 @media(max-width:700px){.billing-summary-banner{border-radius:22px}.billing-summary-heading{align-items:flex-start;flex-direction:column;gap:16px}.billing-summary-actions{justify-content:flex-start}.billing-summary-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 12px}.billing-summary-metric>div{flex-direction:column}.billing-summary-metric strong{font-size:.87rem}.billing-workspace .billing-toolbar{grid-template-columns:1fr;gap:10px}.billing-workspace .billing-toolbar>button{justify-self:start}.billing-settings-content{padding:16px}.billing-settings-drawer>header{padding:20px 16px}}

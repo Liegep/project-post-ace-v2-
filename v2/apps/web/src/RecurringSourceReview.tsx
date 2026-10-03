@@ -20,7 +20,7 @@ export function RecurringSourceReview({ onConfigured, title = "Revisar fontes de
   };
   return <details className="billing-settings-panel"><summary>{title}</summary><section className="billing-company-settings">
     <p>Faturas históricas não são fontes automáticas. Escolha a fatura-base de cada recorrência antes de gerar novos meses.</p>
-    <button disabled={busy} onClick={() => void load()}>{busy ? "Verificando..." : "Analisar recorrências"}</button>
+    <button disabled={busy} onClick={() => void load()}>{busy ? "Verificando..." : "Gerenciar recorrências"}</button>
     {error ? <p role="alert">{error}</p> : null}
     {audit?.sources.map((group) => {
       const key = group.clientAccountId ?? group.suggestedSourceId;
