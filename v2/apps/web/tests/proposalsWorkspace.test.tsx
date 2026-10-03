@@ -33,10 +33,10 @@ test("proposal workspace persistence and existing commercial flows", async (t) =
   const render = async (signal = 0) => { await act(async () => root.render(<React.StrictMode><ProposalsWorkspace brandLogo="local-logo" newProposalSignal={signal} /></React.StrictMode>)); await flush(); };
   const remount = async () => { await act(async () => root.unmount()); root = createRoot(document.getElementById("root")!); await render(); };
   await t.test("StrictMode and repeated opening only GET; blank local editor never joins history", async () => {
-   await render(); await remount(); assert.ok(document.querySelector(".proposal-editor")); assert.equal(calls.filter((c) => c.method !== "GET").length, 0); assert.equal(document.querySelectorAll(".proposal-library>button").length, 0);
+   await render(); await remount(); assert.ok(document.querySelector(".proposal-editor")); assert.match(document.querySelector(".proposal-editor-heading")!.textContent!, /Ainda não salva/); assert.doesNotMatch(document.querySelector(".proposal-editor-heading")!.textContent!, /salvas automaticamente/); assert.equal(calls.filter((c) => c.method !== "GET").length, 0); assert.equal(document.querySelectorAll(".proposal-library>button").length, 0);
   });
   await t.test("typing a new proposal does not autosave or create", async () => {
-   await change("Nome do cliente", "Cliente Exemplo"); await change("Escopo do projeto", "Conteúdo mensal"); await flush(550); assert.equal(calls.filter((c) => c.method !== "GET").length, 0);
+   await change("Nome do cliente", "Cliente Exemplo"); await change("Escopo do projeto", "Conteúdo mensal"); await flush(550); assert.equal(calls.filter((c) => c.method !== "GET").length, 0); assert.doesNotMatch(document.querySelector(".proposal-editor-heading")!.textContent!, /salvas automaticamente/);
   });
   await t.test("unsaved confirmation protects a draft; new proposal clears locally without POST", async () => {
    dom.window.confirm = () => false; await render(1); assert.equal(document.querySelector<HTMLInputElement>("input")!.value, "Cliente Exemplo"); dom.window.confirm = () => true; await render(2); assert.equal(document.querySelector<HTMLInputElement>("input")!.value, ""); assert.equal(calls.filter((c) => c.method === "POST").length, 0);
@@ -53,7 +53,7 @@ test("proposal workspace persistence and existing commercial flows", async (t) =
    const before = calls.filter((c) => c.method === "POST").length; await act(async () => button("Enviar proposta").click()); await flush(); const posts = calls.filter((c) => c.method === "POST"); assert.equal(posts.length, before + 1); assert.equal(posts.at(-1)!.body.status, "sent"); assert.equal(posts.at(-1)!.body.clientName, "Não perder"); assert.ok(Math.abs(new Date(posts.at(-1)!.body.expiresAt).getTime() - Date.now() - 7 * 86400000) < 3000); assert.ok(document.querySelector(".proposal-preview-shell"));
   });
   await t.test("select existing is read-only; autosave retained; send wins over in-flight autosave", async () => {
-   records = [{ ...emptyProposal(), id: "existing", token: "existing-token", clientName: "Cliente salvo" }]; await remount(); const before = calls.length; await act(async () => (document.querySelector(".proposal-library>button") as HTMLButtonElement).click()); await flush(); assert.equal(calls.length, before);
+   records = [{ ...emptyProposal(), id: "existing", token: "existing-token", clientName: "Cliente salvo" }]; await remount(); const before = calls.length; await act(async () => (document.querySelector(".proposal-library>button") as HTMLButtonElement).click()); await flush(); assert.equal(calls.length, before); assert.match(document.querySelector(".proposal-editor-heading")!.textContent!, /Alterações salvas automaticamente/);
    delay = true; await change("Escopo do projeto", "Escopo revisado"); await flush(550); assert.ok(hold); await act(async () => button("Enviar proposta").click()); await act(async () => hold!()); await flush(); const patches = calls.filter((c) => c.method === "PATCH"); assert.equal(patches.at(-1)!.body.status, "sent"); assert.equal(patches.at(-1)!.body.scope, "Escopo revisado"); assert.ok(document.querySelector(".proposal-preview-shell"));
   });
   await t.test("library shows all six real statuses, client, existing title, value and validity", async () => {

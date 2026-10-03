@@ -121,7 +121,7 @@ export function ProposalsWorkspace({ newProposalSignal = 0, brandLogo }: { newPr
         </button>)}
       </aside>
       <main className="proposal-stage">
-        <header className="proposal-editor-heading"><div><small>{draft.id ? "PROPOSTA COMERCIAL" : "COMECE UMA NOVA CONVERSA"}</small><h2>{draft.id ? draft.clientName || "Proposta sem cliente" : "Nova proposta"}</h2><p>{draft.id ? dirty ? "Alterações aguardando salvamento" : "Alterações salvas automaticamente" : "Organize o escopo, as entregas e o investimento."}</p></div><span className={`proposal-status ${draft.status}`}>{draft.id ? statuses[draft.status] : "Não salva"}</span></header>
+        <header className="proposal-editor-heading"><div><small>{draft.id ? "PROPOSTA COMERCIAL" : "COMECE UMA NOVA CONVERSA"}</small><h2>{draft.id ? draft.clientName || "Proposta sem cliente" : "Nova proposta"}</h2><p>{draft.id ? dirty ? "Alterações aguardando salvamento" : "Alterações salvas automaticamente" : "Organize o escopo, as entregas e o investimento."}</p></div><span className={`proposal-status ${draft.status}`}>{draft.id ? statuses[draft.status] : "Ainda não salva"}</span></header>
         <fieldset className="proposal-editor" disabled={saving}>
           <section className="proposal-editor-section"><header><h3>Cliente e proposta</h3><p>Para quem estamos preparando esta proposta?</p></header>
             <div className="proposal-fields two"><label>Nome do cliente *<input value={draft.clientName} onChange={(event) => update({ clientName: event.target.value })} placeholder="Ex: Empresa ABC" /></label><label>E-mail<input type="email" value={draft.email} onChange={(event) => update({ email: event.target.value })} placeholder="email@cliente.com" /></label></div>
