@@ -1,0 +1,35 @@
+import React from "react";
+import type { ProposalRecord as LocalProposal } from "./api";
+
+export const proposalLocales = {
+  "Português": { code: "pt-BR", label: "Português", commercial: "Proposta comercial", prepared: "Preparada para", plan: "Plano", validity: "Validade", pieces: "Peças", deliveries: "entregas", scope: "Escopo do projeto", investment: "Investimento", services: "Serviços inclusos", total: "Investimento total", until: "Válida até", continueTogether: "Vamos seguir juntos?", emptyScope: "Descreva o escopo, objetivos e entregas desta proposta.", emptyInvestment: "Detalhe aqui as condições comerciais e observações.", emptyServices: "Os serviços aparecerão aqui.", accept: "Aceitar proposta", refuse: "Não aceitar", accepted: "Proposta aceita", refused: "Proposta recusada", answer: "Sua resposta foi registrada. Nossa equipe entrará em contato em breve." },
+  "English": { code: "en-US", label: "English", commercial: "Commercial proposal", prepared: "Prepared for", plan: "Plan", validity: "Validity", pieces: "Pieces", deliveries: "deliverables", scope: "Project scope", investment: "Investment", services: "Included services", total: "Total investment", until: "Valid until", continueTogether: "Shall we move forward together?", emptyScope: "Describe the scope, objectives and deliverables for this proposal.", emptyInvestment: "Add payment terms, notes and next steps here.", emptyServices: "Services will appear here.", accept: "Accept proposal", refuse: "Decline proposal", accepted: "Proposal accepted", refused: "Proposal declined", answer: "Your answer has been recorded. Our team will be in touch soon." },
+  "Español": { code: "es-ES", label: "Español", commercial: "Propuesta comercial", prepared: "Preparada para", plan: "Plan", validity: "Validez", pieces: "Piezas", deliveries: "entregables", scope: "Alcance del proyecto", investment: "Inversión", services: "Servicios incluidos", total: "Inversión total", until: "Válida hasta", continueTogether: "¿Seguimos juntos?", emptyScope: "Describa el alcance, los objetivos y las entregas de esta propuesta.", emptyInvestment: "Detalle las condiciones de pago, observaciones y próximos pasos.", emptyServices: "Los servicios aparecerán aquí.", accept: "Aceptar propuesta", refuse: "No aceptar", accepted: "Propuesta aceptada", refused: "Propuesta rechazada", answer: "Su respuesta fue registrada. Nuestro equipo se pondrá en contacto pronto." },
+  "Italiano": { code: "it-IT", label: "Italiano", commercial: "Proposta commerciale", prepared: "Preparata per", plan: "Piano", validity: "Validità", pieces: "Pezzi", deliveries: "consegne", scope: "Ambito del progetto", investment: "Investimento", services: "Servizi inclusi", total: "Investimento totale", until: "Valida fino al", continueTogether: "Andiamo avanti insieme?", emptyScope: "Descrivi l'ambito, gli obiettivi e le consegne di questa proposta.", emptyInvestment: "Inserisci le condizioni di pagamento, le note e i prossimi passi.", emptyServices: "I servizi appariranno qui.", accept: "Accetta proposta", refuse: "Rifiuta", accepted: "Proposta accettata", refused: "Proposta rifiutata", answer: "La tua risposta è stata registrata. Il nostro team ti contatterà presto." },
+  "Svenska": { code: "sv-SE", label: "Svenska", commercial: "Kommersiellt förslag", prepared: "Förberett för", plan: "Plan", validity: "Giltighet", pieces: "Delar", deliveries: "leveranser", scope: "Projektets omfattning", investment: "Investering", services: "Inkluderade tjänster", total: "Total investering", until: "Giltigt till", continueTogether: "Ska vi gå vidare tillsammans?", emptyScope: "Beskriv omfattning, mål och leveranser för detta förslag.", emptyInvestment: "Lägg till betalningsvillkor, anteckningar och nästa steg här.", emptyServices: "Tjänsterna visas här.", accept: "Acceptera förslag", refuse: "Avböj", accepted: "Förslag accepterat", refused: "Förslag avböjt", answer: "Ditt svar har registrerats. Vårt team kontaktar dig snart." },
+} as const;
+
+export function getProposalLocale(locale: string) { return proposalLocales[locale as keyof typeof proposalLocales] ?? proposalLocales["Português"]; }
+
+export function ProposalClientPreview({ proposal, brandLogo }: { proposal: LocalProposal; brandLogo?: string }) {
+  const total = proposal.services.reduce((sum, service) => sum + Number(service.value || 0), 0);
+  const copy = getProposalLocale(proposal.locale);
+  const money = (value: number) => `${proposal.currency} ${value.toLocaleString(copy.code, { minimumFractionDigits: 2 })}`;
+  const validity = new Date(proposal.expiresAt).toLocaleDateString(copy.code);
+  return <article className="proposal-client-preview proposal-document" lang={copy.code}>
+    <header className="proposal-document-brand">{brandLogo ? <img src={brandLogo} alt="Liege Paschoalini Studio" /> : null}<span>LIEGE PASCHOALINI<br /><b>STUDIO</b></span><small>{copy.commercial}</small></header>
+    <section className="proposal-document-cover">
+      <div className="proposal-document-cover-art" aria-hidden="true"><i /><i /><i /></div>
+      <p className="proposal-document-eyebrow">{copy.commercial} · {proposal.proposalType}</p>
+      <h1>{proposal.plan || proposal.proposalType || "Projeto criativo"}</h1>
+      <div className="proposal-document-recipient"><span>{copy.prepared}</span><strong>{proposal.clientName || "..."}</strong></div>
+      <div className="proposal-document-cover-bottom"><span>{copy.plan}<b>{proposal.plan || "Personalizado"}</b></span><span>{copy.pieces}<b>{proposal.pieces || 0} {copy.deliveries}</b></span></div>
+    </section>
+    <div className="proposal-document-body">
+      <section className="proposal-document-scope"><header className="proposal-document-section-heading"><span>01</span><h2>{copy.scope}</h2></header><div className="proposal-document-text">{proposal.scope || copy.emptyScope}</div></section>
+      <section className="proposal-document-services"><header className="proposal-document-section-heading"><span>02</span><h2>{copy.services}</h2></header><div className="proposal-document-service-list">{proposal.services.filter((service) => service.name).map((service, index) => <div key={`${service.name}-${index}`}><span className="proposal-document-service-number">{String(index + 1).padStart(2, "0")}</span><div><h3>{service.name}</h3>{service.description ? <p>{service.description}</p> : null}</div><strong>{money(Number(service.value || 0))}</strong></div>)}{!proposal.services.some((service) => service.name) ? <p>{copy.emptyServices}</p> : null}</div></section>
+      <section className="proposal-document-investment"><header className="proposal-document-section-heading"><span>03</span><h2>{copy.investment}</h2></header><div className="proposal-document-investment-amount"><span>{copy.total}</span><strong>{money(total)}</strong></div><div className="proposal-document-text">{proposal.investment || copy.emptyInvestment}</div></section>
+      <footer className="proposal-document-validity"><span>{copy.validity}<strong>{copy.until} {validity}</strong></span><b>LIEGE PASCHOALINI STUDIO</b></footer>
+    </div>
+  </article>;
+}
