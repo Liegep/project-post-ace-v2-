@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const nullableDate = z.string().date().nullable();
+const nullableDate = z.preprocess((value) => value === "" ? null : value, z.string().date().nullable());
 
 export const contractFieldsSchema = z.object({
   clientAccountId: z.string().uuid(),
@@ -16,7 +16,10 @@ export const contractFieldsSchema = z.object({
   status: z.enum(["pending", "accepted", "cancelled"]).default("pending"),
 });
 
-export const createContractSchema = contractFieldsSchema;
+export const createContractSchema = contractFieldsSchema.extend({
+  status: z.literal("pending").default("pending"),
+  publicationId: z.string().uuid().optional(),
+});
 export const updateContractSchema = contractFieldsSchema.partial();
 export const createContractTemplateSchema = z.object({
   name: z.string().trim().min(1).max(255),
