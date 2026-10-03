@@ -11,10 +11,9 @@
 .billing-summary-metric>span{color:#66728a;font-size:.76rem;font-weight:650}
 .billing-summary-metric>div{display:flex;flex-wrap:wrap;gap:5px 14px;margin-top:8px}
 .billing-summary-metric strong{white-space:nowrap;color:#1d2945;font-size:clamp(.85rem,1vw,1.05rem);letter-spacing:-.025em}
-.billing-workspace .billing-toolbar{display:grid;grid-template-columns:minmax(220px,1fr) minmax(140px,180px) auto auto;gap:12px;align-items:center;padding:12px 14px}
+.billing-workspace .billing-toolbar{display:grid;grid-template-columns:minmax(220px,1fr) minmax(140px,180px) auto;gap:12px;align-items:center;padding:12px 14px}
 .billing-workspace .billing-toolbar input,.billing-workspace .billing-toolbar select{width:100%;min-width:0;height:42px}
 .billing-workspace .billing-toolbar>span{color:#71809b;font-size:.73rem;max-width:260px}
-.billing-workspace .billing-toolbar>button{margin:0;font-size:.76rem;padding:11px 14px}
 .billing-settings-backdrop{position:fixed;inset:0;z-index:300;display:flex;justify-content:flex-end;background:rgba(29,35,66,.28);backdrop-filter:blur(3px)}
 .billing-settings-backdrop[hidden]{display:none}
 .billing-settings-drawer{width:min(520px,100%);height:100%;min-width:0;display:flex;flex-direction:column;color:#1d2945;background:linear-gradient(150deg,#f7faff,#fdf9ff);border-left:1px solid rgba(255,255,255,.8);box-shadow:-16px 0 60px rgba(45,42,89,.15);animation:billing-drawer-enter .2s ease-out}
@@ -38,6 +37,6 @@
 .billing-settings-content .billing-company-settings small{font-size:.74rem;line-height:1.5;color:#71809b}
 .billing-settings-content .recurring-source-group{border:0;border-radius:0;border-top:1px solid rgba(106,108,156,.12);padding:16px 0;gap:12px}
 @keyframes billing-drawer-enter{from{transform:translateX(100%)}to{transform:translateX(0)}}
-@media(max-width:1200px){.billing-workspace .billing-toolbar{grid-template-columns:minmax(0,1fr) minmax(140px,200px)}.billing-workspace .billing-toolbar>span{max-width:none}.billing-workspace .billing-toolbar>button{justify-self:end}}
-@media(max-width:700px){.billing-summary-banner{border-radius:22px}.billing-summary-heading{align-items:flex-start;flex-direction:column;gap:16px}.billing-summary-actions{justify-content:flex-start}.billing-summary-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 12px}.billing-summary-metric>div{flex-direction:column}.billing-summary-metric strong{font-size:.87rem}.billing-workspace .billing-toolbar{grid-template-columns:1fr;gap:10px}.billing-workspace .billing-toolbar>button{justify-self:start}.billing-settings-content{padding:16px}.billing-settings-drawer>header{padding:20px 16px}}
+@media(max-width:1200px){.billing-workspace .billing-toolbar{grid-template-columns:minmax(0,1fr) minmax(140px,200px)}.billing-workspace .billing-toolbar>span{max-width:none;grid-column:1/-1}}
+@media(max-width:700px){.billing-summary-banner{border-radius:22px}.billing-summary-heading{align-items:flex-start;flex-direction:column;gap:16px}.billing-summary-actions{justify-content:flex-start}.billing-summary-metrics{grid-template-columns:repeat(2,minmax(0,1fr));gap:18px 12px}.billing-summary-metric>div{flex-direction:column}.billing-summary-metric strong{font-size:.87rem}.billing-workspace .billing-toolbar{grid-template-columns:1fr;gap:10px}.billing-settings-content{padding:16px}.billing-settings-drawer>header{padding:20px 16px}}
 @media(prefers-reduced-motion:reduce){.billing-settings-drawer{animation:none}}
