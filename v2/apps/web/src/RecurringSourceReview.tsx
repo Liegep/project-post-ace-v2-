@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { confirmInvoiceRecurringSource, loadRecurringAudit, type RecurringAudit } from "./api";
 
-export function RecurringSourceReview({ onConfigured, title = "Revisar fontes de recorrência" }: { onConfigured: () => Promise<void>; title?: string }) {
+export function RecurringSourceReview({ onConfigured, title = "Revisar fontes de recorrência", children }: { onConfigured: () => Promise<void>; title?: string; children?: ReactNode }) {
   const [audit, setAudit] = useState<RecurringAudit | null>(null);
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -36,5 +36,6 @@ export function RecurringSourceReview({ onConfigured, title = "Revisar fontes de
     })}
     {audit ? <p>{audit.instances.length} instância(s) encontrada(s) para {audit.period}. Registros anteriores não serão corrigidos ou excluídos automaticamente.</p> : null}
     {audit?.instances.filter((instance) => instance.problems.length).map((instance) => <p key={instance.id}>Revisar #{instance.number} · {instance.clientName}: {instance.title} → {instance.expectedTitle ?? "origem inválida"}. Emissão {instance.issueDate}, vencimento {instance.dueDate}.</p>)}
+    {children}
   </section></details>;
 }
