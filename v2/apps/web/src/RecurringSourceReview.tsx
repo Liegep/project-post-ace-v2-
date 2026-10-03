@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { confirmInvoiceRecurringSource, loadRecurringAudit, type RecurringAudit } from "./api";
 
-export function RecurringSourceReview({ onConfigured }: { onConfigured: () => Promise<void> }) {
+export function RecurringSourceReview({ onConfigured, title = "Revisar fontes de recorrência" }: { onConfigured: () => Promise<void>; title?: string }) {
   const [audit, setAudit] = useState<RecurringAudit | null>(null);
   const [chosen, setChosen] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
@@ -18,7 +18,7 @@ export function RecurringSourceReview({ onConfigured }: { onConfigured: () => Pr
     catch (reason) { setError(reason instanceof Error ? reason.message : "Não foi possível definir a fonte."); }
     finally { setBusy(false); }
   };
-  return <details className="billing-settings-panel"><summary>Revisar fontes de recorrência</summary><section className="billing-company-settings">
+  return <details className="billing-settings-panel"><summary>{title}</summary><section className="billing-company-settings">
     <p>Faturas históricas não são fontes automáticas. Escolha a fatura-base de cada recorrência antes de gerar novos meses.</p>
     <button disabled={busy} onClick={() => void load()}>{busy ? "Verificando..." : "Analisar recorrências"}</button>
     {error ? <p role="alert">{error}</p> : null}
