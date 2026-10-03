@@ -11390,8 +11390,15 @@ button {
   .reports-workspace .report-form-top { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; }
   .reports-workspace .report-form-top label:first-child { grid-column: 1 / -1; }
   .reports-workspace .report-form-top input { padding: 8px; }
-  .reports-workspace .report-meta-import { grid-template-columns: minmax(0,1fr); padding: 14px; }
-  .reports-workspace .report-meta-import button { grid-column: 1; justify-self: stretch; }
+  .reports-workspace .report-meta-import { grid-template-columns: minmax(0,1fr); gap: 8px; padding: 10px 12px; }
+  .reports-workspace .report-meta-import h3 { margin: 2px 0 4px; }
+  .reports-workspace .report-meta-destination { gap: 4px 8px; }
+  .reports-workspace .report-meta-destination select { min-height: 44px; padding-block: 6px; }
+  .reports-workspace .report-meta-accounts { gap: 2px 10px; margin-top: 3px; line-height: 1.35; }
+  .reports-workspace .report-meta-period { margin-top: 3px; }
+  .reports-workspace .report-meta-import button { grid-column: 1; justify-self: stretch; min-height: 44px; }
   .reports-workspace .report-metrics-editor { grid-template-columns: minmax(0,1fr); gap: 28px; }
   .reports-workspace .report-metrics-editor article { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px 10px; }
+  .reports-workspace .report-metrics-editor label { grid-template-rows: 1fr auto; }
+  .reports-workspace .report-metrics-editor label > span { line-height: 1.4; text-wrap: pretty; overflow-wrap: normal; word-break: normal; }
 }
