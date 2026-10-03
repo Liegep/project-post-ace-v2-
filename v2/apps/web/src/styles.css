@@ -11350,6 +11350,7 @@ button {
 .time-productivity-summary span{color:#68748b;font-size:.8rem}
 .time-productivity-summary strong{color:#343956;font-size:1.7rem;font-variant-numeric:tabular-nums}
 .time-productivity-summary small{color:#78839b;font-size:.75rem;overflow-wrap:anywhere}
+.time-productivity-summary article:last-child small{color:#4f5c79;font-size:.82rem;font-weight:650}
 .time-week-chart{padding:20px 24px;border-radius:16px;background:#ffffff8c}
 .time-week-chart header,.time-recent header,.time-records-heading{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .time-week-chart h3,.time-recent h3,.time-records-heading h2{margin:0;color:#39445e;font-size:1rem}
@@ -11361,7 +11362,7 @@ button {
 .time-week-track{display:flex;align-items:end;width:min(48px,100%);height:62px;border-radius:7px;background:#dfe1f480;overflow:hidden}
 .time-week-track i{display:block;width:100%;border-radius:7px;background:linear-gradient(0deg,#8b70e3,#64c4eb)}
 .time-recent>div{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:12px}
-.time-recent article{display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #d2d9eaa6}
+.time-recent article{display:flex;align-items:center;gap:12px;padding:16px 0;border-bottom:1px solid #d2d9eaa6}
 .time-recent article>div{display:grid;gap:5px;min-width:0;flex:1;font-size:.8rem}
 .time-recent article strong{color:#495572}
 .time-recent article span{color:#7c859c;overflow-wrap:anywhere}
@@ -11384,6 +11385,9 @@ button {
 .time-workspace .clockify-day-group article>time,.time-workspace .clockify-day-group article>b,.time-workspace .clockify-day-group article>button{border:0;padding:0}
 .time-workspace .clockify-day-group article>button{min-height:44px;border-radius:9px}
 .time-workspace :is(input,select,button,summary):focus-visible{outline:2px solid #7962d9;outline-offset:3px}
+@media(min-width:621px){
+.time-workspace .clockify-counter{font-size:2.9rem;font-weight:700}
+}
 @media(max-width:1050px){
 .time-workspace .clockify-start-bar{grid-template-columns:minmax(0,1fr) 220px}
 .time-workspace .clockify-start-bar>button{grid-column:2;grid-row:3}
