@@ -1,4 +1,6 @@
-import { calculateBillingStatistics, summaryCurrencies, type CurrencyTotals } from "./billingStatistics";
+import { BillingPageHeader } from "./BillingPageHeader";
+import { BillingSettingsDrawer } from "./BillingSettingsDrawer";
+import { calculateBillingStatistics } from "./billingStatistics";
 import { RecurringSourceReview } from "./RecurringSourceReview";
 import { invoiceRecurrenceLabel } from "./invoiceRecurrence";
 import { BillingSettings } from "./BillingSettings";
@@ -6,6 +8,7 @@ import { printWhenImagesReady } from "./printDocument";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionUser } from "./types";
 import "./BillingWorkspace.css";
+import "./BillingLayout.css";
 import "./BillingWorkspaceLogo.css";
 import "./BillingWorkspaceInvoiceFooter.css";
 import "./BillingWorkspaceClientThumb.css";
@@ -97,6 +100,8 @@ const statusLabel: Record<InvoiceStatus, string> = { open: "Aberta", paid: "Paga
 export function BillingWorkspace({ session, newInvoiceSignal = 0 }: { session: SessionUser; newInvoiceSignal?: number }) {
   const [generatingRecurring, setGeneratingRecurring] = useState(false);
   const [recurringNotice, setRecurringNotice] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const [invoices, setInvoices] = useState<BillingInvoice[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -184,23 +189,16 @@ export function BillingWorkspace({ session, newInvoiceSignal = 0 }: { session: S
 
   if (!loaded) return <section className="billing-workspace"><div className="billing-empty">Carregando faturas...</div></section>;
   return <section className="billing-workspace">
-    <details className="billing-settings-panel"><summary>Configurações · Dados de faturamento</summary><BillingSettings /></details>
-    {loadError ? <div className="billing-empty">{loadError}</div> : null}
-    <RecurringSourceReview onConfigured={async () => setInvoices((await listAdminInvoices()).items)} />
-    <section className="billing-metrics">
-      <Metric label="Total faturado" values={totals.all} tone="violet" />
-      <Metric label="Total recebido" values={totals.paid} tone="green" />
-      <Metric label="Pendente" values={totals.open} tone="orange" />
-      <Metric label="Atrasado" values={totals.overdue} tone="red" />
-    </section>
-    <div className="billing-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar fatura ou cliente" /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | InvoiceStatus)}><option value="all">Todos os status</option><option value="open">Abertas</option><option value="paid">Pagas</option><option value="overdue">Atrasadas</option><option value="cancelled">Canceladas</option></select><span>{invoices.filter((invoice) => invoice.recurring && invoice.recurrence?.sourceConfirmed).length} recorrências ativas · verificação automática do mês atual</span><button className="ghost-button" disabled={generatingRecurring} onClick={() => void generateRecurring()}>{generatingRecurring ? "Gerando..." : "Gerar recorrentes deste mês"}</button></div>
+    <BillingPageHeader totals={totals} onCreate={() => void create()} onSettings={() => setSettingsOpen(true)} settingsOpen={settingsOpen} />
+    <BillingSettingsDrawer open={settingsOpen} onClose={closeSettings}>
+      <details className="billing-settings-panel" open><summary>Dados de cobrança</summary><BillingSettings /></details>
+      <RecurringSourceReview title="Recorrências" onConfigured={async () => setInvoices((await listAdminInvoices()).items)} />
+    </BillingSettingsDrawer>
+    {loadError ? <div className="billing-empty" role="alert">{loadError}</div> : null}
+    <div className="billing-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar fatura ou cliente" aria-label="Buscar fatura ou cliente" /><select aria-label="Filtrar faturas por status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | InvoiceStatus)}><option value="all">Todos os status</option><option value="open">Abertas</option><option value="paid">Pagas</option><option value="overdue">Atrasadas</option><option value="cancelled">Canceladas</option></select><span>{invoices.filter((invoice) => invoice.recurring && invoice.recurrence?.sourceConfirmed).length} recorrências ativas · verificação automática do mês atual</span><button className="ghost-button" disabled={generatingRecurring} onClick={() => void generateRecurring()}>{generatingRecurring ? "Gerando..." : "Gerar recorrentes deste mês"}</button></div>
     {recurringNotice ? <p role="status">{recurringNotice}</p> : null}
     <div className="billing-list">{filtered.map((invoice) => <button key={invoice.id} className="billing-row" onClick={() => setSelectedId(invoice.id)}><span className="billing-row-mark">#{invoice.number}</span><ClientThumb name={invoice.clientName} logoUrl={logosByClient[invoice.clientName.trim().toLocaleLowerCase()]} /><span className="billing-row-main"><strong>{invoice.title}</strong><small>{invoice.clientName || "Cliente sem nome"} · Venc. {date(invoice.dueDate)}</small></span><span className="billing-row-repeat">{invoice.recurringSourceInvoiceId ? "Gerada" : invoice.recurring ? (invoice.recurrence?.sourceConfirmed ? "Fonte" : "Revisar fonte") : "Avulsa"}</span><span className="billing-row-value"><strong>{money(invoiceTotal(invoice), invoice.currency)}</strong><em className={`invoice-status ${invoice.status}`}>{statusLabel[invoice.status]}</em></span></button>)}{filtered.length === 0 && <div className="billing-empty">Nenhuma fatura encontrada.</div>}</div>
   </section>;
-}
-
-function Metric({ label, values, tone }: { label: string; values: CurrencyTotals; tone: string }) {
-  return <article className={`billing-metric ${tone}`}><span>{label}</span><div className="billing-metric-values">{summaryCurrencies.map((currency) => <strong key={currency}>{money(values[currency], currency)}</strong>)}</div></article>;
 }
 
 function ClientThumb({ name, logoUrl }: { name: string; logoUrl?: string }) {

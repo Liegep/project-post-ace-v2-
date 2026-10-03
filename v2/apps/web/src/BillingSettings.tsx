@@ -34,7 +34,7 @@ export function BillingSettings() {
     <h3>Assinatura para recibos</h3>
     <p>Incluída automaticamente nos novos recibos. Trocar ou remover a assinatura preserva os recibos já emitidos.</p>
     {loading ? <p>Carregando assinatura...</p> : signatureUrl ? <img className="billing-signature-preview" src={signatureUrl} alt="Assinatura atual para recibos" /> : <p>Nenhuma assinatura cadastrada.</p>}
-    <label className="billing-signature-upload">{saving ? "Salvando..." : signatureUrl ? "Substituir imagem" : "Enviar imagem"}
+    <label className="billing-signature-upload">{saving ? "Salvando..." : signatureUrl ? "Substituir assinatura" : "Enviar assinatura"}
       <input aria-label="Assinatura para recibos" type="file" accept="image/png,image/jpeg,image/webp" disabled={loading || saving} onChange={(event) => { void upload(event.target.files?.[0]); event.target.value = ""; }} />
     </label>
     {signatureUrl ? <button type="button" disabled={saving || loading} onClick={() => void remove()}>Remover assinatura</button> : null}
