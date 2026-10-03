@@ -213,7 +213,7 @@ const BillingPage = () => {
       const cur = (i.clients as any)?.billing_currency || "BRL";
       const total = getTotal(i);
       ensure(cur);
-      byCurrency[cur].totalBilled += total;
+      if (i.status === "open" || i.status === "paid" || i.status === "overdue") byCurrency[cur].totalBilled += total;
       if (i.status === "paid") byCurrency[cur].totalReceived += total;
       if (i.status === "open" || i.status === "overdue") byCurrency[cur].totalPending += total;
       if (i.status === "overdue") byCurrency[cur].totalOverdue += total;

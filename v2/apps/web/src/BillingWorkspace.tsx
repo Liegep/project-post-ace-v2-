@@ -1,3 +1,4 @@
+import { calculateBillingStatistics, summaryCurrencies, type CurrencyTotals } from "./billingStatistics";
 import { invoiceRecurrenceLabel } from "./invoiceRecurrence";
 import { BillingSettings } from "./BillingSettings";
 import { printWhenImagesReady } from "./printDocument";
@@ -23,14 +24,6 @@ const currencies: Array<{ value: Currency; label: string }> = [
   { value: "USD", label: "Dólar americano (US$)" },
   { value: "SEK", label: "Coroa sueca (kr)" },
 ];
-const summaryCurrencies = ["BRL", "USD", "EUR"] as const;
-type SummaryCurrency = typeof summaryCurrencies[number];
-type CurrencyTotals = Record<SummaryCurrency, number>;
-
-function emptyCurrencyTotals(): CurrencyTotals {
-  return { BRL: 0, USD: 0, EUR: 0 };
-}
-
 const labels: Record<BillingInvoice["locale"], { invoice: string; from: string; to: string; issued: string; due: string; period: string; description: string; quantity: string; price: string; total: string; payment: string; account: string }> = {
   pt: { invoice: "FATURA", from: "DE", to: "PARA", issued: "EMISSÃO", due: "VENCIMENTO", period: "PERÍODO", description: "DESCRIÇÃO", quantity: "QTD.", price: "VALOR", total: "TOTAL", payment: "PAGAMENTO", account: "Número da conta" },
   en: { invoice: "INVOICE", from: "FROM", to: "TO", issued: "ISSUED", due: "DUE DATE", period: "PERIOD", description: "DESCRIPTION", quantity: "QTY.", price: "PRICE", total: "TOTAL", payment: "PAYMENT", account: "Account number" },
@@ -151,16 +144,7 @@ export function BillingWorkspace({ session, newInvoiceSignal = 0 }: { session: S
     return searchable.includes(query.toLowerCase()) && (statusFilter === "all" || invoice.status === statusFilter);
   }), [invoices, query, statusFilter]);
   const selected = invoices.find((invoice) => invoice.id === selectedId) ?? null;
-  const totals = invoices.reduce((result, invoice) => {
-    const total = invoiceTotal(invoice);
-    if (!summaryCurrencies.includes(invoice.currency as SummaryCurrency)) return result;
-    const currency = invoice.currency as SummaryCurrency;
-    if (invoice.status === "paid") result.paid[currency] += total;
-    else if (invoice.status === "overdue") result.overdue[currency] += total;
-    else if (invoice.status === "open") result.open[currency] += total;
-    result.all[currency] += total;
-    return result;
-  }, { all: emptyCurrencyTotals(), paid: emptyCurrencyTotals(), open: emptyCurrencyTotals(), overdue: emptyCurrencyTotals() });
+  const totals = calculateBillingStatistics(invoices);
 
   const create = useCallback(async () => { const draft = emptyInvoice(0); const { id: _id, number: _number, ...input } = draft; try { const response = await createAdminInvoice(input); setInvoices((current) => [response.invoice, ...current]); setSelectedId(response.invoice.id); } catch (error) { setLoadError(error instanceof Error ? error.message : "Não foi possível criar a fatura."); } }, []);
   useEffect(() => { if (newInvoiceSignal > 0 && loaded) void create(); }, [newInvoiceSignal, loaded, create]);
