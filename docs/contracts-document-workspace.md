@@ -31,4 +31,10 @@ Nenhum modelo, contrato histórico ou aceite foi excluído ou alterado. As prév
 
 Arquivos da implementação: `v2/apps/web/src/ContractsWorkspace.tsx`, `v2/apps/web/src/contractsWorkspace.css`, `v2/apps/web/tests/contractsWorkspace.test.tsx` e este documento.
 
-Sem push, merge ou deploy nesta etapa; revisão visual pendente.
+## Refinamento visual aprovado
+
+Ajustes exclusivamente em CSS: biblioteca desktop de 290 para 310 px com mais respiro entre itens; maior largura útil do documento, título mais presente e separação sutil por borda/sombra; bloco de aceite com melhor contraste para data/hora e ID do usuário. Não foi criado nome de usuário artificial: a API atual fornece o identificador do aceite.
+
+Mobile preservado estruturalmente. Conferidos 390 e 320 px sem overflow horizontal, abas com 50 px de altura e ações principais com pelo menos 46 px. Aceitos permanecem somente leitura e sem publicação/edição; observações internas continuam ausentes da prévia. As capturas utilizam dados fictícios locais, sem escritas na API.
+
+Validação repetida após o refinamento: 376 testes aprovados, typecheck e build aprovados. O aviso existente de tamanho de bundle permanece. Push da branch autorizado pelo usuário; merge e deploy ainda não autorizados.

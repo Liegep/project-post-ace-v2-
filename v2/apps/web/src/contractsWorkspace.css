@@ -116,3 +116,22 @@
 .contract-browser .contract-history{border:0;padding-top:0;margin-top:0}
 .contract-browser section[hidden]{display:none}
 .contract-paper.contract-document-preview .contract-paper-heading h1,.contract-paper .contract-rich-body h2,.contract-paper .contract-rich-body h3{font-family:Georgia,'Times New Roman',serif!important}
+
+/* Refinamentos de presença documental, sem alterar o fluxo da workspace. */
+@media(min-width:1101px){
+  .contract-workbench.contracts-workspace{grid-template-columns:310px minmax(0,1fr);gap:24px;padding-left:28px;padding-right:28px;max-width:1680px}
+  .contract-library-item{gap:7px;padding:17px 14px;margin-bottom:9px}
+  .contract-workbench .contracts-library-record{padding:17px 14px}
+  .contract-preview-stage{padding-left:20px;padding-right:20px}
+  .contract-paper.contract-document-preview{max-width:1040px;padding:46px 42px;box-shadow:0 12px 30px rgba(53,66,92,.065);border-color:#dce2ea}
+  .contract-paper.contract-document-preview .contract-paper-heading h1{font-size:clamp(1.8rem,2.65vw,2.65rem);font-weight:550;line-height:1.2;margin-top:14px}
+  .contract-paper-heading>small{color:#778399;font-weight:700}
+}
+.contract-readonly-note.accepted{background:#f0f7f3;border-left:3px solid #91b5a2}
+.contract-readonly-note.accepted strong{font-size:.88rem;color:#385c4a}
+.contract-readonly-note.accepted p{color:#61776d}
+.contract-readonly-note.accepted small{color:#65796f;font-size:.72rem;line-height:1.6}
+.contract-readonly-note.accepted .contract-user-id{display:inline-block;color:#426451;font-weight:600}
+.contract-paper.contract-document-preview .contract-paper-acceptance.accepted{padding:20px 22px;background:#f2f8f4;border:1px solid #dce9e0;border-left:3px solid #91b5a2;border-radius:6px}
+.contract-paper-acceptance.accepted p{font-size:.78rem;color:#61776d;line-height:1.9}
+.contract-paper-acceptance.accepted p strong,.contract-paper-acceptance.accepted .contract-user-id{color:#385c4a;font-weight:650}
