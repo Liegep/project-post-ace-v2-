@@ -38,3 +38,9 @@ Ajustes exclusivamente em CSS: biblioteca desktop de 290 para 310 px com mais re
 Mobile preservado estruturalmente. Conferidos 390 e 320 px sem overflow horizontal, abas com 50 px de altura e ações principais com pelo menos 46 px. Aceitos permanecem somente leitura e sem publicação/edição; observações internas continuam ausentes da prévia. As capturas utilizam dados fictícios locais, sem escritas na API.
 
 Validação repetida após o refinamento: 376 testes aprovados, typecheck e build aprovados. O aviso existente de tamanho de bundle permanece. Push da branch autorizado pelo usuário; merge e deploy ainda não autorizados.
+
+## Checagem antes da integração
+
+O contrato retorna somente `acceptedByUserId`; `ContractRecord` e o mapeamento de `contracts.repository.ts` não retornam nome do usuário. A workspace carrega clientes, contratos e modelos; os clientes contêm dados da conta, não uma associação entre UUID de aceite e nome de usuário. O usuário autenticado também não identifica quem aceitou contratos históricos de outros clientes.
+
+Melhoria futura: disponibilizar explicitamente o nome do responsável pelo aceite no contrato, com a política adequada para contexto administrativo e portal. Quando disponível, mostrar o nome e manter o UUID como dado técnico fora da apresentação. Nenhuma busca extra, suposição de identidade ou alteração de layout/API foi implementada nesta checagem.
