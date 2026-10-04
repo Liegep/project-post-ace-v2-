@@ -1,0 +1,20 @@
+export const OPERATION_WORKSPACE = "operation";
+export type MonitoredCountry = { countryCode: string; active: boolean; createdAt: string; updatedAt: string };
+export type EditorialClient = { id: string; name: string; slug: string; countryCodes: string[] };
+export type RadarOccurrence = {
+  id: string;
+  opportunityId: string | null;
+  occurrenceId: string | null;
+  title: string;
+  description: string;
+  categoryCode: string;
+  origin: string;
+  scope: "global" | "countries";
+  countryCodes: string[];
+  date: string;
+  year: number;
+  externalSource: string | null;
+  externalReference: string | null;
+  regionalScope: { nationwide: boolean; subdivisions: string[] } | null;
+};
+export type ExternalWarning = { countryCode: string; year: number; message: string };

@@ -1,0 +1,13 @@
+/* Minimal foundation controls; final editorial redesign is intentionally deferred. */
+.seasonal-foundation details { margin: 1rem 0; padding: 1rem; border: 1px solid var(--line, #dadde7); border-radius: 12px; }
+.seasonal-foundation summary { cursor: pointer; margin-bottom: .8rem; font-weight: 600; }
+.seasonal-controls { display: flex; flex-wrap: wrap; align-items: end; gap: .7rem; margin: .8rem 0; }
+.seasonal-controls label, .seasonal-fields label { display: grid; gap: .35rem; }
+.seasonal-foundation input, .seasonal-foundation select, .seasonal-foundation textarea { padding: .6rem; border: 1px solid var(--line, #dadde7); border-radius: 8px; background: var(--surface, #fff); color: inherit; max-width: 100%; }
+.seasonal-foundation button { padding: .5rem .7rem; border: 1px solid var(--line, #dadde7); border-radius: 8px; cursor: pointer; }
+.seasonal-foundation button:disabled { opacity: .5; cursor: default; }
+.seasonal-country-chips { display: flex; flex-wrap: wrap; gap: .5rem; margin: .7rem 0; }
+.seasonal-country-chips > span { display: inline-flex; gap: .5rem; align-items: center; padding: .3rem .6rem; background: #eff0fa; border-radius: 8px; color: #333650; }
+.seasonal-fields { display: grid; gap: .7rem; }
+.seasonal-foundation .commemorative-list article { flex-wrap: wrap; }
+.seasonal-foundation [role="alert"] { color: #b52a3c; }

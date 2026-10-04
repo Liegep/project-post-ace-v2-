@@ -1,3 +1,4 @@
+import { seasonalRoutes } from "./modules/seasonal/seasonal.routes.js";
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import fastifyFormbody from "@fastify/formbody";
@@ -95,6 +96,7 @@ export async function buildApp() {
     await app.register(proposalRoutes, { prefix: "/api" });
     await app.register(designBriefRoutes, { prefix: "/api" });
     await app.register(dashboardNotesRoutes, { prefix: "/api" });
+    await app.register(seasonalRoutes, { prefix: "/api" });
     await app.register(metaRoutes, { prefix: "/api" });
     await app.register(scheduledCardArchiverPluginRegistered);
 

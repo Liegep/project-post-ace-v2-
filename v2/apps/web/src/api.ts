@@ -1450,3 +1450,40 @@ export async function changeMyPassword(input: { currentPassword: string; newPass
     body: JSON.stringify(input),
   });
 }
+
+// Seasonal radar contracts keep persistent IDs separate from transient provider references.
+export type SeasonalOccurrence = {
+  id: string; opportunityId: string | null; occurrenceId: string | null;
+  title: string; description: string; categoryCode: string; origin: string;
+  scope: "global" | "countries"; countryCodes: string[]; date: string; year: number;
+  externalSource: string | null; externalReference: string | null;
+  regionalScope: { nationwide: boolean; subdivisions: string[] } | null;
+  daysUntil: number; relatedClients: Array<{ id: string; name: string; slug: string }>;
+};
+export type SeasonalMonitor = { countryCode: string; active: boolean; createdAt: string; updatedAt: string };
+export type EditorialMarket = SeasonalMonitor & { confirmedByUserId: string };
+export type SeasonalRadarResult = {
+  items: SeasonalOccurrence[]; total: number; offset: number; limit: number; hasMore: boolean; today: string;
+  warnings: Array<{ countryCode: string; year: number; message: string }>;
+};
+export function loadSeasonalCountries() { return fetchJson<{ countryCodes: string[] }>("/api/seasonal/countries"); }
+export function loadSeasonalMonitor() { return fetchJson<{ items: SeasonalMonitor[]; today: string }>("/api/seasonal/monitored-countries"); }
+export function setSeasonalMonitor(countryCode: string, active: boolean) {
+  return sendJson("/api/seasonal/monitored-countries/" + encodeURIComponent(countryCode), { method: "PUT", body: JSON.stringify({ active }) });
+}
+export function loadSeasonalCategories() { return fetchJson<{ items: Array<{ code: string; label: string }> }>("/api/seasonal/categories"); }
+export function loadEditorialMarkets(clientId: string) {
+  return fetchJson<{ items: EditorialMarket[] }>(`/api/clients/${encodeURIComponent(clientId)}/editorial-markets`);
+}
+export function confirmEditorialMarkets(clientId: string, countryCodes: string[]) {
+  return sendJson(`/api/clients/${encodeURIComponent(clientId)}/editorial-markets`, { method: "PUT", body: JSON.stringify({ countryCodes, confirmed: true }) });
+}
+export function loadSeasonalRadar(input: { from: string; to: string; countryCode?: string; categoryCode?: string; clientId?: string; offset?: number; limit?: number }) {
+  const query = new URLSearchParams();
+  Object.entries(input).forEach(([key, value]) => { if (value !== undefined && value !== "") query.set(key, String(value)); });
+  return fetchJson<SeasonalRadarResult>(`/api/seasonal/radar?${query}`);
+}
+export function createSeasonalOpportunity(input: {
+  title: string; description: string; categoryCode: string; origin: string; scope: "global" | "countries"; countryCodes: string[];
+  occurrences: Array<{ date: string; countryCodes?: string[] }>;
+}) { return sendJson<{ id: string }>("/api/seasonal/opportunities", { method: "POST", body: JSON.stringify(input) }); }
