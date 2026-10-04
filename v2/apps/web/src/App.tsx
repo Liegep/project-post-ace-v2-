@@ -1,8 +1,8 @@
+import { SeasonalWorkspace, SeasonalDashboardWidget } from "./SeasonalWorkspace";
 import { ContractsWorkspace, ContractAcceptanceGate } from "./ContractsWorkspace";
 import { ProposalsWorkspace } from "./ProposalsWorkspace";
 import { ProposalClientPreview, getProposalLocale } from "./proposalPresentation";
 import { printWhenImagesReady } from "./printDocument";
-import { commemorativeAlerts, daysUntilDate } from "./commemorativeAlerts";
 import { DashboardMetrics } from "./DashboardMetrics";
 import { MetaPreflightPanel } from "./MetaPreflightPanel";
 import { PortalAccountPicker } from "./PortalAccountPicker";
@@ -1955,200 +1955,6 @@ function DashboardRoutePage({ session, onLogout }: { session: SessionUser | null
   return <DashboardPage session={session} onLogout={onLogout} />;
 }
 
-type CommemorativeHoliday = {
-  id: string;
-  date: string;
-  name: string;
-  localName: string;
-  countryCode: string;
-  countryName: string;
-};
-
-type CommemorativeCountry = { countryCode: string; name: string };
-
-const COMMEMORATIVE_COUNTRIES_KEY = "designhub-v2-commemorative-countries";
-const DEFAULT_COMMEMORATIVE_COUNTRIES: string[] = [];
-const COMMON_COMMEMORATIVE_COUNTRIES: CommemorativeCountry[] = [
-  { countryCode: "BR", name: "Brasil" },
-  { countryCode: "PT", name: "Portugal" },
-  { countryCode: "IT", name: "Itália" },
-  { countryCode: "ES", name: "Espanha" },
-  { countryCode: "FR", name: "França" },
-  { countryCode: "US", name: "Estados Unidos" },
-  { countryCode: "GB", name: "Reino Unido" },
-  { countryCode: "DE", name: "Alemanha" },
-  { countryCode: "AR", name: "Argentina" },
-  { countryCode: "CL", name: "Chile" },
-  { countryCode: "MX", name: "México" },
-];
-
-function readCommemorativeCountries() {
-  try {
-    const saved = JSON.parse(window.localStorage.getItem(COMMEMORATIVE_COUNTRIES_KEY) ?? "null");
-    return Array.isArray(saved) && saved.every((item) => typeof item === "string")
-      ? saved as string[]
-      : DEFAULT_COMMEMORATIVE_COUNTRIES;
-  } catch {
-    return DEFAULT_COMMEMORATIVE_COUNTRIES;
-  }
-}
-
-async function loadCommemorativeCountries() {
-  const response = await fetch("https://date.nager.at/api/v3/AvailableCountries");
-  if (!response.ok) throw new Error("Não foi possível carregar a lista de países.");
-  const countries = await response.json() as CommemorativeCountry[];
-  return countries.sort((left, right) => left.name.localeCompare(right.name, "pt-BR"));
-}
-
-async function loadCommemorativeHolidays(year: number, countryCodes: string[], countryDirectory = COMMON_COMMEMORATIVE_COUNTRIES) {
-  const results = await Promise.all(countryCodes.map(async (countryCode) => {
-    const response = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${year}/${countryCode}`);
-    if (!response.ok) throw new Error("Não foi possível carregar as datas comemorativas.");
-    const holidays = await response.json() as Array<{ date: string; name: string; localName: string; global: boolean; types?: string[] }>;
-    const countryName = countryDirectory.find((country) => country.countryCode === countryCode)?.name ?? countryCode;
-    return holidays.map((holiday) => ({
-      id: `${countryCode}-${holiday.date}-${holiday.name}`,
-      date: holiday.date,
-      name: holiday.name,
-      localName: holiday.localName || holiday.name,
-      countryCode,
-      countryName,
-    }));
-  }));
-  return results.flat().sort((left, right) => left.date.localeCompare(right.date));
-}
-
-function formatCommemorativeDate(date: string) {
-  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "long" }).format(new Date(`${date}T12:00:00`));
-}
-
-function DashboardCommemorativeWidget({ clients }: { clients: AdminClientOption[] }) {
-  const [holidays, setHolidays] = useState<CommemorativeHoliday[]>([]);
-  const [today, setToday] = useState(() => new Date());
-  const [selectedHoliday, setSelectedHoliday] = useState<CommemorativeHoliday | null>(null);
-  const [selectedClientSlug, setSelectedClientSlug] = useState(clients[0]?.slug ?? "");
-  const [saving, setSaving] = useState(false);
-  const [createdIds, setCreatedIds] = useState<string[]>([]);
-
-  useEffect(() => {
-    setSelectedClientSlug((current) => current || clients[0]?.slug || "");
-  }, [clients]);
-
-  useEffect(() => {
-    // Keep the alert accurate when the dashboard stays open across midnight.
-    const timer = window.setInterval(() => setToday(new Date()), 60_000);
-    return () => window.clearInterval(timer);
-  }, []);
-
-  const year = today.getFullYear();
-  const windowEnd = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 4);
-  const lastYear = windowEnd.getFullYear();
-  useEffect(() => {
-    let active = true;
-    const countryCodes = readCommemorativeCountries();
-    const years = year === lastYear ? [year] : [year, lastYear];
-    Promise.all(years.map((value) => loadCommemorativeHolidays(value, countryCodes)))
-      .then((items) => { if (active) setHolidays(items.flat()); })
-      .catch(() => { if (active) setHolidays([]); });
-    return () => { active = false; };
-  }, [year, lastYear]);
-
-  const alerts = commemorativeAlerts(holidays, today);
-
-  const createPauta = async () => {
-    if (!selectedHoliday || !selectedClientSlug || saving) return;
-    setSaving(true);
-    try {
-      await createAdminCardBySlug(selectedClientSlug, {
-        columnId: null,
-        title: `${selectedHoliday.localName} · ${selectedHoliday.countryName}`,
-        caption: `Sugestão de pauta para a data comemorativa de ${formatCommemorativeDate(selectedHoliday.date)}. Criar conteúdo relacionado para aprovação do cliente.`,
-        primaryMediaUrl: null,
-        externalLinkUrl: null,
-        artType: "Post",
-        status: ["Entrada"],
-        tags: ["Data comemorativa"],
-        clientLabel: "Pendente",
-        isBriefApproval: true,
-        deadlineAt: selectedHoliday.date,
-      });
-      setCreatedIds((current) => [...current, `${selectedHoliday.id}-${selectedClientSlug}`]);
-      setSelectedHoliday(null);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (alerts.holidays.length === 0) return null;
-  return <>
-    <section className="dashboard-tasks-widget commemorative-dashboard-widget">
-      <header><div><span className="dashboard-task-icon">✦</span><h3>Datas comemorativas</h3></div><span className="dashboard-task-count">{alerts.badge}</span></header>
-      <div className="dashboard-task-rows">
-        {alerts.holidays.map((holiday) => {
-          const isCreated = createdIds.some((id) => id.startsWith(`${holiday.id}-`));
-          return <article key={holiday.id}>
-            <span className="dashboard-task-dot commemorative-dot" />
-            <time className="commemorative-date-box" dateTime={holiday.date}>
-              <strong>{new Intl.DateTimeFormat("pt-BR", { day: "2-digit" }).format(new Date(`${holiday.date}T12:00:00`))}</strong>
-              <small>{new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(new Date(`${holiday.date}T12:00:00`)).replace(".", "")}</small>
-            </time>
-            <div className="commemorative-event-copy"><strong>{holiday.localName}</strong><small>{holiday.countryName}</small></div>
-            <button className="dashboard-brief-button" disabled={isCreated || clients.length === 0} onClick={() => setSelectedHoliday(holiday)}>{isCreated ? "Pauta criada" : "Virar pauta"}</button>
-          </article>;
-        })}
-      </div>
-      <NavLink to="/area/datas-comemorativas" className="dashboard-task-link">Gerenciar monitoramento <span>→</span></NavLink>
-    </section>
-    {selectedHoliday ? <div className="modal-backdrop" onClick={() => setSelectedHoliday(null)}><section className="commemorative-pauta-modal" onClick={(event) => event.stopPropagation()}>
-      <header><div><p className="eyebrow">Nova pauta</p><h3>{selectedHoliday.localName}</h3></div><button className="icon-close" onClick={() => setSelectedHoliday(null)}>×</button></header>
-      <p>{selectedHoliday.countryName} · {formatCommemorativeDate(selectedHoliday.date)}</p>
-      <label className="field-stack">Cliente<select value={selectedClientSlug} onChange={(event) => setSelectedClientSlug(event.target.value)}>{clients.map((client) => <option key={client.slug} value={client.slug}>{client.name}</option>)}</select></label>
-      <small>A pauta será criada como pendente, pronta para o cliente aprovar no Kanban.</small>
-      <footer><button className="drawer-secondary-action" onClick={() => setSelectedHoliday(null)}>Cancelar</button><button className="gradient-button" disabled={saving || !selectedClientSlug} onClick={() => void createPauta()}>{saving ? "Criando..." : "Criar pauta para aprovação"}</button></footer>
-    </section></div> : null}
-  </>;
-}
-
-function CommemorativeDatesWorkspace() {
-  const [selectedCodes, setSelectedCodes] = useState<string[]>(readCommemorativeCountries);
-  const [countries, setCountries] = useState<CommemorativeCountry[]>(COMMON_COMMEMORATIVE_COUNTRIES);
-  const [holidays, setHolidays] = useState<CommemorativeHoliday[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [query, setQuery] = useState("");
-
-  useEffect(() => {
-    loadCommemorativeCountries().then(setCountries).catch(() => setCountries(COMMON_COMMEMORATIVE_COUNTRIES));
-  }, []);
-
-  useEffect(() => {
-    window.localStorage.setItem(COMMEMORATIVE_COUNTRIES_KEY, JSON.stringify(selectedCodes));
-    let active = true;
-    setLoading(true); setError("");
-    loadCommemorativeHolidays(new Date().getFullYear(), selectedCodes, countries)
-      .then((items) => { if (active) setHolidays(items.filter((item) => daysUntilDate(item.date) >= 0)); })
-      .catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : "Não foi possível carregar as datas."); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [selectedCodes, countries]);
-
-  const addCountry = (countryCode: string) => setSelectedCodes((current) => current.includes(countryCode) ? current : [...current, countryCode]);
-  const removeCountry = (countryCode: string) => setSelectedCodes((current) => current.filter((code) => code !== countryCode));
-  const normalizedQuery = query.trim().toLocaleLowerCase("pt-BR");
-  const countryResults = normalizedQuery
-    ? countries.filter((country) => `${country.name} ${country.countryCode}`.toLocaleLowerCase("pt-BR").includes(normalizedQuery)).slice(0, 12)
-    : [];
-  const monitoredCountries = countries.filter((country) => selectedCodes.includes(country.countryCode));
-
-  return <section className="commemorative-workspace glass">
-    <div className="commemorative-workspace-head"><div><p className="eyebrow">Monitoramento</p><h2>Encontre os países que quer acompanhar</h2><p>Busque um país e adicione-o. O dashboard avisa quatro dias antes para você transformar a oportunidade em pauta.</p></div><span className="commemorative-monitor-count">{selectedCodes.length} {selectedCodes.length === 1 ? "país monitorado" : "países monitorados"}</span></div>
-    <div className="commemorative-country-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar país para adicionar..." aria-label="Buscar país para adicionar" /><span>{loading ? "Atualizando datas..." : `${holidays.length} próximas datas`}</span></div>
-    {normalizedQuery ? <div className="commemorative-search-results">{countryResults.length ? countryResults.map((country) => { const active = selectedCodes.includes(country.countryCode); return <div key={country.countryCode} className="commemorative-search-result"><span>{country.countryCode}</span><strong>{country.name}</strong><button className={active ? "monitored" : ""} disabled={active} onClick={() => addCountry(country.countryCode)}>{active ? "Monitorando" : "Adicionar"}</button></div>; }) : <p className="commemorative-empty">Nenhum país encontrado.</p>}</div> : null}
-    <div className="commemorative-monitored"><header><h3>Países monitorados</h3><span>Adicione apenas os que você selecionar na busca</span></header>{monitoredCountries.length ? <div className="commemorative-monitored-list">{monitoredCountries.map((country) => <div key={country.countryCode} className="commemorative-monitored-chip"><span>{country.countryCode}</span><strong>{country.name}</strong><button onClick={() => removeCountry(country.countryCode)} aria-label={`Remover ${country.name}`}>×</button></div>)}</div> : <p className="commemorative-empty">Nenhum país monitorado. Use a busca acima para adicionar.</p>}</div>
-    {error ? <p className="form-feedback error-text">{error}</p> : null}
-    <div className="commemorative-list"><header><h3>Próximas datas monitoradas</h3><span>O aviso aparece no dashboard 4 dias antes</span></header>{holidays.length ? holidays.slice(0, 24).map((holiday) => <article key={holiday.id}><time>{formatCommemorativeDate(holiday.date)}</time><div><strong>{holiday.localName}</strong><span>{holiday.countryName}</span></div><em>{daysUntilDate(holiday.date)} dias</em></article>) : <p className="commemorative-empty">Nenhuma data encontrada para os países selecionados.</p>}</div>
-  </section>;
-}
 
 type InternalApprovalRecord = { id: string; cardId: string; clientSlug?: string; cardTitle: string; recipients: string[]; message: string; createdAt: string };
 const INTERNAL_APPROVALS_STORAGE_KEY = "designhub-v2-internal-approvals";
@@ -2612,7 +2418,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
                 .sort((a, b) => new Date(a.startsAt).getTime() - new Date(b.startsAt).getTime()))}
               onDeleted={(eventId) => setAgendaToday((current) => current.filter((event) => event.id !== eventId))}
             /> : null}
-            <DashboardCommemorativeWidget clients={clients} />
+            <SeasonalDashboardWidget clients={clients} />
             {postsToday.length > 0 ? <DashboardTodayPostsWidget items={postsToday} /> : null}
             {approvedPautas.length > 0 ? <DashboardApprovedPautasWidget items={approvedPautas} userId={session.id} /> : null}
             {clientActivities.length > 0 ? <DashboardClientActivitiesWidget items={clientActivities} userId={session.id} onSchedule={setScheduleActivity} /> : null}
@@ -9999,7 +9805,7 @@ function InternalAreaPage({ session, onLogout }: { session: SessionUser | null; 
   if (area === "publicacoes-meta" && session.role !== "super_admin") return <Navigate to="/dashboard" replace />;
   if (!page || (page.restricted && session.role === "collaborator")) return <Navigate to="/dashboard" replace />;
   const metrics: PageMetric[] = [];
-  const content = area === "relatorios" ? <ReportsWorkspace newReportSignal={reportCreationVersion} /> : area === "faturamento" ? <BillingWorkspace session={session} newInvoiceSignal={invoiceCreationVersion} /> : area === "controle-de-tempo" ? <TimeTrackingWorkspace /> : area === "propostas" ? <ProposalsWorkspace newProposalSignal={proposalCreationVersion} brandLogo={liegePaschoaliniLogo} /> : area === "contratos" ? <ContractsWorkspace newContractSignal={contractCreationVersion} /> : area === "equipe" ? <TeamManagementWorkspace session={session} newMemberSignal={memberCreationVersion} /> : area === "datas-comemorativas" ? <CommemorativeDatesWorkspace /> : area === "calendario-social" ? <SocialCalendarWorkspace session={session} /> : area === "publicacoes-meta" ? <MetaPublicationsWorkspace /> : area === "briefs-design" ? <DesignBriefsWorkspace /> : <section className="internal-area-card glass"><div className="internal-area-empty"><UiIcon name="spark" /><strong>Esta página é privada para o seu nível de acesso.</strong><span>O conteúdo desta área será organizado aqui.</span></div></section>;
+  const content = area === "relatorios" ? <ReportsWorkspace newReportSignal={reportCreationVersion} /> : area === "faturamento" ? <BillingWorkspace session={session} newInvoiceSignal={invoiceCreationVersion} /> : area === "controle-de-tempo" ? <TimeTrackingWorkspace /> : area === "propostas" ? <ProposalsWorkspace newProposalSignal={proposalCreationVersion} brandLogo={liegePaschoaliniLogo} /> : area === "contratos" ? <ContractsWorkspace newContractSignal={contractCreationVersion} /> : area === "equipe" ? <TeamManagementWorkspace session={session} newMemberSignal={memberCreationVersion} /> : area === "datas-comemorativas" ? <SeasonalWorkspace session={session} /> : area === "calendario-social" ? <SocialCalendarWorkspace session={session} /> : area === "publicacoes-meta" ? <MetaPublicationsWorkspace /> : area === "briefs-design" ? <DesignBriefsWorkspace /> : <section className="internal-area-card glass"><div className="internal-area-empty"><UiIcon name="spark" /><strong>Esta página é privada para o seu nível de acesso.</strong><span>O conteúdo desta área será organizado aqui.</span></div></section>;
   const action = area === "publicacoes-meta" ? <MetaConnectionHeaderCards /> : area === "relatorios" ? <button className="gradient-button page-context-action" onClick={() => setReportCreationVersion((current) => current + 1)}>+ Novo relatório</button> : area === "faturamento" ? <button className="gradient-button page-context-action" onClick={() => setInvoiceCreationVersion((current) => current + 1)}>+ Nova fatura</button> : area === "propostas" ? <button className="gradient-button page-context-action" onClick={() => setProposalCreationVersion((current) => current + 1)}>+ Nova proposta</button> : area === "contratos" ? <button className="gradient-button page-context-action" onClick={() => setContractCreationVersion((current) => current + 1)}>+ Novo contrato</button> : area === "equipe" && session.role === "super_admin" ? <button className="gradient-button page-context-action" onClick={() => setMemberCreationVersion((current) => current + 1)}>+ Novo membro</button> : null;
   const titleIcon = area === "equipe" ? <UiIcon name="users" /> : area === "briefs-design" ? <UiIcon name="brush" /> : area === "relatorios" ? <UiIcon name="file" /> : area === "faturamento" ? <UiIcon name="receipt" /> : area === "controle-de-tempo" ? <UiIcon name="clock" /> : area === "propostas" ? <UiIcon name="send" /> : area === "contratos" ? <UiIcon name="check" /> : area === "calendario-social" ? <UiIcon name="calendar" /> : area === "publicacoes-meta" ? <UiIcon name="layers" /> : area === "datas-comemorativas" ? <UiIcon name="spark" /> : undefined;
   return <div className="page-grid admin-layout internal-area-layout"><AdminRail session={session} /><main className="main-column"><WorkspaceNavbar session={session} onLogout={onLogout} />{area !== "controle-de-tempo" && area !== "faturamento" ? <PageContextBanner eyebrow="Área da operação" title={page.title} description={page.description} metrics={metrics} action={action} titleClassName={["relatorios", "faturamento", "propostas", "equipe", "calendario-social", "publicacoes-meta", "briefs-design", "datas-comemorativas", "contratos"].includes(area) ? "billing-banner-title" : undefined} titleIcon={titleIcon} /> : null}{content}</main></div>;
