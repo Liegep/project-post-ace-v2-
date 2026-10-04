@@ -1,0 +1,12 @@
+import React from 'react';
+import { createRoot } from 'react-dom/client';
+import { HashRouter } from 'react-router-dom';
+import { App } from '../src/App';
+import '../src/styles.css';
+import { seasonalFixture } from './seasonalFixtures';
+const scenario=new URLSearchParams(window.location.search).get('scenario')??'populated';
+window.fetch=seasonalFixture(scenario).fetch;
+localStorage.setItem('designhub-v2-access-token','local-preview-only');
+localStorage.setItem('designhub-v2-session',JSON.stringify({id:'preview-user',name:'Revisão visual',email:'preview@invalid.test',password:'',role:'super_admin',assignedAdminSlugs:[],assignedPortalSlugs:[],locale:'pt',source:'api',accessToken:'local-preview-only'}));
+window.location.hash='/area/datas-comemorativas';
+createRoot(document.getElementById('root')!).render(<React.StrictMode><HashRouter><App/></HashRouter></React.StrictMode>);
