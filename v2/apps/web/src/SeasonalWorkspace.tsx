@@ -193,6 +193,12 @@ export function SeasonalDashboardWidget({ clients }: { clients: AdminClientOptio
   const [items, setItems] = useState<SeasonalOccurrence[]>([]); const [error, setError] = useState("");
   const [selected, setSelected] = useState<SeasonalOccurrence | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const [categories, setCategories] = useState<Category[]>([]);
+  useEffect(() => {
+    let active = true;
+    loadSeasonalCategories().then((data) => { if (active) setCategories(data.items); }).catch(() => {});
+    return () => { active = false; };
+  }, []);
   useEffect(() => {
     const timer = window.setInterval(() => setRefresh((value) => value + 1), 60_000);
     return () => window.clearInterval(timer);
@@ -204,8 +210,13 @@ export function SeasonalDashboardWidget({ clients }: { clients: AdminClientOptio
     return () => { active = false; };
   }, [refresh]);
   if (!items.length && !error) return null;
-  return <><section className="dashboard-tasks-widget commemorative-dashboard-widget"><header><h3>Datas comemorativas</h3><span>{items.length ? seasonalDaysLabel(Math.min(...items.map((item) => item.daysUntil))) : ""}</span></header>
-    {error ? <p role="status">Não foi possível carregar as oportunidades.</p> : <div className="dashboard-task-rows">{items.map((item) => <article key={item.id}><span className="dashboard-task-dot commemorative-dot" /><time className="commemorative-date-box" dateTime={item.date}>{formatSeasonalDate(item.date)}</time><div><strong>{item.title}</strong><small>{item.scope === "global" ? "Global" : item.countryCodes.map((code) => countryName(code)).join(", ")}</small></div><button disabled={!clients.length} onClick={() => setSelected(item)}>Criar pauta</button></article>)}</div>}
-    <NavLink to="/area/datas-comemorativas" className="dashboard-task-link">Gerenciar monitoramento →</NavLink></section>
+  const ordered = orderSeasonalOccurrences(items);
+  return <><section className="dashboard-tasks-widget commemorative-dashboard-widget seasonal-dashboard" aria-label="Datas comemorativas"><header><h3>Datas comemorativas</h3><span className="seasonal-widget-period">{items.length ? seasonalDaysLabel(ordered[0].daysUntil) : ""}</span></header>
+    {error ? <p role="status">Não foi possível carregar as oportunidades.</p> : <div className="seasonal-widget-list">{ordered.slice(0, 3).map((item) => <article className="seasonal-widget-row" key={item.id}>
+      <time className="seasonal-widget-date" dateTime={item.date} aria-label={formatSeasonalDate(item.date)}><strong>{item.date.slice(8, 10)}</strong><small>{new Intl.DateTimeFormat("pt-BR", { month: "short", timeZone: "UTC" }).format(new Date(`${item.date}T00:00:00Z`)).replace(".", "")}</small></time>
+      <div className="seasonal-widget-copy"><h4>{item.title}</h4><p><span>{item.scope === "global" ? "Global" : item.countryCodes.map((code) => countryName(code)).join(" · ")}</span><span className="seasonal-widget-category">{categories.find((category) => category.code === item.categoryCode)?.label ?? item.categoryCode}</span></p></div>
+      <button className="seasonal-widget-cta" disabled={!clients.length} onClick={() => setSelected(item)}>Criar pauta</button>
+    </article>)}</div>}
+    <footer className="seasonal-widget-footer"><NavLink to="/area/datas-comemorativas">Gerenciar monitoramento →</NavLink>{items.length > 3 ? <NavLink to="/area/datas-comemorativas">Ver todas →</NavLink> : null}</footer></section>
     {selected ? <SeasonalPautaDialog item={selected} clients={clients} onClose={() => setSelected(null)} /> : null}</>;
 }

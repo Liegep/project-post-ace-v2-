@@ -10,3 +10,27 @@
 @media(prefers-reduced-motion:reduce){.radar-loading>span{animation:none}}
 
 @media(forced-colors:active){.radar-field select{appearance:auto;-webkit-appearance:auto;background-image:none}}
+
+/* Independent row layout: generic Dashboard task grids must not size these dates. */
+.seasonal-dashboard{container-type:inline-size;min-width:0;color:var(--ink-strong)}
+.seasonal-dashboard>header{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.seasonal-dashboard>header h3{margin:0;min-width:0}
+.seasonal-widget-period{flex-shrink:0;color:var(--ink-soft);font-size:.7rem;font-weight:600}
+.seasonal-widget-list{display:grid;gap:10px}
+.seasonal-widget-row{display:grid;grid-template-columns:58px minmax(0,1fr) auto;align-items:center;gap:12px;padding:12px;border:1px solid var(--line-soft);border-radius:14px;background:var(--panel-soft);min-width:0}
+.seasonal-widget-date{box-sizing:border-box;display:grid;align-content:center;justify-items:center;width:58px;min-height:58px;gap:4px;border-radius:12px;background:#f0edff;color:#6253cd;flex-shrink:0}
+.seasonal-widget-date strong{font-size:1.25rem;line-height:1;font-variant-numeric:tabular-nums}
+.seasonal-widget-date small{font-size:.62rem;line-height:1;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.seasonal-widget-copy{min-width:0}
+.seasonal-widget-copy h4{margin:0;color:var(--ink-strong);font-size:.82rem;line-height:1.4;overflow-wrap:anywhere;font-weight:600!important}
+.seasonal-widget-copy p{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 7px;margin:5px 0 0;color:var(--ink-soft);font-size:.7rem;line-height:1.5;overflow-wrap:anywhere}
+.seasonal-widget-category{font-size:.65rem}
+.seasonal-widget-category::before{content:"·";margin-right:7px}
+.seasonal-widget-cta{min-height:34px;padding:8px 12px;border:0;border-radius:10px;background:var(--accent-gradient);color:#fff;font:inherit;font-size:.7rem;font-weight:650;white-space:nowrap;cursor:pointer;box-shadow:var(--shadow-card)}
+.seasonal-widget-cta:hover{filter:brightness(1.05)}
+.seasonal-widget-cta:disabled{opacity:.5;cursor:default}
+.seasonal-widget-cta:focus-visible,.seasonal-widget-footer a:focus-visible{outline:3px solid #a79be3;outline-offset:3px}
+.seasonal-widget-footer{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 16px;margin-top:12px}
+.seasonal-widget-footer a{display:inline-flex;align-items:center;min-height:32px;color:#6253cd;font-size:.7rem;font-weight:600;text-decoration:none}
+.seasonal-widget-footer a:hover{text-decoration:underline}
+@container(max-width:360px){.seasonal-widget-row{grid-template-columns:58px minmax(0,1fr);align-items:start}.seasonal-widget-cta{grid-column:2;justify-self:start}.seasonal-widget-date{grid-row:1 / span 2}}
