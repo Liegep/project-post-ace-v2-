@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "preview": "vite preview",
+    "test:seasonal": "tsx --test tests/seasonalWorkspace.test.tsx",
     "check": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
