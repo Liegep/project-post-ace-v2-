@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import React, { act } from 'react';
+import { MemoryRouter } from 'react-router-dom';
 import { createRoot } from 'react-dom/client';
 import { Simulate } from 'react-dom/test-utils';
 import { JSDOM } from 'jsdom';
@@ -29,7 +30,7 @@ test('seasonal radar uses existing APIs and explicit editorial markets', async(t
  const server=await createServer({root:path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),server:{middlewareMode:true,hmr:false}});
  let root=createRoot(document.getElementById('root')!);
  let fixture=seasonalFixture();globalThis.fetch=fixture.fetch;
- const {SeasonalWorkspace}=await server.ssrLoadModule('/src/SeasonalWorkspace.tsx');
+ const {SeasonalWorkspace,SeasonalDashboardWidget}=await server.ssrLoadModule('/src/SeasonalWorkspace.tsx');
  const session={id:'preview-user',role:'super_admin',name:'Revisão visual'};
  const flush=async()=>{await act(async()=>{await new Promise(r=>setTimeout(r,25));});};
  const text=()=>document.body.textContent!;
@@ -118,6 +119,23 @@ test('seasonal radar uses existing APIs and explicit editorial markets', async(t
    const dialog=document.querySelector<HTMLElement>('[role=dialog]')!;assert.equal(document.activeElement,dialog);
    await act(async()=>dialog.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true})));assert.equal(document.activeElement,button('Fechar Gerenciar países'));
    await act(async()=>dialog.dispatchEvent(new dom.window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})));assert.equal(document.querySelector('[role=dialog]'),null);assert.equal(document.body.style.overflow,'');assert.ok(!document.getElementById('root')!.hasAttribute('inert'));assert.equal(document.activeElement,opener);
+  });
+  await t.test('dashboard caps same-day opportunities at three with stable dates, scope and existing pauta flow',async()=>{
+   await act(async()=>root.unmount());root=createRoot(document.getElementById('root')!);fixture=seasonalFixture('widget');globalThis.fetch=fixture.fetch;
+   await act(async()=>root.render(<MemoryRouter><SeasonalDashboardWidget clients={[{id:'client-a',slug:'estudio-aurora',name:'Estúdio Aurora'}]}/></MemoryRouter>));await flush();
+   assert.equal(document.querySelectorAll('.seasonal-widget-row').length,3);
+   assert.equal(document.querySelector('.seasonal-widget-period')!.textContent,'Hoje');
+   assert.match(document.querySelector('.seasonal-widget-date')!.textContent!,/04out/i);
+   assert.match(text(),/Itália/);assert.match(text(),/Feriado/);assert.match(text(),/Global/);
+   assert.equal([...document.querySelectorAll('a')].find(x=>x.textContent==='Ver todas →')?.getAttribute('href'),'/area/datas-comemorativas');
+   assert.match(text(),/Gerenciar monitoramento →/);
+   await click('Criar pauta');assert.ok(document.querySelector('[role=dialog]'));assert.equal(button('Criar pauta pendente').disabled,true);
+   await change('.radar-dialog select','estudio-aurora');await click('Criar pauta pendente');
+   const post=fixture.calls.find(x=>x.method==='POST')!;assert.equal(post.path,'/api/clients/client-a/cards');assert.equal(post.body.isBriefApproval,true);assert.equal(post.body.clientLabel,'Pendente');assert.equal(post.body.deadlineAt,'2026-10-04');
+   await act(async()=>root.unmount());root=createRoot(document.getElementById('root')!);fixture.records.splice(1);fixture.records[0].date='2026-10-05';fixture.records[0].daysUntil=1;
+   await act(async()=>root.render(<MemoryRouter><SeasonalDashboardWidget clients={[]}/></MemoryRouter>));await flush();
+   assert.equal(document.querySelector('.seasonal-widget-period')!.textContent,'Amanhã');assert.equal(document.querySelectorAll('.seasonal-widget-row').length,1);assert.equal(button('Criar pauta').disabled,true);assert.ok(![...document.querySelectorAll('a')].some(x=>x.textContent==='Ver todas →'));
+   await mount('populated');
   });
   await t.test('read-only collaborator cannot change management settings',async()=>{
    await mount('populated','colaborador');assert.equal(button('◎ Gerenciar países'),undefined);assert.equal(button('+ Cadastrar oportunidade'),undefined);assert.equal(fixture.calls.filter(x=>x.method!=='GET').length,0);
