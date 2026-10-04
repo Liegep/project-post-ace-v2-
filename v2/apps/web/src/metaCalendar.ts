@@ -61,13 +61,13 @@ function metaTitle(publication: MetaScheduledPublication) {
     || "Publicação Meta";
 }
 
-export function composeClientMetaCalendarEvents(internalPosts: CalendarEvent[], metaPublications: MetaScheduledPublication[]) {
+export function composeClientMetaCalendarEvents(internalPosts: CalendarEvent[], metaPublications: MetaScheduledPublication[], options: { includeCancelled?: boolean; combineDestinations?: boolean } = {}) {
   const events = new Map<string, ClientMetaCalendarEvent>();
 
   internalPosts.forEach((post) => {
     const instant = internalPostDate(post);
     if (!instant) return;
-    const key = minuteKey(post.cardId ?? null, instant, post.id);
+    const key = minuteKey(post.cardId ?? null, instant, `internal:${post.id}`);
     events.set(key, {
       id: `internal:${post.id}:${Math.floor(instant.getTime() / 60_000)}`,
       cardId: post.cardId ?? null,
@@ -84,7 +84,7 @@ export function composeClientMetaCalendarEvents(internalPosts: CalendarEvent[], 
   });
 
   const groups = new Map<string, MetaScheduledPublication[]>();
-  metaPublications.filter((publication) => publication.status !== "cancelled").forEach((publication) => {
+  metaPublications.filter((publication) => options.includeCancelled || publication.status !== "cancelled").forEach((publication) => {
     const instant = validDate(publication.scheduledAt);
     if (!instant) return;
     const key = minuteKey(publication.cardId, instant, publication.id);
@@ -97,6 +97,8 @@ export function composeClientMetaCalendarEvents(internalPosts: CalendarEvent[], 
       const destinationKey = publication.destinationId ?? "legacy";
       destinationGroups.set(destinationKey, [...(destinationGroups.get(destinationKey) ?? []), publication]);
     });
+    const sharedInternal = options.combineDestinations && destinationGroups.size > 1 ? events.get(key) : undefined;
+    if (sharedInternal) events.delete(key);
     destinationGroups.forEach((destinationPublications, destinationKey) => {
       const first = destinationPublications[0];
       const platforms = platformSummary(destinationPublications);
@@ -118,7 +120,8 @@ export function composeClientMetaCalendarEvents(internalPosts: CalendarEvent[], 
         cardId: first.cardId,
         title: metaTitle(first),
         scheduledAt: first.scheduledAt,
-        source: "meta",
+        source: sharedInternal ? "combined" : "meta",
+        color: sharedInternal?.color,
         imageUrl: first.reelCoverUrl || first.mediaUrls[0] || first.mediaUrl || undefined,
         details: first.caption?.trim() || undefined,
         destinationId: first.destinationId,

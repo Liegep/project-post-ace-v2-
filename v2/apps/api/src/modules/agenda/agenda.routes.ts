@@ -1,3 +1,4 @@
+import { agendaInterval, agendaInInterval } from "./agenda.interval.js";
 import crypto from "node:crypto";
 import type { FastifyPluginAsync } from "fastify";
 import type { RowDataPacket } from "mysql2/promise";
@@ -8,13 +9,14 @@ import {
   listAgendaEventsSchema,
   updateAgendaEventSchema,
 } from "./agenda.schemas.js";
-import { zonedWallClockToIso } from "../../lib/zoned-date-time.js";
+import { validTimeZone, zonedWallClockToIso } from "../../lib/zoned-date-time.js";
 import { normalizeMeetLink } from "./agenda.meet-link.js";
 
 type AgendaRow = RowDataPacket & {
   startsAt: string;
   endsAt: string | null;
   eventTimeZone: string | null;
+  recurrenceType: string;
 };
 
 function toSqlDateTimeBoundary(value: string) {
@@ -26,9 +28,9 @@ function toSqlDateTimeBoundary(value: string) {
 function serializeAgendaRows(rows: AgendaRow[], fallbackTimeZone: string) {
   return rows.map((row) => ({
     ...row,
-    startsAt: zonedWallClockToIso(row.startsAt, row.eventTimeZone || fallbackTimeZone),
-    endsAt: zonedWallClockToIso(row.endsAt, row.eventTimeZone || fallbackTimeZone),
-    timeZone: row.eventTimeZone || fallbackTimeZone,
+    startsAt: zonedWallClockToIso(row.startsAt, validTimeZone(row.eventTimeZone, fallbackTimeZone)),
+    endsAt: zonedWallClockToIso(row.endsAt, validTimeZone(row.eventTimeZone, fallbackTimeZone)),
+    timeZone: validTimeZone(row.eventTimeZone, fallbackTimeZone),
     eventTimeZone: undefined,
   }));
 }
@@ -64,8 +66,10 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
     const auth = request.auth!;
     const scope = getClientScope(auth.user.globalRole, auth.user.id, auth.memberships);
 
-    const to = toSqlDateTimeBoundary(query.to);
-    const from = toSqlDateTimeBoundary(query.from);
+    let interval: { from: string; to: string };
+    try { interval = agendaInterval(query.from, query.to, app.appEnv.APP_TIMEZONE); } catch { throw app.httpErrors.badRequest("Intervalo inválido."); }
+    const to = toSqlDateTimeBoundary(interval.to);
+    const from = toSqlDateTimeBoundary(interval.from);
 
     if (scope.mode === "scoped" && scope.clientIds.length === 0) {
       return { items: [] };
@@ -84,7 +88,12 @@ export const agendaRoutes: FastifyPluginAsync = async (app) => {
       params,
     );
 
-    return { items: serializeAgendaRows(rows, app.appEnv.APP_TIMEZONE) };
+    return {
+      items: serializeAgendaRows(rows, app.appEnv.APP_TIMEZONE).filter((row) => {
+        const recurring = row.recurrenceType !== "none";
+        return recurring || Boolean(row.startsAt && agendaInInterval(row.startsAt, interval));
+      }),
+    };
   });
 
   app.get("/portal/accounts/:clientAccountId/appointments", async (request) => {

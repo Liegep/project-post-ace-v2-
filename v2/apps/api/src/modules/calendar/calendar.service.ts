@@ -5,19 +5,23 @@ import { findClientAccountById } from "../clients/clients.repository.js";
 import { listCalendarEvents } from "./calendar.repository.js";
 import type { CalendarQueryInput } from "./calendar.schemas.js";
 
-const TODAY = "2026-08-20";
+export function calendarToday(timeZone: string, now = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+  const part = (type: string) => parts.find((item) => item.type === type)!.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
 
-function normalizeCalendarRange(query: CalendarQueryInput) {
+function normalizeCalendarRange(query: CalendarQueryInput, today: string) {
   return {
-    from: query.from ?? TODAY,
+    from: query.from ?? today,
     to: query.to,
     status: query.status,
   };
 }
 
-function buildCalendarMeta(events: Awaited<ReturnType<typeof listCalendarEvents>>) {
-  const upcoming = events.filter((event) => event.publishDate >= TODAY).length;
-  const past = events.filter((event) => event.publishDate < TODAY).length;
+function buildCalendarMeta(events: Awaited<ReturnType<typeof listCalendarEvents>>, today: string) {
+  const upcoming = events.filter((event) => event.publishDate >= today).length;
+  const past = events.filter((event) => event.publishDate < today).length;
 
   return {
     totalEvents: events.length,
@@ -36,8 +40,9 @@ export async function getInternalClientCalendar(
     throw app.httpErrors.notFound("Conta do cliente não encontrada.");
   }
 
-  const range = normalizeCalendarRange(query);
+  const range = normalizeCalendarRange(query, calendarToday(app.appEnv.APP_TIMEZONE));
   const events = await listCalendarEvents(app.db, {
+    fallbackTimeZone: app.appEnv.APP_TIMEZONE,
     clientAccountIds: [clientAccountId],
     from: range.from,
     to: range.to,
@@ -53,7 +58,7 @@ export async function getInternalClientCalendar(
       portalTitle: client.portal_title,
     },
     range,
-    meta: buildCalendarMeta(events),
+    meta: buildCalendarMeta(events, calendarToday(app.appEnv.APP_TIMEZONE)),
     events,
   };
 }
@@ -64,9 +69,10 @@ export async function getScopedInternalCalendarOverview(
   query: CalendarQueryInput,
 ) {
   const scope = getClientScope(auth.user.globalRole, auth.user.id, auth.memberships);
-  const range = normalizeCalendarRange(query);
+  const range = normalizeCalendarRange(query, calendarToday(app.appEnv.APP_TIMEZONE));
 
   const events = await listCalendarEvents(app.db, {
+    fallbackTimeZone: app.appEnv.APP_TIMEZONE,
     clientAccountIds: scope.mode === "global" ? undefined : scope.clientIds,
     from: range.from,
     to: range.to,
@@ -76,7 +82,7 @@ export async function getScopedInternalCalendarOverview(
   return {
     scope,
     range,
-    meta: buildCalendarMeta(events),
+    meta: buildCalendarMeta(events, calendarToday(app.appEnv.APP_TIMEZONE)),
     events,
   };
 }
@@ -91,8 +97,9 @@ export async function getPortalCalendar(
     throw app.httpErrors.notFound("Conta do cliente não encontrada.");
   }
 
-  const range = normalizeCalendarRange(query);
+  const range = normalizeCalendarRange(query, calendarToday(app.appEnv.APP_TIMEZONE));
   const events = await listCalendarEvents(app.db, {
+    fallbackTimeZone: app.appEnv.APP_TIMEZONE,
     clientAccountIds: [clientAccountId],
     from: range.from,
     to: range.to,
@@ -108,7 +115,7 @@ export async function getPortalCalendar(
       portalTitle: client.portal_title,
     },
     range,
-    meta: buildCalendarMeta(events),
+    meta: buildCalendarMeta(events, calendarToday(app.appEnv.APP_TIMEZONE)),
     events,
   };
 }

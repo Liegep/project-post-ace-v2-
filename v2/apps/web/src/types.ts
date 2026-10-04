@@ -84,6 +84,8 @@ export type CardDetail = {
 };
 
 export type CalendarEvent = {
+  clientAccountId?: string;
+  scheduledTimeZone?: string | null;
   id: string;
   cardId?: string | null;
   title: string;

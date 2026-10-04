@@ -1,5 +1,5 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
-import { zonedWallClockToIso } from "../../lib/zoned-date-time.js";
+import { validTimeZone, zonedWallClockToIso } from "../../lib/zoned-date-time.js";
 
 type CalendarEventRow = RowDataPacket & {
   id: string;
@@ -34,7 +34,7 @@ function parseJsonArray(value: unknown) {
   }
 }
 
-function mapCalendarEventRow(row: CalendarEventRow) {
+function mapCalendarEventRow(row: CalendarEventRow, fallbackTimeZone: string) {
   const mediaUrls = parseJsonArray(row.media_urls_json);
   const date = String(row.publish_date).slice(0, 10);
   const time = String(row.publish_time ?? "12:00:00").slice(0, 8);
@@ -50,8 +50,8 @@ function mapCalendarEventRow(row: CalendarEventRow) {
     mediaUrls: mediaUrls.length ? mediaUrls : row.primary_media_url ? [row.primary_media_url] : [],
     publishDate: row.publish_date,
     publishTime: row.publish_time,
-    scheduledAt: zonedWallClockToIso(`${date} ${time}`, row.scheduled_timezone),
-    scheduledTimeZone: row.scheduled_timezone,
+    scheduledAt: zonedWallClockToIso(`${date} ${time}`, validTimeZone(row.scheduled_timezone, fallbackTimeZone)),
+    scheduledTimeZone: validTimeZone(row.scheduled_timezone, fallbackTimeZone),
     status: row.status,
     eventColor: row.event_color,
     columnName: row.column_name,
@@ -62,6 +62,7 @@ function mapCalendarEventRow(row: CalendarEventRow) {
 }
 
 type CalendarListOptions = {
+  fallbackTimeZone: string;
   from?: string;
   to?: string;
   status?: "draft" | "in_review" | "approved" | "scheduled" | "published";
@@ -128,5 +129,5 @@ export async function listCalendarEvents(
   sql += " ORDER BY e.publish_date ASC, e.publish_time ASC, ca.name ASC";
 
   const [rows] = await db.query<CalendarEventRow[]>(sql, params);
-  return rows.map(mapCalendarEventRow);
+  return rows.map((row) => mapCalendarEventRow(row, options.fallbackTimeZone));
 }

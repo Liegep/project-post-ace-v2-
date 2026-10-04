@@ -132,7 +132,7 @@ export async function getPortalHome(
 
   const [portalCards, legacyCalendarEvents, postCreationColumns, metaPublications] = await Promise.all([
     listCardsByClientAccountId(app.db, clientAccountId, {}),
-    listCalendarEvents(app.db, { clientAccountIds: [clientAccountId] }),
+    listCalendarEvents(app.db, { clientAccountIds: [clientAccountId], fallbackTimeZone: app.appEnv.APP_TIMEZONE }),
     listColumnsByClientAccountId(app.db, clientAccountId),
     listScheduledPublicationsForClient(app.db, clientAccountId),
   ]);
