@@ -1,6 +1,6 @@
 # Radar de oportunidades sazonais — revisão visual
 
-Implementado na branch local `codex/seasonal-radar-redesign`. Aguardando revisão visual antes de push, merge ou deploy.
+Implementado na branch local `codex/seasonal-radar-redesign`. Direção visual aprovada; refinamentos leves validados antes do push. Sem merge ou deploy.
 
 A página destaca a próxima ocorrência e organiza as restantes por mês, sem repetir o destaque. Filtros de período, país, categoria e cliente consultam a API existente. O drawer reúne países monitorados e mercados editoriais; a seleção de mercados exige confirmação explícita. A criação de pauta reutiliza o fluxo de card pendente para aprovação e exige escolher um cliente.
 
@@ -30,3 +30,7 @@ npm run build
 Abrir `/tests/seasonal-preview.html?scenario=populated`. Outros cenários: `empty`, `global`, `regional`, `many`, `warning`.
 
 A prévia renderiza a página real dentro do aplicativo. As respostas são fixtures locais em memória, com clientes e oportunidades de demonstração. Não representa registros reais da produção e não envia requisições ao banco ou a provedores externos. A implementação de produção continua usando exclusivamente as APIs existentes.
+
+## Refinamentos aprovados
+
+Ajustes restritos ao CSS: botão de gerenciamento integrado às cores do banner sem alterar altura; destaque suave em Útil para; títulos da timeline com mais presença e metadados/chips leves. CTA principal mobile em largura total, ações da timeline discretas e onboarding final preservado. Revalidados 407 testes, typecheck, build e mobile de 360/390 px sem overflow. Nenhuma alteração de lógica, APIs, schema ou dados nesta etapa.
