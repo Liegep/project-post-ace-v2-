@@ -215,7 +215,7 @@ test("unified calendar interactions preserve source, scope and navigation contex
           0,
         );
         assert.doesNotMatch(text(), /Não agendado na Meta/);
-        assert.match(text(), /Meta: Não disponível/);
+        assert.match(text(), /Meta indisponível/);
         fixture.setFailure("");
         await click("Tentar novamente");
         assert.ok(document.querySelector(".execution-partial"));
@@ -341,11 +341,37 @@ test("unified calendar interactions preserve source, scope and navigation contex
         }
       },
     );
+    await t.test('display filters preserve composition, count and card return context',async()=>{
+      await mount();await click('Filtros');
+      await change('[role="dialog"] select:nth-of-type(1)','client-a');
+      await change('[role="dialog"] label:nth-of-type(3) select','combined');
+      await change('[role="dialog"] label:nth-of-type(6) select','facebook');
+      assert.match(document.querySelector('.sc-count')!.textContent!,/1 item no mês selecionado/);
+      assert.equal(document.querySelector('.sc-filter-count')!.textContent,'3');
+      await click('Ver resultados');
+      assert.equal(document.querySelectorAll('.social-calendar-desktop .sc-item').length,1);
+      await act(async()=>document.querySelector<HTMLButtonElement>('.social-calendar-desktop .execution-partial')!.click());await flush();
+      await click('Abrir card');await click('Voltar do card');
+      assert.match(document.querySelector('[data-location]')!.textContent!,/origin=combined/);
+      assert.match(document.querySelector('[data-location]')!.textContent!,/platform=facebook/);
+      await click('Limpar filtros');assert.match(document.querySelector('.sc-count')!.textContent!,/6 itens no mês selecionado/);
+      assert.equal(fixture.calls.filter(c=>c.method!=='GET').length,0);
+    });
+    await t.test('month and agenda are presentations of the same selected period',async()=>{
+      await mount();const before=fixture.calls.filter(c=>c.path==='/api/calendar/overview').length;
+      await click('Agenda');assert.ok(document.querySelector('.sc-layout-agenda'));
+      assert.match(document.querySelector('.sc-count')!.textContent!,/6 itens no mês selecionado/);
+      assert.equal(document.querySelectorAll('.social-calendar-mobile .sc-item').length,6);
+      assert.equal(fixture.calls.filter(c=>c.path==='/api/calendar/overview').length,before);
+      await click('Mês');assert.ok(document.querySelector('.sc-layout-month'));assert.match(document.querySelector('.sc-count')!.textContent!,/6 itens no mês selecionado/);
+    });
     await t.test(
       "content filters apply to all views and count actual visible items",
       async () => {
         await mount();
+        await click("Filtros");
         await change(".social-calendar-content-controls select", "appointment");
+        await click("Ver resultados");
         assert.match(text(), /2 itens no mês selecionado/);
         assert.equal(
           document.querySelectorAll(

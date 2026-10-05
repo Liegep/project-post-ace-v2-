@@ -267,3 +267,15 @@ test("source failure never discards fulfilled sources", async () => {
     assert.equal(result[failing as "agenda" | "meta"].status, "rejected");
   }
 });
+
+import {matchesCalendarDisplayFilters} from '../src/socialCalendarPresentation';
+test('presentation filters use actual source, editorial state and confirmed platform statuses',()=>{
+ const item=composeSocialPosts([socialPost()],[socialPublication(),socialPublication({id:'fb',platform:'facebook',status:'failed'})],zone)[0];
+ const filters={origin:'combined',editorial:'published',execution:'partial',platform:'facebook'};
+ const snapshot=JSON.stringify(item);
+ assert.equal(matchesCalendarDisplayFilters(item,filters,true),true);
+ assert.equal(matchesCalendarDisplayFilters(item,{...filters,execution:'published'},true),false);
+ assert.equal(matchesCalendarDisplayFilters(item,{...filters,execution:'unavailable'},false),true);
+ assert.equal(matchesCalendarDisplayFilters(item,filters,false),false);
+ assert.equal(JSON.stringify(item),snapshot);
+});

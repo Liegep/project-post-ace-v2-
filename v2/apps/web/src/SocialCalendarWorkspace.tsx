@@ -41,7 +41,41 @@ import {
   type CalendarView,
   type SocialItem,
 } from "./socialCalendar";
+import {
+  executionMarks,
+  compactEditorial,
+  matchesCalendarDisplayFilters,
+} from "./socialCalendarPresentation";
 import "./SocialCalendarWorkspace.css";
+function CalendarIcon({
+  name,
+}: {
+  name: "calendar" | "list" | "filter" | "plus" | "clock";
+}) {
+  const paths = {
+    calendar:
+      "M6 3v4M18 3v4M3 10h18M5 5h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2Z",
+    list: "M8 6h13M8 12h13M8 18h13M3 6h1M3 12h1M3 18h1",
+    filter: "M4 6h16M7 12h10M10 18h4",
+    plus: "M12 5v14M5 12h14",
+    clock: "M12 8v4l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0",
+  };
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={paths[name]} />
+    </svg>
+  );
+}
 function CalendarDialog({
   title,
   onClose,
@@ -79,13 +113,13 @@ function CalendarDialog({
   }, [title]);
   return createPortal(
     <div
-      className="modal-backdrop"
+      className="modal-backdrop social-calendar-overlay"
       onMouseDown={(e) => {
         if (e.currentTarget === e.target) close.current();
       }}
     >
       <section
-        className="agenda-detail-modal social-agenda-detail-modal social-calendar-dialog"
+        className="agenda-detail-modal social-agenda-detail-modal social-calendar-dialog sc-drawer"
         role="dialog"
         aria-modal="true"
         aria-label={title}
@@ -178,6 +212,22 @@ export function SocialCalendarWorkspace({
     [labelId, setLabelId] = useState(""),
     [saving, setSaving] = useState(false),
     [createError, setCreateError] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [compact, setCompact] = useState(
+    () => window.matchMedia("(max-width: 820px)").matches,
+  );
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 820px)");
+    const update = () => setCompact(media.matches);
+    media.addEventListener?.("change", update);
+    return () => media.removeEventListener?.("change", update);
+  }, []);
+  const displayFilters = {
+    origin: query.get("origin") ?? "all",
+    editorial: query.get("editorial") ?? "all",
+    execution: query.get("execution") ?? "all",
+    platform: query.get("platform") ?? "all",
+  };
   const anchor = validCalendarDay(query.get("date"))
     ? query.get("date")!
     : (context?.today ?? "");
@@ -190,6 +240,13 @@ export function SocialCalendarWorkspace({
         : "month";
   const client = query.get("client") ?? "all",
     content = query.get("content") ?? "all";
+  const activeFilterCount = [
+    client,
+    content,
+    ...Object.values(displayFilters),
+  ].filter((v) => v !== "all").length;
+  const agendaLayout =
+    compact || view !== "month" || query.get("layout") === "agenda";
   const range = useMemo(
     () => (context ? calendarRange(anchor, view, context.timeZone) : null),
     [context, anchor, view],
@@ -342,14 +399,19 @@ export function SocialCalendarWorkspace({
       )
       .sort(compareItems);
   }, [internal, meta, agenda, context, range, client, content]);
+  const metaUnavailable =
+    !canMeta || warnings.some((w) => w.startsWith("Meta indisponível"));
+  const visibleItems = items.filter((item) =>
+    matchesCalendarDisplayFilters(item, displayFilters, !metaUnavailable),
+  );
   const periodItems =
     context && range
-      ? items.filter((item) =>
+      ? visibleItems.filter((item) =>
           inPeriod(item, range.start, range.end, context.timeZone),
         )
       : [];
   const byDay = new Map<string, SocialItem[]>();
-  for (const item of items) {
+  for (const item of visibleItems) {
     const key = dayKey(item.at, context!.timeZone);
     byDay.set(key, [...(byDay.get(key) ?? []), item]);
   }
@@ -364,8 +426,6 @@ export function SocialCalendarWorkspace({
       hour: "2-digit",
       minute: "2-digit",
     }).format(new Date(item.at));
-  const metaUnavailable =
-    !canMeta || warnings.some((w) => w.startsWith("Meta indisponível"));
   const executionText = (item: SocialItem) => {
     if (metaUnavailable) return "Não disponível";
     if (item.execution === "published") {
@@ -390,38 +450,90 @@ export function SocialCalendarWorkspace({
         ? "Compromisso concluído"
         : "Compromisso"
       : `${item.editorial ? (editorialLabels[item.editorial] ?? item.editorial) : "Sem estado editorial interno"} · Meta: ${executionText(item)}`;
+  const itemBadges = (item: SocialItem) => (
+    <div className="sc-badges">
+      <span
+        className={`sc-badge sc-source-${item.source}`}
+        title={sourceLabel[item.source]}
+      >
+        {item.kind === "appointment"
+          ? "◷"
+          : item.source === "meta"
+            ? "↗"
+            : "◇"}{" "}
+        {item.source === "internal"
+          ? "Interno"
+          : item.source === "combined"
+            ? "Interno + Meta"
+            : item.source === "agenda"
+              ? "Compromisso"
+              : "Meta"}
+      </span>
+      {item.kind === "post" && item.editorial ? (
+        <span
+          className="sc-badge sc-editorial"
+          title={editorialLabels[item.editorial]}
+        >
+          {compactEditorial[item.editorial] ?? item.editorial}
+        </span>
+      ) : null}
+      {item.kind === "post" &&
+      (item.execution === "partial" ||
+        item.execution === "failed" ||
+        item.execution === "publishing" ||
+        item.execution === "cancelled") ? (
+        <span
+          className={`sc-badge sc-execution sc-state-${item.execution}`}
+          title={executionText(item)}
+        >
+          {executionMarks[item.execution]} {executionText(item)}
+        </span>
+      ) : null}
+      {item.platforms.map((p) => (
+        <span
+          key={p.platform}
+          className={`sc-badge sc-platform sc-state-${p.status}`}
+          title={`${p.platform === "instagram" ? "Instagram" : "Facebook"}: ${executionLabels[p.status]}`}
+          aria-label={`${p.platform === "instagram" ? "Instagram" : "Facebook"}: ${executionLabels[p.status]}`}
+        >
+          {p.platform === "instagram" ? "IG" : "FB"}{" "}
+          <b aria-hidden="true">{executionMarks[p.status]}</b>
+        </span>
+      ))}
+      {item.kind === "post" && !item.platforms.length ? (
+        <span className="sc-badge sc-unconfirmed" title={executionText(item)}>
+          {metaUnavailable ? "?" : "—"}{" "}
+          {metaUnavailable ? "Meta indisponível" : "Sem agenda Meta"}
+        </span>
+      ) : null}
+      {item.appointment?.isCompleted ? (
+        <span className="sc-badge sc-state-published">✓ Concluído</span>
+      ) : null}
+    </div>
+  );
   const itemButton = (item: SocialItem, mobile = false) => (
     <button
       key={item.id}
       type="button"
-      className={
-        mobile
-          ? "social-agenda-item"
-          : `social-calendar-event execution-${item.execution}`
-      }
+      className={`${mobile ? "social-agenda-item" : "social-calendar-event"} sc-item execution-${item.execution} sc-kind-${item.kind}`}
       style={
         { "--calendar-event-color": item.color ?? "#6861e8" } as CSSProperties
       }
+      aria-label={`${time(item)} · ${item.title}. ${item.clientName ?? "Sem cliente"}. ${status(item)}`}
       onClick={() => setSelected(item)}
     >
-      <span>
-        {time(item)} · {item.title}
+      <span className="sc-item-heading">
+        <time className="sc-item-time">{time(item)}</time>
+        <span className="sc-sr-only"> · </span>
+        <strong className="sc-item-title">{item.title}</strong>
       </span>
-      <small>
-        {item.clientName ?? "Sem cliente"} · {sourceLabel[item.source]}
-        {item.destination ? " · " + item.destination : ""}
+      <small className="sc-item-client">
+        {item.clientName ?? "Sem cliente"}
+        {item.destination ? (
+          <span className="sc-item-destination"> · {item.destination}</span>
+        ) : null}
       </small>
-      <small>{status(item)}</small>
-      {item.platforms.length ? (
-        <small>
-          {item.platforms
-            .map(
-              (p) =>
-                `${p.platform === "instagram" ? "Instagram" : "Facebook"}: ${executionLabels[p.status]}`,
-            )
-            .join(" · ")}
-        </small>
-      ) : null}
+      {itemBadges(item)}
     </button>
   );
   function openCreate(day = context!.today) {
@@ -501,27 +613,66 @@ export function SocialCalendarWorkspace({
         ? anchor.slice(0, 4)
         : `${formattedDay(range!.start)}${view === "week" ? " — " + formattedDay(shiftDay(range!.end, -1)) : ""}`;
   return (
-    <section className="social-calendar-workspace glass social-calendar-foundation">
-      <header className="social-calendar-toolbar">
-        <div className="social-calendar-month-nav">
+    <section
+      className={`social-calendar-workspace glass social-calendar-foundation social-calendar-editorial ${agendaLayout ? "sc-layout-agenda" : "sc-layout-month"}`}
+    >
+      <header className="social-calendar-toolbar sc-toolbar">
+        <div className="sc-toolbar-period">
+          <div className="social-calendar-month-nav">
+            <h2>{periodTitle}</h2>
+            <div className="sc-period-arrows">
+              <button
+                aria-label="Período anterior"
+                onClick={() =>
+                  saveState({ date: moveAnchor(anchor, view, -1) })
+                }
+              >
+                ‹
+              </button>
+              <button
+                aria-label="Próximo período"
+                onClick={() => saveState({ date: moveAnchor(anchor, view, 1) })}
+              >
+                ›
+              </button>
+            </div>
+          </div>
           <button
-            aria-label="Período anterior"
-            onClick={() => saveState({ date: moveAnchor(anchor, view, -1) })}
+            className="sc-button sc-today"
+            onClick={() => saveState({ date: context.today })}
           >
-            ‹
+            Hoje
           </button>
-          <h2>{periodTitle}</h2>
-          <button
-            aria-label="Próximo período"
-            onClick={() => saveState({ date: moveAnchor(anchor, view, 1) })}
-          >
-            ›
-          </button>
+          <span className="social-calendar-summary sc-count" role="status">
+            {loading
+              ? "Atualizando…"
+              : `${periodItems.length} ${periodItems.length === 1 ? "item" : "itens"} ${view === "month" ? "no mês selecionado" : "no período"}`}
+          </span>
         </div>
-        <div className="social-calendar-filters">
-          <label>
-            Cliente
+        <div className="sc-toolbar-actions">
+          <nav
+            className="sc-layout-switch"
+            aria-label="Visualização do calendário"
+          >
+            <button
+              aria-pressed={!agendaLayout}
+              onClick={() => saveState({ view: "month", layout: "month" })}
+            >
+              <CalendarIcon name="calendar" />
+              Mês
+            </button>
+            <button
+              aria-pressed={agendaLayout}
+              onClick={() => saveState({ layout: "agenda" })}
+            >
+              <CalendarIcon name="list" />
+              Agenda
+            </button>
+          </nav>
+          <label className="social-calendar-filters sc-client-filter">
+            <span className="sc-sr-only">Cliente</span>
             <select
+              aria-label="Cliente"
               value={client}
               onChange={(e) => saveState({ client: e.target.value })}
             >
@@ -534,35 +685,62 @@ export function SocialCalendarWorkspace({
             </select>
           </label>
           <button
-            className="ghost-button"
-            onClick={() => saveState({ date: context.today })}
+            className={`sc-button sc-filter-button${activeFilterCount ? " has-filters" : ""}`}
+            onClick={() => setFiltersOpen(true)}
+            aria-haspopup="dialog"
           >
-            Hoje
+            <CalendarIcon name="filter" />
+            Filtros
+            {activeFilterCount ? (
+              <span className="sc-filter-count">{activeFilterCount}</span>
+            ) : null}
+          </button>
+          <button
+            className="gradient-button sc-create"
+            onClick={() => openCreate()}
+            aria-label="＋ Compromisso"
+          >
+            <CalendarIcon name="plus" />
+            Compromisso
           </button>
         </div>
+        <div className="sc-toolbar-secondary">
+          <span>
+            <CalendarIcon name="clock" />
+            Horários · {context.timeZone}
+          </span>
+          <label>
+            Período
+            <select
+              aria-label="Período"
+              value={view}
+              onChange={(e) => saveState({ view: e.target.value })}
+            >
+              <option value="month">Mês</option>
+              <option value="day">Dia</option>
+              <option value="week">Semana</option>
+              <option value="year">Ano</option>
+            </select>
+          </label>
+          {activeFilterCount ? (
+            <button
+              className="sc-text-button"
+              onClick={() =>
+                saveState({
+                  client: "all",
+                  content: "all",
+                  origin: "all",
+                  editorial: "all",
+                  execution: "all",
+                  platform: "all",
+                })
+              }
+            >
+              Limpar filtros
+            </button>
+          ) : null}
+        </div>
       </header>
-      <nav
-        className="social-calendar-view-switch"
-        aria-label="Visualização do calendário"
-      >
-        {(["day", "week", "month", "year"] as CalendarView[]).map((v) => (
-          <button
-            key={v}
-            className={view === v ? "active" : ""}
-            onClick={() => saveState({ view: v })}
-          >
-            {{ day: "Dia", week: "Semana", month: "Mês", year: "Ano" }[v]}
-          </button>
-        ))}
-      </nav>
-      <div className="social-calendar-summary">
-        <span>Horários: {context.timeZone}</span>
-        <strong>
-          {loading
-            ? "Carregando…"
-            : `${periodItems.length} itens ${view === "month" ? "no mês selecionado" : "no período"}`}
-        </strong>
-      </div>
       <div className="social-calendar-source-warnings">
         {!canMeta ? (
           <p>
@@ -581,22 +759,6 @@ export function SocialCalendarWorkspace({
           </button>
         ) : null}
       </div>
-      <div className="social-calendar-content-controls">
-        <label>
-          Mostrar
-          <select
-            value={content}
-            onChange={(e) => saveState({ content: e.target.value })}
-          >
-            <option value="all">Tudo</option>
-            <option value="post">Posts</option>
-            <option value="appointment">Compromissos</option>
-          </select>
-        </label>
-        <button className="gradient-button" onClick={() => openCreate()}>
-          ＋ Compromisso
-        </button>
-      </div>
       <div className="social-calendar-desktop">
         <div className="social-calendar-weekdays">
           {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((d) => (
@@ -607,9 +769,12 @@ export function SocialCalendarWorkspace({
           {range!.days.map((day) => (
             <article
               key={day}
-              className={`social-calendar-day${day < range!.start || day >= range!.end ? " muted" : ""}`}
+              className={`social-calendar-day${day < range!.start || day >= range!.end ? " muted" : ""}${day === context.today ? " is-today" : ""}`}
             >
-              <time dateTime={day}>{Number(day.slice(8))}</time>
+              <div className="sc-day-header">
+                <time dateTime={day}>{Number(day.slice(8))}</time>
+                {day === context.today ? <span>Hoje</span> : null}
+              </div>
               {(byDay.get(day) ?? []).slice(0, 3).map((i) => itemButton(i))}
               {(byDay.get(day)?.length ?? 0) > 3 ? (
                 <button
@@ -629,18 +794,33 @@ export function SocialCalendarWorkspace({
       <div className="social-calendar-mobile">
         {range!.days
           .filter(
-            (day) =>
-              day >= range!.start &&
-              day < range!.end &&
-              (view !== "year" || byDay.has(day)),
+            (day) => day >= range!.start && day < range!.end && byDay.has(day),
           )
           .map((day) => (
             <article
               className={`social-agenda-day${day === context.today ? " today" : ""}`}
               key={day}
             >
-              <header>
-                <strong>{formattedDay(day)}</strong>
+              <header className="sc-agenda-date">
+                <div className="sc-agenda-date-number">
+                  {Number(day.slice(8))}
+                  <small>
+                    {new Intl.DateTimeFormat("pt-BR", {
+                      month: "short",
+                      timeZone: "UTC",
+                    })
+                      .format(new Date(day + "T12:00:00Z"))
+                      .replace(".", "")}
+                  </small>
+                </div>
+                <div>
+                  <strong>{formattedDay(day)}</strong>
+                  <span>
+                    {day === context.today ? "Hoje · " : ""}
+                    {byDay.get(day)?.length ?? 0}{" "}
+                    {byDay.get(day)?.length === 1 ? "item" : "itens"}
+                  </span>
+                </div>
                 <button
                   aria-label={`Adicionar compromisso em ${day}`}
                   onClick={() => openCreate(day)}
@@ -658,11 +838,18 @@ export function SocialCalendarWorkspace({
           ))}
       </div>
       {!loading && !periodItems.length ? (
-        <p>Nenhum item neste período com os filtros selecionados.</p>
+        <div className="sc-empty">
+          <CalendarIcon name="calendar" />
+          <h3>O calendário está livre por aqui</h3>
+          <p>Nenhum item neste período com os filtros selecionados.</p>
+          <button className="sc-button" onClick={() => openCreate()}>
+            Adicionar compromisso
+          </button>
+        </div>
       ) : null}
       {selected || selectedDay ? (
         <CalendarDialog
-          title={selected?.title ?? formattedDay(selectedDay!)}
+          title={selected ? "Detalhes do conteúdo" : formattedDay(selectedDay!)}
           onClose={() => {
             setSelected(null);
             setSelectedDay(null);
@@ -679,18 +866,44 @@ export function SocialCalendarWorkspace({
                 </p>
               ) : null}
               {selectedDay ? (
-                <button onClick={() => setSelected(null)}>
+                <button
+                  className="sc-text-button"
+                  onClick={() => setSelected(null)}
+                >
                   ← Itens do dia
                 </button>
               ) : null}
-              {selected.image ? (
-                <img
-                  className="social-agenda-detail-image"
-                  src={selected.image}
-                  alt=""
-                />
-              ) : null}
-              <p>{selected.description}</p>
+              <div className="sc-detail-preview">
+                {selected.image ? (
+                  <img
+                    className="social-agenda-detail-image"
+                    src={selected.image}
+                    alt=""
+                  />
+                ) : (
+                  <div
+                    className={`sc-preview-placeholder sc-source-${selected.source}`}
+                  >
+                    <CalendarIcon
+                      name={
+                        selected.kind === "appointment" ? "clock" : "calendar"
+                      }
+                    />
+                    <span>
+                      {selected.kind === "appointment"
+                        ? "Compromisso editorial"
+                        : sourceLabel[selected.source]}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="sc-detail-heading">
+                <span className="sc-eyebrow">
+                  {selected.clientName ?? "Sem cliente"}
+                </span>
+                <h2>{selected.title}</h2>
+                {itemBadges(selected)}
+              </div>
               <dl>
                 <div>
                   <dt>Cliente</dt>
@@ -750,25 +963,70 @@ export function SocialCalendarWorkspace({
                   publicação nas redes.
                 </p>
               ) : null}
-              {selected.publications.map((p) => (
-                <p key={p.id}>
-                  {p.platform === "instagram" ? "Instagram" : "Facebook"} ·{" "}
-                  {executionLabels[p.status]}
-                  {p.lastError ? " · " + p.lastError : ""}
-                  {p.publishedPermalink ? (
-                    <a
-                      href={p.publishedPermalink}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {" "}
-                      Abrir publicação
-                    </a>
-                  ) : null}
-                </p>
-              ))}
+              {selected.kind === "post" ? (
+                <section className="sc-platform-section">
+                  <h4>Execução por plataforma</h4>
+                  {selected.publications.length ? (
+                    selected.publications.map((p) => (
+                      <article
+                        className={`sc-platform-row sc-state-${p.status}`}
+                        key={p.id}
+                      >
+                        <span className="sc-platform-logo">
+                          {p.platform === "instagram" ? "IG" : "FB"}
+                        </span>
+                        <div>
+                          <strong>
+                            {p.platform === "instagram"
+                              ? "Instagram"
+                              : "Facebook"}
+                          </strong>
+                          <span>
+                            {p.destinationName ??
+                              selected.destination ??
+                              "Destino Meta"}
+                          </span>
+                          {p.lastError ? <p>{p.lastError}</p> : null}
+                          {p.publishedPermalink ? (
+                            <a
+                              href={p.publishedPermalink}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              Abrir publicação ↗
+                            </a>
+                          ) : null}
+                        </div>
+                        <span className={`sc-badge sc-state-${p.status}`}>
+                          <b aria-hidden="true">{executionMarks[p.status]}</b>
+                          {executionLabels[p.status]}
+                        </span>
+                        <span className="sc-sr-only">
+                          {p.platform === "instagram"
+                            ? "Instagram"
+                            : "Facebook"}{" "}
+                          · {executionLabels[p.status]}
+                        </span>
+                      </article>
+                    ))
+                  ) : (
+                    <p className="sc-detail-note">
+                      {metaUnavailable
+                        ? "Execução Meta não disponível."
+                        : "Nenhuma publicação Meta associada a este agendamento."}
+                    </p>
+                  )}
+                </section>
+              ) : null}
+              <section className="sc-caption">
+                <h4>{selected.kind === "post" ? "Legenda" : "Descrição"}</h4>
+                <p>{selected.description || "Sem descrição."}</p>
+              </section>
               {adminCardRoute(selected.clientSlug, selected.cardId) ? (
-                <button className="gradient-button" onClick={openCard}>
+                <button
+                  className="gradient-button sc-open-card"
+                  onClick={openCard}
+                >
                   Abrir card
                 </button>
               ) : null}
@@ -778,6 +1036,120 @@ export function SocialCalendarWorkspace({
               {(byDay.get(selectedDay!) ?? []).map((i) => itemButton(i, true))}
             </div>
           )}
+        </CalendarDialog>
+      ) : null}
+      {filtersOpen ? (
+        <CalendarDialog
+          title="Filtros do calendário"
+          onClose={() => setFiltersOpen(false)}
+        >
+          <p className="sc-detail-note">
+            Encontre o conteúdo certo sem perder o contexto do calendário.
+          </p>
+          <div className="sc-filter-fields">
+            <label className="field-stack">
+              Cliente
+              <select
+                aria-label="Cliente nos filtros"
+                value={client}
+                onChange={(e) => saveState({ client: e.target.value })}
+              >
+                <option value="all">Todos os clientes</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field-stack social-calendar-content-controls">
+              Tipo
+              <select
+                value={content}
+                onChange={(e) => saveState({ content: e.target.value })}
+              >
+                <option value="all">Tudo</option>
+                <option value="post">Posts</option>
+                <option value="appointment">Compromissos</option>
+              </select>
+            </label>
+            <label className="field-stack">
+              Origem
+              <select
+                value={displayFilters.origin}
+                onChange={(e) => saveState({ origin: e.target.value })}
+              >
+                <option value="all">Todas as origens</option>
+                <option value="internal">Somente interno</option>
+                <option value="meta">Somente Meta</option>
+                <option value="combined">Interno + Meta</option>
+                <option value="agenda">Agenda</option>
+              </select>
+            </label>
+            <label className="field-stack">
+              Estado editorial
+              <select
+                value={displayFilters.editorial}
+                onChange={(e) => saveState({ editorial: e.target.value })}
+              >
+                <option value="all">Todos os estados</option>
+                {Object.entries(editorialLabels).map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="field-stack">
+              Execução Meta
+              <select
+                value={displayFilters.execution}
+                onChange={(e) => saveState({ execution: e.target.value })}
+              >
+                <option value="all">Todas as execuções</option>
+                {Object.entries(executionLabels).map(([key, label]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+                <option value="unavailable">Não disponível</option>
+              </select>
+            </label>
+            <label className="field-stack">
+              Plataforma
+              <select
+                value={displayFilters.platform}
+                onChange={(e) => saveState({ platform: e.target.value })}
+              >
+                <option value="all">Todas as plataformas</option>
+                <option value="instagram">Instagram</option>
+                <option value="facebook">Facebook</option>
+              </select>
+            </label>
+          </div>
+          <div className="sc-filter-footer">
+            <button
+              className="sc-button"
+              onClick={() =>
+                saveState({
+                  client: "all",
+                  content: "all",
+                  origin: "all",
+                  editorial: "all",
+                  execution: "all",
+                  platform: "all",
+                })
+              }
+            >
+              Limpar filtros
+            </button>
+            <button
+              className="gradient-button"
+              onClick={() => setFiltersOpen(false)}
+            >
+              Ver resultados
+            </button>
+          </div>
         </CalendarDialog>
       ) : null}
       {createDay ? (
