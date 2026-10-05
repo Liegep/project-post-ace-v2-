@@ -43,6 +43,7 @@ import {
 import { instantToWallClock } from "../../api/src/lib/zoned-date-time";
 import { normalizeExternalHttpUrl } from "./externalUrl";
 import { AgendaDayDialog } from "./AgendaDayDialog";
+import "./AgendaWorkspace.css";
 function AgendaModal({
   title,
   onClose,
@@ -121,13 +122,23 @@ type EventForm = {
   recurrenceType: AgendaRecurrence;
   repeatUntil: string;
 };
+const AGENDA_PASTELS = [
+  { name: "Lavanda", value: "#E8E0F7" },
+  { name: "Azul pastel", value: "#DFECFA" },
+  { name: "Verde menta", value: "#DDF2E7" },
+  { name: "Rosa blush", value: "#F5E1E8" },
+  { name: "Pêssego", value: "#F8E5D6" },
+  { name: "Amarelo claro", value: "#F6EFCE" },
+  { name: "Cinza azulado", value: "#E4EAF1" },
+] as const;
+
 const blankForm: EventForm = {
   title: "",
   taskDescription: "",
   startsAt: "",
   clientAccountId: "",
   labelId: "",
-  color: "#c9f7df",
+  color: "#DDF2E7",
   meetLink: "",
   isCompleted: false,
   recurrenceType: "none",
@@ -153,7 +164,7 @@ export function AgendaWorkspace({ canSave = true }: { canSave?: boolean }) {
   const [moreDay, setMoreDay] = useState<string | null>(null),
     [labelsOpen, setLabelsOpen] = useState(false),
     [labelName, setLabelName] = useState(""),
-    [labelColor, setLabelColor] = useState("#4285f4");
+    [labelColor, setLabelColor] = useState("#DFECFA");
   const [error, setError] = useState(""),
     [busy, setBusy] = useState(false),
     [dragged, setDragged] = useState<AgendaEvent | null>(null);
@@ -514,14 +525,33 @@ export function AgendaWorkspace({ canSave = true }: { canSave?: boolean }) {
           ))}
         </select>
       </label>
-      <label className="field-stack">
-        Cor
-        <input
-          type="color"
-          value={form.color}
-          onChange={(e) => setForm(chooseAgendaColor(form, e.target.value))}
-        />
-      </label>
+      <fieldset className="agenda-color-field">
+        <legend>Cor</legend>
+        <div className="agenda-pastel-palette" aria-label="Cores pastel do compromisso">
+          {AGENDA_PASTELS.map((pastel) => (
+            <button
+              type="button"
+              key={pastel.value}
+              className={form.color.toUpperCase() === pastel.value ? "selected" : ""}
+              style={{ "--agenda-pastel": pastel.value } as React.CSSProperties}
+              aria-label={pastel.name}
+              title={pastel.name}
+              onClick={() => setForm(chooseAgendaColor(form, pastel.value))}
+            >
+              <span />
+            </button>
+          ))}
+          <label className="agenda-custom-color" title="Escolher outra cor">
+            <span>＋</span>
+            <input
+              aria-label="Escolher outra cor"
+              type="color"
+              value={form.color}
+              onChange={(e) => setForm(chooseAgendaColor(form, e.target.value))}
+            />
+          </label>
+        </div>
+      </fieldset>
       <label className="field-stack">
         Link do Google Meet
         <input
