@@ -11534,3 +11534,17 @@ button {
 @media(min-width:801px){.proposal-premium-page .proposal-document-brand,.proposal-premium-page .proposal-document-cover,.proposal-premium-page .proposal-document-body{padding-left:6%;padding-right:6%}}
 .proposal-premium-page .public-proposal-decision .gradient-button:not(:disabled):hover{box-shadow:0 10px 24px #65478252;filter:brightness(1.05)}
 .proposal-premium-page .public-proposal-decision button:focus-visible{outline:2px solid #80639f;outline-offset:4px}
+
+/* Functional Agenda controls; final visual redesign is a separate change. */
+.agenda-foundation-controls { display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin:12px 0;color:#677188; }
+.agenda-foundation-controls label { display:grid;gap:4px;min-width:0; }
+.agenda-foundation-controls select { max-width:100%; }
+.agenda-day .agenda-event-pill { display:block;width:100%;text-align:left;border:0;cursor:pointer; }
+button.agenda-more { border:0;background:transparent;cursor:pointer;padding:5px; }
+.agenda-event-pill.is-past-pending { opacity:.8; }
+.agenda-event-pill.is-completed strong, .agenda-event-pill.is-completed { text-decoration:line-through; }
+.agenda-mobile-list .is-completed strong { text-decoration:line-through; }
+.agenda-modal-backdrop > .agenda-foundation-modal { max-height:calc(100dvh - 32px);overflow:auto; }
+.agenda-create-modal form > .field-stack { margin:12px 0; }
+@media(max-width:760px) { .agenda-page { padding-bottom:calc(100px + env(safe-area-inset-bottom)); } .agenda-foundation-controls label { flex:1 1 120px; } }
+.agenda-foundation-modal .agenda-event-pill { border:0;font-family:var(--v1-font);cursor:pointer; }
