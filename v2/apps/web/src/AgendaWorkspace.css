@@ -159,3 +159,126 @@
     font-size:.9rem;
   }
 }
+
+
+/* Specificity guard: legacy Agenda rules in styles.css are loaded globally. */
+@media (max-width: 820px) {
+  .agenda-layout .agenda-page .agenda-toolbar {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    grid-template-areas:
+      "period period"
+      "today today"
+      "views views"
+      "labels create" !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+    flex-wrap: initial !important;
+  }
+
+  .agenda-layout .agenda-page .agenda-month-nav {
+    grid-area: period !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    display: grid !important;
+    grid-template-columns: 42px minmax(0, 1fr) 42px !important;
+    gap: 6px !important;
+  }
+
+  .agenda-layout .agenda-page .agenda-month-nav strong {
+    min-width: 0 !important;
+    width: auto !important;
+    font-size: .98rem !important;
+    white-space: nowrap !important;
+  }
+
+  .agenda-layout .agenda-page .agenda-toolbar > .ghost-button:first-child {
+    grid-area: today !important;
+    width: max-content !important;
+    margin: 0 !important;
+    justify-self: start !important;
+  }
+
+  .agenda-layout .agenda-page .agenda-view-switch {
+    grid-area: views !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    order: initial !important;
+  }
+
+  .agenda-layout .agenda-page .agenda-view-switch button {
+    min-width: 0 !important;
+    flex: 1 1 0 !important;
+    padding-inline: 8px !important;
+  }
+
+  .agenda-layout .agenda-page .agenda-labels-button {
+    grid-area: labels !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    justify-self: stretch !important;
+  }
+
+  .agenda-layout .agenda-page .agenda-toolbar > .gradient-button {
+    grid-area: create !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+    justify-self: stretch !important;
+  }
+
+  .agenda-layout .agenda-page .agenda-foundation-controls {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    align-items: start !important;
+    overflow: hidden !important;
+  }
+
+  .agenda-layout .agenda-page .agenda-foundation-controls > span,
+  .agenda-layout .agenda-page .agenda-foundation-controls > small {
+    grid-column: 1 / -1 !important;
+    width: auto !important;
+    min-width: 0 !important;
+    margin-right: 0 !important;
+  }
+
+  .agenda-layout .agenda-page .agenda-foundation-controls label {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  .agenda-layout .agenda-page .agenda-foundation-controls label:last-of-type {
+    grid-column: 1 / -1 !important;
+  }
+
+  .agenda-layout .agenda-page .agenda-foundation-controls select {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+@media (max-width: 520px) {
+  .agenda-layout .agenda-page .agenda-toolbar {
+    grid-template-columns: 1fr !important;
+    grid-template-areas:
+      "period"
+      "today"
+      "views"
+      "create"
+      "labels" !important;
+  }
+
+  .agenda-layout .agenda-page .agenda-foundation-controls {
+    grid-template-columns: 1fr !important;
+  }
+
+  .agenda-layout .agenda-page .agenda-foundation-controls > span,
+  .agenda-layout .agenda-page .agenda-foundation-controls > small,
+  .agenda-layout .agenda-page .agenda-foundation-controls label,
+  .agenda-layout .agenda-page .agenda-foundation-controls label:last-of-type {
+    grid-column: 1 !important;
+  }
+}
