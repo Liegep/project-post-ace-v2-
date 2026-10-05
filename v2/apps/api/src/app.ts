@@ -1,3 +1,4 @@
+import { briefFoundationRoutes } from "./modules/brief-foundation/brief.routes.js";
 import { seasonalRoutes } from "./modules/seasonal/seasonal.routes.js";
 import { invoiceRecurringWorkerRegistered } from "./plugins/invoice-recurring-worker.js";
 import Fastify from "fastify";
@@ -159,6 +160,7 @@ export async function buildApp() {
     await app.register(timeTrackingRoutes, { prefix: "/api" });
     await app.register(proposalRoutes, { prefix: "/api" });
     await app.register(designBriefRoutes, { prefix: "/api" });
+    await app.register(briefFoundationRoutes, { prefix: "/api" });
     await app.register(dashboardNotesRoutes, { prefix: "/api" });
     await app.register(seasonalRoutes, { prefix: "/api" });
     await app.register(metaRoutes, { prefix: "/api" });
