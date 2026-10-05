@@ -3,6 +3,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type CSSProperties,
   type FormEvent,
   type ReactNode,
 } from "react";
@@ -533,7 +534,7 @@ export function AgendaWorkspace({ canSave = true }: { canSave?: boolean }) {
               type="button"
               key={pastel.value}
               className={form.color.toUpperCase() === pastel.value ? "selected" : ""}
-              style={{ "--agenda-pastel": pastel.value } as React.CSSProperties}
+              style={{ "--agenda-pastel": pastel.value } as CSSProperties}
               aria-label={pastel.name}
               title={pastel.name}
               onClick={() => setForm(chooseAgendaColor(form, pastel.value))}
