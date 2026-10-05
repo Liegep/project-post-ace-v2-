@@ -45,6 +45,7 @@ import {
   executionMarks,
   compactEditorial,
   matchesCalendarDisplayFilters,
+  calendarTimeZoneLabel,
 } from "./socialCalendarPresentation";
 import "./SocialCalendarWorkspace.css";
 function CalendarIcon({
@@ -614,6 +615,7 @@ export function SocialCalendarWorkspace({
         : `${formattedDay(range!.start)}${view === "week" ? " — " + formattedDay(shiftDay(range!.end, -1)) : ""}`;
   return (
     <section
+      data-period-view={view}
       className={`social-calendar-workspace glass social-calendar-foundation social-calendar-editorial ${agendaLayout ? "sc-layout-agenda" : "sc-layout-month"}`}
     >
       <header className="social-calendar-toolbar sc-toolbar">
@@ -644,9 +646,18 @@ export function SocialCalendarWorkspace({
             Hoje
           </button>
           <span className="social-calendar-summary sc-count" role="status">
-            {loading
-              ? "Atualizando…"
-              : `${periodItems.length} ${periodItems.length === 1 ? "item" : "itens"} ${view === "month" ? "no mês selecionado" : "no período"}`}
+            {loading ? (
+              "Atualizando…"
+            ) : (
+              <>
+                {periodItems.length}{" "}
+                {periodItems.length === 1 ? "item" : "itens"}
+                <span className="sc-count-context">
+                  {" "}
+                  {view === "month" ? "no mês selecionado" : "no período"}
+                </span>
+              </>
+            )}
           </span>
         </div>
         <div className="sc-toolbar-actions">
@@ -705,9 +716,12 @@ export function SocialCalendarWorkspace({
           </button>
         </div>
         <div className="sc-toolbar-secondary">
-          <span>
+          <span
+            title={context.timeZone}
+            aria-label={`Horários · ${calendarTimeZoneLabel(context.timeZone)} (${context.timeZone})`}
+          >
             <CalendarIcon name="clock" />
-            Horários · {context.timeZone}
+            Horários · {calendarTimeZoneLabel(context.timeZone)}
           </span>
           <label>
             Período

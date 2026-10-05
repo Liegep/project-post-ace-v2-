@@ -929,7 +929,7 @@
     width: 100%;
   }
   .social-calendar-editorial .sc-toolbar-actions .sc-create {
-    margin-left: auto;
+    margin-left: 0;
   }
   .social-calendar-editorial .social-calendar-desktop {
     padding: 8px 10px 10px;
@@ -971,7 +971,7 @@
     gap: 8px;
   }
   .social-calendar-editorial .social-calendar-month-nav {
-    flex: 1;
+    flex: 0 0 auto;
     min-width: 0;
   }
   .social-calendar-editorial .social-calendar-month-nav h2 {
@@ -979,7 +979,7 @@
     max-width: 260px;
   }
   .social-calendar-editorial .sc-toolbar-actions .sc-create {
-    margin-left: auto;
+    margin-left: 0;
   }
   .social-calendar-editorial .social-agenda-day {
     grid-template-columns: 1fr;
@@ -1162,11 +1162,44 @@
     display: grid;
     grid-template-columns: 72px minmax(0, 1fr);
   }
-  .internal-area-layout.admin-layout:has(.social-calendar-editorial):has(> .admin-rail.collapsed) {
+  .internal-area-layout.admin-layout:has(.social-calendar-editorial):has(
+      > .admin-rail.collapsed
+    ) {
     grid-template-columns: 32px minmax(0, 1fr);
   }
   .internal-area-layout:has(.social-calendar-editorial) > .admin-rail {
     position: sticky;
     top: 104px;
+  }
+}
+
+/* Reflow period controls instead of squeezing the month heading. */
+.social-calendar-editorial[data-period-view="month"]
+  .social-calendar-month-nav
+  h2 {
+  white-space: nowrap;
+  max-width: none;
+  flex-shrink: 0;
+}
+.social-calendar-editorial .sc-count.social-calendar-summary {
+  width: fit-content;
+  min-width: 0;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+@media (max-width: 1100px) {
+  .social-calendar-editorial .sc-toolbar-period {
+    width: 100%;
+  }
+  .social-calendar-editorial .sc-count-context {
+    display: none;
+  }
+}
+@media (max-width: 820px) {
+  .internal-area-layout.admin-layout:has(.social-calendar-editorial) {
+    padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  }
+  html:has(.social-calendar-editorial) {
+    scroll-padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px));
   }
 }

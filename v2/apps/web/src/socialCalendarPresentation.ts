@@ -39,3 +39,9 @@ export function matchesCalendarDisplayFilters(
       item.platforms.some((p) => p.platform === filters.platform))
   );
 }
+
+/** Friendly display only; the original IANA identifier remains the source of date/time calculations. */
+export function calendarTimeZoneLabel(timeZone: string) {
+  if (timeZone === "America/Sao_Paulo") return "São Paulo";
+  return (timeZone.split("/").pop() || timeZone).replace(/_/g, " ");
+}

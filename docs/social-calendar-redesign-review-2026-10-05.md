@@ -44,3 +44,26 @@ Capturas locais: `/Users/liegipaschoalini/Desktop/project-post-ace/docs/social-c
 Arquivos: `desktop-1440.png`, `desktop-1024.png`, `tablet-768.png`, `mobile-390.png`, `mobile-320.png`, `agenda-desktop.png`, `lista-do-dia.png`, `detalhe-plataformas.png`, `detalhe-mobile.png`, `filtros-desktop.png`, `filtros-mobile.png` e `estado-vazio.png`.
 
 Sem push, merge ou deploy. Main e a branch da fundação permanecem inalterados. Aguardando revisão visual.
+
+## Refinamentos após a primeira revisão visual
+
+- Em até 1100 px, o cabeçalho do período ocupa sua própria linha; o mês não encolhe, e seus controles podem quebrar de linha sem comprimir o título.
+- A segunda linha agrupa Mês/Agenda, cliente quando visível, Filtros e Compromisso. O CTA acompanha os controles em vez de ir para a extremidade direita. Em até 480 px, continua em largura total.
+- A contagem mantém o valor calculado e simplifica sua apresentação para “6 itens” nos breakpoints menores. Em 768 e 1024 px, o badge mede aproximadamente 50 px.
+- A toolbar mostra “Horários · São Paulo”. O identificador IANA permanece em tooltip, nome acessível, detalhe e cálculos. Outros fusos exibem o nome final do identificador sem underscores; isso não altera configurações nem conversões de data.
+- A área de rolagem do calendário reserva `96px + env(safe-area-inset-bottom)` para a navegação inferior. O scroll padding também considera esse espaço.
+
+Revalidação no navegador, com as mesmas fixtures locais:
+
+| Largura | Título mensal | Overflow horizontal | Último item ao fim da rolagem |
+| --- | --- | --- | --- |
+| 1024 px | Uma linha | Nenhum | Grade desktop |
+| 768 px | Uma linha | Nenhum | 55 px acima da barra inferior |
+| 390 px | Uma linha | Nenhum | 53 px acima da barra inferior |
+| 320 px | Uma linha | Nenhum | 53 px acima da barra inferior |
+
+A verificação de espaço foi feita ao rolar a página até o fim. A safe-area retornou zero na prévia desktop; a expressão CSS inclui o valor informado pelo dispositivo. Nenhuma alegação de teste em aparelho físico.
+
+Novas capturas em `social-calendar-redesign-preview/refinements/`: `desktop-1024.png`, `tablet-768.png`, `mobile-390.png`, `mobile-320.png`, `agenda-end-768.png`, `agenda-end-390.png` e `agenda-end-320.png`.
+
+Suítes reexecutadas: 420 + 19 testes aprovados. Typecheck e build reexecutados e aprovados. Mantido somente o aviso de tamanho de bundle. Nenhuma mudança funcional, API, banco ou permissões. Sem push, merge ou deploy.
