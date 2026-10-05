@@ -393,6 +393,8 @@ type ApiPortalBoardResponse = {
 };
 
 type ApiCalendarEvent = {
+  clientAccountId?: string;
+  scheduledTimeZone?: string | null;
   id: string;
   cardId?: string | null;
   title: string;
@@ -453,7 +455,7 @@ export type DashboardStatistics = {
 };
 export type AgendaLabel = { id: string; name: string; color: string };
 export type AgendaRecurrence = "none" | "weekdays" | "weekly" | "monthly_nth_weekday";
-export type AgendaEvent = { id: string; sourceEventId?: string; title: string; taskDescription?: string | null; startsAt: string; endsAt?: string | null; recurrenceType?: AgendaRecurrence; repeatUntil?: string | null; color: string; isCompleted: boolean; clientAccountId?: string | null; clientName?: string | null; labelId?: string | null; labelName?: string | null; meetLink?: string | null };
+export type AgendaEvent = { timeZone?: string; id: string; sourceEventId?: string; title: string; taskDescription?: string | null; startsAt: string; endsAt?: string | null; recurrenceType?: AgendaRecurrence; repeatUntil?: string | null; color: string; isCompleted: boolean; clientAccountId?: string | null; clientName?: string | null; labelId?: string | null; labelName?: string | null; meetLink?: string | null };
 export type MetaStatus = { connected: boolean; expiresAt: string | null; dataAccessExpiresAt: string | null; accountName: string | null; metaUserId: string | null };
 export type MetaAssetPage = { id: string; name: string; instagramAccount: { id: string; username: string } | null };
 export type MetaAdAccount = {
@@ -772,6 +774,8 @@ function mapCalendarEvent(event: ApiCalendarEvent): CalendarEvent {
   return {
     id: event.id,
     cardId: event.cardId ?? null,
+    clientAccountId: event.clientAccountId,
+    scheduledTimeZone: event.scheduledTimeZone,
     title: event.title,
     caption: event.caption ?? null,
     mediaType: event.mediaType,
@@ -1694,7 +1698,7 @@ export async function addBrandBrainCommentBySlug(slug: string, input: { commentT
 export async function loadPortalBrandBrainBySlug(slug: string) { const account = await findPortalAccountBySlug(slug); return fetchJson<BrandBrainSnapshot>(`/api/clients/${account.clientAccountId}/brand-brain`); }
 export async function savePortalBrandBrainBySlug(slug: string, data: BrandBrain, summary?: string) { const account = await findPortalAccountBySlug(slug); return sendJson<{ ok: true; pending: boolean; revision?: BrandBrainRevision }>(`/api/clients/${account.clientAccountId}/brand-brain`, { method: "PUT", body: JSON.stringify({ data, summary }) }); }
 export async function addPortalBrandBrainCommentBySlug(slug: string, input: { commentText: string; revisionId?: string | null; sectionKey?: string }) { const account = await findPortalAccountBySlug(slug); return sendJson<{ ok: true }>(`/api/clients/${account.clientAccountId}/brand-brain/comments`, { method: "POST", body: JSON.stringify(input) }); }
-export async function createAgendaEvent(input: { title: string; taskDescription?: string | null; startsAt: string; endsAt?: string | null; color: string; clientAccountId?: string | null; labelId?: string | null; recurrenceType?: AgendaRecurrence; repeatUntil?: string | null; meetLink?: string | null }) { return sendJson<{ ok: true; id: string }>("/api/agenda/events", { method: "POST", body: JSON.stringify({ ...input, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }) }); }
+export async function createAgendaEvent(input: { timeZone?: string; title: string; taskDescription?: string | null; startsAt: string; endsAt?: string | null; color: string; clientAccountId?: string | null; labelId?: string | null; recurrenceType?: AgendaRecurrence; repeatUntil?: string | null; meetLink?: string | null }) { return sendJson<{ ok: true; id: string }>("/api/agenda/events", { method: "POST", body: JSON.stringify({ ...input, timeZone: input.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone }) }); }
 export async function updateAgendaEvent(eventId: string, input: Partial<{ title: string; taskDescription: string | null; startsAt: string; color: string; clientAccountId: string | null; labelId: string | null; recurrenceType: AgendaRecurrence; repeatUntil: string | null; meetLink: string | null; isCompleted: boolean }>) { const body = (input.startsAt ? { ...input, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone } : input); return sendJson<{ ok: true }>(`/api/agenda/events/${eventId}`, { method: "PATCH", body: JSON.stringify(body) }); }
 export async function listPortalAppointmentsBySlug(slug: string, from: string, to: string) {
   const account = await findPortalAccountBySlug(slug);
@@ -1934,3 +1938,5 @@ export function createSeasonalOpportunity(input: {
   title: string; description: string; categoryCode: string; origin: string; scope: "global" | "countries"; countryCodes: string[];
   occurrences: Array<{ date: string; countryCodes?: string[] }>;
 }) { return sendJson<{ id: string }>("/api/seasonal/opportunities", { method: "POST", body: JSON.stringify(input) }); }
+
+export function loadCalendarContext() { return fetchJson<{ timeZone: string; today: string }>("/api/calendar/context"); }
