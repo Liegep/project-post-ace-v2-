@@ -3,7 +3,6 @@ import ReactDOM from "react-dom/client";
 import { HashRouter } from "react-router-dom";
 import { App } from "./App";
 import { AdminKanbanSearch } from "./AdminKanbanSearch";
-import { AgendaOverflowViewer } from "./AgendaOverflowViewer";
 import { RoleAccessGuard } from "./RoleAccessGuard";
 import { TeamPasswordReset } from "./TeamPasswordReset";
 import { SessionMembershipSync } from "./SessionMembershipSync";
@@ -18,7 +17,6 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
     <HashRouter>
       <App />
       <AdminKanbanSearch />
-      <AgendaOverflowViewer />
       <RoleAccessGuard />
       <TeamPasswordReset />
       <SessionMembershipSync />
