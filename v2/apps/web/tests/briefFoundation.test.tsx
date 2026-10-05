@@ -214,7 +214,7 @@ test("brief authoring and portal responses preserve frozen forms, server drafts 
       "using a template keeps stable field IDs and saving a draft does not mark answered",
       async () => {
         await mount(BriefsFoundationWorkspace);
-        await act(async () => button("Usar template").click());
+        await act(async () => button("Usar").click());
         const title = document.querySelector<HTMLInputElement>(
           ".brief-foundation-form input",
         )!;
@@ -242,14 +242,19 @@ test("brief authoring and portal responses preserve frozen forms, server drafts 
     await t.test(
       "send freezes the editor and offers history instead of editable answers",
       async () => {
-        await act(async () => button("Enviar ao cliente").click());
+        await act(async () => button("Revisar e enviar").click());
+        assert.equal(calls.filter((c) => c.url.endsWith("/send")).length, 0);
+        await act(async () => button("Confirmar envio").click());
         await flush();
-        assert.match(document.body.textContent!, /Formulário congelado/);
+        assert.match(
+          document.body.textContent!,
+          /Este formulário não pode ser alterado/,
+        );
         assert.equal(
           document.querySelector(".brief-foundation-form input"),
           null,
         );
-        assert.equal(button("Enviar ao cliente"), undefined);
+        assert.equal(button("Revisar e enviar"), undefined);
         assert.equal(calls.filter((c) => c.url.endsWith("/send")).length, 1);
       },
     );
@@ -314,6 +319,103 @@ test("brief authoring and portal responses preserve frozen forms, server drafts 
         assert.equal(button("Enviar resposta"), undefined);
         assert.equal(button("Salvar rascunho"), undefined);
         assert.match(document.body.textContent!, /Minha marca/);
+      },
+    );
+    await t.test(
+      "received responses expose immutable revisions separately from the frozen form",
+      async () => {
+        await mount(BriefsFoundationWorkspace);
+        await act(async () =>
+          [...document.querySelectorAll<HTMLButtonElement>('[role="tab"]')]
+            .find((b) => b.textContent?.startsWith("Respostas recebidas"))!
+            .click(),
+        );
+        assert.match(document.body.textContent!, /Nova resposta/);
+        await act(async () => button("Ler resposta").click());
+        await flush();
+        assert.match(document.body.textContent!, /Minha marca/);
+        assert.match(document.body.textContent!, /Revisão 1/);
+        assert.equal(document.querySelector(".brief-client-paper input"), null);
+        assert.equal(button("Enviar resposta"), undefined);
+      },
+    );
+    await t.test(
+      "visual builder reorders and duplicates stable field IDs without mutating the source template",
+      async () => {
+        const { BriefFormEditor } = await server.ssrLoadModule(
+          "/src/briefsDesign.tsx",
+        );
+        let edited = structuredClone(form);
+        const Builder = () => {
+          const [value, setValue] = React.useState(edited);
+          return React.createElement(BriefFormEditor, {
+            form: value,
+            onChange: (next: any) => {
+              edited = next;
+              setValue(next);
+            },
+          });
+        };
+        await mount(Builder);
+        await act(async () =>
+          document
+            .querySelector<HTMLButtonElement>(
+              '[aria-label="Duplicar pergunta 1"]',
+            )!
+            .click(),
+        );
+        assert.equal(edited.fields.length, 2);
+        assert.equal(edited.fields[0].id, "name");
+        assert.notEqual(edited.fields[1].id, "name");
+        const copyId = edited.fields[1].id;
+        await act(async () =>
+          document
+            .querySelector<HTMLButtonElement>(
+              '[aria-label="Mover pergunta 2 para cima"]',
+            )!
+            .click(),
+        );
+        assert.equal(edited.fields[0].id, copyId);
+        assert.equal(edited.fields[1].id, "name");
+        assert.equal(template.form.fields.length, 1);
+        const before = calls.length;
+        await act(async () => button("Prévia do cliente").click());
+        await change(
+          document.querySelector<HTMLInputElement>(
+            'input[aria-label="Marca"]',
+          )!,
+          "Só para testar",
+        );
+        assert.equal(calls.length, before);
+        assert.equal("answers" in edited, false);
+        await act(async () => button("Editar").click());
+        assert.equal(edited.fields[1].id, "name");
+      },
+    );
+    await t.test(
+      "mobile field properties open in a focusable drawer with accessible reorder controls",
+      async () => {
+        const { BriefFormEditor } = await server.ssrLoadModule(
+          "/src/briefsDesign.tsx",
+        );
+        Object.defineProperty(window, "innerWidth", {
+          value: 390,
+          configurable: true,
+        });
+        await mount(BriefFormEditor, { form, onChange: () => {} });
+        await act(async () =>
+          document
+            .querySelector<HTMLButtonElement>(
+              '[aria-label="Editar pergunta 1: Marca"]',
+            )!
+            .click(),
+        );
+        assert.ok(document.querySelector('[role="dialog"]'));
+        assert.ok(document.querySelector('[role="dialog"] input'));
+        assert.equal(document.body.style.overflow, "hidden");
+        await act(async () => button("Concluir").click());
+        assert.equal(document.querySelector('[role="dialog"]'), null);
+        assert.equal(document.body.style.overflow, "");
       },
     );
     await t.test(

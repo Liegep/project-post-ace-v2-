@@ -11534,19 +11534,3 @@ button {
 @media(min-width:801px){.proposal-premium-page .proposal-document-brand,.proposal-premium-page .proposal-document-cover,.proposal-premium-page .proposal-document-body{padding-left:6%;padding-right:6%}}
 .proposal-premium-page .public-proposal-decision .gradient-button:not(:disabled):hover{box-shadow:0 10px 24px #65478252;filter:brightness(1.05)}
 .proposal-premium-page .public-proposal-decision button:focus-visible{outline:2px solid #80639f;outline-offset:4px}
-
-/* Functional brief foundation; intentionally keeps the existing application tokens. */
-.brief-foundation-workspace { min-width: 0; padding: 20px; }
-.brief-foundation-form { display: grid; gap: 16px; margin: 20px 0; }
-.brief-foundation-workspace label { display: grid; gap: 6px; min-width: 0; }
-.brief-foundation-workspace input:not([type=checkbox]), .brief-foundation-workspace textarea, .brief-foundation-workspace select { width: 100%; min-width: 0; box-sizing: border-box; padding: 10px 12px; border: 1px solid var(--border-color, #d8dbe5); border-radius: 10px; background: var(--input-bg, #fff); color: inherit; }
-.brief-foundation-workspace textarea { min-height: 90px; }
-.brief-foundation-form fieldset { min-width: 0; padding: 16px; border: 1px solid var(--border-color, #d8dbe5); border-radius: 12px; display: grid; gap: 12px; }
-.brief-foundation-workspace .brief-foundation-check { display: flex; align-items: center; gap: 8px; }
-.brief-foundation-actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0; }
-.brief-foundation-list { display: grid; gap: 12px; margin: 16px 0; }
-.brief-foundation-list article { padding: 16px; }
-.brief-foundation-workspace button { white-space: normal; overflow-wrap: anywhere; }
-.brief-foundation-lines { white-space: pre-wrap; overflow-wrap: anywhere; }
-@media (max-width: 600px) { .brief-foundation-workspace { padding: 12px 8px calc(90px + env(safe-area-inset-bottom)); } .brief-foundation-actions > button { flex: 1 1 140px; } }
-.brief-foundation-workspace legend { max-width: 100%; overflow-wrap: anywhere; }
