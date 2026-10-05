@@ -627,9 +627,8 @@ async function fetchJson<T>(path: string, timeoutMs?: number): Promise<T> {
 }
 
 async function sendJson<T>(path: string, init: RequestInit, timeoutMs?: number): Promise<T> {
-  const headers = new Headers({
-    Accept: "application/json",
-  });
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "application/json");
 
   const accessToken = getAccessToken();
 
@@ -637,7 +636,7 @@ async function sendJson<T>(path: string, init: RequestInit, timeoutMs?: number):
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
 
-  if (init.body) {
+  if (init.body && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -1940,3 +1939,23 @@ export function createSeasonalOpportunity(input: {
 }) { return sendJson<{ id: string }>("/api/seasonal/opportunities", { method: "POST", body: JSON.stringify(input) }); }
 
 export function loadCalendarContext() { return fetchJson<{ timeZone: string; today: string }>("/api/calendar/context"); }
+
+// Functional briefs: legacy records remain read-only; new instances carry frozen forms.
+export type BriefField = { id:string; type:"short"|"long"|"choice"|"checklist"|"dropdown"|"number"|"date"|"link"|"scale"|"file"; label:string; help:string; required:boolean; options:string[]; validation:{min?:number;max?:number;maxLength?:number;maxFiles?:number} };
+export type BriefForm = { title:string;introduction:string;category:string;locale:"pt"|"en"|"es"|"it"|"sv";fields:BriefField[] };
+export type BriefTemplate = {id:string;name:string;description:string;version:number;status:"active"|"archived";form:BriefForm};
+export type BriefInstance = {id:string;clientAccountId:string|null;templateId:string|null;templateVersion:number|null;form:BriefForm;status:"draft"|"sent"|"answered"|"reopened"|"archived";version:number;sentAt:string|null;createdAt:string;updatedAt:string};
+export type BriefDetail = {brief:BriefInstance;response:null|{id:string;status:"draft"|"submitted";version:number;answers:Record<string,unknown>;respondentUserId:string|null;submittedAt:string|null;updatedAt:string};revisions:{id:string;revision:number;answers:Record<string,unknown>;submittedByUserId:string|null;submittedAt:string}[];attachments:{id:string;fieldId:string;name:string;contentType:string;size:number}[];events:{id:string;action:string;actorUserId:string|null;revision:number|null;createdAt:string}[]};
+export const listBriefTemplates = ()=>fetchJson<{items:BriefTemplate[]}>("/api/briefs/templates");
+export const saveBriefTemplate = (input:{id?:string;name:string;description:string;form:BriefForm;expectedVersion?:number},id?:string)=>sendJson<{template:BriefTemplate}>(`/api/briefs/templates${id?`/${id}`:""}`,{method:id?"PATCH":"POST",body:JSON.stringify(input)});
+export const archiveBriefTemplate = (template:BriefTemplate)=>sendJson<{template:BriefTemplate}>(`/api/briefs/templates/${template.id}/archive`,{method:"POST",body:JSON.stringify({expectedVersion:template.version})});
+export const listBriefInstances = ()=>fetchJson<{items:BriefInstance[]}>("/api/briefs");
+export const getBriefDetail = (id:string)=>fetchJson<BriefDetail>(`/api/briefs/${id}`);
+export const saveBriefInstance = (input:{id?:string;clientAccountId:string|null;templateId?:string|null;templateVersion?:number|null;form:BriefForm;expectedVersion?:number},id?:string)=>sendJson<BriefDetail>(`/api/briefs${id?`/${id}`:""}`,{method:id?"PATCH":"POST",body:JSON.stringify(input)});
+export const changeBriefStatus = (brief:BriefInstance,action:"send"|"reopen"|"archive")=>sendJson<BriefDetail>(`/api/briefs/${brief.id}/${action}`,{method:"POST",body:JSON.stringify({expectedVersion:brief.version})});
+export async function briefPortalBase(slug:string){const account=await findPortalAccountBySlug(slug);return `/api/portal/accounts/${account.clientAccountId}/briefs`;}
+export const listPortalBriefs = (base:string)=>fetchJson<{items:BriefInstance[]}>(base);
+export const getPortalBrief = (base:string,id:string)=>fetchJson<BriefDetail>(`${base}/${id}`);
+export const savePortalBriefResponse = (base:string,detail:BriefDetail,answers:Record<string,unknown>,idempotencyKey?:string)=>sendJson<BriefDetail>(`${base}/${detail.brief.id}/${idempotencyKey?"submit":"response"}`,{method:idempotencyKey?"POST":"PUT",body:JSON.stringify({expectedVersion:detail.response!.version,answers,...(idempotencyKey?{idempotencyKey}:{})})});
+export async function uploadBriefAttachment(base:string,detail:BriefDetail,fieldId:string,file:File){const data=new FormData();data.append("file",file);return sendJson<BriefDetail>(`${base}/${detail.brief.id}/fields/${fieldId}/attachments`,{method:"POST",headers:{"x-brief-response-version":String(detail.response!.version)},body:data});}
+export async function downloadBriefAttachment(base:string,id:string,attachment:BriefDetail["attachments"][number]){const response=await fetch(`${getApiBaseUrl()}${base}/${id}/attachments/${attachment.id}`,{headers:{Authorization:`Bearer ${getAccessToken()}`}});if(!response.ok)throw new Error("Não foi possível baixar o anexo.");const url=URL.createObjectURL(await response.blob());const a=document.createElement("a");a.href=url;a.download=attachment.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
