@@ -5,7 +5,7 @@ import { SeasonalWorkspace, SeasonalDashboardWidget } from "./SeasonalWorkspace"
 import { ContractsWorkspace, ContractAcceptanceGate } from "./ContractsWorkspace";
 import { ProposalsWorkspace } from "./ProposalsWorkspace";
 import { ProposalClientPreview, getProposalLocale } from "./proposalPresentation";
-import { printWhenImagesReady } from "./printDocument";
+import { openPrintableTextDocument, printWhenImagesReady, waitForElementImages } from "./printDocument";
 import { DashboardMetrics } from "./DashboardMetrics";
 import { MetaPreflightPanel } from "./MetaPreflightPanel";
 import { PortalAccountPicker } from "./PortalAccountPicker";
@@ -5304,20 +5304,62 @@ function AdminTextsView({ clientName, slug, onCountChange }: { clientName: strin
   const downloadPdf = async () => {
     if (!selected || pdfSaving) return;
     setPdfSaving(true);
+    const bodyHtml = editorRef.current?.innerHTML ?? selected.contentHtml;
     const printable = document.createElement("div");
-    printable.style.cssText = "position:fixed;left:-10000px;top:0;width:760px;padding:32px;background:#fff;color:#192342;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.55;";
-    printable.innerHTML = `${coverImage ? `<img src="${coverImage}" alt="Banner" style="display:block;width:100%;height:180px;object-fit:cover;border-radius:14px;margin-bottom:24px;" />` : ""}<h1 style="font-size:32px;margin:0 0 24px;">${selected.title}</h1><div>${editorRef.current?.innerHTML ?? selected.contentHtml}</div>`;
+    printable.setAttribute("aria-hidden", "true");
+    printable.style.cssText = "position:fixed;left:0;top:0;z-index:-2147483647;width:760px;padding:32px;background:#fff;color:#192342;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.55;pointer-events:none;";
+    if (coverImage) {
+      const image = document.createElement("img");
+      image.src = coverImage;
+      image.alt = "";
+      image.style.cssText = "display:block;width:100%;height:180px;object-fit:cover;border-radius:14px;margin-bottom:24px;";
+      printable.appendChild(image);
+    }
+    const heading = document.createElement("h1");
+    heading.textContent = selected.title;
+    heading.style.cssText = "font-size:32px;line-height:1.15;margin:0 0 24px;";
+    printable.appendChild(heading);
+    const article = document.createElement("div");
+    article.innerHTML = bodyHtml;
+    printable.appendChild(article);
     document.body.appendChild(printable);
+
     try {
+      await waitForElementImages(printable);
       const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ unit: "pt", format: "a4" });
-      await pdf.html(printable, { margin: [36, 36, 36, 36], autoPaging: "text", width: 523, windowWidth: 760 });
+      await pdf.html(printable, {
+        margin: [36, 36, 36, 36],
+        autoPaging: "text",
+        width: 523,
+        windowWidth: 760,
+        html2canvas: {
+          backgroundColor: "#ffffff",
+          useCORS: true,
+          logging: false,
+          scale: 0.9,
+        },
+      });
+      const generated = pdf.output("blob");
+      if (generated.size < 4500) throw new Error("PDF vazio");
       pdf.save(`${selected.title.slice(0, 55)}.pdf`);
-      setActionMessage("PDF baixado com banner e imagens do artigo.");
-    } catch (error) {
-      window.print();
-      setActionMessage(error instanceof Error ? "A janela de impressão foi aberta para salvar o PDF." : "A janela de impressão foi aberta para salvar o PDF.");
-    } finally { printable.remove(); setPdfSaving(false); }
+      setActionMessage("PDF baixado com o conteúdo do texto.");
+    } catch {
+      const popup = openPrintableTextDocument({
+        title: selected.title,
+        bodyHtml,
+        coverImage,
+      });
+      if (popup) {
+        await printWhenImagesReady(popup);
+        setActionMessage("A janela de impressão foi aberta. Escolha “Salvar como PDF”.");
+      } else {
+        setActionMessage("O navegador bloqueou a janela de PDF. Permita pop-ups para este site e tente novamente.");
+      }
+    } finally {
+      printable.remove();
+      setPdfSaving(false);
+    }
   };
   const sendToClient = async () => {
     if (!selected) return;
