@@ -5,7 +5,7 @@ import { SeasonalWorkspace, SeasonalDashboardWidget } from "./SeasonalWorkspace"
 import { ContractsWorkspace, ContractAcceptanceGate } from "./ContractsWorkspace";
 import { ProposalsWorkspace } from "./ProposalsWorkspace";
 import { ProposalClientPreview, getProposalLocale } from "./proposalPresentation";
-import { createPrintableTextFrame, printWhenImagesReady, waitForElementImages } from "./printDocument";
+import { createPrintableTextFrame, normalizePrintableText, printWhenImagesReady, waitForElementImages } from "./printDocument";
 import { DashboardMetrics } from "./DashboardMetrics";
 import { MetaPreflightPanel } from "./MetaPreflightPanel";
 import { PortalAccountPicker } from "./PortalAccountPicker";
@@ -5322,6 +5322,7 @@ function AdminTextsView({ clientName, slug, onCountChange }: { clientName: strin
     const article = document.createElement("div");
     article.innerHTML = bodyHtml;
     printable.appendChild(article);
+    normalizePrintableText(article);
     document.body.appendChild(printable);
 
     try {
