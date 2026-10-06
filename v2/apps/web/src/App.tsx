@@ -5307,7 +5307,7 @@ function AdminTextsView({ clientName, slug, onCountChange }: { clientName: strin
     const bodyHtml = editorRef.current?.innerHTML ?? selected.contentHtml;
     const printable = document.createElement("div");
     printable.setAttribute("aria-hidden", "true");
-    printable.style.cssText = "position:fixed;left:0;top:0;z-index:-2147483647;width:760px;padding:32px;background:#fff;color:#192342;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.55;pointer-events:none;";
+    printable.style.cssText = "position:fixed;left:0;top:0;z-index:-2147483647;width:760px;box-sizing:border-box;padding:32px;background:#fff;color:#192342;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.55;pointer-events:none;";
     if (coverImage) {
       const image = document.createElement("img");
       image.src = coverImage;
