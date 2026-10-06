@@ -15,6 +15,36 @@ export async function printWhenImagesReady(target: Window) {
   target.print();
 }
 
+export function normalizePrintableText(root: HTMLElement) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
+  for (const node of textNodes) {
+    if (node.nodeValue?.includes("\u00a0")) node.nodeValue = node.nodeValue.replace(/\u00a0/g, " ");
+  }
+
+  root.style.maxWidth = "100%";
+  root.style.overflow = "visible";
+  root.style.overflowWrap = "anywhere";
+  root.style.wordBreak = "normal";
+
+  for (const element of Array.from(root.querySelectorAll<HTMLElement>("*"))) {
+    element.style.maxWidth = "100%";
+    element.style.boxSizing = "border-box";
+    element.style.overflowWrap = "anywhere";
+    element.style.wordBreak = "normal";
+    if (element.tagName === "PRE") {
+      element.style.whiteSpace = "pre-wrap";
+    } else if (!["IMG", "VIDEO"].includes(element.tagName)) {
+      element.style.whiteSpace = "normal";
+    }
+    if (element.tagName === "TABLE") {
+      element.style.width = "100%";
+      element.style.tableLayout = "fixed";
+    }
+  }
+}
+
 export async function waitForElementImages(root: HTMLElement) {
   await Promise.all(Array.from(root.querySelectorAll("img")).map((image) => {
     if (image.complete) return Promise.resolve();
@@ -67,6 +97,9 @@ export function createPrintableTextFrame({
     main { width: 100%; max-width: 174mm; margin: 0 auto; }
     h1 { margin: 0 0 20px; font-size: 30px; line-height: 1.15; }
     h2, h3 { break-after: avoid; }
+    article, article * { max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; word-break: normal; }
+    article p, article div, article span, article li, article h2, article h3, article blockquote { white-space: normal !important; }
+    pre { white-space: pre-wrap !important; }
     p, ul, ol, blockquote { break-inside: avoid-page; }
     img { max-width: 100%; height: auto; break-inside: avoid; }
     .cover { display: block; width: 100%; height: 180px; object-fit: cover; border-radius: 12px; margin: 0 0 22px; }
