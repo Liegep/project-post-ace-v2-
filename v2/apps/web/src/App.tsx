@@ -5,7 +5,7 @@ import { SeasonalWorkspace, SeasonalDashboardWidget } from "./SeasonalWorkspace"
 import { ContractsWorkspace, ContractAcceptanceGate } from "./ContractsWorkspace";
 import { ProposalsWorkspace } from "./ProposalsWorkspace";
 import { ProposalClientPreview, getProposalLocale } from "./proposalPresentation";
-import { openPrintableTextDocument, printWhenImagesReady, waitForElementImages } from "./printDocument";
+import { createPrintableTextFrame, printWhenImagesReady, waitForElementImages } from "./printDocument";
 import { DashboardMetrics } from "./DashboardMetrics";
 import { MetaPreflightPanel } from "./MetaPreflightPanel";
 import { PortalAccountPicker } from "./PortalAccountPicker";
@@ -5345,16 +5345,20 @@ function AdminTextsView({ clientName, slug, onCountChange }: { clientName: strin
       pdf.save(`${selected.title.slice(0, 55)}.pdf`);
       setActionMessage("PDF baixado com o conteúdo do texto.");
     } catch {
-      const popup = openPrintableTextDocument({
+      const printableFrame = createPrintableTextFrame({
         title: selected.title,
         bodyHtml,
         coverImage,
       });
-      if (popup) {
-        await printWhenImagesReady(popup);
-        setActionMessage("A janela de impressão foi aberta. Escolha “Salvar como PDF”.");
+      if (printableFrame) {
+        try {
+          await printWhenImagesReady(printableFrame.target);
+          setActionMessage("A janela de impressão foi aberta. Escolha “Salvar como PDF”.");
+        } finally {
+          window.setTimeout(printableFrame.cleanup, 1000);
+        }
       } else {
-        setActionMessage("O navegador bloqueou a janela de PDF. Permita pop-ups para este site e tente novamente.");
+        setActionMessage("Não foi possível preparar o PDF. Atualize a página e tente novamente.");
       }
     } finally {
       printable.remove();
