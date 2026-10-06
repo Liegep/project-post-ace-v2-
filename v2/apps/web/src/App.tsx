@@ -5,7 +5,7 @@ import { SeasonalWorkspace, SeasonalDashboardWidget } from "./SeasonalWorkspace"
 import { ContractsWorkspace, ContractAcceptanceGate } from "./ContractsWorkspace";
 import { ProposalsWorkspace } from "./ProposalsWorkspace";
 import { ProposalClientPreview, getProposalLocale } from "./proposalPresentation";
-import { printWhenImagesReady } from "./printDocument";
+import { createPrintableTextFrame, printWhenImagesReady } from "./printDocument";
 import { DashboardMetrics } from "./DashboardMetrics";
 import { MetaPreflightPanel } from "./MetaPreflightPanel";
 import { PortalAccountPicker } from "./PortalAccountPicker";
@@ -5304,20 +5304,26 @@ function AdminTextsView({ clientName, slug, onCountChange }: { clientName: strin
   const downloadPdf = async () => {
     if (!selected || pdfSaving) return;
     setPdfSaving(true);
-    const printable = document.createElement("div");
-    printable.style.cssText = "position:fixed;left:-10000px;top:0;width:760px;padding:32px;background:#fff;color:#192342;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.55;";
-    printable.innerHTML = `${coverImage ? `<img src="${coverImage}" alt="Banner" style="display:block;width:100%;height:180px;object-fit:cover;border-radius:14px;margin-bottom:24px;" />` : ""}<h1 style="font-size:32px;margin:0 0 24px;">${selected.title}</h1><div>${editorRef.current?.innerHTML ?? selected.contentHtml}</div>`;
-    document.body.appendChild(printable);
+    const bodyHtml = editorRef.current?.innerHTML ?? selected.contentHtml;
+    const printableFrame = createPrintableTextFrame({
+      title: selected.title,
+      bodyHtml,
+      coverImage,
+    });
+    if (!printableFrame) {
+      setActionMessage("Não foi possível preparar o PDF. Atualize a página e tente novamente.");
+      setPdfSaving(false);
+      return;
+    }
     try {
-      const { jsPDF } = await import("jspdf");
-      const pdf = new jsPDF({ unit: "pt", format: "a4" });
-      await pdf.html(printable, { margin: [36, 36, 36, 36], autoPaging: "text", width: 523, windowWidth: 760 });
-      pdf.save(`${selected.title.slice(0, 55)}.pdf`);
-      setActionMessage("PDF baixado com banner e imagens do artigo.");
-    } catch (error) {
-      window.print();
-      setActionMessage(error instanceof Error ? "A janela de impressão foi aberta para salvar o PDF." : "A janela de impressão foi aberta para salvar o PDF.");
-    } finally { printable.remove(); setPdfSaving(false); }
+      await printWhenImagesReady(printableFrame.target);
+      setActionMessage("Escolha “Salvar como PDF” na janela de impressão.");
+    } catch {
+      setActionMessage("Não foi possível abrir a impressão do PDF. Atualize a página e tente novamente.");
+    } finally {
+      window.setTimeout(printableFrame.cleanup, 1500);
+      setPdfSaving(false);
+    }
   };
   const sendToClient = async () => {
     if (!selected) return;
