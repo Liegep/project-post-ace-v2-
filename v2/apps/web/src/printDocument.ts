@@ -25,7 +25,7 @@ export async function waitForElementImages(root: HTMLElement) {
   }));
 }
 
-export function openPrintableTextDocument({
+export function createPrintableTextFrame({
   title,
   bodyHtml,
   coverImage,
@@ -34,8 +34,15 @@ export function openPrintableTextDocument({
   bodyHtml: string;
   coverImage?: string | null;
 }) {
-  const popup = window.open("", "_blank", "width=900,height=1000");
-  if (!popup) return null;
+  const frame = document.createElement("iframe");
+  frame.title = "Prévia para salvar PDF";
+  frame.style.cssText = "position:fixed;left:0;top:0;width:900px;height:1000px;z-index:-2147483647;border:0;pointer-events:none;background:#fff;";
+  document.body.appendChild(frame);
+  const target = frame.contentWindow;
+  if (!target) {
+    frame.remove();
+    return null;
+  }
 
   const safeTitle = title.replace(/[&<>"']/g, (character) => ({
     "&": "&amp;",
@@ -45,8 +52,8 @@ export function openPrintableTextDocument({
     "'": "&#039;",
   })[character] ?? character);
 
-  popup.document.open();
-  popup.document.write(`<!doctype html>
+  target.document.open();
+  target.document.write(`<!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8" />
@@ -75,6 +82,10 @@ export function openPrintableTextDocument({
   </main>
 </body>
 </html>`);
-  popup.document.close();
-  return popup;
+  target.document.close();
+
+  return {
+    target,
+    cleanup: () => frame.remove(),
+  };
 }
