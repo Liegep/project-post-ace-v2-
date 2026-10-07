@@ -12,6 +12,7 @@ import { clientA, clientB, actorId, sample } from "./radar-suggestions.test-fixt
 function fixture() {
   const items: RadarSuggestion[] = [];
   const store: RadarSuggestionsStore = {
+    resolve: async () => { throw Object.assign(new Error("Decisão recusada"), { statusCode: 409 }); },
     clientExists: async (id) => [clientA, clientB].includes(id),
     createPending: async (clientId, userId, input, keys) => {
       const existing = items.find((item) => item.clientAccountId === clientId && item.dedupeHash === keys.dedupeHash);
@@ -24,7 +25,7 @@ function fixture() {
     pendingDetail: async (clientId, id) => items.find((item) => item.clientAccountId === clientId && item.id === id && item.status === "pending") ?? null,
     listPending: async (ids, query) => {
       const visible = items.filter((item) => item.status === "pending" && (!ids || ids.includes(item.clientAccountId)));
-      return { items: visible.slice(query.offset, query.offset + query.limit), hasMore: visible.length > query.offset + query.limit, ...query };
+      return { total: visible.length, items: visible.slice(query.offset, query.offset + query.limit).map((item) => ({ ...item, clientName: "Cliente" })), hasMore: visible.length > query.offset + query.limit, ...query };
     },
   };
   return { items, store, service: new RadarSuggestionsService(store) };
@@ -104,7 +105,7 @@ test("HTTP authorization, scoped lists/details, pending-only reads, retry semant
     assert.equal((await app.inject(`${url}/invalid`)).statusCode, 400);
     assert.equal((await app.inject(`${url}?limit=101`)).statusCode, 400);
     const page = (await app.inject("/api/radar-suggestions?limit=1")).json(); assert.equal(page.items.length, 1); assert.equal(page.hasMore, true);
-    for (const action of ["accept", "dismiss"]) assert.equal((await app.inject({ method: "POST", url: `${url}/${id}/${action}` })).statusCode, 404);
+    for (const action of ["accept", "dismiss"]) assert.equal((await app.inject({ method: "POST", url: `${url}/${id}/${action}` })).statusCode, 409);
     assert.equal((await app.inject({ method: "DELETE", url: `${url}/${id}` })).statusCode, 404);
     f.items.forEach((item) => { item.status = "accepted"; });
     assert.equal((await app.inject(url)).json().items.length, 0);

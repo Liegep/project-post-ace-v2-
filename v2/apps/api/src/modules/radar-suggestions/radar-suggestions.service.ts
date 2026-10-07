@@ -21,6 +21,9 @@ export function radarSuggestionKeys(input: ReturnType<typeof radarSuggestionInpu
 }
 export class RadarSuggestionsService {
   constructor(private readonly store: RadarSuggestionsStore) {}
+  async resolve(clientId: string, id: string, userId: string, action: "accept" | "dismiss") {
+    return this.store.resolve(clientId, id, userId, action);
+  }
   async createPending(clientId: string, userId: string, value: unknown) {
     const input = radarSuggestionInputSchema.parse(value);
     return this.store.createPending(clientId, userId, input, radarSuggestionKeys(input));

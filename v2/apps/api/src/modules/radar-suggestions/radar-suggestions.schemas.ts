@@ -38,3 +38,6 @@ export type RadarSuggestion = RadarSuggestionInput & {
   acceptedPautaId: string | null; acceptedByUserId: string | null; dismissedByUserId: string | null;
   createdAt: string; updatedAt: string; acceptedAt: string | null; dismissedAt: string | null;
 };
+
+export type RadarSuggestionSummary = Pick<RadarSuggestion, "id" | "clientAccountId" | "title" | "contentType" | "pillar" | "alignmentScore" | "sourceTitle" | "sourceDate" | "createdAt"> & { clientName: string };
+export type RadarPauta = { id: string; title: string; description: string; caption: string; contentType: string; status: "draft"; createdAt: string; updatedAt: string; createdBy: "radar_ai"; radarSuggestionId: string; radarSource: string; sourceTitle: string; sourceUrl: string | null; pillar: string | null; objective: string };

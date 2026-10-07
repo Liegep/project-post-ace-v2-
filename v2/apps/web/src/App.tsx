@@ -1,3 +1,4 @@
+import { RadarSuggestionsWidget } from "./RadarSuggestionsWidget";
 import { AgendaWorkspace } from "./AgendaWorkspace";
 import { BriefsFoundationWorkspace, PortalBriefsFoundation } from "./BriefFoundationWorkspace";
 import { SocialCalendarWorkspace } from "./SocialCalendarWorkspace";
@@ -1224,7 +1225,7 @@ type DrawerLink = { id: string; type: "heading" | "link"; title: string; url?: s
 type DrawerAttachment = { type: "link" | "image" | "video" | "pdf"; url: string; name: string };
 type DrawerDraft = { id: string; text: string; attachmentUrl?: string; createdAt?: string; color?: string };
 type DrawerNote = { id: string; text: string; createdAt: string; color: string; authorName?: string; attachments?: DrawerAttachment[] };
-type PautaIdea = { id: string; title: string; description: string; caption: string; createdAt: string; updatedAt?: string; plannedDate?: string | null; contentType?: string; internalNotes?: string; mediaUrls?: string[]; status?: "draft" | "sent" | "approved"; cardId?: string };
+type PautaIdea = { id: string; title: string; description: string; caption: string; createdAt: string; updatedAt?: string; plannedDate?: string | null; contentType?: string; internalNotes?: string; mediaUrls?: string[]; status?: "draft" | "sent" | "approved"; cardId?: string; radarSuggestionId?: string; createdBy?: string; radarSource?: string; sourceUrl?: string | null; pillar?: string | null; objective?: string };
 type WorkspaceDrawerData = { notes: DrawerNote[]; links: DrawerLink[]; quick: DrawerLink[]; draftsByUser: Record<string, DrawerDraft[]>; pautaIdeas: PautaIdea[] };
 type KanbanAutomation = { id: string; name: string; enabled: boolean; triggerType: "tag_added" | "column_moved"; triggerValue: string; actionType: "add_tag" | "move_column" | "change_color"; actionValue: string };
 
@@ -1322,7 +1323,7 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
     setDrawer(next);
     // Keeps the dashboard shortcut in sync with the Kanban's single link source.
     window.dispatchEvent(new CustomEvent("design-hub:workspace-links-updated", { detail: { slug, links: next.links } }));
-    void saveAdminWorkspaceDrawerBySlug(slug, next);
+    void saveAdminWorkspaceDrawerBySlug(slug, Object.fromEntries(Object.entries(next).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify((drawer as unknown as Record<string, unknown>)[key]))));
     if (quickChanged && canManageAccess) void saveAdminGlobalQuickLinks(next.quick);
   };
   const linkTab = tab === "quick" || tab === "links" ? tab : null;
@@ -1371,7 +1372,7 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
         if (!canManageAccess) throw new Error("Apenas o super admin pode editar os links rápidos globais.");
         await saveAdminGlobalQuickLinks(linkDraft.items);
       } else {
-        await saveAdminWorkspaceDrawerBySlug(slug, next);
+        await saveAdminWorkspaceDrawerBySlug(slug, { [linkDraft.tab]: linkDraft.items });
         window.dispatchEvent(new CustomEvent("design-hub:workspace-links-updated", { detail: { slug, links: next.links } }));
       }
       setDrawer(next);
@@ -2303,7 +2304,6 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
         logoUrl,
       });
       await saveAdminWorkspaceDrawerBySlug(slugify(editForm.slug), {
-        ...editDrawerData,
         socialLinks: {
           instagram: normalizeOptionalClientUrl(editForm.instagram), facebook: normalizeOptionalClientUrl(editForm.facebook), tiktok: normalizeOptionalClientUrl(editForm.tiktok),
           youtube: normalizeOptionalClientUrl(editForm.youtube), linkedin: normalizeOptionalClientUrl(editForm.linkedin), x: normalizeOptionalClientUrl(editForm.x), website: normalizeOptionalClientUrl(editForm.website),
@@ -2422,6 +2422,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
               onDeleted={(eventId) => setAgendaToday((current) => current.filter((event) => event.id !== eventId))}
             /> : null}
             <SeasonalDashboardWidget clients={clients} />
+            {session.source === "api" ? <RadarSuggestionsWidget key={session.id} /> : null}
             {postsToday.length > 0 ? <DashboardTodayPostsWidget items={postsToday} /> : null}
             {approvedPautas.length > 0 ? <DashboardApprovedPautasWidget items={approvedPautas} userId={session.id} canPersist={session.source === "api"} /> : null}
             {clientActivities.length > 0 ? <DashboardClientActivitiesWidget items={clientActivities} userId={session.id} canPersist={session.source === "api"} onSchedule={setScheduleActivity} /> : null}
@@ -9122,7 +9123,7 @@ function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: {
     const next = ideas.map((idea) => {
       const linkedCard = idea.cardId
         ? pautaCards.find((card) => card.id === idea.cardId)
-        : pautaCards.find((card) => !claimedCardIds.has(card.id) && card.title.trim() === idea.title.trim() && (card.isBriefApproval || /aprovad/i.test(`${card.clientLabel} ${card.statusBadges.join(" ")}`)));
+        : idea.radarSuggestionId ? undefined : pautaCards.find((card) => !claimedCardIds.has(card.id) && card.title.trim() === idea.title.trim() && (card.isBriefApproval || /aprovad/i.test(`${card.clientLabel} ${card.statusBadges.join(" ")}`)));
       if (!linkedCard) return idea;
       claimedCardIds.add(linkedCard.id);
       const approved = /aprovad/i.test(`${linkedCard.clientLabel} ${linkedCard.statusBadges.join(" ")}`);
@@ -9149,7 +9150,7 @@ function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: {
     try {
       const otherLinkedCardIds = new Set(ideas.filter((item) => item.id !== idea.id).map((item) => item.cardId).filter((cardId): cardId is string => Boolean(cardId)));
       const existingCard = pautaCards.find((card) => card.id === idea.cardId)
-        ?? pautaCards.find((card) => !otherLinkedCardIds.has(card.id) && card.title.trim() === idea.title.trim() && card.isBriefApproval);
+        ?? (idea.radarSuggestionId ? undefined : pautaCards.find((card) => !otherLinkedCardIds.has(card.id) && card.title.trim() === idea.title.trim() && card.isBriefApproval));
       if (existingCard) {
         const approved = /aprovad/i.test(`${existingCard.clientLabel} ${existingCard.statusBadges.join(" ")}`);
         await saveIdeaPatch(idea.id, { status: approved ? "approved" : "sent", cardId: existingCard.id });

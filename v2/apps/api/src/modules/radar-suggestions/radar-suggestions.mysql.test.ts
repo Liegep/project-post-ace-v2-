@@ -5,6 +5,12 @@ import { randomUUID } from "node:crypto";
 import mysql, { type Pool, type RowDataPacket } from "mysql2/promise";
 import { RadarSuggestionsRepository } from "./radar-suggestions.repository.js";
 import { RadarSuggestionsService } from "./radar-suggestions.service.js";
+import Fastify from "fastify";
+import { httpErrorsPluginRegistered } from "../../plugins/http-errors.js";
+import { clientRoutes } from "../clients/clients.routes.js";
+import { saveOfficialBrandBrain } from "../clients/brand-brain.service.js";
+import { radarSuggestionsRoutes } from "./radar-suggestions.routes.js";
+import type { AuthContext } from "../auth/auth.types.js";
 import { clientA, clientB, actorId, sample } from "./radar-suggestions.test-fixtures.js";
 
 // Only an isolated local socket is accepted. Never reads .env or application DB credentials.
@@ -119,4 +125,104 @@ test("MariaDB timestamps preserve milliseconds regardless of driver timezone", a
     assert.equal(detail!.createdAt, "2026-10-07T12:30:00.123Z");
     assert.equal(detail!.updatedAt, "2026-10-07T12:31:00.456Z");
   } finally { await alternate.end(); await f.close(); }
+});
+
+test("MariaDB concurrent acceptance creates one draft, preserves metadata/full drawer, and persists decisions", async () => {
+  const f = await fixture();
+  try {
+    const created = await f.service.createPending(clientA, actorId, sample({ captionSuggestion: "Legenda", pillar: "Observação", sourceUrl: "https://example.org/study" }));
+    const results = await Promise.all(Array.from({ length: 12 }, () => f.service.resolve(clientA, created.suggestion.id, actorId, "accept")));
+    assert.equal(results.filter((result) => result.created).length, 1);
+    assert.equal(new Set(results.map((result) => result.pauta!.id)).size, 1);
+    const pauta = results[0].pauta!;
+    assert.equal(pauta.status, "draft"); assert.equal(pauta.createdBy, "radar_ai"); assert.equal(pauta.radarSuggestionId, created.suggestion.id);
+    assert.equal(pauta.caption, "Legenda"); assert.equal(pauta.pillar, "Observação"); assert.equal(pauta.objective, "Educar"); assert.equal(pauta.radarSource, "Comportamento"); assert.equal(pauta.sourceUrl, "https://example.org/study");
+    assert.notEqual(pauta.id, "legacy"); assert.equal("cardId" in pauta, false);
+    const drawer = (await rows(f.pool, "SELECT workspace_drawer_json FROM client_accounts WHERE id = ?", [clientA]))[0].workspace_drawer_json;
+    const parsed = typeof drawer === "string" ? JSON.parse(drawer) : drawer;
+    assert.equal(parsed.pautaIdeas.length, 2);
+    const { pautaIdeas, ...rest } = parsed; const { pautaIdeas: old, ...original } = JSON.parse(f.drawer);
+    assert.deepEqual(rest, original); assert.deepEqual(pautaIdeas[1], old[0]);
+    assert.equal((await rows(f.pool, "SELECT COUNT(*) AS count FROM kanban_cards"))[0].count, 0);
+    const record = (await rows(f.pool, "SELECT * FROM radar_suggestions WHERE id = ?", [created.suggestion.id]))[0];
+    assert.equal(record.status, "accepted"); assert.equal(record.accepted_pauta_id, pauta.id); assert.equal(record.accepted_by_user_id, actorId); assert.ok(record.accepted_at);
+    const fresh = new RadarSuggestionsRepository(f.pool);
+    assert.equal((await fresh.listPending([clientA], { limit: 25, offset: 0 })).total, 0);
+    assert.equal((await fresh.resolve(clientA, created.suggestion.id, actorId, "accept")).pauta!.id, pauta.id);
+    await assert.rejects(f.service.resolve(clientA, created.suggestion.id, actorId, "dismiss"), { statusCode: 409 });
+  } finally { await f.close(); }
+});
+test("MariaDB dismissal is persistent/idempotent, creates no pauta and cannot be accepted", async () => {
+  const f = await fixture();
+  try {
+    const created = await f.service.createPending(clientA, actorId, sample());
+    await f.service.resolve(clientA, created.suggestion.id, actorId, "dismiss");
+    await f.service.resolve(clientA, created.suggestion.id, actorId, "dismiss");
+    await assert.rejects(f.service.resolve(clientA, created.suggestion.id, actorId, "accept"), { statusCode: 409 });
+    await assert.rejects(f.service.resolve(clientB, created.suggestion.id, actorId, "accept"), { statusCode: 404 });
+    const row = (await rows(f.pool, "SELECT * FROM radar_suggestions WHERE id = ?", [created.suggestion.id]))[0];
+    assert.equal(row.status, "dismissed"); assert.equal(row.dismissed_by_user_id, actorId); assert.ok(row.dismissed_at); assert.equal(row.accepted_pauta_id, null);
+    assert.equal((await f.repository.listPending(null, { limit: 25, offset: 0 })).total, 0);
+    assert.equal((await rows(f.pool, "SELECT CAST(workspace_drawer_json AS CHAR) AS data FROM client_accounts WHERE id = ?", [clientA]))[0].data, f.drawer);
+  } finally { await f.close(); }
+});
+test("MariaDB accept/dismiss race resolves once; failed decision rolls back both records", async () => {
+  const f = await fixture();
+  try {
+    const item = await f.service.createPending(clientA, actorId, sample());
+    await f.pool.query("CREATE TRIGGER fail_radar_decision BEFORE UPDATE ON radar_suggestions FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'simulated failure'");
+    await assert.rejects(f.service.resolve(clientA, item.suggestion.id, actorId, "accept"), /simulated failure/);
+    assert.ok(await f.repository.pendingDetail(clientA, item.suggestion.id));
+    assert.equal((await rows(f.pool, "SELECT CAST(workspace_drawer_json AS CHAR) AS data FROM client_accounts WHERE id = ?", [clientA]))[0].data, f.drawer);
+    await f.pool.query("DROP TRIGGER fail_radar_decision");
+    const decisions = await Promise.allSettled([f.service.resolve(clientA, item.suggestion.id, actorId, "accept"), f.service.resolve(clientA, item.suggestion.id, actorId, "dismiss")]);
+    assert.equal(decisions.filter((result) => result.status === "fulfilled").length, 1);
+    const row = (await rows(f.pool, "SELECT status FROM radar_suggestions WHERE id = ?", [item.suggestion.id]))[0];
+    const drawer = (await rows(f.pool, "SELECT workspace_drawer_json FROM client_accounts WHERE id = ?", [clientA]))[0].workspace_drawer_json;
+    assert.equal((typeof drawer === "string" ? JSON.parse(drawer) : drawer).pautaIdeas.length, row.status === "accepted" ? 2 : 1);
+  } finally { await f.close(); }
+});
+test("MariaDB HTTP decisions enforce authorization, summary-only reads, and stale drawer saves preserve accepted pauta", async () => {
+  const f = await fixture(); const app = Fastify();
+  let auth: AuthContext | null = null;
+  app.decorate("db", f.pool); await app.register(httpErrorsPluginRegistered);
+  app.addHook("onRequest", async (request) => { request.auth = auth; });
+  try {
+    await app.register(clientRoutes, { prefix: "/api" }); await app.register(radarSuggestionsRoutes, { prefix: "/api" });
+    const item = await f.service.createPending(clientA, actorId, sample()); const url = `/api/clients/${clientA}/radar-suggestions/${item.suggestion.id}/accept`;
+    assert.equal((await app.inject({ method: "POST", url })).statusCode, 401);
+    const user = (role: AuthContext["user"]["globalRole"]): AuthContext => ({ user: { id: actorId, fullName: "Equipe", email: "test@invalid.test", globalRole: role, avatarUrl: null, locale: "pt", isActive: true }, memberships: [] });
+    auth = user("cliente"); assert.equal((await app.inject({ method: "POST", url })).statusCode, 403);
+    auth = user("colaborador"); assert.equal((await app.inject({ method: "POST", url })).statusCode, 403);
+    auth = user("super_admin");
+    const list = (await app.inject("/api/radar-suggestions")).json(); assert.equal(list.total, 1); assert.equal(list.items[0].clientName, "A"); assert.equal(list.items[0].description, undefined); assert.equal(list.items[0].rationale, undefined);
+    assert.equal((await app.inject({ method: "POST", url, payload: { title: "ignore" } })).statusCode, 400);
+    assert.equal((await app.inject({ method: "POST", url: url.replace(clientA, clientB) })).statusCode, 404);
+    const accepted = await app.inject({ method: "POST", url }); assert.equal(accepted.statusCode, 200); const id = accepted.json().pauta.id;
+    await app.inject({ method: "PUT", url: `/api/clients/${clientA}/workspace-drawer`, payload: { data: { ...JSON.parse(f.drawer), links: ["edited"], brandBrain: { positioning: "stale" } } } });
+    await app.inject({ method: "PUT", url: "/api/clients/workspace-quick-links", payload: { items: ["quick"] } });
+    await saveOfficialBrandBrain(f.pool, { clientAccountId: clientA, data: { positioning: "Novo oficial" }, userId: actorId, authorName: "Equipe" });
+    const saved = (await rows(f.pool, "SELECT workspace_drawer_json FROM client_accounts WHERE id = ?", [clientA]))[0].workspace_drawer_json;
+    const drawer = typeof saved === "string" ? JSON.parse(saved) : saved;
+    assert.equal(drawer.pautaIdeas[0].id, id); assert.equal(drawer.pautaIdeas.length, 2); assert.deepEqual(drawer.custom, { nested: true }); assert.deepEqual(drawer.links, ["edited"]); assert.deepEqual(drawer.quick, ["quick"]); assert.equal(drawer.brandBrain.positioning, "Novo oficial");
+    const retry = await app.inject({ method: "POST", url }); assert.equal(retry.json().pauta.id, id); assert.equal(retry.json().created, false);
+  } finally { await app.close(); await f.close(); }
+});
+
+test("MariaDB concurrent different suggestions and section updates preserve all pauta IDs and unrelated data", async () => {
+  const f = await fixture();
+  try {
+    const items = await Promise.all(Array.from({ length: 5 }, (_, i) => f.service.createPending(clientA, actorId, sample({ title: `Oportunidade ${i}` }))));
+    const results = await Promise.all([
+      ...items.map((item) => f.service.resolve(clientA, item.suggestion.id, actorId, "accept")),
+      f.pool.query("UPDATE client_accounts SET workspace_drawer_json = JSON_SET(workspace_drawer_json, '$.links', JSON_EXTRACT(?, '$')) WHERE id = ?", [JSON.stringify(["novo link"]), clientA]),
+      f.pool.query("UPDATE client_accounts SET workspace_drawer_json = JSON_SET(workspace_drawer_json, '$.brandBrain', JSON_EXTRACT(?, '$')) WHERE id = ?", [JSON.stringify({ positioning: "Marca atual" }), clientA]),
+    ]);
+    const raw = (await rows(f.pool, "SELECT workspace_drawer_json FROM client_accounts WHERE id = ?", [clientA]))[0].workspace_drawer_json;
+    const drawer = typeof raw === "string" ? JSON.parse(raw) : raw;
+    assert.equal(drawer.pautaIdeas.length, 6); assert.equal(new Set(drawer.pautaIdeas.map((idea: { id: string }) => idea.id)).size, 6);
+    assert.deepEqual(drawer.links, ["novo link"]); assert.equal(drawer.brandBrain.positioning, "Marca atual"); assert.deepEqual(drawer.custom, { nested: true });
+    assert.equal((await f.repository.listPending([clientA], { limit: 25, offset: 0 })).total, 0);
+    assert.equal(results.length, 7);
+  } finally { await f.close(); }
 });

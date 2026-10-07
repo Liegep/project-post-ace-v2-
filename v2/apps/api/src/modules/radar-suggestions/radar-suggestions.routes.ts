@@ -47,4 +47,12 @@ export const radarSuggestionsRoutes: FastifyPluginAsync<{ store?: RadarSuggestio
     const result = await service.createPending(clientId, request.auth!.user.id, input);
     return reply.code(result.created ? 201 : 200).send(result);
   });
+  for (const action of ["accept", "dismiss"] as const) app.post(`/clients/:clientId/radar-suggestions/:id/${action}`, async (request) => {
+    assertInternalAccess(request);
+    const { clientId, id } = parse(request, radarSuggestionDetailParamsSchema, request.params);
+    await authorize(request, clientId);
+    if (request.body != null && (typeof request.body !== "object" || Array.isArray(request.body) || Object.keys(request.body).length)) throw app.httpErrors.badRequest("Esta ação não recebe conteúdo.");
+    return service.resolve(clientId, id, request.auth!.user.id, action);
+  });
+
 };

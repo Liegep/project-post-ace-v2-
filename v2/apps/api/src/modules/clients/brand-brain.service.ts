@@ -71,9 +71,7 @@ export async function getBrandBrainSnapshot(db: Pool, clientAccountId: string, i
 }
 
 export async function saveOfficialBrandBrain(db: Pool, input: { clientAccountId: string; data: BrandBrainData; userId: string; authorName: string; sourceRevisionId?: string | null }) {
-  const [rows] = await db.query<Array<RowDataPacket & { workspace_drawer_json: unknown }>>("SELECT workspace_drawer_json FROM client_accounts WHERE id = ?", [input.clientAccountId]);
-  const drawer = parseJson<Record<string, unknown>>(rows[0]?.workspace_drawer_json, {});
-  await db.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...drawer, brandBrain: input.data }), input.clientAccountId]);
+  await db.query("UPDATE client_accounts SET workspace_drawer_json = JSON_SET(COALESCE(workspace_drawer_json, JSON_OBJECT()), '$.brandBrain', JSON_EXTRACT(?, '$')) WHERE id = ?", [JSON.stringify(input.data), input.clientAccountId]);
   const [versionRows] = await db.query<Array<RowDataPacket & { nextVersion: number }>>("SELECT COALESCE(MAX(version_number), 0) + 1 AS nextVersion FROM brand_brain_versions WHERE client_account_id = ?", [input.clientAccountId]);
   const version = Number(versionRows[0]?.nextVersion ?? 1);
   await db.query("INSERT INTO brand_brain_versions (id, client_account_id, version_number, data_json, created_by_user_id, author_name, source_revision_id) VALUES (?, ?, ?, ?, ?, ?, ?)", [crypto.randomUUID(), input.clientAccountId, version, JSON.stringify(input.data), input.userId, input.authorName, input.sourceRevisionId ?? null]);

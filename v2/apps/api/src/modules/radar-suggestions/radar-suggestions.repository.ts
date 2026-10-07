@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { Pool, RowDataPacket } from "mysql2/promise";
-import type { RadarSuggestion, RadarSuggestionInput, RadarSuggestionQuery } from "./radar-suggestions.schemas.js";
+import type { RadarSuggestion, RadarSuggestionInput, RadarSuggestionQuery, RadarSuggestionSummary, RadarPauta } from "./radar-suggestions.schemas.js";
 const fields = {
   title: "title", concept: "concept", hook: "hook", description: "description", contentType: "content_type",
   pillar: "pillar", objective: "objective", rationale: "rationale", cta: "cta", captionSuggestion: "caption_suggestion",
@@ -46,13 +46,54 @@ export class RadarSuggestionsRepository {
     const [rows] = await this.db.query<RowDataPacket[]>(`SELECT ${selection} FROM radar_suggestions WHERE client_account_id = ? AND id = ? AND status = 'pending'`, [clientId, id]);
     return rows[0] ? suggestion(rows[0]) : null;
   }
+  async resolve(clientId: string, id: string, userId: string, action: "accept" | "dismiss") {
+    const connection = await this.db.getConnection();
+    try {
+      await connection.beginTransaction();
+      // All decisions lock client first, then suggestion: same order as drawer writers.
+      const [clients] = await connection.query<RowDataPacket[]>("SELECT workspace_drawer_json FROM client_accounts WHERE id = ? FOR UPDATE", [clientId]);
+      const [rows] = await connection.query<RowDataPacket[]>(`SELECT ${selection} FROM radar_suggestions WHERE client_account_id = ? AND id = ? FOR UPDATE`, [clientId, id]);
+      if (!clients[0] || !rows[0]) throw Object.assign(new Error("Sugestão não encontrada."), { statusCode: 404 });
+      const item = suggestion(rows[0]);
+      const raw = clients[0].workspace_drawer_json;
+      const drawer = (typeof raw === "string" ? JSON.parse(raw) : raw) ?? {};
+      if (typeof drawer !== "object" || Array.isArray(drawer)) throw new Error("Dados do cliente inválidos.");
+      if (drawer.pautaIdeas != null && !Array.isArray(drawer.pautaIdeas)) throw new Error("Banco de pautas inválido.");
+      const ideas: Array<Record<string, unknown>> = drawer.pautaIdeas ?? [];
+      if (action === "accept") {
+        if (item.status === "dismissed") throw Object.assign(new Error("Uma sugestão descartada não pode ser adicionada ao banco."), { statusCode: 409 });
+        if (item.status === "accepted") {
+          const pauta = ideas.find((idea) => idea?.id === item.acceptedPautaId);
+          if (!pauta) throw Object.assign(new Error("A pauta já foi criada, mas não está mais no banco do cliente."), { statusCode: 409 });
+          await connection.commit(); return { status: "accepted" as const, pauta, created: false };
+        }
+        const now = new Date().toISOString();
+        const pauta: RadarPauta = { id: randomUUID(), title: item.title, description: item.description, caption: item.captionSuggestion ?? "", contentType: item.contentType,
+          status: "draft", createdAt: now, updatedAt: now, createdBy: "radar_ai", radarSuggestionId: item.id, radarSource: item.radarName,
+          sourceTitle: item.sourceTitle, sourceUrl: item.sourceUrl, pillar: item.pillar, objective: item.objective };
+        await connection.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...drawer, pautaIdeas: [pauta, ...ideas] }), clientId]);
+        await connection.query("UPDATE radar_suggestions SET status = 'accepted', accepted_pauta_id = ?, accepted_by_user_id = ?, accepted_at = CURRENT_TIMESTAMP(3) WHERE client_account_id = ? AND id = ?", [pauta.id, userId, clientId, id]);
+        await connection.commit(); return { status: "accepted" as const, pauta, created: true };
+      }
+      if (item.status === "accepted") throw Object.assign(new Error("Esta sugestão já foi adicionada ao banco."), { statusCode: 409 });
+      if (item.status === "pending") await connection.query("UPDATE radar_suggestions SET status = 'dismissed', dismissed_by_user_id = ?, dismissed_at = CURRENT_TIMESTAMP(3) WHERE client_account_id = ? AND id = ?", [userId, clientId, id]);
+      await connection.commit(); return { status: "dismissed" as const, created: false };
+    } catch (error) { await connection.rollback(); throw error; }
+    finally { connection.release(); }
+  }
+
   async listPending(clientIds: string[] | null, query: RadarSuggestionQuery) {
-    if (clientIds?.length === 0) return { items: [], hasMore: false, ...query };
+    if (clientIds?.length === 0) return { items: [], total: 0, hasMore: false, ...query };
     const scope = clientIds ? ` AND client_account_id IN (${clientIds.map(() => "?").join(", ")})` : "";
-    // Fetch one extra, rather than a separate count that could race with ingestion.
-    const [rows] = await this.db.query<RowDataPacket[]>(`SELECT ${selection} FROM radar_suggestions WHERE status = 'pending'${scope}
-      ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?`, [...(clientIds ?? []), query.limit + 1, query.offset]);
-    return { items: rows.slice(0, query.limit).map(suggestion), hasMore: rows.length > query.limit, ...query };
+    const [counts] = await this.db.query<RowDataPacket[]>(`SELECT COUNT(*) AS total FROM radar_suggestions WHERE status = 'pending'${scope}`, clientIds ?? []);
+    const [rows] = await this.db.query<RowDataPacket[]>(`SELECT r.id, r.client_account_id, c.name AS client_name, r.title, r.content_type, r.pillar, r.alignment_score, r.source_title, r.source_date, UNIX_TIMESTAMP(r.created_at) AS created_epoch
+      FROM radar_suggestions r JOIN client_accounts c ON c.id = r.client_account_id
+      WHERE r.status = 'pending'${scope.replaceAll("client_account_id", "r.client_account_id")}
+      ORDER BY r.created_at DESC, r.id DESC LIMIT ? OFFSET ?`, [...(clientIds ?? []), query.limit + 1, query.offset]);
+    const items: RadarSuggestionSummary[] = rows.slice(0, query.limit).map((row) => ({ id: row.id, clientAccountId: row.client_account_id, clientName: row.client_name,
+      title: row.title, contentType: row.content_type, pillar: row.pillar, alignmentScore: row.alignment_score, sourceTitle: row.source_title, sourceDate: row.source_date, createdAt: new Date(Number(row.created_epoch) * 1000).toISOString() }));
+    return { items, total: Number(counts[0].total), hasMore: rows.length > query.limit, ...query };
+
   }
 }
 export type RadarSuggestionsStore = Pick<RadarSuggestionsRepository, keyof RadarSuggestionsRepository>;
