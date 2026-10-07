@@ -39,17 +39,24 @@ test("persisted dismissals filter the operational response after reload", async 
   await ensureDashboardDismissalsTable(db);
   await dismissDashboardItem(db, { userId: "user-1", itemType: "approved_pauta", itemId: "pauta-1" });
   assert.match(calls[0]!.sql, /CREATE TABLE IF NOT EXISTS dashboard_dismissals/);
-  assert.match(calls[1]!.sql, /INSERT IGNORE INTO dashboard_dismissals/);
-  assert.deepEqual(calls[1]!.params, ["user-1", "approved_pauta", "pauta-1"]);
+  assert.match(calls[1]!.sql, /ALTER TABLE dashboard_dismissals MODIFY item_type VARCHAR\(64\) NOT NULL/);
+  assert.match(calls[2]!.sql, /INSERT IGNORE INTO dashboard_dismissals/);
+  assert.deepEqual(calls[2]!.params, ["user-1", "approved_pauta", "pauta-1"]);
   assert.deepEqual(filterDismissedDashboardItems([{ id: "pauta-1" }, { id: "pauta-2" }], new Set(["pauta-1"])), [{ id: "pauta-2" }]);
   assert.match(routesSource, /NOT EXISTS \(SELECT 1 FROM dashboard_dismissals dd WHERE dd\.user_id = \?/);
   assert.match(routesSource, /dd\.item_type = 'client_feedback'/);
   assert.match(approvedPautasQuery, /dd\.item_type = 'approved_pauta'/);
+  assert.match(routesSource, /dd\.item_type = 'client_submission'/);
 });
 
-test("widget counters use visible items and both dismiss buttons persist through the API", () => {
+test("server-backed dashboard widgets persist dismissals and surface failures", () => {
   assert.match(webSource, /Pautas aprovadas[\s\S]*<span>\{visibleItems\.length\}<\/span>/);
   assert.match(webSource, /Feedback dos clientes[\s\S]*<span>\{visibleItems\.length\}<\/span>/);
-  assert.match(webSource, /dismissDashboardItem\("approved_pauta", id\)/);
-  assert.match(webSource, /dismissDashboardItem\("client_feedback", id\)/);
+  assert.match(webSource, /Sugestões dos clientes[\s\S]*<span>\{visibleItems\.length\}<\/span>/);
+  assert.match(webSource, /await dismissDashboardItem\("approved_pauta", id\)/);
+  assert.match(webSource, /await dismissDashboardItem\("client_feedback", id\)/);
+  assert.match(webSource, /await dismissDashboardItem\("client_submission", id\)/);
+  assert.match(webSource, /Não foi possível marcar esta pauta como visualizada/);
+  assert.match(webSource, /Não foi possível marcar este feedback como visualizado/);
+  assert.match(webSource, /Não foi possível marcar esta sugestão como visualizada/);
 });

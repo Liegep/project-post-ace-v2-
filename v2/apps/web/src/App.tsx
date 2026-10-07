@@ -2423,10 +2423,10 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
             /> : null}
             <SeasonalDashboardWidget clients={clients} />
             {postsToday.length > 0 ? <DashboardTodayPostsWidget items={postsToday} /> : null}
-            {approvedPautas.length > 0 ? <DashboardApprovedPautasWidget items={approvedPautas} userId={session.id} /> : null}
-            {clientActivities.length > 0 ? <DashboardClientActivitiesWidget items={clientActivities} userId={session.id} onSchedule={setScheduleActivity} /> : null}
+            {approvedPautas.length > 0 ? <DashboardApprovedPautasWidget items={approvedPautas} userId={session.id} canPersist={session.source === "api"} /> : null}
+            {clientActivities.length > 0 ? <DashboardClientActivitiesWidget items={clientActivities} userId={session.id} canPersist={session.source === "api"} onSchedule={setScheduleActivity} /> : null}
             {internalMessages.length > 0 ? <DashboardInternalMessagesWidget items={internalMessages} onOpen={(item) => { if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; }} /> : null}
-            {clientSubmissions.length > 0 ? <DashboardClientSubmissionsWidget items={clientSubmissions} userId={session.id} /> : null}
+            {clientSubmissions.length > 0 ? <DashboardClientSubmissionsWidget items={clientSubmissions} userId={session.id} canPersist={session.source === "api"} /> : null}
           </div>
           <div className="dashboard-section-divider" aria-hidden="true"><span /></div>
           <section id="dashboard-clients" className="dashboard-clients-panel dashboard-clients-full">
@@ -2802,16 +2802,14 @@ function DashboardTodayPostsWidget({ items }: { items: DashboardTodayPost[] }) {
   return <section className="dashboard-list dashboard-today-posts"><header><div><UiIcon name="calendar" /><h3>Posts para Hoje</h3></div><span>{items.length}</span></header>{displayedItems.length ? <div>{displayedItems.map((item) => <article key={item.id}><span className="dashboard-list-dot" /><img src={item.clientLogoUrl || item.mediaUrl || ""} alt="" /><div><strong>{item.title}</strong><small>{item.clientName}</small></div><time>{time(item.scheduledAt)}</time></article>)}</div> : <p className="dashboard-today-empty">Nenhum post previsto para hoje.</p>}{hasMore ? <button type="button" className="dashboard-link" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>{expanded ? "Ver menos" : "Ver mais..."}</button> : null}</section>;
 }
 
-function DashboardClientSubmissionsWidget({ items, userId }: { items: DashboardSubmission[]; userId: string }) {
+function DashboardClientSubmissionsWidget({ items, userId, canPersist }: { items: DashboardSubmission[]; userId: string; canPersist: boolean }) {
   const storageKey = `designhub-v2-dismissed-client-suggestions:${userId}`;
   const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
-    try {
-      return JSON.parse(window.localStorage.getItem(storageKey) ?? "[]") as string[];
-    } catch {
-      return [];
-    }
+    try { return JSON.parse(window.localStorage.getItem(storageKey) ?? "[]") as string[]; }
+    catch { return []; }
   });
   const [expanded, setExpanded] = useState(false);
+  const [dismissError, setDismissError] = useState("");
   const formatSubmissionDate = (value: string) => {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "Hoje";
@@ -2823,22 +2821,30 @@ function DashboardClientSubmissionsWidget({ items, userId }: { items: DashboardS
   const visibleItems = items.filter((item) => !dismissedIds.includes(item.id));
   const displayedItems = expanded ? visibleItems : visibleItems.slice(0, 3);
   const hasMore = visibleItems.length > 3;
-  const dismissSuggestion = (id: string) => {
+  const persistLocalDismissal = (id: string) => {
     setDismissedIds((current) => {
       const next = current.includes(id) ? current : [...current, id];
-      try {
-        window.localStorage.setItem(storageKey, JSON.stringify(next));
-      } catch {
-        // Keep the dismissal working for the current visit if storage is unavailable.
-      }
+      try { window.localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* Session fallback only. */ }
       return next;
     });
+  };
+  const dismissSuggestion = async (id: string) => {
+    setDismissError("");
+    if (canPersist) {
+      try { await dismissDashboardItem("client_submission", id); }
+      catch {
+        setDismissError("Não foi possível marcar esta sugestão como visualizada. Tente novamente.");
+        return;
+      }
+    }
+    persistLocalDismissal(id);
   };
 
   if (visibleItems.length === 0) return null;
 
   return <section className="dashboard-list dashboard-client-submissions compact">
     <header className="dashboard-submissions-head"><h3>Sugestões dos clientes</h3><span>{visibleItems.length}</span></header>
+    {dismissError ? <p className="form-feedback error-text dashboard-dismiss-error" role="alert">{dismissError}</p> : null}
     <div className="dashboard-submission-list">{displayedItems.map((item) => <article key={item.id}>
       <span className="dashboard-item-bullet" aria-hidden="true" />
       <span className="dashboard-submission-avatar">
@@ -2846,28 +2852,39 @@ function DashboardClientSubmissionsWidget({ items, userId }: { items: DashboardS
       </span>
       <div className="dashboard-submission-copy"><strong>{item.clientName}</strong><p>Sugeriu “{item.title}”</p></div>
       <small>{formatSubmissionDate(item.createdAt)}</small>
-      <button className="dashboard-submission-dismiss" type="button" onClick={() => dismissSuggestion(item.id)} aria-label={`Remover sugestão de ${item.clientName}`} title="Já vi esta sugestão">×</button>
+      <button className="dashboard-submission-dismiss" type="button" onClick={() => void dismissSuggestion(item.id)} aria-label={`Remover sugestão de ${item.clientName}`} title="Já vi esta sugestão">×</button>
     </article>)}</div>
     {hasMore ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>{expanded ? "Ver menos" : "Ver mais..."}</button> : null}
   </section>;
 }
 
-function DashboardApprovedPautasWidget({ items, userId }: { items: DashboardApprovedPauta[]; userId: string }) {
+function DashboardApprovedPautasWidget({ items, userId, canPersist }: { items: DashboardApprovedPauta[]; userId: string; canPersist: boolean }) {
   const storageKey = `designhub-v2-dismissed-approved-pautas:${userId}`;
   const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
     try { return JSON.parse(window.localStorage.getItem(storageKey) ?? "[]") as string[]; }
     catch { return []; }
   });
   const [expanded, setExpanded] = useState(false);
+  const [dismissError, setDismissError] = useState("");
   const visibleItems = items.filter((item) => !dismissedIds.includes(item.id));
   const displayedItems = expanded ? visibleItems : visibleItems.slice(0, 4);
-  const dismiss = (id: string) => {
+  const persistLocalDismissal = (id: string) => {
     setDismissedIds((current) => {
       const next = current.includes(id) ? current : [...current, id];
-      window.localStorage.setItem(storageKey, JSON.stringify(next));
+      try { window.localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* Session fallback only. */ }
       return next;
     });
-    void dismissDashboardItem("approved_pauta", id).catch(() => undefined);
+  };
+  const dismiss = async (id: string) => {
+    setDismissError("");
+    if (canPersist) {
+      try { await dismissDashboardItem("approved_pauta", id); }
+      catch {
+        setDismissError("Não foi possível marcar esta pauta como visualizada. Tente novamente.");
+        return;
+      }
+    }
+    persistLocalDismissal(id);
   };
   const formatDate = (value: string) => {
     const date = new Date(value);
@@ -2876,19 +2893,20 @@ function DashboardApprovedPautasWidget({ items, userId }: { items: DashboardAppr
   if (!visibleItems.length) return null;
   return <section className="dashboard-list dashboard-approved-pautas compact">
     <header className="dashboard-submissions-head"><div><h3>Pautas aprovadas</h3><small>Ideias aprovadas pelos clientes, separadas dos feedbacks de posts</small></div><span>{visibleItems.length}</span></header>
+    {dismissError ? <p className="form-feedback error-text dashboard-dismiss-error" role="alert">{dismissError}</p> : null}
     <div className="dashboard-approved-pautas-list">{displayedItems.map((item) => <div className="dashboard-approved-pauta-row" key={item.id}>
       <button type="button" className="dashboard-approved-pauta-open" onClick={() => { window.location.hash = `/admin/${encodeURIComponent(item.clientSlug)}`; }}>
         <span className="dashboard-approved-pauta-icon">✓</span>
         <span><strong>{item.title}</strong><small>{item.clientName}</small></span>
         <time>{formatDate(item.approvedAt)}</time>
       </button>
-      <button type="button" className="dashboard-approved-pauta-dismiss" onClick={() => dismiss(item.id)} aria-label={`Marcar ${item.title} como visualizada`} title="Já vi esta pauta">×</button>
+      <button type="button" className="dashboard-approved-pauta-dismiss" onClick={() => void dismiss(item.id)} aria-label={`Marcar ${item.title} como visualizada`} title="Já vi esta pauta">×</button>
     </div>)}</div>
     {visibleItems.length > 4 ? <button type="button" className="dashboard-link" onClick={() => setExpanded((current) => !current)}>{expanded ? "Ver menos" : "Ver todas"}</button> : null}
   </section>;
 }
 
-function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items: DashboardClientActivity[]; userId: string; onSchedule: (item: DashboardClientActivity) => void }) {
+function DashboardClientActivitiesWidget({ items, userId, canPersist, onSchedule }: { items: DashboardClientActivity[]; userId: string; canPersist: boolean; onSchedule: (item: DashboardClientActivity) => void }) {
   const storageKey = `designhub-v2-dismissed-client-feedback:${userId}`;
   const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
     try {
@@ -2898,6 +2916,7 @@ function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items:
     }
   });
   const [expanded, setExpanded] = useState(false);
+  const [dismissError, setDismissError] = useState("");
   const isNotApproved = (item: DashboardClientActivity) => item.activityType === "comment" && /^(n[aã]o|nao aprovado|não aprovado|reprovad|not approved)\b/i.test(item.detail.trim());
   const activityTone = (item: DashboardClientActivity) => item.activityType === "approved" || item.activityType === "contract_accepted" || item.activityType === "proposal_accepted" ? "approved" : item.activityType === "changes_requested" ? "changes_requested" : isNotApproved(item) ? "not_approved" : item.activityType;
   const activityLabel = (item: DashboardClientActivity) => item.activityType === "approved" ? "Aprovou o conteúdo" : item.activityType === "changes_requested" ? "Solicitou alterações" : item.activityType === "brand_brain" ? "Sugeriu uma atualização da marca" : item.activityType === "contract_accepted" ? "Aceitou o contrato" : item.activityType === "proposal_accepted" ? "Aceitou a proposta" : isNotApproved(item) ? "Não aprovou o conteúdo" : "Deixou um feedback";
@@ -2920,17 +2939,23 @@ function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items:
   const visibleItems = mergedItems.filter((item) => !dismissedIds.includes(item.id));
   const displayedItems = expanded ? visibleItems : visibleItems.slice(0, 3);
   const hasMore = visibleItems.length > 3;
-  const dismissFeedback = (id: string) => {
+  const persistLocalDismissal = (id: string) => {
     setDismissedIds((current) => {
       const next = current.includes(id) ? current : [...current, id];
-      try {
-        window.localStorage.setItem(storageKey, JSON.stringify(next));
-      } catch {
-        // A remoção continua valendo enquanto a página estiver aberta.
-      }
+      try { window.localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* Session fallback only. */ }
       return next;
     });
-    void dismissDashboardItem("client_feedback", id).catch(() => undefined);
+  };
+  const dismissFeedback = async (id: string) => {
+    setDismissError("");
+    if (canPersist) {
+      try { await dismissDashboardItem("client_feedback", id); }
+      catch {
+        setDismissError("Não foi possível marcar este feedback como visualizado. Tente novamente.");
+        return;
+      }
+    }
+    persistLocalDismissal(id);
   };
   const openCard = (item: DashboardClientActivity) => {
     if (!item.cardId) return;
@@ -2941,6 +2966,7 @@ function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items:
 
   return <section className="dashboard-list dashboard-client-activities compact">
     <header className="dashboard-submissions-head"><div><h3>Feedback dos clientes</h3><small>Comentários, aprovações, aceites e alterações</small></div><span>{visibleItems.length}</span></header>
+    {dismissError ? <p className="form-feedback error-text dashboard-dismiss-error" role="alert">{dismissError}</p> : null}
     <div className="dashboard-activity-list">{displayedItems.map((item) => {
       const tone = activityTone(item);
       return <article key={item.id} className={`dashboard-activity-row ${tone}`}>
@@ -2948,7 +2974,7 @@ function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items:
         <span className="dashboard-submission-avatar">{item.clientLogoUrl ? <img src={item.clientLogoUrl} alt={`Logo de ${item.clientName}`} /> : item.clientName.slice(0, 2).toUpperCase()}</span>
         <div className="dashboard-activity-copy"><span className="dashboard-activity-kind">{tone === "approved" ? "✓" : tone === "changes_requested" ? "↻" : tone === "not_approved" ? "×" : item.activityType === "brand_brain" ? "✦" : "💬"} {activityLabel(item)}</span><strong>{item.title}</strong><small>{item.clientName}</small>{item.detail ? <p>“{item.detail}”</p> : <p className="dashboard-feedback-empty">Sem comentário adicional.</p>}</div>
         <div className="dashboard-activity-actions"><time title="Data do retorno do cliente">{activityTime(item.occurredAt)}</time>{item.activityType === "brand_brain" ? <button type="button" onClick={() => { window.location.hash = `/admin/${item.clientSlug}?view=brand`; }}><UiIcon name="spark" />Revisar</button> : item.activityType === "contract_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/contratos"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "proposal_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/propostas"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "changes_requested" || tone === "not_approved" || item.canSchedule === 0 || item.canSchedule === false ? <button type="button" onClick={() => openCard(item)}><UiIcon name="eye" />Ver</button> : <button type="button" onClick={() => onSchedule(item)}><UiIcon name="calendar" />Agendar</button>}</div>
-        <button className="dashboard-activity-dismiss" type="button" onClick={() => dismissFeedback(item.id)} aria-label={`Remover feedback de ${item.clientName}`} title="Marcar como visualizado">×</button>
+        <button className="dashboard-activity-dismiss" type="button" onClick={() => void dismissFeedback(item.id)} aria-label={`Remover feedback de ${item.clientName}`} title="Marcar como visualizado">×</button>
       </article>;
     })}</div>
     {hasMore ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>{expanded ? "Ver menos" : "Ver mais..."}</button> : null}
