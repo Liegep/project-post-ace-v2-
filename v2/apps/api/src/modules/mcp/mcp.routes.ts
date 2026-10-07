@@ -49,7 +49,7 @@ export const mcpRoutes: FastifyPluginAsync = async (app) => {
     });
     try {
       await server.connect(transport);
-      Object.assign(request.raw, { auth: { token, clientId: claims.client_id, scopes: [MCP_READ_SCOPE], expiresAt: claims.exp, resource: new URL(urls.resource), extra: { userId: auth.user.id } } });
+      Object.assign(request.raw, { auth: { token, clientId: claims.client_id, scopes: claims.scope.split(/\s+/), expiresAt: claims.exp, resource: new URL(urls.resource), extra: { userId: auth.user.id } } });
       reply.hijack();
       await transport.handleRequest(request.raw, reply.raw, request.body);
     } catch (error) {

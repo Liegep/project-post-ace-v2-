@@ -34,6 +34,10 @@ const envSchema = z.object({
   APP_TIMEZONE: z.string().default("America/Sao_Paulo"),
   UPLOAD_DIR: z.string().min(1).default("uploads"),
   OPENAI_API_KEY: z.preprocess((value) => value || undefined, z.string().min(20).optional()),
+  BRAND_BRAIN_AI_ENABLED: z.preprocess(value => value === true || value === "true", z.boolean()).default(false),
+  BRAND_BRAIN_AI_MODEL: z.string().regex(/^[\w.:-]{1,120}$/).default("gpt-4.1-mini"),
+  BRAND_BRAIN_AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(512).max(16000).default(6000),
+  BRAND_BRAIN_AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120000).default(30000),
   SMTP_HOST: z.string().min(1).default("smtp.hostinger.com"),
   SMTP_PORT: z.coerce.number().int().positive().default(465),
   SMTP_SECURE: z.preprocess(

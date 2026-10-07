@@ -525,13 +525,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     }
     const body = request.body as { items?: unknown };
     if (!Array.isArray(body.items)) throw app.httpErrors.badRequest("Lista de links rápidos inválida.");
-    const [rows] = await app.db.query<Array<RowDataPacket & { id: string; workspace_drawer_json: unknown }>>(
-      "SELECT id, workspace_drawer_json FROM client_accounts",
-    );
-    for (const row of rows) {
-      const drawer = parseWorkspaceDrawer(row.workspace_drawer_json);
-      await app.db.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...drawer, quick: body.items }), row.id]);
-    }
+    await app.db.query("UPDATE client_accounts SET workspace_drawer_json = JSON_SET(COALESCE(workspace_drawer_json, JSON_OBJECT()), '$.quick', JSON_EXTRACT(?, '$'))", [JSON.stringify(body.items)]);
     return { ok: true, items: body.items };
   });
 
@@ -540,16 +534,19 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     const params = request.params as { clientAccountId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador"]);
     const body = request.body as { data?: unknown };
-    const [rows] = await app.db.query<Array<RowDataPacket & { workspace_drawer_json: unknown }>>(
-      "SELECT workspace_drawer_json FROM client_accounts WHERE id = ? LIMIT 1",
-      [params.clientAccountId],
-    );
-    const current = parseWorkspaceDrawer(rows[0]?.workspace_drawer_json);
-    const incoming = parseWorkspaceDrawer(body.data);
-    // "Rápidos" is global. A client-specific drawer save must never replace it
-    // with a stale copy loaded from another Kanban.
-    const data = { ...incoming, quick: current.quick ?? incoming.quick ?? [] };
-    await app.db.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify(data), params.clientAccountId]);
+    const connection = await app.db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query<Array<RowDataPacket & { workspace_drawer_json: unknown }>>("SELECT workspace_drawer_json FROM client_accounts WHERE id = ? FOR UPDATE", [params.clientAccountId]);
+      if (!rows[0]) throw app.httpErrors.notFound("Conta do cliente não encontrada.");
+      const current = parseWorkspaceDrawer(rows[0].workspace_drawer_json);
+      const incoming = parseWorkspaceDrawer(body.data);
+      // Dedicated endpoints own these sections. A stale full drawer must never replace them.
+      const { pautaIdeas: _ideas, brandBrain: _brain, quick: _quick, ...changes } = incoming;
+      await connection.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...current, ...changes }), params.clientAccountId]);
+      await connection.commit();
+    } catch (error) { await connection.rollback(); throw error; }
+    finally { connection.release(); }
     return { ok: true };
   });
 
@@ -571,6 +568,9 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
       if (!rows[0]) throw app.httpErrors.notFound("Conta do cliente não encontrada.");
       const drawer = parseWorkspaceDrawer(rows[0].workspace_drawer_json);
       const pautaIdeas = Array.isArray(drawer.pautaIdeas) ? drawer.pautaIdeas : [];
+      // AI previews carry a stable ID: retries must not overwrite later human edits.
+      const existingAiIdea = idea.createdBy === "ai_brand_brain" ? pautaIdeas.find((item) => item && typeof item === "object" && (item as Record<string, unknown>).id === idea.id) : undefined;
+      if (existingAiIdea) { await connection.commit(); return { ok: true, idea: existingAiIdea }; }
       const nextIdeas = [idea, ...pautaIdeas.filter((item) => !item || typeof item !== "object" || (item as Record<string, unknown>).id !== idea.id)];
       await connection.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...drawer, pautaIdeas: nextIdeas }), clientAccountId]);
       await connection.commit();

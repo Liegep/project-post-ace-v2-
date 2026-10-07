@@ -13,6 +13,8 @@ import {
 import {
   MCP_ACCESS_TTL_SECONDS,
   MCP_PAUTA_CREATE_SCOPE,
+  MCP_RADAR_SUGGEST_SCOPE,
+  requestedMcpScopes,
   MCP_READ_SCOPE,
   MCP_REFRESH_TTL_MS,
   MCP_SUPPORTED_SCOPES,
@@ -80,9 +82,10 @@ function consentPage(input: {
     resource: input.resource,
   }).map(([name, value]) => `<input type="hidden" name="${name}" value="${html(value)}">`).join("");
 
+  const canSuggestRadar = input.scope.split(/\s+/).includes(MCP_RADAR_SUGGEST_SCOPE);
   const canCreatePauta = input.scope.split(/\s+/).includes(MCP_PAUTA_CREATE_SCOPE);
   return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Autorizar planejamento</title><style>
-  :root{font-family:Inter,ui-sans-serif,system-ui;color:#15213e;background:linear-gradient(135deg,#eef8ff,#fff2f8)}*{box-sizing:border-box}body{min-height:100vh;margin:0;display:grid;place-items:center;padding:24px}.card{width:min(520px,100%);background:rgba(255,255,255,.92);border:1px solid #dce5f4;border-radius:28px;padding:32px;box-shadow:0 22px 60px rgba(61,75,115,.14)}h1{font-size:26px;margin:0 0 10px}p{line-height:1.55;color:#5f6d88}.scope{background:#f4f6ff;border-radius:16px;padding:16px;margin:22px 0}.scope strong{display:block;color:#4438ca;margin-bottom:6px}.scope.write{margin-top:-12px;background:#fff7e8}.scope.write strong{color:#b56808}label{display:block;font-weight:650;margin:14px 0 7px}input[type=email],input[type=password]{width:100%;padding:13px 14px;border:1px solid #cfd8e8;border-radius:12px;font:inherit}button{width:100%;margin-top:22px;border:0;border-radius:13px;padding:14px;background:linear-gradient(90deg,#2fb7e9,#7247ef);color:white;font:700 16px inherit;cursor:pointer}.error{color:#b42318;background:#fff1f0;padding:10px 12px;border-radius:10px}.fine{font-size:13px;color:#7b879d;margin-top:16px}</style></head><body><main class="card"><h1>Conectar ao Design Hub</h1><p><strong>${html(input.clientName)}</strong> está solicitando acesso ao seu planejamento.</p>${input.error ? `<p class="error">${html(input.error)}</p>` : ""}<div class="scope"><strong>Leitura do planejamento e do Radar</strong>Consultar clientes, cards, prazos, aprovações, agenda, comentários e contexto de monitoramento.</div>${canCreatePauta ? `<div class="scope write"><strong>Criação limitada de pautas</strong>Criar somente pautas em rascunho após sua confirmação explícita. Não poderá editar ou excluir conteúdo, mover o Kanban nem publicar.</div>` : ""}<form method="post" action="/oauth/authorize">${hidden}<label for="email">Seu email do Design Hub</label><input id="email" name="email" type="email" autocomplete="username" required><label for="password">Sua senha</label><input id="password" name="password" type="password" autocomplete="current-password" required><button type="submit">Autorizar acesso protegido</button></form><p class="fine">Você poderá desconectar e revogar esta autorização pelo ChatGPT. Sua senha é usada apenas para confirmar sua identidade e não é compartilhada.</p></main></body></html>`;
+  :root{font-family:Inter,ui-sans-serif,system-ui;color:#15213e;background:linear-gradient(135deg,#eef8ff,#fff2f8)}*{box-sizing:border-box}body{min-height:100vh;margin:0;display:grid;place-items:center;padding:24px}.card{width:min(520px,100%);background:rgba(255,255,255,.92);border:1px solid #dce5f4;border-radius:28px;padding:32px;box-shadow:0 22px 60px rgba(61,75,115,.14)}h1{font-size:26px;margin:0 0 10px}p{line-height:1.55;color:#5f6d88}.scope{background:#f4f6ff;border-radius:16px;padding:16px;margin:22px 0}.scope strong{display:block;color:#4438ca;margin-bottom:6px}.scope.write{margin-top:-12px;background:#fff7e8}.scope.write strong{color:#b56808}label{display:block;font-weight:650;margin:14px 0 7px}input[type=email],input[type=password]{width:100%;padding:13px 14px;border:1px solid #cfd8e8;border-radius:12px;font:inherit}button{width:100%;margin-top:22px;border:0;border-radius:13px;padding:14px;background:linear-gradient(90deg,#2fb7e9,#7247ef);color:white;font:700 16px inherit;cursor:pointer}.error{color:#b42318;background:#fff1f0;padding:10px 12px;border-radius:10px}.fine{font-size:13px;color:#7b879d;margin-top:16px}</style></head><body><main class="card"><h1>Conectar ao Design Hub</h1><p><strong>${html(input.clientName)}</strong> está solicitando acesso ao seu planejamento.</p>${input.error ? `<p class="error">${html(input.error)}</p>` : ""}<div class="scope"><strong>Leitura do planejamento e do Radar</strong>Consultar clientes, cards, prazos, aprovações, agenda, comentários e contexto de monitoramento.</div>${canCreatePauta ? `<div class="scope write"><strong>Criação limitada de pautas</strong>Criar somente pautas em rascunho após sua confirmação explícita. Não poderá editar ou excluir conteúdo, mover o Kanban nem publicar.</div>` : ""}<form method="post" action="/oauth/authorize">${hidden}${canSuggestRadar ? `<div class="scope write"><strong>Sugestões pendentes do Radar</strong>Analisar fontes com Brand Brain AI e criar somente sugestões pendentes. Não cria pautas, cards ou publicações.<label><input type="checkbox" name="radar_consent" value="yes" required> Autorizo sugestões do Radar com uso de IA.</label></div>` : ""}<label for="email">Seu email do Design Hub</label><input id="email" name="email" type="email" autocomplete="username" required><label for="password">Sua senha</label><input id="password" name="password" type="password" autocomplete="current-password" required><button type="submit">Autorizar acesso protegido</button></form><p class="fine">Você poderá desconectar e revogar esta autorização pelo ChatGPT. Sua senha é usada apenas para confirmar sua identidade e não é compartilhada.</p></main></body></html>`;
 }
 
 async function validatedAuthorization(app: FastifyRequest["server"], query: FormBody) {
@@ -93,9 +96,7 @@ async function validatedAuthorization(app: FastifyRequest["server"], query: Form
   if (!client || !client.redirectUris.includes(redirectUri)) throw new Error("Aplicativo ou endereço de retorno inválido.");
   if (query.response_type !== "code") throw new Error("Tipo de autorização não suportado.");
   if (query.code_challenge_method !== "S256" || !/^[A-Za-z0-9_-]{43,128}$/.test(query.code_challenge ?? "")) throw new Error("A conexão deve usar PKCE S256 válido.");
-  const requestedScopes = (query.scope ?? MCP_SUPPORTED_SCOPES.join(" ")).split(/\s+/).filter(Boolean);
-  if (!requestedScopes.includes(MCP_READ_SCOPE) || requestedScopes.some((scope) => !(MCP_SUPPORTED_SCOPES as readonly string[]).includes(scope))) throw new Error("A conexão solicitou uma permissão não permitida.");
-  const scope = requestedScopes.join(" ");
+  const scope = requestedMcpScopes(query.scope);
   const resource = query.resource ?? urls.resource;
   if (resource !== urls.resource) throw new Error("Recurso MCP inválido.");
   return { client, redirectUri, resource, scope };
@@ -166,6 +167,7 @@ export const mcpOAuthRoutes: FastifyPluginAsync = async (app) => {
     try {
       if (!withinLimit(`login:${request.ip}`, 10)) return reply.code(429).type("text/plain").send("Muitas tentativas. Aguarde um minuto.");
       const validated = await validatedAuthorization(app, body);
+      if (validated.scope.split(/\s+/).includes(MCP_RADAR_SUGGEST_SCOPE) && body.radar_consent !== "yes") throw Error("Confirme explicitamente o consentimento para radar:suggest.");
       const email = body.email?.trim().toLowerCase() ?? "";
       const password = body.password ?? "";
       const user = await findUserByEmail(app.db, email);
@@ -201,7 +203,9 @@ export const mcpOAuthRoutes: FastifyPluginAsync = async (app) => {
       return { access_token: signMcpAccessToken(app, { userId: grant.userId, clientId: grant.clientId, scope: grant.scope }), token_type: "Bearer", expires_in: MCP_ACCESS_TTL_SECONDS, refresh_token: refreshToken, scope: grant.scope, resource: urls.resource };
     }
     if (body.grant_type === "refresh_token") {
-      const grant = await rotateRefreshToken(app.db, body.refresh_token ?? "");
+      let grant;
+      try { grant = await rotateRefreshToken(app.db, body.refresh_token ?? "", { clientId: body.client_id ?? "", resource: body.resource, scope: body.scope }); }
+      catch (error) { if ((error as { code?: string }).code === "invalid_scope") return oauthError(reply, 400, "invalid_scope", "Novo scope exige consentimento OAuth explícito."); throw error; }
       if (!grant || grant.clientId !== body.client_id || grant.resource !== (body.resource ?? grant.resource)) return oauthError(reply, 400, "invalid_grant", "Token de renovação inválido ou expirado.");
       const refreshToken = opaqueToken();
       await saveRefreshToken(app.db, { token: refreshToken, clientId: grant.clientId, userId: grant.userId, scope: grant.scope, resource: grant.resource, expiresAtMs: Date.now() + MCP_REFRESH_TTL_MS });
