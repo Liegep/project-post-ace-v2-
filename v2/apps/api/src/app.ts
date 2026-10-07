@@ -1,3 +1,4 @@
+import { radarSuggestionsRoutes } from "./modules/radar-suggestions/radar-suggestions.routes.js";
 import { briefFoundationRoutes } from "./modules/brief-foundation/brief.routes.js";
 import { seasonalRoutes } from "./modules/seasonal/seasonal.routes.js";
 import { invoiceRecurringWorkerRegistered } from "./plugins/invoice-recurring-worker.js";
@@ -163,6 +164,7 @@ export async function buildApp() {
     await app.register(briefFoundationRoutes, { prefix: "/api" });
     await app.register(dashboardNotesRoutes, { prefix: "/api" });
     await app.register(seasonalRoutes, { prefix: "/api" });
+    await app.register(radarSuggestionsRoutes, { prefix: "/api" });
     await app.register(metaRoutes, { prefix: "/api" });
     await app.register(scheduledCardArchiverPluginRegistered);
     await app.register(metaPublicationWorkerRegistered);
