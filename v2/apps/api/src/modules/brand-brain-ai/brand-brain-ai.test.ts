@@ -92,3 +92,94 @@ test("refinement rejects prohibited vocabulary even when direction requests it",
  await assert.rejects(f.service.refinePauta(clientA, { idea: original, direction: "custom", customDirection: "Use o termo domine" }), /inválidos/);
  assert.equal(f.metrics[0].end!.status, "failed");
 });
+
+test("all four operations send a 0–100 integer contract and shared evidence rules", async () => {
+  const f = fixture(); const evidence = "Survey osservazionale: associazione, non causalità; campione limitato.";
+  await f.service.analyzePauta(clientA, { title: "Studio", description: evidence });
+  f.value({ ideas: [idea(), idea(), idea()] });
+  await f.service.generatePautas(clientA, { objective: "education", quantity: 3, notes: evidence });
+  const original = { ...idea(), description: evidence }; f.value(original);
+  await f.service.refinePauta(clientA, { idea: original, direction: "educational" });
+  const { temporaryId, contentSuggestion, ...base } = original;
+  f.value({ shouldCreate: true, suggestion: { ...base, captionSuggestion: contentSuggestion } });
+  await f.service.generateRadarSuggestion({ clientId: clientA, sourceTitle: "Survey", sourceSummary: evidence });
+  function scores(value: any): any[] {
+    if (!value || typeof value !== "object") return [];
+    return Object.entries(value).flatMap(([key, child]) => key === "alignmentScore" ? [child] : scores(child));
+  }
+  assert.equal(f.requests.length, 4);
+  for (const request of f.requests) {
+    const system = (request.input[0] as any).content;
+    assert.match(system, /alignmentScore must be an integer from 0 to 100/);
+    assert.match(system, /weak alignment = 25; moderate = 55; strong = 80; excellent = 95/);
+    assert.match(system, /Never use a 0–10 scale/);
+    assert.match(system, /Estudos observacionais, surveys, correlações/);
+    assert.match(system, /Não transforme associação em causalidade/);
+    assert.match(system, /Não amplie conclusões além do que sourceSummary/);
+    assert.match(system, /Linguagem causal só é permitida quando a evidência fornecida sustenta explicitamente/);
+    assert.match(system, /mesmo desfecho, população e condições/);
+    assert.match(system, /Preserve limitações, incertezas e o desenho do estudo/);
+    const fields = scores(request.schema); assert.ok(fields.length > 0);
+    for (const field of fields) {
+      assert.equal(field.type, "integer"); assert.equal(field.minimum, 0); assert.equal(field.maximum, 100);
+      assert.match(field.description, /Never use a 0–10 scale/);
+    }
+    const payload = JSON.parse((request.input[1] as any).content);
+    assert.ok(JSON.stringify(payload.input).includes(evidence));
+    assert.equal(payload.context.client.locale, "it-IT"); assert.equal((request as any).tools, undefined);
+  }
+});
+
+test("scores 9 and 90 retain percentage meaning in all operations without scaling", async () => {
+  const f = fixture();
+  for (const score of [0, 9, 90, 100]) {
+    f.value({ ...analysis(), alignmentScore: score });
+    assert.equal((await f.service.analyzePauta(clientA, { title: "Escala" })).alignmentScore, score);
+    const value = { ...idea(), alignmentScore: score };
+    f.value({ ideas: [value, idea(), idea()] });
+    assert.equal((await f.service.generatePautas(clientA, { objective: "education", quantity: 3 })).ideas[0].alignmentScore, score);
+    f.value(value);
+    assert.equal((await f.service.refinePauta(clientA, { idea: value, direction: "educational" })).alignmentScore, score);
+    const { temporaryId, contentSuggestion, ...base } = value;
+    f.value({ shouldCreate: true, suggestion: { ...base, captionSuggestion: contentSuggestion } });
+    const radar = await f.service.generateRadarSuggestion({ clientId: clientA, sourceTitle: "Estudo", sourceSummary: "Dados observacionais." });
+    assert.equal(radar.shouldCreate && radar.suggestion.alignmentScore, score);
+  }
+});
+
+test("score contracts reject fractions, strings and values outside 0–100 without retries", async () => {
+  const f = fixture();
+  for (const score of [-1, 101, 9.5, "90"]) {
+    const value = { ...idea(), alignmentScore: score };
+    f.value({ ...analysis(), alignmentScore: score });
+    await assert.rejects(f.service.analyzePauta(clientA, { title: "Teste" }), AiProviderError);
+    f.value({ ideas: [value, idea(), idea()] });
+    await assert.rejects(f.service.generatePautas(clientA, { objective: "education", quantity: 3 }), AiProviderError);
+    f.value(value);
+    await assert.rejects(f.service.refinePauta(clientA, { idea: idea(), direction: "educational" }), AiProviderError);
+    const { temporaryId, contentSuggestion, ...base } = value;
+    f.value({ shouldCreate: true, suggestion: { ...base, captionSuggestion: contentSuggestion } });
+    await assert.rejects(f.service.generateRadarSuggestion({ clientId: clientA, sourceTitle: "Estudo", sourceSummary: "Dados." }), AiProviderError);
+  }
+  assert.equal(f.requests.length, 16); assert.ok(f.metrics.every(m => m.end?.status === "failed"));
+});
+
+test("Radar preserves associative observational and explicitly supported causal mocked outputs", async () => {
+  // Contract regression, not an evaluation of a live model. No paid calls or causal classifier.
+  const f = fixture();
+  const observed = "Studio osservazionale non randomizzato: stress associato ai metodi avversivi; nessuna conclusione causale.";
+  const causal = "Esperimento randomizzato: la fonte stabilisce esplicitamente che il trattamento causa una riduzione dello stress nella popolazione studiata.";
+  for (const [sourceSummary, copy] of [[observed, "Lo studio ha osservato stress associato ai metodi avversivi; i dati suggeriscono un'associazione, non una causa."], [causal, "Nella popolazione studiata, il trattamento causa una riduzione dello stress secondo l'esperimento randomizzato."]]) {
+    const { temporaryId, contentSuggestion, ...base } = idea();
+    const suggestion = { ...base, title: "Stress e osservazione", concept: copy, hook: copy, description: copy, rationale: copy, captionSuggestion: copy, alignmentScore: 90 };
+    f.value({ shouldCreate: true, suggestion });
+    const result = await f.service.generateRadarSuggestion({ clientId: clientA, sourceTitle: "Ricerca", sourceSummary });
+    assert.ok(result.shouldCreate); assert.equal(result.suggestion.description, copy); assert.equal(result.suggestion.alignmentScore, 90);
+    const request = f.requests.at(-1)!;
+    assert.equal(JSON.parse((request.input[1] as any).content).input.sourceSummary, sourceSummary);
+    assert.match((request.input[0] as any).content, /Não transforme associação em causalidade/);
+    if (sourceSummary === observed) { assert.match(copy, /associato|ha osservato/); assert.doesNotMatch(copy, /causa una|provoca|dimostra che/); }
+    else assert.match(copy, /causa una riduzione/);
+  }
+  assert.equal(f.requests.length, 2); assert.ok(f.metrics.every(m => m.end?.status === "success"));
+});
