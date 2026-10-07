@@ -1654,7 +1654,7 @@ export async function loadDashboardOverview() {
   return fetchJson<{ statistics: DashboardStatistics; dueTasks: DashboardTask[]; upcomingPosts: DashboardUpcomingPost[]; postsToday: DashboardTodayPost[]; agendaToday: AgendaEvent[]; clientSubmissions: DashboardSubmission[]; clientActivities: DashboardClientActivity[]; approvedPautas: DashboardApprovedPauta[] }>(`/api/dashboard/overview?${new URLSearchParams({ timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone })}`);
 }
 
-export async function dismissDashboardItem(itemType: "client_feedback" | "approved_pauta", itemId: string) {
+export async function dismissDashboardItem(itemType: "client_feedback" | "approved_pauta" | "client_submission", itemId: string) {
   return sendJson<{ ok: true }>("/api/dashboard/dismissals", {
     method: "POST",
     body: JSON.stringify({ itemType, itemId }),
