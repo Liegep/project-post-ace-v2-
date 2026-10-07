@@ -61,7 +61,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
   app.post("/dashboard/dismissals", async (request) => {
     assertInternalAccess(request);
     const body = request.body as { itemType?: DashboardDismissalType; itemId?: string };
-    if (!body.itemType || !["client_feedback", "approved_pauta"].includes(body.itemType) || !body.itemId?.trim() || body.itemId.length > 255) {
+    if (!body.itemType || !["client_feedback", "approved_pauta", "client_submission"].includes(body.itemType) || !body.itemId?.trim() || body.itemId.length > 255) {
       throw app.httpErrors.badRequest("Item de dashboard inválido.");
     }
     await dismissDashboardItem(app.db, { userId: request.auth!.user.id, itemType: body.itemType, itemId: body.itemId.trim() });
@@ -230,9 +230,9 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         "SELECT c.id, c.title, c.created_at AS createdAt, a.name AS clientName, a.logo_url AS clientLogoUrl",
         "FROM kanban_cards c JOIN users u ON u.id = c.created_by_user_id",
         "JOIN client_accounts a ON a.id = c.client_account_id",
-        "WHERE c.archived = 0 AND (u.global_role = 'cliente' OR c.status_json LIKE '%Sugestão do cliente%')", scopeSql,
+        "WHERE c.archived = 0 AND (u.global_role = 'cliente' OR c.status_json LIKE '%Sugestão do cliente%') AND NOT EXISTS (SELECT 1 FROM dashboard_dismissals dd WHERE dd.user_id = ? AND dd.item_type = 'client_submission' AND dd.item_id = c.id)", scopeSql,
         "ORDER BY c.created_at DESC LIMIT 4",
-      ].join(" "), params),
+      ].join(" "), [auth.user.id, ...params]),
       app.db.query<DashboardActivityRow[]>([
         "SELECT activity.* FROM (",
         "SELECT CONCAT('approval-event-', e.id) AS id, c.id AS cardId, c.title, e.created_at AS occurredAt,",
