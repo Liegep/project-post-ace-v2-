@@ -568,6 +568,9 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
       if (!rows[0]) throw app.httpErrors.notFound("Conta do cliente não encontrada.");
       const drawer = parseWorkspaceDrawer(rows[0].workspace_drawer_json);
       const pautaIdeas = Array.isArray(drawer.pautaIdeas) ? drawer.pautaIdeas : [];
+      // AI previews carry a stable ID: retries must not overwrite later human edits.
+      const existingAiIdea = idea.createdBy === "ai_brand_brain" ? pautaIdeas.find((item) => item && typeof item === "object" && (item as Record<string, unknown>).id === idea.id) : undefined;
+      if (existingAiIdea) { await connection.commit(); return { ok: true, idea: existingAiIdea }; }
       const nextIdeas = [idea, ...pautaIdeas.filter((item) => !item || typeof item !== "object" || (item as Record<string, unknown>).id !== idea.id)];
       await connection.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...drawer, pautaIdeas: nextIdeas }), clientAccountId]);
       await connection.commit();

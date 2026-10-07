@@ -1967,3 +1967,19 @@ export type RadarSuggestionsPage = { items: RadarSuggestionSummary[]; total: num
 export function loadRadarSuggestions(offset = 0) { return fetchJson<RadarSuggestionsPage>(`/api/radar-suggestions?limit=3&offset=${offset}`); }
 export function loadRadarSuggestion(clientId: string, id: string) { return fetchJson<{ suggestion: RadarSuggestionDetail }>(`/api/clients/${encodeURIComponent(clientId)}/radar-suggestions/${encodeURIComponent(id)}`); }
 export function resolveRadarSuggestion(clientId: string, id: string, action: "accept" | "dismiss") { return sendJson<{ status: "accepted" | "dismissed"; created: boolean; pauta?: { id: string; status: string } }>(`/api/clients/${encodeURIComponent(clientId)}/radar-suggestions/${encodeURIComponent(id)}/${action}`, { method: "POST" }); }
+
+export type BrandBrainAiAnalysis = { alignmentScore: number; approvalPrediction: "high" | "medium" | "low"; mainPillar: string | null; tone: "aligned" | "partial" | "misaligned"; toneReason: string; audienceFit: string; strengths: string[]; warnings: string[]; recommendation: string; basedOn: string[] };
+export type BrandBrainAiIdea = { temporaryId: string; title: string; concept: string; hook: string; description: string; format: string; pillar: string | null; objective: string; rationale: string; cta: string | null; contentSuggestion: string | null; alignmentScore: number; basedOn: string[] };
+export type BrandBrainAiGenerateInput = { objective: "engagement" | "authority" | "education" | "conversion" | "relationship" | "institutional" | "other"; quantity: 3 | 5 | 10; format?: "free" | "post" | "carousel" | "reel" | "story" | "article"; topic?: string; notes?: string };
+export type BrandBrainAiDirection = "educational" | "commercial" | "human" | "direct" | "sophisticated" | "custom";
+export async function loadBrandBrainAiContextBySlug(slug: string) {
+  const client = await findAdminClientBySlug(slug);
+  return fetchJson<{ enabled: boolean; reason: string | null; completion: number; contextHash: string; contextVersion: string }>(`/api/clients/${client.id}/brand-brain-ai/context`);
+}
+async function brandBrainAiAction<T>(slug: string, action: "analyze" | "generate" | "refine", input: unknown) {
+  const client = await findAdminClientBySlug(slug);
+  return sendJson<T>(`/api/clients/${client.id}/brand-brain-ai/${action}`, { method: "POST", body: JSON.stringify(input) }, 130_000);
+}
+export const analyzePautaWithBrandBrain = (slug: string, input: { title: string; description?: string; caption?: string; contentType?: string }) => brandBrainAiAction<BrandBrainAiAnalysis>(slug, "analyze", input);
+export const generatePautasWithBrandBrain = (slug: string, input: BrandBrainAiGenerateInput) => brandBrainAiAction<{ ideas: BrandBrainAiIdea[] }>(slug, "generate", input);
+export const refinePautaWithBrandBrain = (slug: string, input: { idea: BrandBrainAiIdea; direction: BrandBrainAiDirection; customDirection?: string }) => brandBrainAiAction<BrandBrainAiIdea>(slug, "refine", input);
