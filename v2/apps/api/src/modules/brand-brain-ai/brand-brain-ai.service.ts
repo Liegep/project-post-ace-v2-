@@ -25,7 +25,7 @@ export class BrandBrainAiService {
     if (!result.success) throw new BrandBrainAiError(400, "invalid_input", "Verifique os campos enviados.");
     return result.data;
   }
-  private async run<T>(clientId: string, operation: "analyze" | "generate" | "refine" | "radar", input: unknown, schema: z.ZodType<T>, validate?: (value: T, context: BrandBrainContext) => void): Promise<T> {
+  private async run<T>(clientId: string, operation: "analyze" | "generate" | "refine" | "radar", input: unknown, schema: z.ZodType<T>, validate?: (value: T, context: BrandBrainContext) => void, preparedContext?: BrandBrainContext): Promise<T> {
     const availability = this.availability();
     if (!availability.enabled) throw new BrandBrainAiError(503, "disabled", availability.reason!);
     if (this.active.has(clientId)) throw new BrandBrainAiError(409, "busy", "Já há uma solicitação em andamento para este cliente.");
@@ -35,7 +35,8 @@ export class BrandBrainAiService {
     try {
       const data = input as { format?: string; contentType?: string; idea?: { format?: string } };
       const visual = /post|carousel|carrossel|reel|story|vídeo|video/i.test(data.format || data.contentType || data.idea?.format || "");
-      const context = await this.context(clientId, visual);
+      const context = preparedContext ?? await this.context(clientId, visual);
+      if (context.client.id !== clientId) throw new BrandBrainAiError(403, "context_mismatch", "Contexto de outro cliente recusado.");
       // Fail before any paid request if the explicitly reviewed migration is unavailable.
       runId = await this.store.beginRun(clientId, operation, model, context.contextHash);
       const jsonSchema = z.toJSONSchema(schema, { target: "draft-7" }); delete jsonSchema.$schema;
@@ -79,12 +80,12 @@ export class BrandBrainAiService {
     const result = await this.run(clientId, "refine", input, ideaOutput, (value, context) => { this.pillar(value.pillar, context); this.publicCopy(value, context); });
     return { ...result, temporaryId: input.idea.temporaryId };
   }
-  async generateRadarSuggestion(input: { clientId: string } & z.infer<typeof radarInput>) {
+  async generateRadarSuggestion(input: { clientId: string } & z.input<typeof radarInput>, preparedContext?: BrandBrainContext) {
     const { clientId, ...raw } = input;
     const result = await this.run(clientId, "radar", this.parse(radarInput, raw), radarOutput, (value, context) => {
       if (value.shouldCreate !== (value.suggestion !== null)) throw new AiProviderError("invalid_response");
       if (value.suggestion) { this.pillar(value.suggestion.pillar, context); this.publicCopy(value.suggestion, context); }
-    });
+    }, preparedContext);
     return result.shouldCreate ? { shouldCreate: true as const, suggestion: result.suggestion! } : { shouldCreate: false as const };
   }
 }

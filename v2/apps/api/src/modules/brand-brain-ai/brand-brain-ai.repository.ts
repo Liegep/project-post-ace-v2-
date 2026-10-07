@@ -4,14 +4,15 @@ import type { OfficialClientData } from "./brand-brain-ai.context.js";
 import type { AiUsage } from "../../lib/openai-responses.js";
 export type AiRunEnd = { status: "success" | "failed"; durationMs: number; errorCode: string | null; usage: AiUsage; model: string };
 export class BrandBrainAiRepository {
-  constructor(private readonly db: Pool) {}
+  constructor(private readonly db: Pool, private readonly includeVersion = false) {}
   async officialClient(clientId: string): Promise<OfficialClientData | null> {
     const paths = Array.from({ length: 30 }, (_, i) => `'$.pautaIdeas[${i}]'`).join(", ");
-    const [rows] = await this.db.query<RowDataPacket[]>(`SELECT id, name, locale, JSON_EXTRACT(workspace_drawer_json, '$.brandBrain') AS brain, JSON_EXTRACT(workspace_drawer_json, ${paths}) AS ideas FROM client_accounts WHERE id = ?`, [clientId]);
+    const version = this.includeVersion ? ", (SELECT COALESCE(MAX(version_number),0) FROM brand_brain_versions WHERE client_account_id = client_accounts.id) AS published_version" : "";
+    const [rows] = await this.db.query<RowDataPacket[]>(`SELECT id, name, locale, JSON_EXTRACT(workspace_drawer_json, '$.brandBrain') AS brain, JSON_EXTRACT(workspace_drawer_json, ${paths}) AS ideas${version} FROM client_accounts WHERE id = ?`, [clientId]);
     if (!rows[0]) return null;
     const parse = (value: unknown) => typeof value === "string" ? JSON.parse(value) : value;
     const brain = parse(rows[0].brain); const ideas = parse(rows[0].ideas);
-    return { id: rows[0].id, name: rows[0].name, locale: rows[0].locale, brain: brain && typeof brain === "object" && !Array.isArray(brain) ? brain : {}, recentPautas: Array.isArray(ideas) ? ideas : [] };
+    return { id: rows[0].id, name: rows[0].name, locale: rows[0].locale, brain: brain && typeof brain === "object" && !Array.isArray(brain) ? brain : {}, recentPautas: Array.isArray(ideas) ? ideas : [], ...(this.includeVersion ? { publishedVersion: Number(rows[0].published_version) } : {}) };
   }
   async beginRun(clientId: string, operation: string, model: string, contextHash: string) {
     const id = randomUUID();

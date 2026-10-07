@@ -3,7 +3,7 @@ import { radarSuggestionInputSchema } from "./radar-suggestions.schemas.js";
 import type { RadarSuggestionsStore } from "./radar-suggestions.repository.js";
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const normalize = (value: string) => value.normalize("NFKC").replace(/\s+/gu, " ").trim().toLocaleLowerCase("en-US");
-export function radarSuggestionKeys(input: ReturnType<typeof radarSuggestionInputSchema.parse>) {
+export function radarSourceKey(input: { sourceUrl: string | null; radarName: string; sourceTitle: string; sourceDate: string | null }) {
   let source: unknown;
   if (input.sourceUrl) {
     const url = new URL(input.sourceUrl);
@@ -14,7 +14,10 @@ export function radarSuggestionKeys(input: ReturnType<typeof radarSuggestionInpu
     url.searchParams.sort();
     source = url.toString();
   } else source = [normalize(input.radarName), normalize(input.sourceTitle), input.sourceDate];
-  const sourceKey = hash(source);
+  return hash(source);
+}
+export function radarSuggestionKeys(input: ReturnType<typeof radarSuggestionInputSchema.parse>) {
+  const sourceKey = radarSourceKey(input);
   // Exact normalized editorial angle, not title alone. Different angles on one source remain possible.
   const dedupeHash = hash([sourceKey, ...[input.title, input.concept, input.hook, input.contentType].map(normalize)]);
   return { sourceKey, dedupeHash };
