@@ -1,15 +1,9 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { completePasswordResetWithApi, requestPasswordResetWithApi } from "./authApi";
 import type { SessionUser } from "./types";
 import designHubV2Logo from "./assets/design-hub-v2-logo.png";
-import { LOGIN_LOCALES, LOGIN_LANGUAGE_NAMES, loginCopy, publicAuthMessage, useLoginIntro, useLoginLocale, type LoginLocale } from "./loginI18n";
-
-function LoginLanguageSwitcher({ locale, onChange, label }: { locale: LoginLocale; onChange: (locale: LoginLocale) => void; label: string }) {
-  return <div className="login-language-switcher" role="group" aria-label={label}>
-    {LOGIN_LOCALES.map(language => <button key={language} type="button" lang={language} aria-label={LOGIN_LANGUAGE_NAMES[language]} aria-pressed={locale === language} onClick={() => onChange(language)}>{language.toUpperCase()}</button>)}
-  </div>;
-}
+import { loginCopy, publicAuthMessage, useLoginIntro, useLoginLocale } from "./loginI18n";
 
 export function LoginPage({
   session,
@@ -20,8 +14,12 @@ export function LoginPage({
   redirectTo: string;
   onLogin: (email: string, password: string) => Promise<boolean>;
 }) {
-  const { locale, chooseLocale, copy } = useLoginLocale();
-  const playIntro = useLoginIntro(!session);
+  const { locale, copy } = useLoginLocale();
+  const { playIntro, finishIntro } = useLoginIntro(!session);
+  const emailInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (!playIntro && !session) emailInput.current?.focus({ preventScroll: true });
+  }, [playIntro, session]);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -62,10 +60,9 @@ export function LoginPage({
 
   return (
     <main className="center-shell login-shell" lang={locale}>
-      <section className={`login-grid login-experience${playIntro ? " login-intro" : ""}`}>
-        <LoginLanguageSwitcher locale={locale} onChange={chooseLocale} label={copy.language} />
         {playIntro ? <div className="login-intro-logo" aria-hidden="true"><img src={designHubV2Logo} alt="" /></div> : null}
-        <article className="glass login-panel login-primary">
+      <section className={`login-grid login-experience${playIntro ? " login-intro" : ""}`}>
+        <article className="glass login-panel login-primary" {...(playIntro ? { inert: "" } : {})}>
           <div className="login-brand-mark" aria-label="Design Hub V2">
             <img src={designHubV2Logo} alt="Logo Design Hub V2" />
           </div>
@@ -78,7 +75,7 @@ export function LoginPage({
           <form id={recovering ? "designhub-recovery" : "designhub-login"} name={recovering ? "password-recovery" : "login"} className="login-form" method="post" action={recovering ? "/api/auth/forgot-password" : "/api/auth/login"} autoComplete="on" onSubmit={recovering ? requestRecovery : submit}>
             <label className="field-stack" htmlFor="login-username">
               <span>{copy.email}</span>
-              <input id="login-username" name="username" type="email" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} inputMode="email" enterKeyHint="next" autoFocus placeholder={copy.emailPlaceholder} value={email} onChange={(event) => setEmail(event.target.value)} />
+              <input ref={emailInput} id="login-username" name="username" type="email" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} inputMode="email" enterKeyHint="next" autoFocus placeholder={copy.emailPlaceholder} value={email} onChange={(event) => setEmail(event.target.value)} />
             </label>
             {!recovering ? <label className="field-stack" htmlFor="login-password">
               <span>{copy.password}</span>
@@ -105,7 +102,7 @@ export function LoginPage({
           <p className="login-security-note"><span aria-hidden="true">●</span>{copy.security} </p>
         </article>
 
-        <aside className="glass login-panel login-demo-panel login-showcase-panel" aria-label={copy.overview}>
+        <aside className="glass login-panel login-demo-panel login-showcase-panel" aria-label={copy.overview} {...(playIntro ? { inert: "" } : {})} onAnimationEnd={(event) => { if (event.target === event.currentTarget && event.animationName === "login-card-arrive") finishIntro(); }}>
           <span className="login-orb orb-a" /><span className="login-orb orb-b" /><span className="login-orb orb-c" />
           <div className="login-showcase-copy">
             <p className="eyebrow">{copy.vision}</p>
@@ -135,7 +132,7 @@ export function LoginPage({
 }
 
 export function PasswordResetPage() {
-  const { locale, chooseLocale, copy } = useLoginLocale();
+  const { locale, copy } = useLoginLocale();
   const location = useLocation();
   const navigate = useNavigate();
   const token = useMemo(() => new URLSearchParams(location.search).get("token")?.trim() ?? "", [location.search]);
@@ -173,7 +170,6 @@ export function PasswordResetPage() {
 
   return <main className="center-shell password-reset-shell" lang={locale}>
     <section className="glass password-reset-card">
-      <LoginLanguageSwitcher locale={locale} onChange={chooseLocale} label={copy.language} />
       <div className="login-brand-mark" aria-label="Design Hub V2"><img src={designHubV2Logo} alt="Logo Design Hub V2" /></div>
       <div className="login-kicker"><span className="login-live-dot" />{copy.secureKicker}</div>
       {completed ? <>
