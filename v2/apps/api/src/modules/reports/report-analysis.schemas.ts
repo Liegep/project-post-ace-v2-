@@ -16,6 +16,30 @@ export const reportAnalysisSchema = z.strictObject({
   confidenceNotes: z.array(text).max(8),
 });
 export const reportAnalysisJsonSchema = z.toJSONSchema(reportAnalysisSchema);
+// Use the same local contract and constrain every reference to IDs in this request.
+// An empty registry requires empty supported sections and null comparison; local
+// minimum-reference validation remains unchanged.
+export function reportAnalysisSchemaForEvidence(ids: string[]) {
+  const schema = structuredClone(reportAnalysisJsonSchema);
+  if (!ids.length) {
+    const properties = schema.properties as Record<string, any>;
+    for (const key of ['keyFindings', 'whatWorked', 'attentionPoints', 'contentInsights', 'nextSteps', 'experiments']) properties[key].maxItems = 0;
+    properties.platformComparison = { type: 'null' };
+    return schema;
+  }
+  const visit = (node: any) => {
+    if (!node || typeof node !== 'object') return;
+    if (node.properties?.evidenceRefs) {
+      const refs = node.properties.evidenceRefs;
+      refs.items.enum = [...ids];
+    }
+    for (const value of Object.values(node)) {
+      if (Array.isArray(value)) value.forEach(visit); else visit(value);
+    }
+  };
+  visit(schema);
+  return schema;
+}
 // Snapshot of the editor only: identities, comparison and Brand Brain are never accepted from the browser.
 export const reportAnalysisRequestSchema = z.strictObject({ snapshot: createReportSchema.optional() });
 export type ReportAnalysis = z.infer<typeof reportAnalysisSchema>;

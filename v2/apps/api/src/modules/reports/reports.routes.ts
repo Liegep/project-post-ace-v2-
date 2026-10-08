@@ -40,7 +40,7 @@ export const reportRoutes: FastifyPluginAsync<{ analysisProvider?: ResponsesProv
     if (!body.success) throw app.httpErrors.badRequest("Dados do relatório inválidos para análise.");
     return analyzeReport({ report, snapshot: body.data.snapshot, config: app.appEnv,
       sources: () => loadAnalysisSources(app.db, { ...report, periodStart: body.data.snapshot?.periodStart ?? report.periodStart, metaDestinationId: body.data.snapshot ? body.data.snapshot.metaDestinationId ?? null : report.metaDestinationId }),
-      provider: options.analysisProvider, log: entry => app.log.info(entry, "Report AI analysis") });
+      provider: options.analysisProvider, log: entry => app.log.info(entry, `Report AI analysis ${JSON.stringify(entry)}`) });
   });
   app.get("/clients/:clientAccountId/reports", async (request) => { assertSuperAdmin(request); const p = request.params as { clientAccountId: string }; return { items: await listReports(app.db, p.clientAccountId) }; });
   app.post("/clients/:clientAccountId/reports", async (request) => { assertSuperAdmin(request); const p = request.params as { clientAccountId: string }; const input = createReportSchema.parse(request.body); const snapshot = await reportDestinationSnapshot(app, p.clientAccountId, input.metaDestinationId); return { report: await createReport(app.db, p.clientAccountId, request.auth!.user.id, { ...input, ...snapshot }) }; });

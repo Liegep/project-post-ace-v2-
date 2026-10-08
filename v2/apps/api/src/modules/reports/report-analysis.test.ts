@@ -25,6 +25,8 @@ async function fixture(provider?: ResponsesProvider, changes: Partial<AnalysisCo
   const other = { ...report, id: 'report-b', clientAccountId: 'client-b', title: 'SECRET CLIENT B' };
   const previous = { ...report, id: 'previous-a', periodStart: '2026-08-01', periodEnd: '2026-08-31', notes: 'DO NOT SEND PREVIOUS NOTES' };
   const app = Fastify({ logger: false });
+  const logs: Array<{ entry: unknown; message: string }> = [];
+  app.log.info = ((entry: unknown, message: string) => { logs.push({ entry, message }); }) as typeof app.log.info;
   await app.register(httpErrorsPluginRegistered);
   app.decorate('appEnv', { ...config, ...changes } as AppEnv);
   app.decorate('db', { query: async (sql: string, params: unknown[] = []) => {
@@ -38,7 +40,7 @@ async function fixture(provider?: ResponsesProvider, changes: Partial<AnalysisCo
   } } as unknown as Pool);
   app.addHook('onRequest', async request => { request.auth = user; });
   await app.register(reportRoutes, { prefix: '/api', analysisProvider: async (request, signal) => { calls.push(request); return provider ? provider(request, signal) : { text: JSON.stringify(output()), usage: { input_tokens: 10, output_tokens: 20, total_tokens: 30 } }; } });
-  return { app, calls, queries, analyze: (payload: object = {}) => app.inject({ method: 'POST', url: '/api/clients/client-a/reports/report-a/ai-analysis', payload }) };
+  return { app, calls, queries, logs, analyze: (payload: object = {}) => app.inject({ method: 'POST', url: '/api/clients/client-a/reports/report-a/ai-analysis', payload }) };
 }
 test('opening/listing a report makes no provider call', async () => { const f = await fixture(); try { assert.equal((await f.app.inject('/api/clients/client-a/reports')).statusCode, 200); assert.equal(f.calls.length, 0); } finally { await f.app.close(); } });
 test('explicit analysis calls once, sends correct editor report, scoped comparison, official compact brain and Meta destination', async () => {
@@ -86,7 +88,7 @@ test('telemetry includes only allowlisted metadata and sanitized errors/usage', 
   await analyzeReport({ report, config, sources, log, provider: async () => ({ text: JSON.stringify(output()), usage: { input_tokens: 10, output_tokens: 20, total_tokens: 30 } }) });
   await assert.rejects(analyzeReport({ report, config, sources, log, provider: async () => { throw new Error('API KEY SECRET ' + report.notes); } }));
   assert.equal(logs[0].totalTokens, 30); assert.equal(logs[0].status, 'success'); assert.equal(logs[1].error, 'provider_error');
-  assert.deepEqual(Object.keys(logs[0]).sort(), ['reportId', 'clientAccountId', 'operation', 'model', 'timestamp', 'durationMs', 'inputTokens', 'outputTokens', 'totalTokens', 'status', 'error', 'contextHash'].sort());
+  assert.deepEqual(Object.keys(logs[0]).sort(), ['reportId', 'clientAccountId', 'operation', 'model', 'timestamp', 'durationMs', 'inputTokens', 'outputTokens', 'totalTokens', 'status', 'error', 'contextHash', 'responseId', 'providerHttpStatus', 'responseStatus', 'incompleteReason', 'failureReason', 'refusalPresent', 'outputItemTypes', 'validationErrorCode', 'validationPath'].sort());
   assert.ok(!JSON.stringify(logs).includes('MANUAIS')); assert.ok(!JSON.stringify(logs).includes('SECRET'));
 });
 test('compact Brain excludes unknown fields, bounds all allowed fields', () => { const brain = compactPublishedBrain({ positioning: 'a'.repeat(900), history: 'secret', pending: 'secret', invoices: 'secret', pillars: Array(10).fill({ name: 'x', focus: 'y', private: 'secret' }) }); assert.equal((brain?.positioning as string).length, 500); assert.equal((brain?.pillars as unknown[]).length, 6); assert.ok(!JSON.stringify(brain).includes('secret')); });
@@ -111,4 +113,35 @@ test('main nullable and growth metrics: null is not evidence; negative follower 
   assert.match(context.evidence['current.instagram.followersNet'], /-3/);
   assert.match(context.evidence['current.facebook.reactions'], /12/);
   assert.ok(!JSON.stringify(context).includes('PRIVATE ADS')); assert.ok(!JSON.stringify(context).includes('987654'));
+});
+
+// Endpoint preserves the failure classification emitted by the canonical transport/service.
+test('endpoint distinguishes parsing, schema, evidence, refusal and incomplete without retries', async () => {
+  const cases: Array<[unknown, string]> = [
+    [{ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: '{broken' }] }] }, 'parse_error'],
+    [{ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({ ...output(), executiveSummary: null }) }] }] }, 'schema_validation_error'],
+    [{ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({ ...output(), keyFindings: [{ ...output().keyFindings[0], evidenceRefs: ['not-present'] }] }) }] }] }, 'evidence_validation_error'],
+    [{ status: 'completed', output: [{ type: 'message', content: [{ type: 'refusal', refusal: 'PRIVATE RESPONSE' }] }] }, 'refusal'],
+    [{ status: 'incomplete', incomplete_details: { reason: 'max_output_tokens' }, output: [] }, 'incomplete'],
+  ];
+  for (const [body, code] of cases) {
+    const f = await fixture(createResponsesProvider('mock', async () => new Response(JSON.stringify(body))));
+    try { const r = await f.analyze(); assert.equal(r.statusCode, 502); assert.equal(r.json().code, code); assert.equal(f.calls.length, 1); assert.doesNotMatch(r.body, /PRIVATE/); } finally { await f.app.close(); }
+  }
+});
+
+test('Hostinger-safe log message retains only diagnostic metadata even on validation failure', async () => {
+  const f = await fixture(createResponsesProvider('mock', async () => new Response(JSON.stringify({
+    id: 'resp_safe001', model: 'gpt-4.1-mini', status: 'completed',
+    output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify({ ...output(), executiveSummary: null }) }] }],
+    usage: { input_tokens: 100, output_tokens: 20, total_tokens: 120 },
+  }))));
+  try {
+    assert.equal((await f.analyze()).json().code, 'schema_validation_error');
+    const record = f.logs.find(item => item.message.startsWith('Report AI analysis '))!;
+    const metadata = JSON.parse(record.message.slice('Report AI analysis '.length));
+    assert.equal(metadata.validationPath, 'executiveSummary');
+    assert.equal(metadata.responseId, 'resp_safe001'); assert.equal(metadata.totalTokens, 120); assert.deepEqual(metadata, record.entry);
+    assert.ok(!record.message.includes(report.notes)); assert.ok(!record.message.includes('OFFICIAL A')); assert.ok(!record.message.includes('mock-key'));
+  } finally { await f.app.close(); }
 });
