@@ -18,7 +18,38 @@ export const metaCallbackSchema = z.object({
 });
 
 export const metaConnectQuerySchema = z.object({
-  returnTo: z.string().trim().regex(/^#\/(dashboard|admin\/[a-z0-9-]+)$/).optional(),
+  returnTo: z.string().trim().regex(/^#\/(dashboard|admin\/[a-z0-9-]+|area\/publicacoes-meta)$/).optional(),
+});
+
+const isoDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use uma data no formato AAAA-MM-DD.").refine(
+  (value) => {
+    const date = new Date(`${value}T00:00:00Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+  },
+  "Data inválida.",
+);
+
+export const metaInsightsQuerySchema = z.object({
+  since: isoDateSchema,
+  until: isoDateSchema,
+  destinationId: z.string().trim().min(1).max(190).optional(),
+}).refine((value) => value.since <= value.until, {
+  message: "A data inicial deve ser anterior ou igual à data final.",
+  path: ["until"],
+});
+
+export type MetaInsightsPeriod = Pick<z.infer<typeof metaInsightsQuerySchema>, "since" | "until">;
+
+export const metaBestTimesQuerySchema = z.object({
+  destinationId: z.string().trim().min(1).max(190).optional(),
+  timeZone: z.string().trim().min(1).max(100).default("UTC").refine((value) => {
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: value }).format();
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Timezone inválido."),
 });
 
 export const clientMetaAssetsSchema = z.object({
@@ -26,6 +57,8 @@ export const clientMetaAssetsSchema = z.object({
   facebookPageName: nullableMetaLabel,
   instagramAccountId: nullableMetaIdentifier,
   instagramUsername: nullableMetaLabel,
+  metaAdAccountId: nullableMetaIdentifier,
+  metaAdAccountName: nullableMetaLabel,
 }).superRefine((value, context) => {
   if (Boolean(value.facebookPageId) !== Boolean(value.facebookPageName)) {
     context.addIssue({ code: "custom", message: "A Página do Facebook deve ter id e nome.", path: ["facebookPageId"] });
@@ -36,6 +69,163 @@ export const clientMetaAssetsSchema = z.object({
   if (value.instagramAccountId && !value.facebookPageId) {
     context.addIssue({ code: "custom", message: "A conta do Instagram deve pertencer a uma Página selecionada.", path: ["instagramAccountId"] });
   }
+  if (Boolean(value.metaAdAccountId) !== Boolean(value.metaAdAccountName)) {
+    context.addIssue({ code: "custom", message: "A Conta de anúncios deve ter id e nome.", path: ["metaAdAccountId"] });
+  }
 });
 
 export type ClientMetaAssetsInput = z.infer<typeof clientMetaAssetsSchema>;
+
+const metaDestinationFields = {
+  name: z.string().trim().min(1, "Informe o nome do destino.").max(255),
+  facebookPageId: nullableMetaIdentifier,
+  facebookPageName: nullableMetaLabel,
+  instagramAccountId: nullableMetaIdentifier,
+  instagramUsername: nullableMetaLabel,
+  isDefault: z.boolean().optional(),
+};
+
+function validateMetaDestination(value: { facebookPageId?: string | null; facebookPageName?: string | null; instagramAccountId?: string | null; instagramUsername?: string | null }, context: z.RefinementCtx) {
+  if (Boolean(value.facebookPageId) !== Boolean(value.facebookPageName)) {
+    context.addIssue({ code: "custom", message: "A Página do Facebook deve ter id e nome.", path: ["facebookPageId"] });
+  }
+  if (Boolean(value.instagramAccountId) !== Boolean(value.instagramUsername)) {
+    context.addIssue({ code: "custom", message: "A conta do Instagram deve ter id e usuário.", path: ["instagramAccountId"] });
+  }
+  if (!value.facebookPageId && !value.instagramAccountId) {
+    context.addIssue({ code: "custom", message: "Selecione ao menos Facebook ou Instagram.", path: ["facebookPageId"] });
+  }
+}
+
+export const createMetaPublishDestinationSchema = z.object(metaDestinationFields).superRefine(validateMetaDestination);
+export const updateMetaPublishDestinationSchema = z.object(metaDestinationFields).partial().refine(
+  (value) => Object.keys(value).length > 0,
+  "Informe ao menos um campo para atualizar.",
+);
+export type CreateMetaPublishDestinationInput = z.infer<typeof createMetaPublishDestinationSchema>;
+export type UpdateMetaPublishDestinationInput = z.infer<typeof updateMetaPublishDestinationSchema>;
+
+const isoDateTimeSchema = z.string().trim().refine((value) => {
+  if (!/[zZ]|[+-]\d{2}:\d{2}$/.test(value)) return false;
+  return !Number.isNaN(new Date(value).getTime());
+}, "Use uma data e hora ISO com fuso horário.");
+
+const metaPublicationPlatformSchema = z.enum(["instagram", "facebook"]);
+const metaPublicationStatusSchema = z.enum(["scheduled", "publishing", "published", "failed", "cancelled"]);
+const metaPublicationMediaTypeSchema = z.enum(["image", "carousel", "reel", "story"]);
+
+const instagramUserTagSchema = z.object({
+  username: z.string().trim().transform((value) => value.replace(/^@+/, "")).refine(
+    (value) => /^[A-Za-z0-9._]{1,30}$/.test(value),
+    "Use um @username válido do Instagram.",
+  ),
+  x: z.number().min(0).max(1),
+  y: z.number().min(0).max(1),
+});
+
+export const createMetaPublicationSchema = z.object({
+  cardId: z.string().trim().min(1).max(190),
+  destinationId: z.string().trim().min(1).max(190).optional(),
+  platform: metaPublicationPlatformSchema.optional(),
+  platforms: z.array(metaPublicationPlatformSchema).min(1).max(2).optional(),
+  scheduledAt: isoDateTimeSchema,
+  publicationFormat: z.enum(["story"]).nullable().optional(),
+  reelCoverUrl: z.union([
+    z.string().trim().max(2048).refine(
+      (value) => value.startsWith("/api/uploads/") || z.string().url().safeParse(value).success,
+      "URL da capa do Reel inválida.",
+    ),
+    z.null(),
+  ]).optional(),
+  locationId: z.union([z.string().trim().regex(/^\d+$/, "O ID da localização deve ser numérico.").max(190), z.null()]).optional(),
+  locationName: z.union([z.string().trim().min(1).max(255), z.null()]).optional(),
+  instagramUserTags: z.array(instagramUserTagSchema).max(20, "O Instagram aceita no máximo 20 marcações por publicação.").optional(),
+  timezone: z.string().trim().min(1).max(100).refine((value) => {
+    try {
+      new Intl.DateTimeFormat("pt-BR", { timeZone: value });
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Timezone inválido."),
+}).superRefine((value, context) => {
+  if (!value.platform && !value.platforms?.length) {
+    context.addIssue({ code: "custom", message: "Selecione pelo menos uma plataforma.", path: ["platforms"] });
+  }
+  const selectedPlatforms = value.platforms ?? (value.platform ? [value.platform] : []);
+  if (value.instagramUserTags?.length && !selectedPlatforms.includes("instagram")) {
+    context.addIssue({ code: "custom", message: "Marcações de pessoas estão disponíveis somente para Instagram nesta versão.", path: ["instagramUserTags"] });
+  }
+}).transform((value) => ({
+  ...value,
+  platforms: [...new Set(value.platforms ?? (value.platform ? [value.platform] : []))],
+  locationId: value.locationId || null,
+  locationName: value.locationName || null,
+  reelCoverUrl: value.reelCoverUrl || null,
+  publicationFormat: value.publicationFormat || null,
+  instagramUserTags: value.instagramUserTags ?? [],
+}));
+
+export const metaPublicationsQuerySchema = z.object({
+  clientAccountId: z.string().trim().min(1).max(190).optional(),
+  platform: metaPublicationPlatformSchema.optional(),
+  mediaType: metaPublicationMediaTypeSchema.optional(),
+  status: metaPublicationStatusSchema.optional(),
+  from: isoDateTimeSchema.optional(),
+  to: isoDateTimeSchema.optional(),
+  limit: z.coerce.number().int().min(1).max(200).default(100),
+  offset: z.coerce.number().int().min(0).default(0),
+}).refine((value) => !value.from || !value.to || new Date(value.from).getTime() <= new Date(value.to).getTime(), {
+  message: "O início do período deve ser anterior ao fim.",
+  path: ["to"],
+});
+
+export const clientMetaPublicationsQuerySchema = z.object({
+  from: isoDateTimeSchema.optional(),
+  to: isoDateTimeSchema.optional(),
+}).refine((value) => !value.from || !value.to || new Date(value.from).getTime() <= new Date(value.to).getTime(), {
+  message: "O início do período deve ser anterior ao fim.",
+  path: ["to"],
+});
+
+export const manageMetaPublicationsSchema = z.object({
+  publicationIds: z.array(z.string().trim().min(1).max(190)).min(1).max(2).transform((ids) => [...new Set(ids)]),
+});
+
+export const rescheduleMetaPublicationsSchema = manageMetaPublicationsSchema.extend({
+  scheduledAt: isoDateTimeSchema,
+  timezone: z.string().trim().min(1).max(100).refine((value) => {
+    try {
+      new Intl.DateTimeFormat("pt-BR", { timeZone: value });
+      return true;
+    } catch {
+      return false;
+    }
+  }, "Timezone inválido."),
+});
+
+export const metaPlaceSearchQuerySchema = z.object({
+  q: z.string().trim().max(100).default(""),
+});
+
+const savedLocationFields = {
+  name: z.string().trim().min(1, "Informe o nome da localização.").max(255),
+  metaPlaceId: z.string().trim().regex(/^\d+$/, "O Meta Place ID deve conter somente números.").max(190),
+  notes: z.union([z.string().trim().max(2000), z.null()]).optional().transform((value) => value || null),
+};
+
+export const createMetaSavedLocationSchema = z.object(savedLocationFields);
+
+export const updateMetaSavedLocationSchema = z.object(savedLocationFields).partial().refine(
+  (value) => Object.keys(value).length > 0,
+  "Informe ao menos um campo para atualizar.",
+);
+
+export type CreateMetaSavedLocationInput = z.infer<typeof createMetaSavedLocationSchema>;
+export type UpdateMetaSavedLocationInput = z.infer<typeof updateMetaSavedLocationSchema>;
+
+export const metaPreflightQuerySchema = z.object({
+  clientAccountId: z.string().trim().min(1).max(190),
+  destinationId: z.string().trim().min(1).max(190),
+  cardId: z.string().trim().min(1).max(190).optional(),
+});

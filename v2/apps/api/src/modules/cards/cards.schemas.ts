@@ -46,6 +46,7 @@ export const createCardSchema = z.object({
 });
 
 export const updateCardSchema = z.object({
+  expectedApprovalRevision: z.number().int().nonnegative().optional(),
   title: z.string().min(1).max(255).optional(),
   caption: z.string().nullable().optional(),
   mediaType: z.string().min(1).max(50).optional(),

@@ -2,6 +2,7 @@ import { ACCESS_TOKEN_KEY } from "./authApi";
 import type {
   AdminWorkspacePreview,
   ApprovalLink,
+  ApprovalEvent,
   BoardCard,
   BoardColumn,
   CalendarEvent,
@@ -123,15 +124,118 @@ export type BrandBrain = {
 export type BrandBrainRevision = { id: string; status: "pending" | "approved" | "rejected"; summary: string | null; data: BrandBrain; authorName: string; authorRole: string; reviewerName: string | null; createdAt: string; reviewedAt: string | null };
 export type BrandBrainComment = { id: string; revisionId: string | null; sectionKey: string; commentText: string; authorName: string; authorRole: string; isInternal: boolean; createdAt: string };
 export type BrandBrainSnapshot = { data: BrandBrain | null; meta: { version: number; updatedAt: string | null; updatedBy: string | null }; revisions: BrandBrainRevision[]; history: Array<{ id: string; version: number; authorName: string; createdAt: string }>; comments: BrandBrainComment[] };
-export type ReportMetrics = Record<"instagram" | "facebook", Record<"reach" | "impressions" | "engagement" | "followers" | "visits" | "clicks", number>>;
-export type ClientReport = { id: string; clientAccountId: string; title: string; periodStart: string; periodEnd: string; status: "draft" | "published"; metrics: ReportMetrics; highlights: Array<{ channel: "instagram" | "facebook"; title: string; value: number }>; evidenceUrls: string[]; notes: string | null; publishedAt: string | null; createdAt: string; updatedAt: string };
+export type ReportMetricMetadata = { status: "available" | "empty" | "invalid_metric" | "permission_error" | "api_error"; source: string; aggregation: string; code: number | null; structure: { entries: number; dailyValues: number; totalValue: boolean; breakdowns: number } };
+export type ReportMetricKey = "reach" | "impressions" | "engagement" | "followers" | "visits" | "clicks" | "followersGained" | "followersLost" | "followersNet";
+export type ReportChannelMetrics = Record<Exclude<ReportMetricKey, "followersGained" | "followersLost" | "followersNet">, number | null> & Partial<Record<"followersGained" | "followersLost" | "followersNet", number | null>> & { metricMetadata?: Record<string, ReportMetricMetadata> };
+export type ReportAdsCampaign = {
+  campaignId: string | null;
+  campaignName: string | null;
+  objective: string | null;
+  spend: number | null;
+  reach: number | null;
+  impressions: number | null;
+  clicks: number | null;
+  inlineLinkClicks: number | null;
+  ctr: number | null;
+  cpc: number | null;
+  cpm: number | null;
+};
+export type ReportAdsMetrics = {
+  accountName: string | null;
+  currency: string | null;
+  spend: number | null;
+  reach: number | null;
+  impressions: number | null;
+  frequency: number | null;
+  clicks: number | null;
+  inlineLinkClicks: number | null;
+  ctr: number | null;
+  cpc: number | null;
+  cpm: number | null;
+  cpp: number | null;
+  uniqueClicks: number | null;
+  uniqueCtr: number | null;
+  campaigns: ReportAdsCampaign[];
+};
+export type ReportMetrics = {
+  instagram: ReportChannelMetrics;
+  facebook: ReportChannelMetrics & { posts?: number | null; reactions?: number | null; comments?: number | null; shares?: number | null };
+  ads?: ReportAdsMetrics | null;
+};
+export type ClientReport = { id: string; clientAccountId: string; metaDestinationId: string | null; metaDestinationName: string | null; title: string; periodStart: string; periodEnd: string; status: "draft" | "published"; metrics: ReportMetrics; highlights: Array<{ channel: "instagram" | "facebook"; title: string; value: number; thumbnailUrl?: string | null; permalink?: string | null; metricLabel?: "interactions" }>; evidenceUrls: string[]; notes: string | null; publishedAt: string | null; createdAt: string; updatedAt: string };
+export type MetaBestPublishingTimes = {
+  available: boolean;
+  source: "instagram_online_followers";
+  sourceTimeZone: "UTC-07:00";
+  timeZone: string;
+  recommendations: Array<{ weekday: number | null; hour: number; averageFollowers: number; samples: number }>;
+  message: string | null;
+};
+
+export type ClientMetaInsights = {
+  period: { since: string; until: string };
+  status: "complete" | "partial" | "empty" | "failed";
+  sources: { instagram: "complete" | "partial" | "empty" | "failed" | "not_linked"; facebook: "complete" | "partial" | "empty" | "failed" | "not_linked" };
+  instagram: null | {
+    accountId: string; username: string | null;
+    metricMetadata?: Record<string, ReportMetricMetadata>;
+    metrics: { followersGained?: number | null; followersLost?: number | null; followersNet?: number | null; reach: number | null; views: number | null; followers: number | null; profileViews: number | null; interactions: number | null; linkClicks: number | null; accountsEngaged: number | null };
+    topContent: Array<{ id: string; caption: string | null; timestamp: string | null; permalink: string | null; thumbnailUrl: string | null; likes: number | null; comments: number | null; shares: number | null; totalInteractions: number | null }>;
+  };
+  facebook: null | {
+    pageId: string; pageName: string | null;
+    metricMetadata?: Record<string, ReportMetricMetadata>;
+    metrics: { followersGained?: number | null; followersLost?: number | null; followersNet?: number | null; interactions?: number | null; linkClicks?: number | null; reach: number | null; views: number | null; impressions: number | null; engagement: number | null; followers: number | null; fans: number | null; pageViews: number | null };
+    topContent: Array<{ id: string; message: string | null; timestamp: string | null; permalink: string | null; thumbnailUrl: string | null; reactions: number | null; comments: number | null; shares: number | null; interactions: number | null; reach: number | null; views: number | null; clicks: number | null }>;
+  };
+  warnings: Array<{ endpoint: string; code: number | null; message: string; metricOrOperation: string; kind: "api_error" | "network_error" | "timeout" | "unavailable"; httpStatus?: number; durationMs?: number }>;
+};
+
+export type ClientMetaAdsInsights = {
+  period: { since: string; until: string };
+  adAccount: { id: string; name: string | null; currency: string | null; timezoneName: string | null };
+  summary: {
+    spend: number | null; reach: number | null; impressions: number | null; frequency: number | null;
+    clicks: number | null; inlineLinkClicks: number | null; ctr: number | null; cpc: number | null;
+    cpm: number | null; cpp: number | null; uniqueClicks: number | null; uniqueCtr: number | null;
+  };
+  actions: Array<{ actionType: string; value: number }>;
+  costPerAction: Array<{ actionType: string; value: number }>;
+  actionValues: Array<{ actionType: string; value: number }>;
+  campaigns: Array<{
+    campaignId: string | null; campaignName: string | null; objective: string | null;
+    spend: number | null; reach: number | null; impressions: number | null; frequency: number | null;
+    clicks: number | null; inlineLinkClicks: number | null; ctr: number | null; cpc: number | null; cpm: number | null;
+    actions: Array<{ actionType: string; value: number }>;
+    costPerAction: Array<{ actionType: string; value: number }>;
+    actionValues: Array<{ actionType: string; value: number }>;
+  }>;
+  topAds: Array<{
+    adId: string | null; adName: string | null; adsetId: string | null; adsetName: string | null;
+    campaignId: string | null; campaignName: string | null;
+    spend: number | null; reach: number | null; impressions: number | null; frequency: number | null;
+    clicks: number | null; inlineLinkClicks: number | null; ctr: number | null; cpc: number | null; cpm: number | null;
+  }>;
+  warnings: Array<{ operation: string; code: number | null; message: string }>;
+};
+
 export type BillingCurrency = "BRL" | "EUR" | "USD" | "SEK";
 export type BillingInvoiceStatus = "open" | "paid" | "overdue" | "cancelled";
 export type BillingInvoice = {
   id: string; clientAccountId: string | null; number: number; title: string; clientName: string; clientEmail: string;
   clientAddress: string; clientCountry: string; clientTaxId: string; issueDate: string; dueDate: string; period: string;
   currency: BillingCurrency; locale: "pt" | "en" | "it" | "es" | "sv"; status: BillingInvoiceStatus;
+  recurringSourceInvoiceId?: string | null; recurringPeriod?: string | null;
+  recurrence?: { sourceConfirmed: boolean; eligible: boolean; currentPeriod: string; currentInvoiceId: string | null; nextIssueDate: string; timeZone: string } | null;
   recurring: boolean; fixedAmount: boolean; visibleToClient: boolean; sentToClient: boolean; notes: string;
+  paidAt?: string | null; paymentMethod?: string | null; paymentProofName?: string | null; paymentProofUrl?: string | null;
+  receiptNumber?: string | null; receiptGeneratedAt?: string | null;
+  receiptSnapshot?: {
+    signatureUrl?: string | null;
+    receiptNumber: string; invoiceNumber: number; clientName: string; clientEmail: string; clientAddress: string; clientCountry: string;
+    clientTaxId: string; paidAt: string; paymentMethod: string | null; currency: BillingCurrency; period: string; title: string; notes: string;
+    lines: Array<{ id?: string; description: string; quantity: number; unitPrice: number }>; total: number;
+  } | null;
   lines: Array<{ id: string; description: string; quantity: number; unitPrice: number }>;
   attachments: Array<{ id: string; fileName: string; fileUrl: string }>;
   createdAt?: string; updatedAt?: string;
@@ -209,6 +313,11 @@ type ApiPortalAccountItem = {
 };
 
 type ApiBoardCard = {
+  approvalRevision?: number;
+  approvalState?: "pending" | "approved" | "changes_requested" | null;
+  latestApprovalAction?: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "legacy_snapshot" | null;
+  columnId?: string | null;
+  archived?: boolean;
   id: string;
   title: string;
   caption: string | null;
@@ -284,8 +393,12 @@ type ApiPortalBoardResponse = {
 };
 
 type ApiCalendarEvent = {
+  clientAccountId?: string;
+  scheduledTimeZone?: string | null;
   id: string;
+  cardId?: string | null;
   title: string;
+  caption?: string | null;
   mediaType?: string;
   mediaUrls?: string[];
   publishDate: string;
@@ -326,27 +439,107 @@ export type ClientTagDefinition = { id: string; name: string; color: string };
 export type HashtagGroup = { id: string; name: string; hashtags: string[] };
 export type DashboardTask = { id: string; title: string; deadlineAt: string; clientLabel: string; clientName: string; clientLogoUrl?: string | null };
 export type DashboardSubmission = { id: string; title: string; createdAt: string; clientName: string; clientLogoUrl?: string | null };
-export type DashboardClientActivity = { id: string; cardId: string | null; title: string; occurredAt: string; clientName: string; clientSlug: string; clientLogoUrl?: string | null; activityType: "approved" | "changes_requested" | "comment" | "brand_brain" | "contract_accepted" | "proposal_accepted"; detail: string };
-export type DashboardUpcomingPost = { id: string; title: string; scheduledAt: string; clientLabel: string; clientName: string; clientLogoUrl?: string | null };
+export type DashboardClientActivity = { recordedDecision?: boolean | number; canSchedule?: boolean | number; id: string; cardId: string | null; title: string; occurredAt: string; clientName: string; clientSlug: string; clientLogoUrl?: string | null; activityType: "approved" | "changes_requested" | "comment" | "brand_brain" | "contract_accepted" | "proposal_accepted"; detail: string };
+export type DashboardUpcomingPost = { id: string; title: string; scheduledAt: string; clientName: string; clientLogoUrl?: string | null };
 export type DashboardTodayPost = { id: string; title: string; scheduledAt: string; clientName: string; clientLogoUrl?: string | null; mediaUrl?: string | null };
 export type DashboardApprovedPauta = { id: string; title: string; approvedAt: string; clientName: string; clientSlug: string; clientLogoUrl?: string | null };
+export type DashboardStatistics = {
+  timeZone: string;
+  month: string;
+  postsThisMonth: number;
+  postsPreviousMonth: number;
+  pending: number;
+  scheduled: number;
+  published: number;
+  publishedPreviousMonth: number;
+};
 export type AgendaLabel = { id: string; name: string; color: string };
 export type AgendaRecurrence = "none" | "weekdays" | "weekly" | "monthly_nth_weekday";
-export type AgendaEvent = { id: string; sourceEventId?: string; title: string; taskDescription?: string | null; startsAt: string; endsAt?: string | null; recurrenceType?: AgendaRecurrence; repeatUntil?: string | null; color: string; isCompleted: boolean; clientAccountId?: string | null; clientName?: string | null; labelId?: string | null; labelName?: string | null; meetLink?: string | null };
-export type MetaStatus = { connected: boolean; expiresAt: string | null; accountName: string | null; metaUserId: string | null };
+export type AgendaEvent = { timeZone?: string; id: string; sourceEventId?: string; title: string; taskDescription?: string | null; startsAt: string; endsAt?: string | null; recurrenceType?: AgendaRecurrence; repeatUntil?: string | null; color: string; isCompleted: boolean; clientAccountId?: string | null; clientName?: string | null; labelId?: string | null; labelName?: string | null; meetLink?: string | null };
+export type MetaStatus = { connected: boolean; expiresAt: string | null; dataAccessExpiresAt: string | null; accountName: string | null; metaUserId: string | null };
 export type MetaAssetPage = { id: string; name: string; instagramAccount: { id: string; username: string } | null };
+export type MetaAdAccount = {
+  id: string;
+  account_id: string | null;
+  name: string | null;
+  account_status: number | null;
+  currency: string | null;
+  timezone_name: string | null;
+  business: { id: string | null; name: string | null } | null;
+};
 export type ClientMetaAssets = {
   facebookPageId: string | null;
   facebookPageName: string | null;
   instagramAccountId: string | null;
   instagramUsername: string | null;
+  metaAdAccountId: string | null;
+  metaAdAccountName: string | null;
   updatedAt?: string;
+};
+export type MetaPublishDestination = {
+  id: string;
+  clientAccountId: string;
+  name: string;
+  facebookPageId: string | null;
+  facebookPageName: string | null;
+  instagramAccountId: string | null;
+  instagramUsername: string | null;
+  isDefault: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+export type InstagramUserTag = { username: string; x: number; y: number };
+export type MetaScheduledPublication = {
+  id: string;
+  cardId: string | null;
+  destinationId: string | null;
+  destinationName: string | null;
+  platform: "instagram" | "facebook";
+  scheduledAt: string;
+  timezone: string;
+  caption: string | null;
+  mediaUrl: string | null;
+  mediaUrls: string[];
+  mediaType: "image" | "carousel" | "reel" | "story" | null;
+  reelCoverUrl: string | null;
+  locationId: string | null;
+  locationName: string | null;
+  instagramUserTags: InstagramUserTag[];
+  status: "scheduled" | "publishing" | "published" | "failed" | "cancelled";
+  attemptCount: number;
+  publishedMetaId: string | null;
+  publishedPermalink: string | null;
+  lastError: string | null;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
+  cardTitle: string | null;
+};
+export type GlobalMetaScheduledPublication = MetaScheduledPublication & {
+  clientAccountId: string;
+  clientName: string;
+  clientSlug: string;
+  cardTitle: string;
+};
+export type MetaPlace = {
+  id: string;
+  name: string;
+  location: { city: string | null; state: string | null; country: string | null; street: string | null; zip: string | null };
+};
+export type MetaSavedLocation = {
+  id: string;
+  name: string;
+  metaPlaceId: string;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
 };
 
 type ApiCardDetailResponse = {
   card: ApiBoardCard;
   comments: ApiComment[];
   approvalLinks?: ApiApprovalLink[];
+  approvalEvents?: ApprovalEvent[];
 };
 
 const adminDrawerNotes = [
@@ -429,14 +622,13 @@ function getAccessToken() {
   return window.localStorage.getItem(ACCESS_TOKEN_KEY)?.trim() ?? "";
 }
 
-async function fetchJson<T>(path: string): Promise<T> {
-  return sendJson<T>(path, { method: "GET" });
+async function fetchJson<T>(path: string, timeoutMs?: number): Promise<T> {
+  return sendJson<T>(path, { method: "GET" }, timeoutMs);
 }
 
-async function sendJson<T>(path: string, init: RequestInit): Promise<T> {
-  const headers = new Headers({
-    Accept: "application/json",
-  });
+async function sendJson<T>(path: string, init: RequestInit, timeoutMs?: number): Promise<T> {
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "application/json");
 
   const accessToken = getAccessToken();
 
@@ -444,7 +636,7 @@ async function sendJson<T>(path: string, init: RequestInit): Promise<T> {
     headers.set("Authorization", `Bearer ${accessToken}`);
   }
 
-  if (init.body) {
+  if (init.body && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -455,7 +647,7 @@ async function sendJson<T>(path: string, init: RequestInit): Promise<T> {
     // can leave the client area showing an old permission snapshot even after
     // the admin has saved a change.
     cache: (init.method ?? "GET").toUpperCase() === "GET" ? "no-store" : init.cache,
-  });
+  }, timeoutMs);
 
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as { message?: string } | null;
@@ -491,15 +683,22 @@ async function sendJson<T>(path: string, init: RequestInit): Promise<T> {
   return payload;
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit) {
+export class ApiRequestTimeoutError extends Error {
+  constructor() {
+    super("O servidor demorou para responder. Tente novamente.");
+    this.name = "ApiRequestTimeoutError";
+  }
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = 20_000) {
   const controller = new AbortController();
-  const timeout = window.setTimeout(() => controller.abort(), 20_000);
+  const timeout = window.setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } catch (error) {
     if (error instanceof DOMException && error.name === "AbortError") {
-      throw new Error("O servidor demorou para responder. Tente novamente.");
+      throw new ApiRequestTimeoutError();
     }
     throw error;
   } finally {
@@ -523,6 +722,11 @@ function inferMediaAspect(card: ApiBoardCard): BoardCard["mediaAspect"] {
 
 function mapCard(card: ApiBoardCard, tagColors: Record<string, string> = {}): BoardCard {
   return {
+    approvalRevision: card.approvalRevision ?? 0,
+    approvalState: card.approvalState ?? null,
+    latestApprovalAction: card.latestApprovalAction ?? null,
+    columnId: card.columnId,
+    archived: card.archived ?? false,
     id: card.id,
     title: card.title,
     subtitle: card.caption ?? undefined,
@@ -568,7 +772,11 @@ function mapCalendarEvent(event: ApiCalendarEvent): CalendarEvent {
   const hasInstant = scheduled && !Number.isNaN(scheduled.getTime());
   return {
     id: event.id,
+    cardId: event.cardId ?? null,
+    clientAccountId: event.clientAccountId,
+    scheduledTimeZone: event.scheduledTimeZone,
     title: event.title,
+    caption: event.caption ?? null,
     mediaType: event.mediaType,
     mediaUrls: event.mediaUrls ?? [],
     publishDate: hasInstant ? `${scheduled!.getFullYear()}-${String(scheduled!.getMonth() + 1).padStart(2, "0")}-${String(scheduled!.getDate()).padStart(2, "0")}` : event.publishDate,
@@ -703,26 +911,27 @@ export async function submitPortalTextDecisionBySlug(slug: string, textId: strin
 }
 
 export async function listAdminReports(clientAccountId: string) { return fetchJson<{ items: ClientReport[] }>(`/api/clients/${clientAccountId}/reports`); }
-export async function createAdminReport(clientAccountId: string, input: Omit<ClientReport, "id" | "clientAccountId" | "status" | "publishedAt" | "createdAt" | "updatedAt">) { return sendJson<{ report: ClientReport }>(`/api/clients/${clientAccountId}/reports`, { method: "POST", body: JSON.stringify(input) }); }
-export async function updateAdminReport(clientAccountId: string, reportId: string, input: Partial<Omit<ClientReport, "id" | "clientAccountId" | "status" | "publishedAt" | "createdAt" | "updatedAt">>) { return sendJson<{ report: ClientReport }>(`/api/clients/${clientAccountId}/reports/${reportId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+export async function createAdminReport(clientAccountId: string, input: Omit<ClientReport, "id" | "clientAccountId" | "metaDestinationName" | "status" | "publishedAt" | "createdAt" | "updatedAt">) { return sendJson<{ report: ClientReport }>(`/api/clients/${clientAccountId}/reports`, { method: "POST", body: JSON.stringify(input) }); }
+export async function updateAdminReport(clientAccountId: string, reportId: string, input: Partial<Omit<ClientReport, "id" | "clientAccountId" | "metaDestinationName" | "status" | "publishedAt" | "createdAt" | "updatedAt">>) { return sendJson<{ report: ClientReport }>(`/api/clients/${clientAccountId}/reports/${reportId}`, { method: "PATCH", body: JSON.stringify(input) }); }
 export async function publishAdminReport(clientAccountId: string, reportId: string) { return sendJson<{ report: ClientReport }>(`/api/clients/${clientAccountId}/reports/${reportId}/publish`, { method: "POST" }); }
 export async function deleteAdminReport(clientAccountId: string, reportId: string) { return sendJson<{ ok: boolean }>(`/api/clients/${clientAccountId}/reports/${reportId}`, { method: "DELETE" }); }
 export async function extractAdminReportMetrics(clientAccountId: string, evidenceUrls: string[]) { return sendJson<{ metrics: ReportMetrics; highlights: ClientReport["highlights"] }>(`/api/clients/${clientAccountId}/reports/extract`, { method: "POST", body: JSON.stringify({ evidenceUrls }) }); }
 export async function listPortalReportsBySlug(slug: string) { const account = await findPortalAccountBySlug(slug); return fetchJson<{ items: ClientReport[] }>(`/api/portal/accounts/${account.clientAccountId}/reports`); }
 export async function listAdminInvoices() { return fetchJson<{ items: BillingInvoice[] }>("/api/invoices"); }
 export async function createAdminInvoice(input: Omit<BillingInvoice, "id" | "number" | "createdAt" | "updatedAt">) { return sendJson<{ invoice: BillingInvoice }>("/api/invoices", { method: "POST", body: JSON.stringify(input) }); }
-export async function updateAdminInvoice(invoiceId: string, input: Partial<Omit<BillingInvoice, "id" | "number" | "createdAt" | "updatedAt">>) { return sendJson<{ invoice: BillingInvoice }>(`/api/invoices/${invoiceId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+export async function updateAdminInvoice(invoiceId: string, input: Partial<Omit<BillingInvoice, "id" | "number" | "receiptNumber" | "receiptGeneratedAt" | "receiptSnapshot" | "createdAt" | "updatedAt">>) { return sendJson<{ invoice: BillingInvoice }>(`/api/invoices/${invoiceId}`, { method: "PATCH", body: JSON.stringify(input) }); }
+export async function generateAdminInvoiceReceipt(invoiceId: string) { return sendJson<{ invoice: BillingInvoice }>(`/api/invoices/${invoiceId}/receipt`, { method: "POST" }); }
 export async function deleteAdminInvoice(invoiceId: string) { return sendJson<{ ok: true }>(`/api/invoices/${invoiceId}`, { method: "DELETE" }); }
 export async function listPortalInvoicesBySlug(slug: string) { const account = await findPortalAccountBySlug(slug); return fetchJson<{ items: BillingInvoice[] }>(`/api/portal/accounts/${account.clientAccountId}/invoices`); }
 export async function listAdminContracts() { return fetchJson<{ items: ContractRecord[] }>("/api/contracts"); }
-export async function createAdminContract(input: { clientAccountId: string; title: string; bodyHtml: string; language: string; contractType: string; startDate: string | null; endDate: string | null; contractValue: string; scope: string; notes: string; status: ContractRecord["status"] }) { return sendJson<{ contract: ContractRecord }>("/api/contracts", { method: "POST", body: JSON.stringify(input) }); }
+export async function createAdminContract(input: { publicationId?: string; clientAccountId: string; title: string; bodyHtml: string; language: string; contractType: string; startDate: string | null; endDate: string | null; contractValue: string; scope: string; notes: string; status: "pending" }) { return sendJson<{ contract: ContractRecord }>("/api/contracts", { method: "POST", body: JSON.stringify(input) }); }
 export async function updateAdminContract(contractId: string, input: Partial<{ clientAccountId: string; title: string; bodyHtml: string; language: string; contractType: string; startDate: string | null; endDate: string | null; contractValue: string; scope: string; notes: string; status: ContractRecord["status"] }>) { return sendJson<{ contract: ContractRecord }>(`/api/contracts/${contractId}`, { method: "PATCH", body: JSON.stringify(input) }); }
 export async function deleteAdminContract(contractId: string) { return sendJson<{ ok: boolean }>(`/api/contracts/${contractId}`, { method: "DELETE" }); }
 export async function listAdminContractTemplates() { return fetchJson<{ items: ContractTemplateRecord[] }>("/api/contract-templates"); }
 export async function createAdminContractTemplate(input: { name: string; bodyHtml: string; language: string; description: string; draft: ContractTemplateRecord["draft"] }) { return sendJson<{ template: ContractTemplateRecord }>("/api/contract-templates", { method: "POST", body: JSON.stringify(input) }); }
 export async function deleteAdminContractTemplate(templateId: string) { return sendJson<{ ok: boolean }>(`/api/contract-templates/${templateId}`, { method: "DELETE" }); }
-export async function loadPendingPortalContractBySlug(slug: string) { const account=await findPortalAccountBySlug(slug); return fetchJson<{ contract: ContractRecord | null }>(`/api/portal/accounts/${account.clientAccountId}/contracts/pending`); }
-export async function acceptPortalContractBySlug(slug: string, contractId: string) { const account=await findPortalAccountBySlug(slug); return sendJson<{ ok: true; contract: ContractRecord }>(`/api/portal/accounts/${account.clientAccountId}/contracts/${contractId}/accept`, { method: "POST" }); }
+export async function loadPendingPortalContractBySlug(slug: string) { const account=await findPortalAccountBySlug(slug); return fetchJson<{ contract: Omit<ContractRecord, "notes"> | null }>(`/api/portal/accounts/${account.clientAccountId}/contracts/pending`); }
+export async function acceptPortalContractBySlug(slug: string, contractId: string) { const account=await findPortalAccountBySlug(slug); return sendJson<{ ok: true; contract: Omit<ContractRecord, "notes"> }>(`/api/portal/accounts/${account.clientAccountId}/contracts/${contractId}/accept`, { method: "POST" }); }
 export async function listAdminProposals() { return fetchJson<{ items: ProposalRecord[] }>("/api/proposals"); }
 export async function createAdminProposal(input: Omit<ProposalRecord, "id" | "token" | "acceptedAt" | "viewedAt" | "createdAt" | "updatedAt">) { return sendJson<{ proposal: ProposalRecord }>("/api/proposals", { method: "POST", body: JSON.stringify(input) }); }
 export async function updateAdminProposal(proposalId: string, input: Partial<Omit<ProposalRecord, "id" | "token" | "acceptedAt" | "viewedAt" | "createdAt" | "updatedAt">>) { return sendJson<{ proposal: ProposalRecord }>(`/api/proposals/${proposalId}`, { method: "PATCH", body: JSON.stringify(input) }); }
@@ -737,7 +946,7 @@ export async function listAdminDesignBriefTemplates() { return fetchJson<{ items
 export async function createAdminDesignBriefTemplate(input: { name: string; introduction: string; fields: DesignBriefFieldRecord[] }) { return sendJson<{ template: DesignBriefTemplateRecord }>("/api/design-brief-templates", { method: "POST", body: JSON.stringify(input) }); }
 export async function deleteAdminDesignBriefTemplate(templateId: string) { return sendJson<{ ok: boolean }>(`/api/design-brief-templates/${templateId}`, { method: "DELETE" }); }
 
-export async function loadClientPortalBySlug(slug: string): Promise<ClientPortalPreview> {
+export async function loadClientPortalBySlug(slug: string, previous?: ClientPortalPreview): Promise<ClientPortalPreview> {
   const matchedAccount = await findPortalAccountBySlug(slug);
 
   // The portal navigation is controlled by the home response. A temporary
@@ -748,9 +957,7 @@ export async function loadClientPortalBySlug(slug: string): Promise<ClientPortal
   );
   const boardResponse = await fetchJson<ApiPortalBoardResponse>(
     `/api/portal/accounts/${matchedAccount.clientAccountId}/board`,
-  ).catch((): ApiPortalBoardResponse => ({
-    board: { columns: [], withoutColumn: { cards: [] } },
-  }));
+  ).catch(() => null);
 
   return {
     accountName: homeResponse.account.name,
@@ -762,9 +969,10 @@ export async function loadClientPortalBySlug(slug: string): Promise<ClientPortal
     showArchivedToClient: homeResponse.account.showArchivedToClient,
     widgets: homeResponse.widgets,
     permissions: homeResponse.permissions,
-    boardColumns: mapColumns(boardResponse.board.columns),
+    boardRefreshFailed: boardResponse === null,
+    boardColumns: boardResponse ? mapColumns(boardResponse.board.columns) : previous?.boardColumns ?? [],
     postCreationColumns: homeResponse.postCreationColumns.map((column) => ({ ...column, color: column.color ?? "#8c94a8" })),
-    withoutColumn: boardResponse.board.withoutColumn.cards.map((card) => mapCard(card)),
+    withoutColumn: boardResponse ? boardResponse.board.withoutColumn.cards.map((card) => mapCard(card)) : previous?.withoutColumn ?? [],
     calendarEvents: [],
     upcomingItems: homeResponse.upcomingItems,
     calendarPosts: homeResponse.calendarPosts.map((card) => mapCard(card)),
@@ -800,6 +1008,7 @@ export async function loadAdminCardDetailBySlug(
     card: mapCard(response.card),
     comments: response.comments.map(mapComment),
     approvalLinks: (response.approvalLinks ?? []).map(mapApprovalLink),
+    approvalEvents: response.approvalEvents ?? [],
   };
 }
 
@@ -881,10 +1090,10 @@ export async function addPortalCardCommentBySlug(
 export async function submitPortalCardDecisionBySlug(
   slug: string,
   cardId: string,
-  input: { approved: boolean; commentText?: string },
+  input: { approved: boolean; commentText?: string; expectedApprovalRevision?: number },
 ) {
   const matchedAccount = await findPortalAccountBySlug(slug);
-  return sendJson(
+  return sendJson<{ ok: true; card: ApiBoardCard }>(
     `/api/portal/accounts/${matchedAccount.clientAccountId}/cards/${cardId}/decision`,
     {
       method: "POST",
@@ -971,6 +1180,7 @@ export async function updateAdminCardBySlug(
   slug: string,
   cardId: string,
   input: Partial<{
+    expectedApprovalRevision: number;
     title: string;
     caption: string | null;
     mediaType: string;
@@ -991,7 +1201,7 @@ export async function updateAdminCardBySlug(
   }>,
 ) {
   const matchedClient = await findAdminClientBySlug(slug);
-  return sendJson(`/api/clients/${matchedClient.id}/cards/${cardId}`, {
+  return sendJson<{ ok: true; card: ApiBoardCard }>(`/api/clients/${matchedClient.id}/cards/${cardId}`, {
     method: "PATCH",
     body: JSON.stringify(input),
   });
@@ -1159,9 +1369,66 @@ export async function loadMetaAssets() {
   return fetchJson<{ pages: MetaAssetPage[] }>("/api/meta/assets");
 }
 
+export async function loadMetaAdAccounts() {
+  return fetchJson<{
+    adAccounts: MetaAdAccount[];
+    totalCount: number;
+    pagesFetched: number;
+    error: { endpoint: string; code: number | null; message: string; requiredPermission: string } | null;
+  }>("/api/meta/ad-accounts");
+}
+
 export async function loadClientMetaAssetsBySlug(slug: string) {
   const client = await findAdminClientBySlug(slug);
   return fetchJson<{ assets: ClientMetaAssets | null }>(`/api/clients/${client.id}/meta-assets`);
+}
+
+export async function loadClientMetaBestTimesBySlug(slug: string, timeZone: string, destinationId?: string) {
+  const client = await findAdminClientBySlug(slug);
+  const query = new URLSearchParams({ timeZone });
+  if (destinationId) query.set("destinationId", destinationId);
+  return fetchJson<MetaBestPublishingTimes>(`/api/clients/${client.id}/meta-best-times?${query.toString()}`, 18_000);
+}
+
+export async function loadClientMetaDestinationsBySlug(slug: string) {
+  const client = await findAdminClientBySlug(slug);
+  return fetchJson<{ destinations: MetaPublishDestination[] }>(`/api/clients/${client.id}/meta-destinations`);
+}
+
+export async function createClientMetaDestinationBySlug(slug: string, input: Omit<MetaPublishDestination, "id" | "clientAccountId" | "createdAt" | "updatedAt">) {
+  const client = await findAdminClientBySlug(slug);
+  return sendJson<{ destination: MetaPublishDestination }>(`/api/clients/${client.id}/meta-destinations`, { method: "POST", body: JSON.stringify(input) });
+}
+
+export async function updateClientMetaDestinationBySlug(slug: string, destinationId: string, input: Partial<Omit<MetaPublishDestination, "id" | "clientAccountId" | "createdAt" | "updatedAt">>) {
+  const client = await findAdminClientBySlug(slug);
+  return sendJson<{ destination: MetaPublishDestination }>(`/api/clients/${client.id}/meta-destinations/${destinationId}`, { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export async function deleteClientMetaDestinationBySlug(slug: string, destinationId: string) {
+  const client = await findAdminClientBySlug(slug);
+  return sendJson<{ ok: true }>(`/api/clients/${client.id}/meta-destinations/${destinationId}`, { method: "DELETE" });
+}
+
+export async function loadClientMetaAssets(clientAccountId: string) {
+  return fetchJson<{ assets: ClientMetaAssets | null }>(`/api/clients/${clientAccountId}/meta-assets`);
+}
+
+export async function loadClientMetaDestinations(clientAccountId: string) {
+  return fetchJson<{ destinations: MetaPublishDestination[] }>(`/api/clients/${clientAccountId}/meta-destinations`);
+}
+
+export async function loadClientMetaInsights(clientAccountId: string, since: string, until: string, destinationId?: string) {
+  const query = new URLSearchParams({ since, until });
+  if (destinationId) query.set("destinationId", destinationId);
+  // This endpoint fans out to bounded Meta requests; its deadline is explicit
+  // and slightly above the backend's maximum per-request phases.
+  return fetchJson<ClientMetaInsights>(`/api/clients/${clientAccountId}/meta-insights?${query.toString()}`, 28_000);
+}
+
+export async function loadClientMetaAdsInsights(clientAccountId: string, since: string, until: string) {
+  const query = new URLSearchParams({ since, until });
+  return fetchJson<ClientMetaAdsInsights>(`/api/clients/${clientAccountId}/meta-ads-insights?${query.toString()}`, 28_000);
 }
 
 export async function saveClientMetaAssetsBySlug(slug: string, assets: ClientMetaAssets) {
@@ -1169,6 +1436,82 @@ export async function saveClientMetaAssetsBySlug(slug: string, assets: ClientMet
   return sendJson<{ assets: ClientMetaAssets }>(`/api/clients/${client.id}/meta-assets`, {
     method: "PUT",
     body: JSON.stringify(assets),
+  });
+}
+
+export async function listMetaPublicationsBySlug(slug: string, range: { from?: string; to?: string } = {}) {
+  const client = await findAdminClientBySlug(slug);
+  const query = new URLSearchParams();
+  if (range.from) query.set("from", range.from);
+  if (range.to) query.set("to", range.to);
+  const suffix = query.size ? `?${query.toString()}` : "";
+  return fetchJson<{ publications: MetaScheduledPublication[] }>(`/api/clients/${client.id}/meta-publications${suffix}`);
+}
+
+export async function createMetaPublicationBySlug(slug: string, input: { cardId: string; destinationId?: string; platforms: ("instagram" | "facebook")[]; scheduledAt: string; timezone: string; publicationFormat?: "story" | null; reelCoverUrl?: string | null; locationId?: string | null; locationName?: string | null; instagramUserTags?: InstagramUserTag[] }) {
+  const client = await findAdminClientBySlug(slug);
+  return sendJson<{ publications: MetaScheduledPublication[]; created: boolean }>(`/api/clients/${client.id}/meta-publications`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function loadMetaSavedLocations() {
+  return fetchJson<{ locations: MetaSavedLocation[] }>("/api/meta/saved-locations");
+}
+
+export async function createMetaSavedLocation(input: { name: string; metaPlaceId: string; notes?: string | null }) {
+  return sendJson<{ location: MetaSavedLocation }>("/api/meta/saved-locations", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function updateMetaSavedLocation(id: string, input: { name?: string; metaPlaceId?: string; notes?: string | null }) {
+  return sendJson<{ location: MetaSavedLocation }>(`/api/meta/saved-locations/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteMetaSavedLocation(id: string) {
+  return sendJson<{ ok: true }>(`/api/meta/saved-locations/${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function searchMetaPlaces(query: string) {
+  return fetchJson<{ places: MetaPlace[] }>(`/api/meta/places/search?q=${encodeURIComponent(query)}`, 18_000);
+}
+
+export async function loadGlobalMetaPublications(filters: {
+  clientAccountId?: string; platform?: string; mediaType?: string; status?: string; from?: string; to?: string; limit?: number; offset?: number;
+} = {}) {
+  const query = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => { if (value !== undefined && value !== "") query.set(key, String(value)); });
+  return fetchJson<{
+    publications: GlobalMetaScheduledPublication[];
+    total: number;
+    summary: { scheduled: number; publishing: number; publishedToday: number; failed: number };
+  }>(`/api/meta/publications?${query.toString()}`);
+}
+
+export async function rescheduleMetaPublications(publicationIds: string[], scheduledAt: string, timezone: string) {
+  return sendJson<{ publications: MetaScheduledPublication[] }>("/api/meta/publications/reschedule", {
+    method: "PATCH",
+    body: JSON.stringify({ publicationIds, scheduledAt, timezone }),
+  });
+}
+
+export async function cancelMetaPublications(publicationIds: string[]) {
+  return sendJson<{ publications: MetaScheduledPublication[] }>("/api/meta/publications/cancel", {
+    method: "POST",
+    body: JSON.stringify({ publicationIds }),
+  });
+}
+
+export async function cancelMetaPublicationBySlug(slug: string, publicationId: string) {
+  const client = await findAdminClientBySlug(slug);
+  return sendJson<{ publication: MetaScheduledPublication }>(`/api/clients/${client.id}/meta-publications/${publicationId}/cancel`, {
+    method: "POST",
   });
 }
 
@@ -1231,6 +1574,27 @@ export async function saveAdminWorkspaceDrawerBySlug(slug: string, data: unknown
   });
 }
 
+export async function createAdminPautaIdeaBySlug(slug: string, idea: unknown) {
+  const matchedClient = await findAdminClientBySlug(slug);
+  return sendJson<{ ok: true; idea: unknown }>(`/api/clients/${matchedClient.id}/workspace-drawer/pauta-ideas`, {
+    method: "POST",
+    body: JSON.stringify({ idea }),
+  });
+}
+
+export async function updateAdminPautaIdeaBySlug(slug: string, ideaId: string, patch: unknown) {
+  const matchedClient = await findAdminClientBySlug(slug);
+  return sendJson<{ ok: true; idea: unknown }>(`/api/clients/${matchedClient.id}/workspace-drawer/pauta-ideas/${ideaId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ patch }),
+  });
+}
+
+export async function deleteAdminPautaIdeaBySlug(slug: string, ideaId: string) {
+  const matchedClient = await findAdminClientBySlug(slug);
+  return sendJson<{ ok: true }>(`/api/clients/${matchedClient.id}/workspace-drawer/pauta-ideas/${ideaId}`, { method: "DELETE" });
+}
+
 export async function loadAdminGlobalQuickLinks() {
   return fetchJson<{ items: unknown[] }>("/api/clients/workspace-quick-links");
 }
@@ -1252,11 +1616,11 @@ export async function saveAdminKanbanAutomationsBySlug(slug: string, items: unkn
   return sendJson(`/api/clients/${matchedClient.id}/kanban-automations`, { method: "PUT", body: JSON.stringify({ items }) });
 }
 
-export async function createAdminApprovalLinkBySlug(slug: string, cardId: string) {
+export async function createAdminApprovalLinkBySlug(slug: string, cardId: string, expectedApprovalRevision = 0) {
   const matchedClient = await findAdminClientBySlug(slug);
   return sendJson<{ ok: true; approvalLink: ApiApprovalLink }>(
     `/api/clients/${matchedClient.id}/cards/${cardId}/approval-links`,
-    { method: "POST", body: JSON.stringify({ expiresInDays: 7 }) },
+    { method: "POST", body: JSON.stringify({ expiresInDays: 7, expectedApprovalRevision }) },
   );
 }
 
@@ -1273,13 +1637,28 @@ export async function createAdminTagBySlug(slug: string, input: { name: string; 
   });
 }
 
+export async function updateAdminTagBySlug(slug: string, tagId: string, input: { name: string; color: string }) {
+  const matchedClient = await findAdminClientBySlug(slug);
+  return sendJson<{ ok: true; tag: ClientTagDefinition }>(`/api/clients/${matchedClient.id}/tags/${tagId}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
 export async function listAdminHashtagGroupsBySlug(slug: string) {
   const matchedClient = await findAdminClientBySlug(slug);
   return fetchJson<{ items: HashtagGroup[] }>(`/api/clients/${matchedClient.id}/hashtag-groups`);
 }
 
 export async function loadDashboardOverview() {
-  return fetchJson<{ dueTasks: DashboardTask[]; upcomingPosts: DashboardUpcomingPost[]; postsToday: DashboardTodayPost[]; agendaToday: AgendaEvent[]; clientSubmissions: DashboardSubmission[]; clientActivities: DashboardClientActivity[]; approvedPautas: DashboardApprovedPauta[] }>("/api/dashboard/overview");
+  return fetchJson<{ statistics: DashboardStatistics; dueTasks: DashboardTask[]; upcomingPosts: DashboardUpcomingPost[]; postsToday: DashboardTodayPost[]; agendaToday: AgendaEvent[]; clientSubmissions: DashboardSubmission[]; clientActivities: DashboardClientActivity[]; approvedPautas: DashboardApprovedPauta[] }>(`/api/dashboard/overview?${new URLSearchParams({ timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone })}`);
+}
+
+export async function dismissDashboardItem(itemType: "client_feedback" | "approved_pauta" | "client_submission", itemId: string) {
+  return sendJson<{ ok: true }>("/api/dashboard/dismissals", {
+    method: "POST",
+    body: JSON.stringify({ itemType, itemId }),
+  });
 }
 
 export async function loadDashboardNotes() {
@@ -1318,8 +1697,8 @@ export async function addBrandBrainCommentBySlug(slug: string, input: { commentT
 export async function loadPortalBrandBrainBySlug(slug: string) { const account = await findPortalAccountBySlug(slug); return fetchJson<BrandBrainSnapshot>(`/api/clients/${account.clientAccountId}/brand-brain`); }
 export async function savePortalBrandBrainBySlug(slug: string, data: BrandBrain, summary?: string) { const account = await findPortalAccountBySlug(slug); return sendJson<{ ok: true; pending: boolean; revision?: BrandBrainRevision }>(`/api/clients/${account.clientAccountId}/brand-brain`, { method: "PUT", body: JSON.stringify({ data, summary }) }); }
 export async function addPortalBrandBrainCommentBySlug(slug: string, input: { commentText: string; revisionId?: string | null; sectionKey?: string }) { const account = await findPortalAccountBySlug(slug); return sendJson<{ ok: true }>(`/api/clients/${account.clientAccountId}/brand-brain/comments`, { method: "POST", body: JSON.stringify(input) }); }
-export async function createAgendaEvent(input: { title: string; taskDescription?: string | null; startsAt: string; endsAt?: string | null; color: string; clientAccountId?: string | null; labelId?: string | null; recurrenceType?: AgendaRecurrence; repeatUntil?: string | null; meetLink?: string | null }) { return sendJson<{ ok: true; id: string }>("/api/agenda/events", { method: "POST", body: JSON.stringify({ ...input, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }) }); }
-export async function updateAgendaEvent(eventId: string, input: Partial<{ title: string; taskDescription: string | null; startsAt: string; color: string; clientAccountId: string | null; labelId: string | null; recurrenceType: AgendaRecurrence; repeatUntil: string | null; meetLink: string | null; isCompleted: boolean }>) { const body = (input.startsAt ? { ...input, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone } : input); return sendJson<{ ok: true }>(`/api/agenda/events/${eventId}`, { method: "PATCH", body: JSON.stringify(body) }); }
+export async function createAgendaEvent(input: { timeZone?: string; title: string; taskDescription?: string | null; startsAt: string; endsAt?: string | null; color: string; clientAccountId?: string | null; labelId?: string | null; recurrenceType?: AgendaRecurrence; repeatUntil?: string | null; meetLink?: string | null }) { return sendJson<{ ok: true; id: string }>("/api/agenda/events", { method: "POST", body: JSON.stringify({ ...input, timeZone: input.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone }) }); }
+export async function updateAgendaEvent(eventId: string, input: Partial<{ timeZone: string; endsAt: string | null; title: string; taskDescription: string | null; startsAt: string; color: string; clientAccountId: string | null; labelId: string | null; recurrenceType: AgendaRecurrence; repeatUntil: string | null; meetLink: string | null; isCompleted: boolean }>) { const body = (input.startsAt ? { ...input, timeZone: input.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone } : input); return sendJson<{ ok: true }>(`/api/agenda/events/${eventId}`, { method: "PATCH", body: JSON.stringify(body) }); }
 export async function listPortalAppointmentsBySlug(slug: string, from: string, to: string) {
   const account = await findPortalAccountBySlug(slug);
   return fetchJson<{ items: AgendaEvent[] }>(`/api/portal/accounts/${account.clientAccountId}/appointments?from=${from}&to=${to}`);
@@ -1400,7 +1779,7 @@ export async function uploadPortalMediaBySlug(slug: string, file: File) {
   return ((await response.json()) as { url: string }).url;
 }
 
-export async function createPortalPostBySlug(slug: string, input: { columnId: string; title: string; caption?: string | null; commentText?: string | null; artType: string; externalLinkUrl?: string | null; mediaUrls: string[] }) {
+export async function createPortalPostBySlug(slug: string, input: { title: string; caption?: string | null; commentText?: string | null; artType: string; externalLinkUrl?: string | null; mediaUrls: string[] }) {
   const account = await findPortalAccountBySlug(slug);
   return sendJson<{ ok: true; card: ApiBoardCard }>(`/api/portal/accounts/${account.clientAccountId}/cards`, {
     method: "POST",
@@ -1413,6 +1792,21 @@ export async function updatePortalCardCaptionBySlug(slug: string, cardId: string
   return sendJson<{ ok: true; card: ApiBoardCard }>(`/api/portal/accounts/${account.clientAccountId}/cards/${cardId}/caption`, {
     method: "PATCH",
     body: JSON.stringify({ caption }),
+  });
+}
+
+export async function updatePortalSuggestionBySlug(slug: string, cardId: string, input: { title: string; caption: string | null; externalLinkUrl: string | null }) {
+  const account = await findPortalAccountBySlug(slug);
+  return sendJson<{ ok: true; card: ApiBoardCard }>(`/api/portal/accounts/${account.clientAccountId}/cards/${cardId}/suggestion`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deletePortalSuggestionBySlug(slug: string, cardId: string) {
+  const account = await findPortalAccountBySlug(slug);
+  return sendJson<{ ok: true }>(`/api/portal/accounts/${account.clientAccountId}/cards/${cardId}/suggestion`, {
+    method: "DELETE",
   });
 }
 
@@ -1451,6 +1845,62 @@ export async function changeMyPassword(input: { currentPassword: string; newPass
   });
 }
 
+export async function resubmitAdminApprovalBySlug(slug: string, cardId: string, expectedApprovalRevision: number) {
+  const client = await findAdminClientBySlug(slug);
+  const result = await sendJson<{ ok: true; card: ApiBoardCard; approvalLink: ApiApprovalLink }>(
+    `/api/clients/${client.id}/cards/${cardId}/resubmit-approval`,
+    { method: "POST", body: JSON.stringify({ expectedApprovalRevision }) },
+  );
+  return { card: mapCard(result.card), approvalLink: result.approvalLink };
+}
+
+export type MetaPreflightResult = {
+  clientAccountId: string; destinationId: string; destinationName: string | null; cardId: string | null;
+  status: "safe" | "warning" | "blocked";
+  checks: {
+    destinationBelongsToClient: boolean; cardBelongsToClient: boolean | null;
+    facebookAssetMatches: boolean | null; instagramAssetMatches: boolean | null;
+    facebookAccessOk: boolean | null; instagramAccessOk: boolean | null;
+    instagramLinkedToFacebook: boolean | null; noCrossClientCollision: boolean | null;
+  };
+  facebook: { savedId: string | null; savedName: string | null; liveId: string | null; liveName: string | null };
+  instagram: { savedId: string | null; savedUsername: string | null; liveId: string | null; liveUsername: string | null };
+  issues: { platform: string; code: string }[];
+  collisions: { platform: string; assetId: string; clientAccountId: string; clientName: string; destinationId: string | null; destinationName: string | null }[];
+};
+
+export async function checkMetaDestination(clientAccountId: string, destinationId: string, cardId?: string) {
+  const query = new URLSearchParams({ clientAccountId, destinationId });
+  if (cardId) query.set("cardId", cardId);
+  return fetchJson<MetaPreflightResult>(`/api/meta/preflight?${query}`);
+}
+
+export async function loadBillingSettings() { return fetchJson<{ signatureUrl: string | null }>("/api/billing/settings"); }
+export async function removeReceiptSignature() { return sendJson<{ signatureUrl: null }>("/api/billing/settings/receipt-signature", { method: "DELETE" }); }
+export async function uploadReceiptSignature(file: File) {
+  const headers = new Headers();
+  const token = getAccessToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const body = new FormData();
+  body.set("file", file);
+  const response = await fetchWithTimeout(`${getApiBaseUrl()}/api/uploads/receipt-signature`, { method: "POST", headers, body });
+  const result = await response.json() as { signatureUrl: string; message?: string };
+  if (!response.ok) throw new Error(result.message ?? "Não foi possível salvar a assinatura.");
+  return result;
+}
+
+export async function generateCurrentRecurringInvoices() { return sendJson<{ period: string; created: number; skipped: number; failedSourceIds: string[]; busy: boolean }>("/api/invoices/recurring/generate", { method: "POST" }); }
+
+export type RecurringAudit = {
+  period: string; needsSourceReview: number;
+  sources: Array<{ clientAccountId: string | null; clientName: string; suggestedSourceId: string; confirmedSourceIds: string[];
+    candidates: Array<{ id: string; number: number; title: string; issueDate: string; dueDate: string; legacy: boolean }> }>;
+  instances: Array<{ id: string; number: number; clientName: string; title: string; sourceId: string; period: string;
+    issueDate: string; dueDate: string; expectedTitle: string | null; expectedDueDate: string | null; problems: string[] }>;
+};
+export async function loadRecurringAudit() { return fetchJson<RecurringAudit>("/api/invoices/recurring/audit"); }
+export async function confirmInvoiceRecurringSource(invoiceId: string) { return sendJson<{ invoice: BillingInvoice }>(`/api/invoices/${invoiceId}/recurring-source`, { method: "POST" }); }
+
 // Seasonal radar contracts keep persistent IDs separate from transient provider references.
 export type SeasonalOccurrence = {
   id: string; opportunityId: string | null; occurrenceId: string | null;
@@ -1488,6 +1938,52 @@ export function createSeasonalOpportunity(input: {
   occurrences: Array<{ date: string; countryCodes?: string[] }>;
 }) { return sendJson<{ id: string }>("/api/seasonal/opportunities", { method: "POST", body: JSON.stringify(input) }); }
 
-export async function analyzeAdminReport(clientAccountId: string, reportId: string, snapshot: Omit<ClientReport, "id" | "clientAccountId" | "status" | "publishedAt" | "createdAt" | "updatedAt">) {
+export function loadCalendarContext() { return fetchJson<{ timeZone: string; today: string }>("/api/calendar/context"); }
+
+// Functional briefs: legacy records remain read-only; new instances carry frozen forms.
+export type BriefField = { id:string; type:"short"|"long"|"choice"|"checklist"|"dropdown"|"number"|"date"|"link"|"scale"|"file"; label:string; help:string; required:boolean; options:string[]; validation:{min?:number;max?:number;maxLength?:number;maxFiles?:number} };
+export type BriefForm = { title:string;introduction:string;category:string;locale:"pt"|"en"|"es"|"it"|"sv";fields:BriefField[] };
+export type BriefTemplate = {id:string;name:string;description:string;version:number;status:"active"|"archived";form:BriefForm};
+export type BriefInstance = {id:string;clientAccountId:string|null;templateId:string|null;templateVersion:number|null;form:BriefForm;status:"draft"|"sent"|"answered"|"reopened"|"archived";version:number;sentAt:string|null;createdAt:string;updatedAt:string};
+export type BriefDetail = {brief:BriefInstance;response:null|{id:string;status:"draft"|"submitted";version:number;answers:Record<string,unknown>;respondentUserId:string|null;submittedAt:string|null;updatedAt:string};revisions:{id:string;revision:number;answers:Record<string,unknown>;submittedByUserId:string|null;submittedAt:string}[];attachments:{id:string;fieldId:string;name:string;contentType:string;size:number}[];events:{id:string;action:string;actorUserId:string|null;revision:number|null;createdAt:string}[]};
+export const listBriefTemplates = ()=>fetchJson<{items:BriefTemplate[]}>("/api/briefs/templates");
+export const saveBriefTemplate = (input:{id?:string;name:string;description:string;form:BriefForm;expectedVersion?:number},id?:string)=>sendJson<{template:BriefTemplate}>(`/api/briefs/templates${id?`/${id}`:""}`,{method:id?"PATCH":"POST",body:JSON.stringify(input)});
+export const archiveBriefTemplate = (template:BriefTemplate)=>sendJson<{template:BriefTemplate}>(`/api/briefs/templates/${template.id}/archive`,{method:"POST",body:JSON.stringify({expectedVersion:template.version})});
+export const listBriefInstances = ()=>fetchJson<{items:BriefInstance[]}>("/api/briefs");
+export const getBriefDetail = (id:string)=>fetchJson<BriefDetail>(`/api/briefs/${id}`);
+export const saveBriefInstance = (input:{id?:string;clientAccountId:string|null;templateId?:string|null;templateVersion?:number|null;form:BriefForm;expectedVersion?:number},id?:string)=>sendJson<BriefDetail>(`/api/briefs${id?`/${id}`:""}`,{method:id?"PATCH":"POST",body:JSON.stringify(input)});
+export const changeBriefStatus = (brief:BriefInstance,action:"send"|"reopen"|"archive")=>sendJson<BriefDetail>(`/api/briefs/${brief.id}/${action}`,{method:"POST",body:JSON.stringify({expectedVersion:brief.version})});
+export async function briefPortalBase(slug:string){const account=await findPortalAccountBySlug(slug);return `/api/portal/accounts/${account.clientAccountId}/briefs`;}
+export const listPortalBriefs = (base:string)=>fetchJson<{items:BriefInstance[]}>(base);
+export const getPortalBrief = (base:string,id:string)=>fetchJson<BriefDetail>(`${base}/${id}`);
+export const savePortalBriefResponse = (base:string,detail:BriefDetail,answers:Record<string,unknown>,idempotencyKey?:string)=>sendJson<BriefDetail>(`${base}/${detail.brief.id}/${idempotencyKey?"submit":"response"}`,{method:idempotencyKey?"POST":"PUT",body:JSON.stringify({expectedVersion:detail.response!.version,answers,...(idempotencyKey?{idempotencyKey}:{})})});
+export async function uploadBriefAttachment(base:string,detail:BriefDetail,fieldId:string,file:File){const data=new FormData();data.append("file",file);return sendJson<BriefDetail>(`${base}/${detail.brief.id}/fields/${fieldId}/attachments`,{method:"POST",headers:{"x-brief-response-version":String(detail.response!.version)},body:data});}
+export async function downloadBriefAttachment(base:string,id:string,attachment:BriefDetail["attachments"][number]){const response=await fetch(`${getApiBaseUrl()}${base}/${id}/attachments/${attachment.id}`,{headers:{Authorization:`Bearer ${getAccessToken()}`}});if(!response.ok)throw new Error("Não foi possível baixar o anexo.");const url=URL.createObjectURL(await response.blob());const a=document.createElement("a");a.href=url;a.download=attachment.name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
+
+// Radar review reads are separate from the Dashboard overview; detail is fetched on demand.
+export type RadarSuggestionSummary = { id: string; clientAccountId: string; clientName: string; title: string; contentType: string; pillar: string | null; alignmentScore: number | null; sourceTitle: string; sourceDate: string | null; createdAt: string };
+export type RadarSuggestionDetail = RadarSuggestionSummary & { concept: string; hook: string; description: string; objective: string; rationale: string; cta: string | null; captionSuggestion: string | null; sourceUrl: string | null; radarName: string; basedOn: string[] };
+export type RadarSuggestionsPage = { items: RadarSuggestionSummary[]; total: number; hasMore: boolean; limit: number; offset: number };
+export function loadRadarSuggestions(offset = 0) { return fetchJson<RadarSuggestionsPage>(`/api/radar-suggestions?limit=3&offset=${offset}`); }
+export function loadRadarSuggestion(clientId: string, id: string) { return fetchJson<{ suggestion: RadarSuggestionDetail }>(`/api/clients/${encodeURIComponent(clientId)}/radar-suggestions/${encodeURIComponent(id)}`); }
+export function resolveRadarSuggestion(clientId: string, id: string, action: "accept" | "dismiss") { return sendJson<{ status: "accepted" | "dismissed"; created: boolean; pauta?: { id: string; status: string } }>(`/api/clients/${encodeURIComponent(clientId)}/radar-suggestions/${encodeURIComponent(id)}/${action}`, { method: "POST" }); }
+
+export type BrandBrainAiAnalysis = { alignmentScore: number; approvalPrediction: "high" | "medium" | "low"; mainPillar: string | null; tone: "aligned" | "partial" | "misaligned"; toneReason: string; audienceFit: string; strengths: string[]; warnings: string[]; recommendation: string; basedOn: string[] };
+export type BrandBrainAiIdea = { temporaryId: string; title: string; concept: string; hook: string; description: string; format: string; pillar: string | null; objective: string; rationale: string; cta: string | null; contentSuggestion: string | null; alignmentScore: number; basedOn: string[] };
+export type BrandBrainAiGenerateInput = { objective: "engagement" | "authority" | "education" | "conversion" | "relationship" | "institutional" | "other"; quantity: 3 | 5 | 10; format?: "free" | "post" | "carousel" | "reel" | "story" | "article"; topic?: string; notes?: string };
+export type BrandBrainAiDirection = "educational" | "commercial" | "human" | "direct" | "sophisticated" | "custom";
+export async function loadBrandBrainAiContextBySlug(slug: string) {
+  const client = await findAdminClientBySlug(slug);
+  return fetchJson<{ enabled: boolean; reason: string | null; completion: number; contextHash: string; contextVersion: string }>(`/api/clients/${client.id}/brand-brain-ai/context`);
+}
+async function brandBrainAiAction<T>(slug: string, action: "analyze" | "generate" | "refine", input: unknown) {
+  const client = await findAdminClientBySlug(slug);
+  return sendJson<T>(`/api/clients/${client.id}/brand-brain-ai/${action}`, { method: "POST", body: JSON.stringify(input) }, 130_000);
+}
+export const analyzePautaWithBrandBrain = (slug: string, input: { title: string; description?: string; caption?: string; contentType?: string }) => brandBrainAiAction<BrandBrainAiAnalysis>(slug, "analyze", input);
+export const generatePautasWithBrandBrain = (slug: string, input: BrandBrainAiGenerateInput) => brandBrainAiAction<{ ideas: BrandBrainAiIdea[] }>(slug, "generate", input);
+export const refinePautaWithBrandBrain = (slug: string, input: { idea: BrandBrainAiIdea; direction: BrandBrainAiDirection; customDirection?: string }) => brandBrainAiAction<BrandBrainAiIdea>(slug, "refine", input);
+
+export async function analyzeAdminReport(clientAccountId: string, reportId: string, snapshot: Omit<ClientReport, "id" | "clientAccountId" | "metaDestinationName" | "status" | "publishedAt" | "createdAt" | "updatedAt">) {
   return sendJson<import("./reportAnalysis").ReportAnalysisResult>(`/api/clients/${encodeURIComponent(clientAccountId)}/reports/${encodeURIComponent(reportId)}/ai-analysis`, { method: "POST", body: JSON.stringify({ snapshot }) });
 }

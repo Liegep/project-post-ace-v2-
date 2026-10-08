@@ -113,6 +113,9 @@ CREATE TABLE kanban_cards (
   archived TINYINT(1) NOT NULL DEFAULT 0,
   archived_at DATETIME NULL,
   client_label VARCHAR(100) NOT NULL DEFAULT 'pendente',
+  approval_reset_at DATETIME NULL,
+  approval_revision INT UNSIGNED NOT NULL DEFAULT 0,
+  approval_state VARCHAR(32) NULL,
   event_color VARCHAR(20) NULL,
   comments_count_cache INT NOT NULL DEFAULT 0,
   created_by_user_id CHAR(36) NULL,
@@ -248,6 +251,28 @@ CREATE TABLE kanban_automations (
     ON DELETE SET NULL
 );
 
+-- Approval audit trail (existing installations are upgraded by ensureApprovalStorage).
+CREATE TABLE IF NOT EXISTS card_approval_events (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  card_id CHAR(36) NOT NULL,
+  revision INT UNSIGNED NOT NULL,
+  action VARCHAR(32) NOT NULL,
+  decision VARCHAR(32) NULL,
+  source VARCHAR(32) NOT NULL,
+  actor_user_id CHAR(36) NULL,
+  actor_name VARCHAR(255) NOT NULL,
+  actor_role VARCHAR(50) NOT NULL,
+  comment_id CHAR(36) NULL,
+  comment_text TEXT NULL,
+  approval_link_id CHAR(36) NULL,
+  before_json JSON NOT NULL,
+  after_json JSON NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uq_card_approval_revision (card_id, revision),
+  KEY idx_card_approval_created (card_id, created_at),
+  CONSTRAINT fk_card_approval_event_card FOREIGN KEY (card_id) REFERENCES kanban_cards(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS meta_connections (
   id CHAR(36) NOT NULL PRIMARY KEY,
   user_id CHAR(36) NOT NULL,
@@ -285,6 +310,53 @@ CREATE TABLE IF NOT EXISTS client_meta_assets (
   KEY idx_client_meta_assets_page (facebook_page_id),
   KEY idx_client_meta_assets_instagram (instagram_account_id),
   CONSTRAINT fk_client_meta_assets_account FOREIGN KEY (client_account_id) REFERENCES client_accounts (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS meta_saved_locations (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  meta_place_id VARCHAR(190) NOT NULL,
+  notes TEXT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_meta_saved_locations_place (meta_place_id),
+  KEY idx_meta_saved_locations_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS meta_scheduled_publications (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  client_account_id CHAR(36) NOT NULL,
+  card_id CHAR(36) NULL,
+  platform ENUM('instagram', 'facebook') NOT NULL,
+  meta_asset_id VARCHAR(190) NOT NULL,
+  scheduled_at DATETIME(3) NOT NULL,
+  timezone VARCHAR(64) NOT NULL,
+  caption TEXT NULL,
+  media_url VARCHAR(2048) NULL,
+  media_urls_json JSON NULL,
+  media_type VARCHAR(50) NULL,
+  reel_cover_url VARCHAR(2048) NULL,
+  location_id VARCHAR(190) NULL,
+  location_name VARCHAR(255) NULL,
+  instagram_user_tags_json JSON NULL,
+  status ENUM('scheduled', 'publishing', 'published', 'failed', 'cancelled') NOT NULL DEFAULT 'scheduled',
+  attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
+  idempotency_key CHAR(64) NOT NULL,
+  published_meta_id VARCHAR(190) NULL,
+  published_permalink VARCHAR(2048) NULL,
+  last_error TEXT NULL,
+  created_by_user_id CHAR(36) NULL,
+  created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  published_at DATETIME(3) NULL,
+  UNIQUE KEY uq_meta_sched_pub_idempotency (idempotency_key),
+  UNIQUE KEY uq_meta_sched_pub_published (platform, published_meta_id),
+  KEY idx_meta_sched_pub_due (status, scheduled_at),
+  KEY idx_meta_sched_pub_client (client_account_id),
+  KEY idx_meta_sched_pub_card (card_id),
+  CONSTRAINT fk_meta_sched_pub_client FOREIGN KEY (client_account_id) REFERENCES client_accounts (id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_meta_sched_pub_card FOREIGN KEY (card_id) REFERENCES kanban_cards (id) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT fk_meta_sched_pub_creator FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Additive foundation only. Apply explicitly after review, never on application startup.

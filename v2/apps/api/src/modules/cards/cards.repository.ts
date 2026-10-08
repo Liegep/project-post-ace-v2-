@@ -31,6 +31,9 @@ type CardRow = RowDataPacket & {
   archived: number;
   archived_at: Date | string | null;
   client_label: string;
+  approval_revision: number;
+  approval_state: "pending" | "approved" | "changes_requested" | null;
+  latest_approval_action: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "legacy_snapshot" | null;
   priority_level: "high" | "medium" | "normal" | null;
   event_color: string | null;
   comments_count_cache: number;
@@ -84,6 +87,9 @@ function mapCardRow(row: CardRow) {
     archived: Boolean(row.archived),
     archivedAt: row.archived_at,
     clientLabel: row.client_label,
+    approvalRevision: Number(row.approval_revision ?? 0),
+    approvalState: row.approval_state ?? null,
+    latestApprovalAction: row.latest_approval_action ?? null,
     priorityLevel: row.priority_level,
     eventColor: row.event_color,
     commentsCount: row.comments_count_cache,
@@ -95,12 +101,13 @@ function mapCardRow(row: CardRow) {
   };
 }
 
-export async function findCardById(db: Pool, cardId: string) {
+export async function findCardById(db: Pick<Pool, "query">, cardId: string) {
   const [rows] = await db.query<CardRow[]>(
     [
       "SELECT id, client_account_id, column_id, title, caption, media_type, primary_media_url, media_urls_json, external_link_url, art_type,",
-      "status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, DATE_FORMAT(scheduled_at, '%Y-%m-%d %H:%i:%s') AS scheduled_at, scheduled_timezone, published_at, archived, archived_at, client_label, priority_level, event_color,",
-      "comments_count_cache, created_by_user_id, position, legacy_id, created_at, updated_at",
+      "status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, DATE_FORMAT(scheduled_at, '%Y-%m-%d %H:%i:%s') AS scheduled_at, scheduled_timezone, published_at, archived, archived_at, client_label, approval_revision, approval_state, priority_level, event_color,",
+      "comments_count_cache, created_by_user_id, position, legacy_id, created_at, updated_at,",
+      "(SELECT e.action FROM card_approval_events e WHERE e.card_id = kanban_cards.id ORDER BY e.revision DESC LIMIT 1) AS latest_approval_action",
       "FROM kanban_cards",
       "WHERE id = ?",
       "LIMIT 1",
@@ -123,8 +130,9 @@ export async function listCardsByClientAccountId(
 ) {
   let sql = [
     "SELECT id, client_account_id, column_id, title, caption, media_type, primary_media_url, media_urls_json, external_link_url, art_type,",
-    "status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, DATE_FORMAT(scheduled_at, '%Y-%m-%d %H:%i:%s') AS scheduled_at, scheduled_timezone, published_at, archived, archived_at, client_label, priority_level, event_color,",
-    "comments_count_cache, created_by_user_id, position, legacy_id, created_at, updated_at",
+    "status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, DATE_FORMAT(scheduled_at, '%Y-%m-%d %H:%i:%s') AS scheduled_at, scheduled_timezone, published_at, archived, archived_at, client_label, approval_revision, approval_state, priority_level, event_color,",
+    "comments_count_cache, created_by_user_id, position, legacy_id, created_at, updated_at,",
+    "(SELECT e.action FROM card_approval_events e WHERE e.card_id = kanban_cards.id ORDER BY e.revision DESC LIMIT 1) AS latest_approval_action",
     "FROM kanban_cards",
     "WHERE client_account_id = ?",
   ].join(" ");
@@ -214,7 +222,7 @@ export async function deleteCard(db: Pool, cardId: string) {
 }
 
 export async function updateCard(
-  db: Pool,
+  db: Pick<Pool, "query">,
   cardId: string,
   input: UpdateCardInput,
 ) {
@@ -298,10 +306,14 @@ export async function updateCard(
     return findCardById(db, cardId);
   }
 
-  await db.query(
-    `UPDATE kanban_cards SET ${fields.join(", ")} WHERE id = ?`,
-    [...params, cardId],
+  const guarded = input.expectedApprovalRevision !== undefined;
+  const [result] = await db.query<ResultSetHeader>(
+    `UPDATE kanban_cards SET ${fields.join(", ")} WHERE id = ?${guarded ? " AND approval_revision = ?" : ""}`,
+    [...params, cardId, ...(guarded ? [input.expectedApprovalRevision] : [])],
   );
+  if (guarded && result.affectedRows === 0) {
+    throw Object.assign(new Error("A aprovação deste post mudou. Reabra o card antes de salvar novamente; seu rascunho foi preservado."), { statusCode: 409 });
+  }
 
   return findCardById(db, cardId);
 }
@@ -350,12 +362,23 @@ export async function moveCard(
         : [card.clientAccountId, card.archived ? 1 : 0],
     );
 
-    for (const [position, id] of orderedCardIds.entries()) {
-      await connection.query(
-        "UPDATE kanban_cards SET column_id = ?, position = ? WHERE id = ?",
-        [input.columnId ?? null, position, id],
-      );
-    }
+    const positionCases = orderedCardIds.map(() => "WHEN ? THEN ?").join(" ");
+    const idPlaceholders = orderedCardIds.map(() => "?").join(", ");
+    const reorderParams: Array<string | number | null> = [];
+    orderedCardIds.forEach((id, position) => {
+      reorderParams.push(id, position);
+    });
+    reorderParams.push(input.columnId ?? null, ...orderedCardIds);
+
+    await connection.query(
+      [
+        "UPDATE kanban_cards",
+        `SET position = CASE id ${positionCases} ELSE position END,`,
+        "column_id = ?",
+        `WHERE id IN (${idPlaceholders})`,
+      ].join(" "),
+      reorderParams,
+    );
 
     await connection.commit();
   } catch (error) {
@@ -417,7 +440,12 @@ export async function archiveDueScheduledCards(
       `UPDATE kanban_cards SET archived = 1, archived_at = NOW(), published_at = COALESCE(published_at, scheduled_at) WHERE id IN (${placeholders})`,
       cardIds,
     );
-    await connection.query(`DELETE FROM card_calendar_events WHERE card_id IN (${placeholders})`, cardIds);
+    // Publication is a calendar state transition, not removal. Keeping the
+    // event makes the published post survive refreshes and API restarts.
+    await connection.query(
+      `UPDATE card_calendar_events SET status = 'published', updated_at = CURRENT_TIMESTAMP WHERE card_id IN (${placeholders})`,
+      cardIds,
+    );
     await connection.commit();
   } catch (error) {
     await connection.rollback();

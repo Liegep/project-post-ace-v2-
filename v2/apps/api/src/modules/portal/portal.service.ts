@@ -6,6 +6,7 @@ import {
 import { listColumnsByClientAccountId } from "../columns/columns.repository.js";
 import { listCardsByClientAccountId } from "../cards/cards.repository.js";
 import { listCalendarEvents } from "../calendar/calendar.repository.js";
+import { listScheduledPublicationsForClient } from "../meta/meta.repository.js";
 import type { PortalBoardQueryInput } from "./portal.schemas.js";
 import type { PortalAccessLevel } from "../auth/auth.types.js";
 import { instantToWallClock, zonedWallClockToIso } from "../../lib/zoned-date-time.js";
@@ -41,6 +42,36 @@ function calendarDateTime(publishDate: string | Date, publishTime: string | null
 function calendarPostSignature(title: string, value: string | Date | null | undefined, timeZone?: string | null) {
   const localValue = value && timeZone ? instantToWallClock(value, timeZone) : value;
   return `${title.trim().toLocaleLowerCase()}|${calendarDateKey(localValue)}`;
+}
+
+type PortalCard = Awaited<ReturnType<typeof listCardsByClientAccountId>>[number];
+type PortalMetaPublication = Awaited<ReturnType<typeof listScheduledPublicationsForClient>>[number];
+
+export function composePortalMetaCalendarCards(portalCards: PortalCard[], metaPublications: PortalMetaPublication[]) {
+  const cardsById = new Map(portalCards.map((card) => [card.id, card]));
+  return Array.from(
+    metaPublications
+      .filter((publication) => publication.cardId && ["scheduled", "publishing", "published"].includes(publication.status))
+      .reduce((groups, publication) => {
+        const key = `${publication.cardId}|${publication.scheduledAt}`;
+        groups.set(key, [...(groups.get(key) ?? []), publication]);
+        return groups;
+      }, new Map<string, PortalMetaPublication[]>()),
+  ).flatMap(([, publications]) => {
+    const publication = publications[0];
+    const card = publication.cardId ? cardsById.get(publication.cardId) : null;
+    if (!card) return [];
+    const published = publications.some((item) => item.status === "published");
+    const publishedAt = publications.find((item) => item.publishedAt)?.publishedAt ?? publication.scheduledAt;
+    return [{
+      ...card,
+      scheduledAt: publication.scheduledAt,
+      scheduledTimeZone: publication.timezone,
+      publishedAt: published ? publishedAt : null,
+      status: [published ? "Publicado" : "Agendado", ...card.status.filter((status) => !/^agendados?$|^publicado$/i.test(status.trim()))],
+      clientLabel: card.clientLabel || (published ? "Publicado" : "Agendado"),
+    }];
+  });
 }
 
 function groupPortalCards(
@@ -99,10 +130,11 @@ export async function getPortalHome(
     throw app.httpErrors.notFound("Permissões da conta não encontradas.");
   }
 
-  const [portalCards, legacyCalendarEvents, postCreationColumns] = await Promise.all([
+  const [portalCards, legacyCalendarEvents, postCreationColumns, metaPublications] = await Promise.all([
     listCardsByClientAccountId(app.db, clientAccountId, {}),
-    listCalendarEvents(app.db, { clientAccountIds: [clientAccountId] }),
+    listCalendarEvents(app.db, { clientAccountIds: [clientAccountId], fallbackTimeZone: app.appEnv.APP_TIMEZONE }),
     listColumnsByClientAccountId(app.db, clientAccountId),
+    listScheduledPublicationsForClient(app.db, clientAccountId),
   ]);
   const today = currentDateKey(app.appEnv.APP_TIMEZONE);
   const now = Date.now();
@@ -153,7 +185,14 @@ export async function getPortalHome(
         calendarOnly: true,
       };
     });
-  const calendarPosts = [...nativeCalendarCards, ...importedCalendarCards];
+  const metaCalendarCards = composePortalMetaCalendarCards(portalCards, metaPublications);
+
+  const metaCalendarCardIds = new Set(metaCalendarCards.map((card) => card.id));
+  const calendarPosts = [
+    ...nativeCalendarCards.filter((card) => !metaCalendarCardIds.has(card.id)),
+    ...metaCalendarCards,
+    ...importedCalendarCards,
+  ];
   const upcomingCards = client.show_upcoming_posts ? calendarPosts : [];
   const upcomingItems = upcomingCards
     .filter((card) => !card.archived && !card.publishedAt)

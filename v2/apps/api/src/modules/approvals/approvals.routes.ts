@@ -1,7 +1,9 @@
+import { resubmitCardApproval } from "./approval-workflow.service.js";
 import type { FastifyPluginAsync } from "fastify";
 import { assertClientAccess, assertInternalAccess } from "../auth/auth.access.js";
 import {
   createApprovalLinkSchema,
+  resubmitApprovalSchema,
   submitApprovalDecisionSchema,
 } from "./approvals.schemas.js";
 import {
@@ -12,6 +14,17 @@ import {
 } from "./approvals.service.js";
 
 export const approvalRoutes: FastifyPluginAsync = async (app) => {
+  app.post("/clients/:clientAccountId/cards/:cardId/resubmit-approval", async (request) => {
+    assertInternalAccess(request);
+    const params = request.params as { clientAccountId: string; cardId: string };
+    assertClientAccess(request, params.clientAccountId, ["admin", "colaborador"]);
+    const input = resubmitApprovalSchema.parse(request.body);
+    const actor = request.auth!.user;
+    return { ok: true, ...(await resubmitCardApproval(app, params.clientAccountId, params.cardId, {
+      userId: actor.id, name: actor.fullName, role: actor.globalRole,
+    }, input.expectedApprovalRevision)) };
+  });
+
   app.get("/clients/:clientAccountId/cards/:cardId/approval-links", async (request) => {
     assertInternalAccess(request);
 

@@ -10,7 +10,7 @@ import { reportRoutes } from './reports.routes.js';
 import { reportAnalysisSchema } from './report-analysis.schemas.js';
 import { analyzeReport, buildAnalysisContext, compactPublishedBrain, type AnalysisConfig } from './report-analysis.service.js';
 const metrics = { instagram: { reach: 120, impressions: 200, engagement: 20, followers: 5, visits: 3, clicks: 2 }, facebook: { reach: 70, impressions: 100, engagement: 10, followers: 2, visits: 2, clicks: 1 } };
-const report = { id: 'report-a', clientAccountId: 'client-a', title: 'Relatório A', periodStart: '2026-09-01', periodEnd: '2026-09-30', status: 'draft' as const, metrics, highlights: [{ channel: 'instagram' as const, title: 'Tema A', value: 20 }], evidenceUrls: [], notes: 'Observações MANUAIS', createdAt: '', updatedAt: '', publishedAt: null };
+const report = { id: 'report-a', clientAccountId: 'client-a', metaDestinationId: null, metaDestinationName: null, title: 'Relatório A', periodStart: '2026-09-01', periodEnd: '2026-09-30', status: 'draft' as const, metrics, highlights: [{ channel: 'instagram' as const, title: 'Tema A', value: 20 }], evidenceUrls: [], notes: 'Observações MANUAIS', createdAt: '', updatedAt: '', publishedAt: null };
 const output = () => ({ executiveSummary: 'Instagram registrou alcance de 120.', keyFindings: [
   { title: 'Alcance', finding: 'Alcance de 120.', evidence: '120', evidenceRefs: ['current.instagram.reach'], type: 'fact' },
   { title: 'Leitura', finding: 'O alcance sugere oportunidade de testar conversão.', evidence: '120', evidenceRefs: ['current.instagram.reach'], type: 'interpretation' },
@@ -18,8 +18,8 @@ const output = () => ({ executiveSummary: 'Instagram registrou alcance de 120.',
 ], whatWorked: [], attentionPoints: [], platformComparison: null, contentInsights: [], nextSteps: [{ action: 'Testar CTA', reason: 'Apenas 2 cliques frente a 120 de alcance.', priority: 'high', evidence: '2', evidenceRefs: ['current.instagram.clicks', 'current.instagram.reach'] }], experiments: [], confidenceNotes: [] });
 const config: AnalysisConfig = { REPORT_AI_ENABLED: true, OPENAI_API_KEY: 'mock-key-never-real', REPORT_AI_MODEL: 'gpt-4.1-mini', REPORT_AI_MAX_OUTPUT_TOKENS: 4000, REPORT_AI_TIMEOUT_MS: 50 };
 const sources = { previous: undefined, brain: null, assets: null };
-const auth: AuthContext = { user: { id: 'u', fullName: 'User', email: 'test@example.com', globalRole: 'colaborador', avatarUrl: null, locale: 'pt', isActive: true }, memberships: [{ clientAccountId: 'client-a', membershipRole: 'colaborador', portalAccessLevel: 'admin', isPrimary: true, clientName: 'A', clientSlug: 'a', ownerUserId: null }] };
-function row(item: typeof report) { return { id: item.id, client_account_id: item.clientAccountId, title: item.title, period_start: item.periodStart, period_end: item.periodEnd, status: item.status, metrics_json: item.metrics, highlights_json: item.highlights, evidence_urls_json: [], notes: item.notes, published_at: null, created_at: '', updated_at: '' }; }
+const auth: AuthContext = { user: { id: 'u', fullName: 'User', email: 'test@example.com', globalRole: 'super_admin', avatarUrl: null, locale: 'pt', isActive: true }, memberships: [{ clientAccountId: 'client-a', membershipRole: 'colaborador', portalAccessLevel: 'admin', isPrimary: true, clientName: 'A', clientSlug: 'a', ownerUserId: null }] };
+function row(item: typeof report) { return { id: item.id, client_account_id: item.clientAccountId, meta_destination_id: item.metaDestinationId, meta_destination_name: item.metaDestinationName, title: item.title, period_start: item.periodStart, period_end: item.periodEnd, status: item.status, metrics_json: item.metrics, highlights_json: item.highlights, evidence_urls_json: [], notes: item.notes, published_at: null, created_at: '', updated_at: '' }; }
 async function fixture(provider?: ResponsesProvider, changes: Partial<AnalysisConfig> = {}, user: AuthContext | null = auth) {
   const calls: ResponsesRequest[] = []; const queries: Array<{ sql: string; params: unknown[] }> = [];
   const other = { ...report, id: 'report-b', clientAccountId: 'client-b', title: 'SECRET CLIENT B' };
@@ -56,7 +56,7 @@ test('explicit analysis calls once, sends correct editor report, scoped comparis
 });
 test('cross-client report mismatch is rejected before provider', async () => { const f = await fixture(); try { const r = await f.app.inject({ method: 'POST', url: '/api/clients/client-a/reports/report-b/ai-analysis', payload: {} }); assert.equal(r.statusCode, 404); assert.equal(f.calls.length, 0); } finally { await f.app.close(); } });
 test('unauthorized client, portal user and anonymous access never call provider', async () => {
-  for (const user of [null, { ...auth, user: { ...auth.user, globalRole: 'cliente' as const } }, { ...auth, memberships: [] }]) { const f = await fixture(undefined, {}, user); try { assert.ok([401, 403].includes((await f.analyze()).statusCode)); assert.equal(f.calls.length, 0); } finally { await f.app.close(); } }
+  for (const user of [null, { ...auth, user: { ...auth.user, globalRole: 'cliente' as const } }, { ...auth, user: { ...auth.user, globalRole: 'colaborador' as const }, memberships: [] }]) { const f = await fixture(undefined, {}, user); try { assert.ok([401, 403].includes((await f.analyze()).statusCode)); assert.equal(f.calls.length, 0); } finally { await f.app.close(); } }
 });
 test('browser cannot supply client identity, comparison or pending Brain', async () => { const f = await fixture(); try { for (const payload of [{ clientAccountId: 'client-b' }, { brain: { positioning: 'pending' } }, { previous: metrics }]) assert.equal((await f.analyze(payload)).statusCode, 400); assert.equal(f.calls.length, 0); } finally { await f.app.close(); } });
 test('invalid structured output and unknown extra actions rejected', async () => { for (const text of ['not json', JSON.stringify({ ...output(), createCard: true }), JSON.stringify({ ...output(), keyFindings: [{ ...output().keyFindings[0], type: 'certainty' }] })]) { const f = await fixture(async () => ({ text })); try { assert.equal((await f.analyze()).statusCode, 502); } finally { await f.app.close(); } } });
@@ -102,4 +102,13 @@ test('context loading failures are sanitized and included in telemetry before an
   const logs: Record<string, unknown>[] = []; let calls = 0;
   await assert.rejects(analyzeReport({ report, config, sources: async () => { throw new Error('PRIVATE SQL SECRET'); }, provider: async () => { calls++; return { text: JSON.stringify(output()) }; }, log: e => logs.push(e as Record<string, unknown>) }));
   assert.equal(calls, 0); assert.equal(logs[0].error, 'context_error'); assert.ok(!JSON.stringify(logs).includes('SECRET'));
+});
+
+test('main nullable and growth metrics: null is not evidence; negative follower saldo is preserved; financial Ads excluded', () => {
+  const current = { ...report, metrics: { instagram: { ...metrics.instagram, reach: null, followersGained: 2, followersLost: 5, followersNet: -3 }, facebook: { ...metrics.facebook, reactions: 12, comments: 4, shares: 3 }, ads: { spend: 987654, accountName: 'PRIVATE ADS', currency: 'EUR', reach: null, impressions: null, frequency: null, clicks: null, inlineLinkClicks: null, ctr: null, cpc: null, cpm: null, cpp: null, uniqueClicks: null, uniqueCtr: null, campaigns: [] } } };
+  const context = buildAnalysisContext(current as unknown as typeof report, undefined, sources);
+  assert.ok(!Object.hasOwn(context.evidence, 'current.instagram.reach'));
+  assert.match(context.evidence['current.instagram.followersNet'], /-3/);
+  assert.match(context.evidence['current.facebook.reactions'], /12/);
+  assert.ok(!JSON.stringify(context).includes('PRIVATE ADS')); assert.ok(!JSON.stringify(context).includes('987654'));
 });

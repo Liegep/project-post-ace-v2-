@@ -134,6 +134,9 @@ CREATE TABLE IF NOT EXISTS kanban_cards (
   archived TINYINT(1) NOT NULL DEFAULT 0,
   archived_at DATETIME NULL,
   client_label VARCHAR(100) NOT NULL DEFAULT 'pendente',
+  approval_reset_at DATETIME NULL,
+  approval_revision INT UNSIGNED NOT NULL DEFAULT 0,
+  approval_state VARCHAR(32) NULL,
   priority_level VARCHAR(20) NULL,
   event_color VARCHAR(20) NULL,
   comments_count_cache INT NOT NULL DEFAULT 0,
@@ -223,6 +226,11 @@ CREATE TABLE IF NOT EXISTS hashtag_groups (
   CONSTRAINT fk_hashtag_groups_account
     FOREIGN KEY (client_account_id) REFERENCES client_accounts (id)
     ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS app_data_migrations (
+  migration_key VARCHAR(190) NOT NULL PRIMARY KEY,
+  applied_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS agenda_events (
@@ -334,6 +342,8 @@ CREATE TABLE IF NOT EXISTS text_comments (
 CREATE TABLE IF NOT EXISTS client_reports (
   id CHAR(36) NOT NULL PRIMARY KEY,
   client_account_id CHAR(36) NOT NULL,
+  meta_destination_id CHAR(36) NULL,
+  meta_destination_name VARCHAR(255) NULL,
   title VARCHAR(255) NOT NULL,
   period_start DATE NOT NULL,
   period_end DATE NOT NULL,
@@ -348,6 +358,7 @@ CREATE TABLE IF NOT EXISTS client_reports (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_client_reports_account_period (client_account_id, period_end),
   KEY idx_client_reports_account_status (client_account_id, status),
+  KEY idx_client_reports_meta_destination (meta_destination_id),
   CONSTRAINT fk_client_reports_account FOREIGN KEY (client_account_id) REFERENCES client_accounts (id) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT fk_client_reports_creator FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -419,6 +430,13 @@ CREATE TABLE IF NOT EXISTS invoices (
   visible_to_client TINYINT(1) NOT NULL DEFAULT 0,
   sent_at DATETIME NULL,
   notes TEXT NOT NULL,
+  paid_at DATE NULL,
+  payment_method VARCHAR(120) NULL,
+  payment_proof_name VARCHAR(255) NULL,
+  payment_proof_url VARCHAR(2000) NULL,
+  receipt_number VARCHAR(64) NULL,
+  receipt_generated_at DATETIME NULL,
+  receipt_snapshot_json JSON NULL,
   created_by_user_id CHAR(36) NULL,
   legacy_id VARCHAR(120) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -668,6 +686,28 @@ CREATE TABLE IF NOT EXISTS dashboard_notes (
   CONSTRAINT fk_dashboard_notes_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- Approval audit trail (existing installations are upgraded by ensureApprovalStorage).
+CREATE TABLE IF NOT EXISTS card_approval_events (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  card_id CHAR(36) NOT NULL,
+  revision INT UNSIGNED NOT NULL,
+  action VARCHAR(32) NOT NULL,
+  decision VARCHAR(32) NULL,
+  source VARCHAR(32) NOT NULL,
+  actor_user_id CHAR(36) NULL,
+  actor_name VARCHAR(255) NOT NULL,
+  actor_role VARCHAR(50) NOT NULL,
+  comment_id CHAR(36) NULL,
+  comment_text TEXT NULL,
+  approval_link_id CHAR(36) NULL,
+  before_json JSON NOT NULL,
+  after_json JSON NOT NULL,
+  created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uq_card_approval_revision (card_id, revision),
+  KEY idx_card_approval_created (card_id, created_at),
+  CONSTRAINT fk_card_approval_event_card FOREIGN KEY (card_id) REFERENCES kanban_cards(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS meta_connections (
   id CHAR(36) NOT NULL PRIMARY KEY,
   user_id CHAR(36) NOT NULL,
@@ -699,12 +739,83 @@ CREATE TABLE IF NOT EXISTS client_meta_assets (
   facebook_page_name VARCHAR(255) NULL,
   instagram_account_id VARCHAR(190) NULL,
   instagram_username VARCHAR(255) NULL,
+  meta_ad_account_id VARCHAR(190) NULL,
+  meta_ad_account_name VARCHAR(255) NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY uq_client_meta_assets_account (client_account_id),
   KEY idx_client_meta_assets_page (facebook_page_id),
   KEY idx_client_meta_assets_instagram (instagram_account_id),
   CONSTRAINT fk_client_meta_assets_account FOREIGN KEY (client_account_id) REFERENCES client_accounts (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS meta_publish_destinations (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  client_account_id CHAR(36) NOT NULL,
+  name VARCHAR(255) NOT NULL,
+  facebook_page_id VARCHAR(190) NULL,
+  facebook_page_name VARCHAR(255) NULL,
+  instagram_account_id VARCHAR(190) NULL,
+  instagram_username VARCHAR(255) NULL,
+  is_default BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_meta_publish_destination_name (client_account_id, name),
+  KEY idx_meta_publish_destination_client (client_account_id, is_default),
+  KEY idx_meta_publish_destination_page (facebook_page_id),
+  KEY idx_meta_publish_destination_instagram (instagram_account_id),
+  CONSTRAINT fk_meta_publish_destination_client FOREIGN KEY (client_account_id) REFERENCES client_accounts (id) ON DELETE CASCADE ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS meta_saved_locations (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  name VARCHAR(255) NOT NULL,
+  meta_place_id VARCHAR(190) NOT NULL,
+  notes TEXT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_meta_saved_locations_place (meta_place_id),
+  KEY idx_meta_saved_locations_name (name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS meta_scheduled_publications (
+  id CHAR(36) NOT NULL PRIMARY KEY,
+  client_account_id CHAR(36) NOT NULL,
+  card_id CHAR(36) NULL,
+  destination_id CHAR(36) NULL,
+  destination_name VARCHAR(255) NULL,
+  platform ENUM('instagram', 'facebook') NOT NULL,
+  meta_asset_id VARCHAR(190) NOT NULL,
+  scheduled_at DATETIME(3) NOT NULL,
+  timezone VARCHAR(64) NOT NULL,
+  caption TEXT NULL,
+  media_url VARCHAR(2048) NULL,
+  media_urls_json JSON NULL,
+  media_type VARCHAR(50) NULL,
+  reel_cover_url VARCHAR(2048) NULL,
+  location_id VARCHAR(190) NULL,
+  location_name VARCHAR(255) NULL,
+  instagram_user_tags_json JSON NULL,
+  status ENUM('scheduled', 'publishing', 'published', 'failed', 'cancelled') NOT NULL DEFAULT 'scheduled',
+  attempt_count INT UNSIGNED NOT NULL DEFAULT 0,
+  idempotency_key CHAR(64) NOT NULL,
+  published_meta_id VARCHAR(190) NULL,
+  published_permalink VARCHAR(2048) NULL,
+  last_error TEXT NULL,
+  created_by_user_id CHAR(36) NULL,
+  created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+  updated_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  published_at DATETIME(3) NULL,
+  UNIQUE KEY uq_meta_sched_pub_idempotency (idempotency_key),
+  UNIQUE KEY uq_meta_sched_pub_published (platform, published_meta_id),
+  KEY idx_meta_sched_pub_due (status, scheduled_at),
+  KEY idx_meta_sched_pub_client (client_account_id),
+  KEY idx_meta_sched_pub_card (card_id),
+  KEY idx_meta_sched_pub_destination (destination_id),
+  CONSTRAINT fk_meta_sched_pub_client FOREIGN KEY (client_account_id) REFERENCES client_accounts (id) ON DELETE CASCADE ON UPDATE CASCADE,
+  CONSTRAINT fk_meta_sched_pub_card FOREIGN KEY (card_id) REFERENCES kanban_cards (id) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT fk_meta_sched_pub_destination FOREIGN KEY (destination_id) REFERENCES meta_publish_destinations (id) ON DELETE SET NULL ON UPDATE CASCADE,
+  CONSTRAINT fk_meta_sched_pub_creator FOREIGN KEY (created_by_user_id) REFERENCES users (id) ON DELETE SET NULL ON UPDATE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Additive foundation only. Apply explicitly after review, never on application startup.
@@ -792,3 +903,69 @@ CREATE TABLE IF NOT EXISTS seasonal_occurrences (
   CONSTRAINT fk_seasonal_occurrence_opportunity FOREIGN KEY (workspace_id, opportunity_id) REFERENCES seasonal_opportunities (workspace_id, id) ON DELETE RESTRICT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 -- No legacy imports, client updates, deletes or country/locale-derived assignments.
+
+-- Brief foundation: additive, no legacy conversion.
+-- Additive only: existing briefs, answers, templates and IDs are preserved.
+-- Safe to repeat CREATE TABLE; no legacy import or status conversion.
+CREATE TABLE IF NOT EXISTS design_brief_template_metadata (
+ template_id CHAR(36) NOT NULL PRIMARY KEY,
+ category VARCHAR(100) NOT NULL DEFAULT 'custom', description TEXT NOT NULL,
+ locale VARCHAR(10) NOT NULL DEFAULT 'pt', version INT UNSIGNED NOT NULL DEFAULT 1,
+ status ENUM('active','archived') NOT NULL DEFAULT 'active',
+ updated_by_user_id CHAR(36) NULL,
+ created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+ CONSTRAINT fk_db_metadata_template FOREIGN KEY(template_id) REFERENCES design_brief_templates(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+ CONSTRAINT fk_db_metadata_actor FOREIGN KEY(updated_by_user_id) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS design_brief_template_versions (
+ template_id CHAR(36) NOT NULL, version INT UNSIGNED NOT NULL, snapshot_json JSON NOT NULL,
+ created_by_user_id CHAR(36) NULL, created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+ PRIMARY KEY(template_id,version),
+ CONSTRAINT fk_db_version_template FOREIGN KEY(template_id) REFERENCES design_brief_templates(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+ CONSTRAINT fk_db_version_actor FOREIGN KEY(created_by_user_id) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS design_brief_instances (
+ id CHAR(36) NOT NULL PRIMARY KEY, client_account_id CHAR(36) NULL,
+ template_id CHAR(36) NULL, template_version INT UNSIGNED NULL,
+ snapshot_json JSON NOT NULL, status ENUM('draft','sent','answered','reopened','archived') NOT NULL DEFAULT 'draft',
+ version INT UNSIGNED NOT NULL DEFAULT 1, sent_at DATETIME(3) NULL, sent_by_user_id CHAR(36) NULL,
+ created_by_user_id CHAR(36) NULL, created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+ KEY idx_db_instance_client_status(client_account_id,status,created_at),
+ CONSTRAINT fk_db_instance_client FOREIGN KEY(client_account_id) REFERENCES client_accounts(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+ CONSTRAINT fk_db_instance_template_version FOREIGN KEY(template_id,template_version) REFERENCES design_brief_template_versions(template_id,version) ON DELETE RESTRICT ON UPDATE CASCADE,
+ CONSTRAINT fk_db_instance_sender FOREIGN KEY(sent_by_user_id) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE,
+ CONSTRAINT fk_db_instance_creator FOREIGN KEY(created_by_user_id) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS design_brief_responses (
+ id CHAR(36) NOT NULL PRIMARY KEY, brief_id CHAR(36) NOT NULL, client_account_id CHAR(36) NOT NULL,
+ status ENUM('draft','submitted') NOT NULL DEFAULT 'draft', version INT UNSIGNED NOT NULL DEFAULT 1,
+ answers_json JSON NOT NULL, respondent_user_id CHAR(36) NULL, submitted_at DATETIME(3) NULL,
+ created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3), updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+ UNIQUE KEY uq_db_response_brief(brief_id),
+ CONSTRAINT fk_db_response_brief FOREIGN KEY(brief_id) REFERENCES design_brief_instances(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+ CONSTRAINT fk_db_response_client FOREIGN KEY(client_account_id) REFERENCES client_accounts(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+ CONSTRAINT fk_db_response_actor FOREIGN KEY(respondent_user_id) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS design_brief_response_revisions (
+ id CHAR(36) NOT NULL PRIMARY KEY, response_id CHAR(36) NOT NULL, revision INT UNSIGNED NOT NULL,
+ answers_json JSON NOT NULL, submitted_by_user_id CHAR(36) NULL, submitted_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+ idempotency_key CHAR(36) NOT NULL, request_hash CHAR(64) NOT NULL,
+ UNIQUE KEY uq_db_revision_number(response_id,revision), UNIQUE KEY uq_db_revision_retry(response_id,idempotency_key),
+ CONSTRAINT fk_db_revision_response FOREIGN KEY(response_id) REFERENCES design_brief_responses(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+ CONSTRAINT fk_db_revision_actor FOREIGN KEY(submitted_by_user_id) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS design_brief_attachments (
+ id CHAR(36) NOT NULL PRIMARY KEY, response_id CHAR(36) NOT NULL, field_id VARCHAR(120) COLLATE utf8mb4_bin NOT NULL,
+ original_name VARCHAR(255) NOT NULL, storage_key VARCHAR(100) NOT NULL, content_type VARCHAR(100) NOT NULL, size_bytes INT UNSIGNED NOT NULL,
+ uploaded_by_user_id CHAR(36) NULL, created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+ KEY idx_db_attachment_response_field(response_id,field_id), UNIQUE KEY uq_db_attachment_storage(storage_key),
+ CONSTRAINT fk_db_attachment_response FOREIGN KEY(response_id) REFERENCES design_brief_responses(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+ CONSTRAINT fk_db_attachment_actor FOREIGN KEY(uploaded_by_user_id) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+CREATE TABLE IF NOT EXISTS design_brief_events (
+ id CHAR(36) NOT NULL PRIMARY KEY, brief_id CHAR(36) NOT NULL, actor_user_id CHAR(36) NULL,
+ action VARCHAR(40) NOT NULL, response_revision INT UNSIGNED NULL, created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+ KEY idx_db_event_brief_time(brief_id,created_at),
+ CONSTRAINT fk_db_event_brief FOREIGN KEY(brief_id) REFERENCES design_brief_instances(id) ON DELETE RESTRICT ON UPDATE CASCADE,
+ CONSTRAINT fk_db_event_actor FOREIGN KEY(actor_user_id) REFERENCES users(id) ON DELETE SET NULL ON UPDATE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

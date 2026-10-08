@@ -39,7 +39,8 @@ test("archives overdue scheduled cards as soon as the API becomes ready", async 
   assert.equal(transactionStatements.length, 2);
   assert.match(transactionStatements[0], /archived = 1/);
   assert.match(transactionStatements[0], /published_at = COALESCE\(published_at, scheduled_at\)/);
-  assert.match(transactionStatements[1], /DELETE FROM card_calendar_events/);
+  assert.match(transactionStatements[1], /UPDATE card_calendar_events SET status = 'published'/);
+  assert.doesNotMatch(transactionStatements[1], /DELETE/);
 
   await app.close();
 });

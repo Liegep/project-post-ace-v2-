@@ -30,7 +30,7 @@ function mapCommentRow(row: CommentRow) {
 }
 
 export async function listCommentsByCardId(
-  db: Pool,
+  db: Pick<Pool, "query">,
   cardId: string,
   options: { includeInternal: boolean },
 ) {
@@ -45,7 +45,10 @@ export async function listCommentsByCardId(
   const params: Array<string | number> = [cardId];
 
   if (!options.includeInternal) {
-    sql += " AND cc.is_internal = 0";
+    // The client portal only exposes comments authored by clients/guests.
+    // This also protects historical admin comments that may have been stored
+    // with is_internal = 0 before administrative comments became internal by default.
+    sql += " AND cc.is_internal = 0 AND cc.author_role IN ('cliente', 'guest')";
   }
 
   sql += " ORDER BY cc.created_at ASC";
@@ -55,7 +58,7 @@ export async function listCommentsByCardId(
 }
 
 export async function createComment(
-  db: Pool,
+  db: Pick<Pool, "query">,
   input: {
     cardId: string;
     userId: string | null;
@@ -94,5 +97,5 @@ export async function createComment(
   );
 
   const comments = await listCommentsByCardId(db, input.cardId, { includeInternal: true });
-  return comments[comments.length - 1] ?? null;
+  return comments.find((comment) => comment.id === id) ?? null;
 }

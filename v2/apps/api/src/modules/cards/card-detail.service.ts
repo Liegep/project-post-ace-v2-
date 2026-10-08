@@ -1,3 +1,4 @@
+import { listApprovalEvents } from "../approvals/approval-history.repository.js";
 import type { FastifyInstance } from "fastify";
 import { listApprovalLinksByCardId } from "../approvals/approvals.repository.js";
 import { listCommentsByCardId } from "../comments/comments.repository.js";
@@ -13,16 +14,19 @@ export async function getInternalCardDetail(
     throw app.httpErrors.notFound("Card não encontrado nesta conta.");
   }
 
-  const [comments, approvalLinks] = await Promise.all([
+  const [comments, approvalLinks, approvalEvents] = await Promise.all([
     listCommentsByCardId(app.db, cardId, { includeInternal: true }),
     listApprovalLinksByCardId(app.db, cardId),
+    listApprovalEvents(app.db, cardId),
   ]);
 
   return {
     card,
     comments,
     approvalLinks,
+    approvalEvents,
     history: [
+      ...approvalEvents.map((event) => ({ type: "approval_event" as const, createdAt: event.createdAt, payload: event })),
       ...comments.map((comment) => ({
         type: "comment" as const,
         createdAt: comment.createdAt,

@@ -419,12 +419,25 @@ const AdminDashboard = () => {
   };
 
   const fetchDashboardAppointments = async () => {
+    if (!currentUserId) {
+      setDashboardAppointments([]);
+      return;
+    }
+
     const today = new Date().toISOString().split("T")[0];
-    const { data } = await supabase
+
+    const { data, error } = await supabase
       .from("appointments")
       .select("id, title, appointment_time, category, completed")
+      .eq("user_id", currentUserId)
       .eq("appointment_date", today)
       .order("appointment_time", { ascending: true });
+
+    if (error) {
+      console.error("[AdminDashboard] Could not load appointments", error);
+      setDashboardAppointments([]);
+      return;
+    }
 
     setDashboardAppointments(
       ((data || []) as any[]).slice(0, 5).map((item) => ({

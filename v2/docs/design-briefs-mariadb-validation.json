@@ -1,0 +1,35 @@
+{
+  "version": "10.11.19-MariaDB",
+  "tables": [
+    "design_brief_instances",
+    "design_brief_template_versions",
+    "design_brief_template_metadata",
+    "design_brief_attachments",
+    "design_brief_responses",
+    "design_brief_events",
+    "design_brief_response_revisions"
+  ],
+  "foreignKeys": 17,
+  "legacyUnchanged": true,
+  "migrationSha256": "95f3b83376879b161a70c697556c242fafa2d74fd6d70be007ff0a3afdcb6a02",
+  "suite": {
+    "passed": 431,
+    "failed": 0,
+    "skipped": 0
+  },
+  "mysqlIntegration": {
+    "passed": 6,
+    "failed": 0,
+    "skipped": 0
+  },
+  "seasonalRegression": {
+    "passed": 19,
+    "failed": 0,
+    "skipped": 0
+  },
+  "typecheck": "passed",
+  "build": "passed",
+  "migrationRepeated": true,
+  "productionTouched": false,
+  "environment": "temporary local socket, networking disabled, strict SQL mode"
+}

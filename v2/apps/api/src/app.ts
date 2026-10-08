@@ -1,5 +1,10 @@
+import { brandBrainAiRoutes } from "./modules/brand-brain-ai/brand-brain-ai.routes.js";
+import { radarSuggestionsRoutes } from "./modules/radar-suggestions/radar-suggestions.routes.js";
+import { briefFoundationRoutes } from "./modules/brief-foundation/brief.routes.js";
 import { seasonalRoutes } from "./modules/seasonal/seasonal.routes.js";
+import { invoiceRecurringWorkerRegistered } from "./plugins/invoice-recurring-worker.js";
 import Fastify from "fastify";
+import { ensureApprovalStorage } from "./modules/approvals/approval-history.repository.js";
 import fastifyStatic from "@fastify/static";
 import fastifyFormbody from "@fastify/formbody";
 import path from "node:path";
@@ -10,6 +15,7 @@ import { authPluginRegistered } from "./plugins/auth.js";
 import { httpErrorsPluginRegistered } from "./plugins/http-errors.js";
 import { healthRoutes } from "./routes/health.js";
 import { authRoutes } from "./modules/auth/auth.routes.js";
+import { getClientScope } from "./modules/auth/auth.access.js";
 import { clientRoutes } from "./modules/clients/clients.routes.js";
 import { columnRoutes } from "./modules/columns/columns.routes.js";
 import { cardRoutes } from "./modules/cards/cards.routes.js";
@@ -23,9 +29,11 @@ import { uploadRoutes } from "./modules/uploads/uploads.routes.js";
 import { prepareUploadStorage } from "./modules/uploads/uploads.storage.js";
 import { tagRoutes } from "./modules/tags/tags.routes.js";
 import { hashtagRoutes } from "./modules/hashtags/hashtags.routes.js";
+import { importSerenaLegacyHashtagGroups } from "./modules/hashtags/serena-legacy-hashtags.js";
 import { agendaRoutes } from "./modules/agenda/agenda.routes.js";
 import { textRoutes } from "./modules/texts/texts.routes.js";
 import { reportRoutes } from "./modules/reports/reports.routes.js";
+import { ensureReportStorage } from "./modules/reports/reports.storage.js";
 import { invoiceRoutes } from "./modules/invoices/invoices.routes.js";
 import { contractRoutes } from "./modules/contracts/contracts.routes.js";
 import { ensureMcpStorage } from "./modules/mcp/mcp.repository.js";
@@ -38,6 +46,8 @@ import { dashboardNotesRoutes } from "./modules/dashboard-notes/dashboard-notes.
 import { scheduledCardArchiverPluginRegistered } from "./plugins/scheduled-card-archiver.js";
 import { ensureMetaStorage } from "./modules/meta/meta.storage.js";
 import { metaRoutes } from "./modules/meta/meta.routes.js";
+import { ensureCardTimeZoneStorage } from "./modules/cards/cards.storage.js";
+import { metaPublicationWorkerRegistered } from "./plugins/meta-publication-worker.js";
 
 export async function buildApp() {
   const appEnv = loadEnv();
@@ -64,10 +74,67 @@ export async function buildApp() {
   } else {
     await app.register(dbPluginRegistered);
     await app.register(authPluginRegistered);
+
+    // Role boundaries that apply across more than one module live here so
+    // they cannot be bypassed by navigating directly to a hidden frontend URL.
+    app.addHook("preHandler", async (request) => {
+      const auth = request.auth;
+      if (!auth) return;
+      const pathname = request.url.split("?", 1)[0];
+
+      // Lower roles may read their client-scoped agenda data for the Social
+      // Calendar, but writes to the private agenda remain super-admin only.
+      if (
+        auth.user.globalRole !== "super_admin" &&
+        request.method !== "GET" &&
+        (pathname.startsWith("/api/agenda/events") || pathname.startsWith("/api/agenda/labels"))
+      ) {
+        throw app.httpErrors.forbidden("A agenda pessoal é exclusiva do super admin.");
+      }
+
+      // Admins may assign people only inside client accounts that are already
+      // in their scope. The legacy client route still checks for super_admin,
+      // so elevate this single request after verifying the client boundary.
+      if (auth.user.globalRole === "admin" && request.method === "POST") {
+        const match = pathname.match(/^\/api\/clients\/([^/]+)\/accesses$/);
+        if (match) {
+          const clientAccountId = decodeURIComponent(match[1]);
+          const scope = getClientScope(auth.user.globalRole, auth.user.id, auth.memberships);
+          if (scope.mode !== "scoped" || !scope.clientIds.includes(clientAccountId)) {
+            throw app.httpErrors.forbidden("Você só pode atribuir pessoas aos seus próprios clientes.");
+          }
+          request.auth = {
+            ...auth,
+            user: { ...auth.user, globalRole: "super_admin" },
+          };
+        }
+      }
+    });
+
+    // The dashboard must not leak the super admin's personal agenda to lower
+    // roles, even when an event has no client or references an assigned client.
+    app.addHook("preSerialization", async (request, _reply, payload) => {
+      if (
+        request.url.split("?", 1)[0] === "/api/dashboard/overview" &&
+        request.auth?.user.globalRole !== "super_admin" &&
+        payload && typeof payload === "object" && !Array.isArray(payload)
+      ) {
+        return { ...(payload as Record<string, unknown>), agendaToday: [] };
+      }
+      return payload;
+    });
+
     let databaseAvailableAtStartup = true;
     try {
       await ensureMcpStorage(app.db);
       await ensureMetaStorage(app.db);
+      await ensureReportStorage(app.db);
+      await ensureCardTimeZoneStorage(app.db, appEnv.APP_TIMEZONE);
+      await ensureApprovalStorage(app.db);
+      const importedHashtagGroups = await importSerenaLegacyHashtagGroups(app.db);
+      if (importedHashtagGroups > 0) {
+        app.log.info({ importedHashtagGroups }, "Serena V1 hashtag groups imported");
+      }
     } catch (error) {
       databaseAvailableAtStartup = false;
       app.log.error(error, "Database unavailable during startup; continuing with degraded API");
@@ -95,10 +162,15 @@ export async function buildApp() {
     await app.register(timeTrackingRoutes, { prefix: "/api" });
     await app.register(proposalRoutes, { prefix: "/api" });
     await app.register(designBriefRoutes, { prefix: "/api" });
+    await app.register(briefFoundationRoutes, { prefix: "/api" });
     await app.register(dashboardNotesRoutes, { prefix: "/api" });
     await app.register(seasonalRoutes, { prefix: "/api" });
+    await app.register(radarSuggestionsRoutes, { prefix: "/api" });
+    await app.register(brandBrainAiRoutes, { prefix: "/api" });
     await app.register(metaRoutes, { prefix: "/api" });
     await app.register(scheduledCardArchiverPluginRegistered);
+    await app.register(metaPublicationWorkerRegistered);
+    await app.register(invoiceRecurringWorkerRegistered);
 
     if (databaseAvailableAtStartup) {
       try {

@@ -1,3 +1,5 @@
+import { calculateDashboardStatistics, loadDashboardStatistics } from "./dashboard-statistics.js";
+import { validTimeZone } from "../../lib/zoned-date-time.js";
 import type { FastifyPluginAsync } from "fastify";
 import {
   assertCanCreateClients,
@@ -21,6 +23,7 @@ import {
 } from "./clients.service.js";
 import { ensureClientMembershipAccessLevels, findClientAccountById, findClientPermissionsByAccountId, removeClientMembership } from "./clients.repository.js";
 import { listColumnsByClientAccountId } from "../columns/columns.repository.js";
+import { ensureCardActivityEventsTable } from "../cards/card-activity.service.js";
 import {
   addBrandBrainComment,
   createBrandBrainRevision,
@@ -30,6 +33,11 @@ import {
   saveOfficialBrandBrain,
 } from "./brand-brain.service.js";
 import { ensureClientFeedbackEventsTable, recordClientFeedbackEvent } from "./client-feedback.service.js";
+import { dismissDashboardItem, ensureDashboardDismissalsTable, filterDismissedDashboardItems, type DashboardDismissalType } from "./dashboard-dismissals.service.js";
+
+type DashboardActivityRow = RowDataPacket & { id: string; occurredAt: Date | string };
+type DashboardPautaRow = RowDataPacket & { id: string };
+type DashboardDismissalRow = RowDataPacket & { itemType: DashboardDismissalType; itemId: string };
 
 function parseWorkspaceDrawer(value: unknown): Record<string, unknown> {
   if (!value) return {};
@@ -47,6 +55,18 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
   await ensureClientMembershipAccessLevels(app.db);
   await ensureBrandBrainTables(app.db);
   await ensureClientFeedbackEventsTable(app.db);
+  await ensureDashboardDismissalsTable(app.db);
+  await ensureCardActivityEventsTable(app.db);
+
+  app.post("/dashboard/dismissals", async (request) => {
+    assertInternalAccess(request);
+    const body = request.body as { itemType?: DashboardDismissalType; itemId?: string };
+    if (!body.itemType || !["client_feedback", "approved_pauta", "client_submission"].includes(body.itemType) || !body.itemId?.trim() || body.itemId.length > 255) {
+      throw app.httpErrors.badRequest("Item de dashboard inválido.");
+    }
+    await dismissDashboardItem(app.db, { userId: request.auth!.user.id, itemType: body.itemType, itemId: body.itemId.trim() });
+    return { ok: true };
+  });
 
   app.post("/portal/accounts/:clientAccountId/feedback-events", async (request) => {
     const { clientAccountId } = request.params as { clientAccountId: string };
@@ -122,9 +142,11 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         "SELECT id, title, 'Card criado' AS detail, 'card' AS type, created_at AS occurred_at FROM kanban_cards WHERE client_account_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 15 DAY)",
         "UNION ALL SELECT id, title, 'Card atualizado' AS detail, 'card' AS type, updated_at AS occurred_at FROM kanban_cards WHERE client_account_id = ? AND updated_at > created_at AND updated_at >= DATE_SUB(NOW(), INTERVAL 15 DAY)",
         "UNION ALL SELECT al.id, kc.title, CASE WHEN al.approved_at IS NOT NULL THEN 'Aprovado pelo cliente' WHEN al.viewed_at IS NOT NULL THEN 'Aprovação visualizada' ELSE 'Pedido de aprovação enviado' END, 'approval', COALESCE(al.approved_at, al.viewed_at, al.created_at) FROM approval_links al INNER JOIN kanban_cards kc ON kc.id = al.card_id WHERE al.client_account_id = ? AND COALESCE(al.approved_at, al.viewed_at, al.created_at) >= DATE_SUB(NOW(), INTERVAL 15 DAY)",
+        "UNION ALL SELECT cae.id, kc.title, CONCAT(cae.actor_name, CASE WHEN cae.activity_type = 'client_approved' THEN ' aprovou o conteúdo' ELSE ' solicitou alterações' END) AS detail, 'approval' AS type, cae.occurred_at FROM card_activity_events cae INNER JOIN kanban_cards kc ON kc.id = cae.card_id WHERE cae.client_account_id = ? AND cae.occurred_at >= DATE_SUB(NOW(), INTERVAL 15 DAY)",
+        "UNION ALL SELECT ae.id, kc.title, CONCAT(ae.actor_name, CASE WHEN ae.action = 'resubmitted' THEN ' reenviou para aprovação' ELSE ' iniciou a aprovação do post após a pauta' END), 'approval', ae.created_at FROM card_approval_events ae INNER JOIN kanban_cards kc ON kc.id = ae.card_id WHERE kc.client_account_id = ? AND ae.action IN ('resubmitted', 'converted_to_post') AND ae.created_at >= DATE_SUB(NOW(), INTERVAL 15 DAY)",
         "ORDER BY occurred_at DESC LIMIT 120",
       ].join(" "),
-      [clientAccountId, clientAccountId, clientAccountId],
+      [clientAccountId, clientAccountId, clientAccountId, clientAccountId, clientAccountId],
     );
     return { items: rows.map((row) => ({ id: `${row.type}-${row.id}-${row.occurred_at}`, title: row.title, detail: row.detail, type: row.type, occurredAt: row.occurred_at })) };
   });
@@ -165,8 +187,14 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
 
     const auth = request.auth!;
     const scope = getClientScope(auth.user.globalRole, auth.user.id, auth.memberships);
+    const now = new Date();
+    const query = request.query as { timeZone?: string };
+    const timeZone = validTimeZone(typeof query.timeZone === "string" ? query.timeZone : undefined);
     if (scope.mode === "scoped" && scope.clientIds.length === 0) {
-      return { dueTasks: [], upcomingPosts: [], postsToday: [], agendaToday: [], clientSubmissions: [], clientActivities: [], approvedPautas: [] };
+      return {
+        statistics: calculateDashboardStatistics([], [], { now, timeZone }),
+        dueTasks: [], upcomingPosts: [], postsToday: [], agendaToday: [], clientSubmissions: [], clientActivities: [], approvedPautas: [],
+      };
     }
 
     const scopeSql = scope.mode === "global"
@@ -174,11 +202,11 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
       : ` AND c.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")})`;
     const params = scope.mode === "global" ? [] : scope.clientIds;
     const brandScopeSql = scope.mode === "global" ? "" : ` AND r.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")})`;
-    const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const tomorrowStart = new Date(todayStart); tomorrowStart.setDate(tomorrowStart.getDate() + 1);
-    const upcomingEnd = new Date(todayStart); upcomingEnd.setDate(upcomingEnd.getDate() + 4);
+    const upcomingEnd = new Date(todayStart); upcomingEnd.setDate(upcomingEnd.getDate() + 8);
     const [
+      statistics,
       [dueTasks],
       [clientSubmissions],
       [clientActivities],
@@ -188,7 +216,9 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
       [postsToday],
       [agendaToday],
       [approvedPautas],
+      [dashboardDismissals],
     ] = await Promise.all([
+      loadDashboardStatistics(app.db, scope.mode === "global" ? null : scope.clientIds, { now, timeZone }),
       app.db.query<RowDataPacket[]>([
         "SELECT c.id, c.title, c.deadline_at AS deadlineAt, c.client_label AS clientLabel,",
         "a.name AS clientName, a.logo_url AS clientLogoUrl",
@@ -200,68 +230,94 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         "SELECT c.id, c.title, c.created_at AS createdAt, a.name AS clientName, a.logo_url AS clientLogoUrl",
         "FROM kanban_cards c JOIN users u ON u.id = c.created_by_user_id",
         "JOIN client_accounts a ON a.id = c.client_account_id",
-        "WHERE c.archived = 0 AND (u.global_role = 'cliente' OR c.status_json LIKE '%Sugestão do cliente%')", scopeSql,
+        "WHERE c.archived = 0 AND (u.global_role = 'cliente' OR c.status_json LIKE '%Sugestão do cliente%') AND NOT EXISTS (SELECT 1 FROM dashboard_dismissals dd WHERE dd.user_id = ? AND dd.item_type = 'client_submission' AND dd.item_id = c.id)", scopeSql,
         "ORDER BY c.created_at DESC LIMIT 4",
-      ].join(" "), params),
-      app.db.query<RowDataPacket[]>([
+      ].join(" "), [auth.user.id, ...params]),
+      app.db.query<DashboardActivityRow[]>([
         "SELECT activity.* FROM (",
-        "SELECT CONCAT('decision-', c.id, '-', UNIX_TIMESTAMP(c.updated_at)) AS id, c.id AS cardId, c.title, c.updated_at AS occurredAt,",
-        "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl,",
-        "CASE WHEN LOWER(c.client_label) LIKE '%aprovad%' THEN 'approved' ELSE 'changes_requested' END AS activityType,",
-        "CASE WHEN LOWER(c.client_label) LIKE '%aprovad%' THEN 'Conteúdo aprovado pelo cliente' ELSE 'Cliente solicitou alterações' END AS detail",
-        "FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id",
-        "WHERE c.archived = 0 AND c.is_brief_approval = 0 AND c.scheduled_at IS NULL AND (LOWER(c.client_label) LIKE '%aprovad%' OR LOWER(c.client_label) LIKE '%altera%')", scopeSql,
+        "SELECT CONCAT('approval-event-', e.id) AS id, c.id AS cardId, c.title, e.created_at AS occurredAt,",
+        "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl, e.decision AS activityType,",
+        "COALESCE(e.comment_text, '') AS detail,",
+        "1 AS recordedDecision, CASE WHEN e.revision = c.approval_revision AND c.approval_state = 'approved' AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL THEN 1 ELSE 0 END AS canSchedule",
+        "FROM card_approval_events e JOIN kanban_cards c ON c.id = e.card_id JOIN client_accounts a ON a.id = c.client_account_id",
+        "WHERE c.is_brief_approval = 0 AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.status_json NOT LIKE '%Sugestão do cliente%' AND e.source <> 'legacy' AND e.action IN ('approved', 'changes_requested') AND e.decision IN ('approved', 'changes_requested') AND e.revision = c.approval_revision AND e.decision = c.approval_state AND NOT EXISTS (SELECT 1 FROM meta_scheduled_publications mp WHERE mp.card_id = c.id AND mp.status IN ('scheduled', 'publishing', 'published')) AND NOT EXISTS (SELECT 1 FROM dashboard_dismissals dd WHERE dd.user_id = ? AND dd.item_type = 'client_feedback' AND dd.item_id = CONCAT('approval-event-', e.id))", scopeSql,
         "UNION ALL",
         "SELECT CONCAT('comment-', cc.id) AS id, c.id AS cardId, c.title, cc.created_at AS occurredAt,",
-        "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl, 'comment' AS activityType, LEFT(CASE WHEN cc.comment_text = 'Legenda editada pelo cliente.' THEN CONCAT('Nova legenda: ', COALESCE(NULLIF(c.caption, ''), 'sem texto')) ELSE cc.comment_text END, 240) AS detail",
+        "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl, 'comment' AS activityType, LEFT(CASE WHEN cc.comment_text = 'Legenda editada pelo cliente.' THEN CONCAT('Nova legenda: ', COALESCE(NULLIF(c.caption, ''), 'sem texto')) ELSE cc.comment_text END, 240) AS detail, 0 AS recordedDecision, 0 AS canSchedule",
         "FROM card_comments cc JOIN kanban_cards c ON c.id = cc.card_id JOIN client_accounts a ON a.id = c.client_account_id",
-        // A client response remains useful feedback even if the card was later
-        // scheduled or archived. The dashboard's X control is what explicitly
-        // marks it as viewed; card workflow changes must not hide it first.
-        "WHERE c.is_brief_approval = 0 AND cc.is_internal = 0 AND cc.author_role IN ('cliente', 'guest')", scopeSql,
+        // Feedback is actionable only while the post is still waiting for the
+        // team. Scheduling, publishing or archiving the card completes that
+        // dashboard task and must remove all of its related feedback rows.
+        "WHERE c.is_brief_approval = 0 AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.status_json NOT LIKE '%Sugestão do cliente%' AND cc.is_internal = 0 AND cc.author_role IN ('cliente', 'guest') AND NOT EXISTS (SELECT 1 FROM card_approval_events ce WHERE ce.comment_id = cc.id) AND NOT EXISTS (SELECT 1 FROM card_comments newer WHERE newer.card_id = cc.card_id AND (newer.created_at > cc.created_at OR (newer.created_at = cc.created_at AND newer.id > cc.id))) AND NOT EXISTS (SELECT 1 FROM meta_scheduled_publications mp WHERE mp.card_id = c.id AND mp.status IN ('scheduled', 'publishing', 'published')) AND NOT EXISTS (SELECT 1 FROM dashboard_dismissals dd WHERE dd.user_id = ? AND dd.item_type = 'client_feedback' AND dd.item_id = CONCAT('comment-', cc.id))", scopeSql,
         ") activity ORDER BY activity.occurredAt DESC LIMIT 24",
-      ].join(" "), [...params, ...params]),
-      app.db.query<RowDataPacket[]>([
+      ].join(" "), [auth.user.id, ...params, auth.user.id, ...params]),
+      app.db.query<DashboardActivityRow[]>([
         "SELECT CONCAT('brand-revision-', r.id) AS id, NULL AS cardId, 'Sugestão para o Brand Brain' AS title, r.created_at AS occurredAt,",
         "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl, 'brand_brain' AS activityType,",
         "COALESCE(r.summary, CONCAT(r.author_name, ' sugeriu uma atualização da marca')) AS detail",
         "FROM brand_brain_revisions r JOIN client_accounts a ON a.id = r.client_account_id",
-        "WHERE r.status = 'pending' AND r.author_role = 'cliente'", brandScopeSql,
+        "WHERE r.status = 'pending' AND r.author_role = 'cliente' AND NOT EXISTS (SELECT 1 FROM dashboard_dismissals dd WHERE dd.user_id = ? AND dd.item_type = 'client_feedback' AND dd.item_id = CONCAT('brand-revision-', r.id))", brandScopeSql,
         "ORDER BY r.created_at DESC LIMIT 8",
-      ].join(" "), params),
-      app.db.query<RowDataPacket[]>([
+      ].join(" "), [auth.user.id, ...params]),
+      app.db.query<DashboardActivityRow[]>([
         "SELECT CONCAT('document-', e.id) AS id, NULL AS cardId, e.title, e.occurred_at AS occurredAt,",
         "COALESCE(a.name, e.client_name) AS clientName, COALESCE(a.slug, '') AS clientSlug, a.logo_url AS clientLogoUrl,",
         "e.activity_type AS activityType, COALESCE(e.detail, '') AS detail",
-        "FROM client_feedback_events e LEFT JOIN client_accounts a ON a.id = e.client_account_id WHERE 1=1",
+        "FROM client_feedback_events e LEFT JOIN client_accounts a ON a.id = e.client_account_id WHERE NOT EXISTS (SELECT 1 FROM dashboard_dismissals dd WHERE dd.user_id = ? AND dd.item_type = 'client_feedback' AND dd.item_id = CONCAT('document-', e.id))",
         scope.mode === "global" ? "" : `AND e.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")})`,
         "ORDER BY e.occurred_at DESC LIMIT 8",
-      ].join(" "), params),
+      ].join(" "), [auth.user.id, ...params]),
       app.db.query<RowDataPacket[]>(
-        ["SELECT c.id, c.title, c.deadline_at AS scheduledAt, c.client_label AS clientLabel, a.name AS clientName, a.logo_url AS clientLogoUrl FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id WHERE c.archived = 0 AND c.deadline_at >= ? AND c.deadline_at < ?", scopeSql, "ORDER BY c.deadline_at ASC LIMIT 20"].join(" "),
-        [tomorrowStart, upcomingEnd, ...params],
+        [
+          "SELECT p.id, MAX(p.title) AS title, p.scheduledAt, MAX(p.clientName) AS clientName, MAX(p.clientLogoUrl) AS clientLogoUrl FROM (",
+          "SELECT c.id, c.title, c.scheduled_at AS scheduledAt, a.name AS clientName, a.logo_url AS clientLogoUrl",
+          "FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id",
+          "WHERE c.archived = 0 AND c.scheduled_at >= ? AND c.scheduled_at < ?", scopeSql,
+          "UNION ALL",
+          "SELECT COALESCE(mp.card_id, CONCAT('meta-', mp.id)) AS id, COALESCE(kc.title, 'Publicação Meta') AS title, mp.scheduled_at AS scheduledAt, a.name AS clientName, a.logo_url AS clientLogoUrl",
+          "FROM meta_scheduled_publications mp LEFT JOIN kanban_cards kc ON kc.id = mp.card_id JOIN client_accounts a ON a.id = mp.client_account_id",
+          "WHERE mp.status IN ('scheduled', 'publishing', 'published') AND mp.scheduled_at >= ? AND mp.scheduled_at < ?",
+          scope.mode === "global" ? "" : `AND mp.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")})`,
+          ") p GROUP BY p.id, p.scheduledAt ORDER BY p.scheduledAt ASC, title ASC LIMIT 20",
+        ].join(" "),
+        [tomorrowStart, upcomingEnd, ...params, tomorrowStart, upcomingEnd, ...params],
       ),
       app.db.query<RowDataPacket[]>(
-        ["SELECT c.id, c.title, c.deadline_at AS scheduledAt, c.primary_media_url AS mediaUrl, a.name AS clientName, a.logo_url AS clientLogoUrl FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id WHERE c.archived = 0 AND c.deadline_at >= ? AND c.deadline_at < ?", scopeSql, "ORDER BY c.deadline_at ASC, c.title ASC LIMIT 50"].join(" "),
-        [todayStart, tomorrowStart, ...params],
+        [
+          "SELECT p.id, MAX(p.title) AS title, p.scheduledAt, MAX(p.mediaUrl) AS mediaUrl, MAX(p.clientName) AS clientName, MAX(p.clientLogoUrl) AS clientLogoUrl FROM (",
+          "SELECT c.id, c.title, c.scheduled_at AS scheduledAt, c.primary_media_url AS mediaUrl, a.name AS clientName, a.logo_url AS clientLogoUrl",
+          "FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id",
+          "WHERE c.archived = 0 AND c.scheduled_at >= ? AND c.scheduled_at < ?", scopeSql,
+          "UNION ALL",
+          "SELECT COALESCE(mp.card_id, CONCAT('meta-', mp.id)) AS id, COALESCE(kc.title, 'Publicação Meta') AS title, mp.scheduled_at AS scheduledAt, COALESCE(mp.media_url, kc.primary_media_url) AS mediaUrl, a.name AS clientName, a.logo_url AS clientLogoUrl",
+          "FROM meta_scheduled_publications mp LEFT JOIN kanban_cards kc ON kc.id = mp.card_id JOIN client_accounts a ON a.id = mp.client_account_id",
+          "WHERE mp.status IN ('scheduled', 'publishing', 'published') AND mp.scheduled_at >= ? AND mp.scheduled_at < ?",
+          scope.mode === "global" ? "" : `AND mp.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")})`,
+          ") p GROUP BY p.id, p.scheduledAt ORDER BY p.scheduledAt ASC, title ASC LIMIT 50",
+        ].join(" "),
+        [todayStart, tomorrowStart, ...params, todayStart, tomorrowStart, ...params],
       ),
       app.db.query<RowDataPacket[]>(
         ["SELECT e.id, e.title, e.task_description AS taskDescription, e.starts_at AS startsAt, e.color, e.is_completed AS isCompleted, e.agenda_label_id AS labelId, l.name AS labelName, a.name AS clientName FROM agenda_events e LEFT JOIN client_accounts a ON a.id = e.client_account_id LEFT JOIN agenda_labels l ON l.id = e.agenda_label_id WHERE e.starts_at >= ? AND e.starts_at < ?", scope.mode === "global" ? "" : ` AND (e.client_account_id IS NULL OR e.client_account_id IN (${scope.clientIds.map(() => "?").join(", ")}))`, "ORDER BY e.starts_at ASC LIMIT 6"].join(" "),
         [todayStart, tomorrowStart, ...(scope.mode === "global" ? [] : scope.clientIds)],
       ),
-      app.db.query<RowDataPacket[]>([
-        "SELECT c.id, c.title, COALESCE(MAX(al.approved_at), c.updated_at) AS approvedAt,",
+      app.db.query<DashboardPautaRow[]>([
+        "SELECT c.id, c.title, COALESCE(MAX(ae.created_at), c.updated_at) AS approvedAt,",
         "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl",
         "FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id",
-        "LEFT JOIN approval_links al ON al.card_id = c.id AND al.approved_at IS NOT NULL",
-        "WHERE c.archived = 0 AND c.is_brief_approval = 1 AND (LOWER(c.client_label) LIKE '%aprovad%' OR al.approved_at IS NOT NULL)", scopeSql,
+        "JOIN card_approval_events ae ON ae.card_id = c.id AND ae.revision = c.approval_revision AND ae.action = 'approved' AND ae.decision = 'approved' AND ae.source <> 'legacy'",
+        "WHERE c.archived = 0 AND c.is_brief_approval = 1 AND c.approval_state = 'approved' AND NOT EXISTS (SELECT 1 FROM card_approval_events converted WHERE converted.card_id = c.id AND converted.action = 'converted_to_post') AND NOT EXISTS (SELECT 1 FROM dashboard_dismissals dd WHERE dd.user_id = ? AND dd.item_type = 'approved_pauta' AND dd.item_id = c.id)", scopeSql,
         "GROUP BY c.id, c.title, c.updated_at, a.name, a.slug, a.logo_url ORDER BY approvedAt DESC LIMIT 12",
-      ].join(" "), params),
+      ].join(" "), [auth.user.id, ...params]),
+      app.db.query<DashboardDismissalRow[]>("SELECT item_type AS itemType, item_id AS itemId FROM dashboard_dismissals WHERE user_id = ?", [auth.user.id]),
     ]);
-    const combinedClientActivities = [...clientActivities, ...brandBrainActivities, ...documentActivities]
+    const dismissedFeedbackIds = new Set(dashboardDismissals.filter((item) => item.itemType === "client_feedback").map((item) => String(item.itemId)));
+    const dismissedPautaIds = new Set(dashboardDismissals.filter((item) => item.itemType === "approved_pauta").map((item) => String(item.itemId)));
+    const combinedClientActivities = filterDismissedDashboardItems([...clientActivities, ...brandBrainActivities, ...documentActivities], dismissedFeedbackIds)
       .sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime())
       .slice(0, 24);
-    return { dueTasks, upcomingPosts, postsToday, agendaToday, clientSubmissions, clientActivities: combinedClientActivities, approvedPautas };
+    const visibleApprovedPautas = filterDismissedDashboardItems(approvedPautas, dismissedPautaIds);
+    return { statistics, dueTasks, upcomingPosts, postsToday, agendaToday, clientSubmissions, clientActivities: combinedClientActivities, approvedPautas: visibleApprovedPautas };
   });
 
   app.get("/portal/accounts", async (request) => {
@@ -469,13 +525,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     }
     const body = request.body as { items?: unknown };
     if (!Array.isArray(body.items)) throw app.httpErrors.badRequest("Lista de links rápidos inválida.");
-    const [rows] = await app.db.query<Array<RowDataPacket & { id: string; workspace_drawer_json: unknown }>>(
-      "SELECT id, workspace_drawer_json FROM client_accounts",
-    );
-    for (const row of rows) {
-      const drawer = parseWorkspaceDrawer(row.workspace_drawer_json);
-      await app.db.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...drawer, quick: body.items }), row.id]);
-    }
+    await app.db.query("UPDATE client_accounts SET workspace_drawer_json = JSON_SET(COALESCE(workspace_drawer_json, JSON_OBJECT()), '$.quick', JSON_EXTRACT(?, '$'))", [JSON.stringify(body.items)]);
     return { ok: true, items: body.items };
   });
 
@@ -484,17 +534,115 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     const params = request.params as { clientAccountId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador"]);
     const body = request.body as { data?: unknown };
-    const [rows] = await app.db.query<Array<RowDataPacket & { workspace_drawer_json: unknown }>>(
-      "SELECT workspace_drawer_json FROM client_accounts WHERE id = ? LIMIT 1",
-      [params.clientAccountId],
-    );
-    const current = parseWorkspaceDrawer(rows[0]?.workspace_drawer_json);
-    const incoming = parseWorkspaceDrawer(body.data);
-    // "Rápidos" is global. A client-specific drawer save must never replace it
-    // with a stale copy loaded from another Kanban.
-    const data = { ...incoming, quick: current.quick ?? incoming.quick ?? [] };
-    await app.db.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify(data), params.clientAccountId]);
+    const connection = await app.db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query<Array<RowDataPacket & { workspace_drawer_json: unknown }>>("SELECT workspace_drawer_json FROM client_accounts WHERE id = ? FOR UPDATE", [params.clientAccountId]);
+      if (!rows[0]) throw app.httpErrors.notFound("Conta do cliente não encontrada.");
+      const current = parseWorkspaceDrawer(rows[0].workspace_drawer_json);
+      const incoming = parseWorkspaceDrawer(body.data);
+      // Dedicated endpoints own these sections. A stale full drawer must never replace them.
+      const { pautaIdeas: _ideas, brandBrain: _brain, quick: _quick, ...changes } = incoming;
+      await connection.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...current, ...changes }), params.clientAccountId]);
+      await connection.commit();
+    } catch (error) { await connection.rollback(); throw error; }
+    finally { connection.release(); }
     return { ok: true };
+  });
+
+  app.post("/clients/:clientAccountId/workspace-drawer/pauta-ideas", async (request) => {
+    assertInternalAccess(request);
+    const { clientAccountId } = request.params as { clientAccountId: string };
+    assertClientAccess(request, clientAccountId, ["admin", "colaborador"]);
+    const body = request.body as { idea?: unknown };
+    if (!body.idea || typeof body.idea !== "object" || Array.isArray(body.idea)) throw app.httpErrors.badRequest("Pauta inválida.");
+    const idea = body.idea as Record<string, unknown>;
+    if (typeof idea.id !== "string" || !idea.id.trim() || typeof idea.title !== "string" || !idea.title.trim()) throw app.httpErrors.badRequest("Informe o título da pauta.");
+    const connection = await app.db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query<Array<RowDataPacket & { workspace_drawer_json: unknown }>>(
+        "SELECT workspace_drawer_json FROM client_accounts WHERE id = ? LIMIT 1 FOR UPDATE",
+        [clientAccountId],
+      );
+      if (!rows[0]) throw app.httpErrors.notFound("Conta do cliente não encontrada.");
+      const drawer = parseWorkspaceDrawer(rows[0].workspace_drawer_json);
+      const pautaIdeas = Array.isArray(drawer.pautaIdeas) ? drawer.pautaIdeas : [];
+      // AI previews carry a stable ID: retries must not overwrite later human edits.
+      const existingAiIdea = idea.createdBy === "ai_brand_brain" ? pautaIdeas.find((item) => item && typeof item === "object" && (item as Record<string, unknown>).id === idea.id) : undefined;
+      if (existingAiIdea) { await connection.commit(); return { ok: true, idea: existingAiIdea }; }
+      const nextIdeas = [idea, ...pautaIdeas.filter((item) => !item || typeof item !== "object" || (item as Record<string, unknown>).id !== idea.id)];
+      await connection.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...drawer, pautaIdeas: nextIdeas }), clientAccountId]);
+      await connection.commit();
+      return { ok: true, idea };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  });
+
+  app.patch("/clients/:clientAccountId/workspace-drawer/pauta-ideas/:ideaId", async (request) => {
+    assertInternalAccess(request);
+    const { clientAccountId, ideaId } = request.params as { clientAccountId: string; ideaId: string };
+    assertClientAccess(request, clientAccountId, ["admin", "colaborador"]);
+    const body = request.body as { patch?: unknown };
+    if (!body.patch || typeof body.patch !== "object" || Array.isArray(body.patch)) throw app.httpErrors.badRequest("Alteração de pauta inválida.");
+    const patch = body.patch as Record<string, unknown>;
+    const connection = await app.db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query<Array<RowDataPacket & { workspace_drawer_json: unknown }>>(
+        "SELECT workspace_drawer_json FROM client_accounts WHERE id = ? LIMIT 1 FOR UPDATE",
+        [clientAccountId],
+      );
+      if (!rows[0]) throw app.httpErrors.notFound("Conta do cliente não encontrada.");
+      const drawer = parseWorkspaceDrawer(rows[0].workspace_drawer_json);
+      const pautaIdeas = Array.isArray(drawer.pautaIdeas) ? drawer.pautaIdeas : [];
+      let updatedIdea: Record<string, unknown> | null = null;
+      const nextIdeas = pautaIdeas.map((item) => {
+        if (!item || typeof item !== "object" || (item as Record<string, unknown>).id !== ideaId) return item;
+        updatedIdea = { ...(item as Record<string, unknown>), ...patch, id: ideaId };
+        return updatedIdea;
+      });
+      if (!updatedIdea) throw app.httpErrors.notFound("Pauta não encontrada.");
+      await connection.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...drawer, pautaIdeas: nextIdeas }), clientAccountId]);
+      await connection.commit();
+      return { ok: true, idea: updatedIdea };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  });
+
+  app.delete("/clients/:clientAccountId/workspace-drawer/pauta-ideas/:ideaId", async (request) => {
+    assertInternalAccess(request);
+    const { clientAccountId, ideaId } = request.params as { clientAccountId: string; ideaId: string };
+    assertClientAccess(request, clientAccountId, ["admin", "colaborador"]);
+    const connection = await app.db.getConnection();
+    try {
+      await connection.beginTransaction();
+      const [rows] = await connection.query<Array<RowDataPacket & { workspace_drawer_json: unknown }>>(
+        "SELECT workspace_drawer_json FROM client_accounts WHERE id = ? LIMIT 1 FOR UPDATE",
+        [clientAccountId],
+      );
+      if (!rows[0]) throw app.httpErrors.notFound("Conta do cliente não encontrada.");
+      const drawer = parseWorkspaceDrawer(rows[0].workspace_drawer_json);
+      const pautaIdeas = Array.isArray(drawer.pautaIdeas) ? drawer.pautaIdeas : [];
+      const nextIdeas = pautaIdeas.filter((item) => !item || typeof item !== "object" || (item as Record<string, unknown>).id !== ideaId);
+      if (nextIdeas.length === pautaIdeas.length) throw app.httpErrors.notFound("Pauta não encontrada.");
+      await connection.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...drawer, pautaIdeas: nextIdeas }), clientAccountId]);
+      await connection.commit();
+      return { ok: true };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   });
 
   app.get("/clients/:clientAccountId/kanban-automations", async (request) => {

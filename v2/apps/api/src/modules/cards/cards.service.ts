@@ -1,7 +1,9 @@
+import { convertBriefApprovalToPost, isBriefApprovalConversion } from "../approvals/approval-workflow.service.js";
+import { approvalStatuses, inferredApprovalState } from "../approvals/approval-state.js";
 import type { FastifyInstance } from "fastify";
 import type { RowDataPacket } from "mysql2/promise";
 import { findClientAccountById } from "../clients/clients.repository.js";
-import { createColumn, findColumnById, listColumnsByClientAccountId } from "../columns/columns.repository.js";
+import { createColumn, findColumnById, listColumnsByClientAccountId, updateColumn } from "../columns/columns.repository.js";
 import { listClientTags } from "../tags/tags.repository.js";
 import {
   createCard,
@@ -71,6 +73,25 @@ type KanbanAutomation = {
 };
 
 type KanbanCard = NonNullable<Awaited<ReturnType<typeof findCardById>>>;
+
+function isScheduledColumnName(name: string) {
+  return /^agendados?$/i.test(name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim());
+}
+
+async function ensureScheduledColumn(app: FastifyInstance, clientAccountId: string) {
+  const connection = await app.db.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.query("SELECT id FROM client_accounts WHERE id = ? FOR UPDATE", [clientAccountId]);
+    const columns = await listColumnsByClientAccountId(connection, clientAccountId);
+    const existing = columns.find((column) => isScheduledColumnName(column.name));
+    if (existing) { await connection.commit(); return existing; }
+    const created = await createColumn(connection, clientAccountId, { name: "Agendados", color: "#3c8ee9", visibleToClient: true, autoCreated: true });
+    await connection.commit();
+    return created;
+  } catch (error) { await connection.rollback(); throw error; }
+  finally { connection.release(); }
+}
 
 function parseAutomations(value: unknown): KanbanAutomation[] {
   if (!value) return [];
@@ -253,6 +274,31 @@ export async function getKanbanBoard(
   };
 }
 
+async function ensureBriefApprovalColumn(app: FastifyInstance, clientAccountId: string) {
+  const normalizeColumnName = (name: string) =>
+    name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("pt-BR");
+
+  const columns = await listColumnsByClientAccountId(app.db, clientAccountId);
+  let target = columns.find((column) => normalizeColumnName(column.name) === "pautas para aprovacao");
+
+  if (!target) {
+    target = await createColumn(app.db, clientAccountId, {
+      name: "Pautas para aprovação",
+      color: "#8b5cf6",
+      visibleToClient: true,
+      autoCreated: true,
+    }) ?? undefined;
+  } else if (!target.visibleToClient) {
+    target = await updateColumn(app.db, target.id, { visibleToClient: true }) ?? target;
+  }
+
+  if (!target) {
+    throw app.httpErrors.badRequest("Não foi possível preparar a coluna Pautas para aprovação.");
+  }
+
+  return target;
+}
+
 export async function createKanbanCard(
   app: FastifyInstance,
   clientAccountId: string,
@@ -264,9 +310,19 @@ export async function createKanbanCard(
     throw app.httpErrors.notFound("Conta do cliente não encontrada.");
   }
 
-  await assertColumnBelongsToClient(app, clientAccountId, input.columnId);
+  const briefApprovalColumn = input.isBriefApproval
+    ? await ensureBriefApprovalColumn(app, clientAccountId)
+    : null;
+  const targetColumnId = briefApprovalColumn?.id ?? input.columnId;
 
-  const created = await createCard(app.db, clientAccountId, createdByUserId, normalizeScheduleInput(input, app.appEnv.APP_TIMEZONE));
+  await assertColumnBelongsToClient(app, clientAccountId, targetColumnId);
+
+  const created = await createCard(
+    app.db,
+    clientAccountId,
+    createdByUserId,
+    normalizeScheduleInput({ ...input, columnId: targetColumnId }, app.appEnv.APP_TIMEZONE),
+  );
   if (!created) {
     throw app.httpErrors.badRequest("Não foi possível criar o card.");
   }
@@ -287,6 +343,24 @@ export async function updateKanbanCard(
     throw app.httpErrors.notFound("Card não encontrado nesta conta.");
   }
 
+  if (input.expectedApprovalRevision !== undefined && input.expectedApprovalRevision !== card.approvalRevision) {
+    throw app.httpErrors.conflict("A aprovação deste post mudou. Reabra o card antes de salvar novamente; seu rascunho foi preservado.");
+  }
+  const convertingBrief = isBriefApprovalConversion(card, input);
+  if (card.approvalState && !convertingBrief) {
+    if (input.clientLabel !== undefined && input.clientLabel !== card.clientLabel) {
+      throw app.httpErrors.conflict("Use Enviar novamente para aprovação para reabrir o retorno do cliente.");
+    }
+    if (input.status) {
+      const statuses = approvalStatuses(input.status, card.approvalState);
+      // Only the explicit resend action forces visibility. Preserve the existing
+      // admin visibility checkbox when a user intentionally hides a card.
+      input = { ...input, status: card.approvalState === "pending" && !input.status.includes("Enviar para Cliente")
+        ? statuses.filter((status) => status !== "Enviar para Cliente") : statuses };
+    }
+  }
+  input = { ...input, expectedApprovalRevision: card.approvalRevision };
+
   if (input.caption !== undefined && (input.caption ?? null) !== (card.caption ?? null)) {
     await recordCaptionVersion(app.db, {
       cardId,
@@ -305,7 +379,9 @@ export async function updateKanbanCard(
         status: ["Agendado", ...(normalizedInput.status ?? card.status).filter((status) => !/^agendados?$/i.test(status.trim()))],
       }
     : normalizedInput;
-  const updated = await updateCard(app.db, cardId, updateInput);
+  const updated = convertingBrief
+    ? await convertBriefApprovalToPost(app, clientAccountId, cardId, actor, updateInput)
+    : await updateCard(app.db, cardId, updateInput);
   if (!updated) {
     throw app.httpErrors.badRequest("Não foi possível atualizar o card.");
   }
@@ -319,17 +395,7 @@ export async function updateKanbanCard(
     : [];
   let result = await runAutomationActions(app, clientAccountId, updated, automations);
   if (isBeingScheduled) {
-    const normalizeColumnName = (name: string) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
-    const columns = await listColumnsByClientAccountId(app.db, clientAccountId);
-    let scheduledColumn = columns.find((column) => /^agendados?$/i.test(normalizeColumnName(column.name)));
-    if (!scheduledColumn) {
-      scheduledColumn = await createColumn(app.db, clientAccountId, {
-        name: "Agendados",
-        color: "#3c8ee9",
-        visibleToClient: true,
-        autoCreated: true,
-      }) ?? undefined;
-    }
+    const scheduledColumn = await ensureScheduledColumn(app, clientAccountId);
     if (scheduledColumn && result.columnId !== scheduledColumn.id) {
       const moved = await moveCard(app.db, cardId, result, { columnId: scheduledColumn.id });
       if (moved) {
@@ -374,6 +440,7 @@ export async function moveKanbanCard(
   clientAccountId: string,
   cardId: string,
   input: MoveCardInput,
+  actor: { id: string; fullName: string; globalRole: string },
 ) {
   const card = await findCardById(app.db, cardId);
   if (!card || card.clientAccountId !== clientAccountId) {
@@ -382,12 +449,26 @@ export async function moveKanbanCard(
 
   await assertColumnBelongsToClient(app, clientAccountId, input.columnId);
 
-  const moved = await moveCard(app.db, cardId, card, input);
+  const changingColumn = card.columnId !== input.columnId;
+  let cardToMove = card;
+
+  // Once the client has approved a pauta, intentionally moving it to another
+  // production column means the pauta phase is finished. Convert it to a
+  // regular post before moving so the approval workflow cannot route it back
+  // to "Pautas para aprovação".
+  if (changingColumn && card.isBriefApproval && inferredApprovalState(card) === "approved") {
+    cardToMove = await convertBriefApprovalToPost(app, clientAccountId, cardId, actor, {
+      isBriefApproval: false,
+      expectedApprovalRevision: card.approvalRevision,
+    });
+  }
+
+  const moved = await moveCard(app.db, cardId, cardToMove, input);
   if (!moved) {
     throw app.httpErrors.badRequest("Não foi possível mover o card.");
   }
 
-  const automations = card.columnId !== input.columnId
+  const automations = changingColumn
     ? (await listActiveAutomations(app, clientAccountId)).filter((rule) => (
       rule.triggerType === "column_moved" && rule.triggerValue === input.columnId
     ))
@@ -395,6 +476,20 @@ export async function moveKanbanCard(
   const result = await runAutomationActions(app, clientAccountId, moved, automations);
   await upsertCalendarEventFromCard(app.db, result);
   return result;
+}
+
+export async function moveKanbanCardToScheduledColumn(
+  app: FastifyInstance,
+  clientAccountId: string,
+  cardId: string,
+  actor: { id: string; fullName: string; globalRole: string },
+) {
+  const card = await findCardById(app.db, cardId);
+  if (!card || card.clientAccountId !== clientAccountId) throw app.httpErrors.notFound("Card não encontrado nesta conta.");
+  if (card.isBriefApproval && inferredApprovalState(card) !== "approved") return card;
+  const scheduledColumn = await ensureScheduledColumn(app, clientAccountId);
+  if (!scheduledColumn || card.columnId === scheduledColumn.id) return card;
+  return moveKanbanCard(app, clientAccountId, cardId, { columnId: scheduledColumn.id }, actor);
 }
 
 export async function archiveKanbanCard(
@@ -407,6 +502,7 @@ export async function archiveKanbanCard(
   if (!card || card.clientAccountId !== clientAccountId) {
     throw app.httpErrors.notFound("Card não encontrado nesta conta.");
   }
+  if (card.archived === archived) return card;
 
   const updated = await setCardArchived(app.db, cardId, archived);
   if (!updated) {

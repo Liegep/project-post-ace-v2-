@@ -1,10 +1,15 @@
+import { BrandBrainAiRepository } from "../brand-brain-ai/brand-brain-ai.repository.js";
+import { BrandBrainAiService } from "../brand-brain-ai/brand-brain-ai.service.js";
+import { McpRadarRepository } from "./mcp.radar.repository.js";
+import { McpRadarService, mcpRadarInput } from "./mcp.radar.service.js";
+import { radarSourceKey } from "../radar-suggestions/radar-suggestions.service.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod/v4";
 import type { FastifyInstance } from "fastify";
 import type { AuthContext } from "../auth/auth.types.js";
 import { recordMcpAudit } from "./mcp.repository.js";
 import { mcpCardSummary, mcpClientRadarContext, mcpCreatePautaDraft, mcpListClients, mcpListDueCards, mcpListPendingApprovals, mcpListRecentClientComments, mcpWeeklyWorkload } from "./mcp.read.service.js";
-import { MCP_PAUTA_CREATE_SCOPE } from "./mcp.security.js";
+import { MCP_PAUTA_CREATE_SCOPE, MCP_RADAR_SUGGEST_SCOPE } from "./mcp.security.js";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
 const readOnly = { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false } as const;
@@ -22,15 +27,16 @@ function validPeriod(from: string, to: string) {
   }
 }
 
-export function createPlanningMcpServer(app: FastifyInstance, auth: AuthContext, oauthClientId: string, scopes: string[] = []) {
+export function createPlanningMcpServer(app: FastifyInstance, auth: AuthContext, oauthClientId: string, scopes: string[] = [], options: { radar?: McpRadarService; audit?: typeof recordMcpAudit } = {}) {
+  const audit = options.audit ?? recordMcpAudit;
   const server = new McpServer({ name: "design-hub-planning", version: "1.0.0" });
   const audited = <T extends Record<string, unknown>>(toolName: string, action: (input: T) => Promise<unknown>) => async (input: T) => {
     try {
       const data = await action(input);
-      await recordMcpAudit(app.db, { userId: auth.user.id, clientId: oauthClientId, toolName, success: true, args: input });
+      await audit(app.db, { userId: auth.user.id, clientId: oauthClientId, toolName, success: true, args: input });
       return result(data);
     } catch (error) {
-      await recordMcpAudit(app.db, { userId: auth.user.id, clientId: oauthClientId, toolName, success: false, args: input }).catch(() => undefined);
+      await audit(app.db, { userId: auth.user.id, clientId: oauthClientId, toolName, success: false, args: input }).catch(() => undefined);
       throw error;
     }
   };
@@ -100,6 +106,30 @@ export function createPlanningMcpServer(app: FastifyInstance, auth: AuthContext,
     },
     annotations: createsDraft,
   }, audited("create_pauta_draft", async ({ confirmed: _confirmed, ...input }) => mcpCreatePautaDraft(app.db, auth, input)));
+
+  if (scopes.includes(MCP_RADAR_SUGGEST_SCOPE)) {
+    const radar = options.radar ?? new McpRadarService(new McpRadarRepository(app.db), new BrandBrainAiService(new BrandBrainAiRepository(app.db, true), app.appEnv), app.appEnv.BRAND_BRAIN_AI_MODEL);
+    server.registerTool("create_radar_suggestion", {
+      title: "Sugerir oportunidade no Radar",
+      description: "Analisa uma descoberta com a memória publicada da marca e cria somente uma sugestão PENDENTE para revisão no Dashboard. Não cria pauta ou card, não envia, agenda, aprova ou publica. Fontes já processadas não chamam IA novamente. Não exige confirmação de pauta: a decisão humana ocorre depois no Dashboard.",
+      inputSchema: mcpRadarInput.shape,
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    }, async input => {
+      const parsed = mcpRadarInput.safeParse(input);
+      const sourceHash = parsed.success ? radarSourceKey({ ...parsed.data, sourceDate: parsed.data.sourceDate?.includes("T") ? new Date(parsed.data.sourceDate).toISOString() : parsed.data.sourceDate }) : null;
+      const base = { clientId: parsed.success ? parsed.data.clientId : null, sourceHash };
+      try {
+        const data = await radar.create(auth, scopes, input);
+        await audit(app.db, { userId: auth.user.id, clientId: oauthClientId, toolName: "create_radar_suggestion", success: true, args: { ...base, result: data.outcome, suggestionId: data.suggestionId, status: data.status } });
+        return result(data);
+      } catch (error) {
+        await audit(app.db, { userId: auth.user.id, clientId: oauthClientId, toolName: "create_radar_suggestion", success: false, args: { ...base, result: "error", suggestionId: null, status: "failed" } }).catch(() => undefined);
+        const code = (error as { code?: string }).code;
+        const messages: Record<string, string> = { disabled: "Brand Brain AI desativado ou sem chave configurada.", missing_scope: "Consentimento radar:suggest obrigatório.", client_forbidden: "Cliente fora do seu acesso.", client_not_found: "Cliente não encontrado.", timeout: "A IA excedeu o tempo limite. Retry não chama IA novamente para esta fonte.", source_failed: "Fonte já processada com falha; reanálise exige revisão explícita.", invalid_input: "Dados da fonte inválidos.", invalid_response: "Saída da IA inválida. Nenhuma sugestão foi criada.", refusal: "A IA recusou a solicitação.", incomplete: "Resposta da IA incompleta.", unavailable: "Provider de IA indisponível.", busy: "Há outra solicitação de IA em andamento para este cliente." };
+        return { isError: true, content: [{ type: "text" as const, text: messages[code ?? ""] ?? "Não foi possível concluir a sugestão do Radar." }] };
+      }
+    });
+  }
 
   return server;
 }

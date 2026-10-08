@@ -1,0 +1,10 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { formatReportMetric, reportGrowthLabels, reportMetricMetadata } from "../src/reportMetricPresentation.js";
+for (const key of ["followersGained", "followersLost", "followersNet"] as const) test(`${key} is translated in every report language`, () => { for (const labels of Object.values(reportGrowthLabels)) assert.ok(labels[key]); });
+test("positive gains and net have plus sign", () => { assert.equal(formatReportMetric(12, "followersGained", "it"), "+12"); assert.equal(formatReportMetric(9, "followersNet", "it"), "+9"); });
+test("losses and negative net use minus sign", () => { assert.equal(formatReportMetric(3, "followersLost", "it"), "−3"); assert.equal(formatReportMetric(-2, "followersNet", "it"), "−2"); });
+test("zero is an available observation", () => assert.equal(formatReportMetric(0, "followersLost", "it"), "0"));
+test("null and historical missing values preserve unavailable state", () => { assert.equal(formatReportMetric(null, "followersGained", "it"), "Non disponibile"); assert.equal(formatReportMetric(undefined, "followersNet", "it"), "Non disponibile"); });
+test("unavailable copy distinguishes absence, unsupported and API errors", () => { assert.equal(formatReportMetric(null, "views", "it", "empty"), "Nessun dato nel periodo"); assert.equal(formatReportMetric(null, "views", "it", "invalid_metric"), "Non disponibile tramite Meta API"); assert.equal(formatReportMetric(null, "views", "it", "permission_error"), "Impossibile recuperare i dati da Meta"); });
+test("metadata maps views to legacy impressions and current metric aliases", () => { const metadata = { status: "empty" as const, source: "page_media_view", aggregation: "daily_sum", code: null, structure: { entries: 0, dailyValues: 0, totalValue: false, breakdowns: 0 } }; assert.equal(reportMetricMetadata({ views: metadata }, "facebook")?.impressions, metadata); assert.equal(reportMetricMetadata(undefined, "instagram"), undefined); });

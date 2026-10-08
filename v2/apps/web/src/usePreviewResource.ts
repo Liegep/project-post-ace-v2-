@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type ResourceState<T> = {
   data: T;
@@ -19,16 +19,20 @@ export function usePreviewResource<T>(
     message: "Conectando ao banco real da V2.",
   });
 
+  const scopeRef = useRef(deps[0]);
   useEffect(() => {
     let active = true;
+    const scopeChanged = scopeRef.current !== deps[0];
+    scopeRef.current = deps[0];
 
-    // Keep the current board on screen while fresh data arrives. Replacing it
-    // with the fallback made every small card action look like a full reload.
+    // Keep the current data on screen while fresh data arrives. Replacing it
+    // with the fallback made every small action look like a full reload.
     setState((current) => ({
       ...current,
+      data: scopeChanged ? fallback : current.data,
       loading: true,
       source: "backend",
-      message: "Atualizando dados do Kanban.",
+      message: "Atualizando dados.",
     }));
 
     loader()
@@ -45,12 +49,17 @@ export function usePreviewResource<T>(
         if (!active) return;
         const description =
           error instanceof Error ? error.message : "Sem conexão com a API da V2.";
-        setState({
-          data: fallback,
+
+        // A temporary API failure must never be interpreted as "there is no
+        // data". Preserve the last successful snapshot on screen so a timeout,
+        // busy server or transient database error cannot make the Kanban or
+        // other resources using this hook appear to have been erased.
+        setState((current) => ({
+          ...current,
           loading: false,
           source: "error",
-          message: `Não consegui carregar os dados reais. ${description}`,
-        });
+          message: `Não consegui atualizar os dados. Mantendo a última versão carregada. ${description}`,
+        }));
       });
 
     return () => {

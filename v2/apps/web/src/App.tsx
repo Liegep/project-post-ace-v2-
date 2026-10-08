@@ -1,4 +1,16 @@
+import { BrandBrainAnalyzePanel, BrandBrainGenerateAction } from "./BrandBrainAiWorkspace";
+import { brandBrainCompletion } from "../../../shared/brand-brain-completion.mjs";
+import { RadarSuggestionsWidget } from "./RadarSuggestionsWidget";
+import { AgendaWorkspace } from "./AgendaWorkspace";
+import { BriefsFoundationWorkspace, PortalBriefsFoundation } from "./BriefFoundationWorkspace";
+import { SocialCalendarWorkspace } from "./SocialCalendarWorkspace";
 import { SeasonalWorkspace, SeasonalDashboardWidget } from "./SeasonalWorkspace";
+import { ContractsWorkspace, ContractAcceptanceGate } from "./ContractsWorkspace";
+import { ProposalsWorkspace } from "./ProposalsWorkspace";
+import { ProposalClientPreview, getProposalLocale } from "./proposalPresentation";
+import { createPrintableTextFrame, printWhenImagesReady } from "./printDocument";
+import { DashboardMetrics } from "./DashboardMetrics";
+import { MetaPreflightPanel } from "./MetaPreflightPanel";
 import { PortalAccountPicker } from "./PortalAccountPicker";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type CSSProperties, type FormEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -6,6 +18,10 @@ import { NavLink, Navigate, Route, Routes, useLocation, useNavigate, useParams }
 import { zipSync } from "fflate";
 import webPackage from "../package.json";
 import { CardTimeTracker, TimeTrackingWorkspace } from "./TimeTrackingWorkspace";
+import { normalizeExternalHttpUrl } from "./externalUrl";
+import { metaPublicationPreviewSource, type MetaPublicationPreview } from "./metaPublicationPreview";
+import { adminCardRoute } from "./metaCenterNavigation";
+import { metaConnectionPresentation } from "./metaConnectionStatus";
 import {
   addAdminCardCommentBySlug,
   addPortalCardCommentBySlug,
@@ -27,6 +43,7 @@ import {
   restoreAdminCaptionVersionBySlug,
   type CaptionVersion,
   createAdminApprovalLinkBySlug,
+  resubmitAdminApprovalBySlug,
   moveAdminCardBySlug,
   reorderAdminColumnsBySlug,
   archiveAdminCardBySlug,
@@ -50,6 +67,7 @@ import {
   loadPublicApproval,
   submitPublicApproval,
   createAdminTagBySlug,
+  updateAdminTagBySlug,
   listAdminTagsBySlug,
   type ClientTagDefinition,
   createAdminHashtagGroupBySlug,
@@ -57,16 +75,13 @@ import {
   listAdminHashtagGroupsBySlug,
   type HashtagGroup,
   loadDashboardOverview,
+  dismissDashboardItem,
   loadDashboardNotes,
   createDashboardNote,
   updateDashboardNote,
   deleteDashboardNote,
   type DashboardNote,
   type DashboardNoteColor,
-  listAdminProposals,
-  createAdminProposal,
-  updateAdminProposal,
-  deleteAdminProposal,
   loadPublicProposal,
   decidePublicProposal,
   type ProposalRecord,
@@ -85,6 +100,7 @@ import {
   type DashboardUpcomingPost,
   type DashboardTodayPost,
   type DashboardApprovedPauta,
+  type DashboardStatistics,
   type AgendaEvent,
   type AgendaLabel,
   type AgendaRecurrence,
@@ -117,11 +133,16 @@ import {
   uploadPortalMediaBySlug,
   createPortalPostBySlug,
   updatePortalCardCaptionBySlug,
+  updatePortalSuggestionBySlug,
+  deletePortalSuggestionBySlug,
   listPortalTagsBySlug,
   createPortalTagBySlug,
   updatePortalCardTagsBySlug,
   loadAdminWorkspaceDrawerBySlug,
   saveAdminWorkspaceDrawerBySlug,
+  createAdminPautaIdeaBySlug,
+  updateAdminPautaIdeaBySlug,
+  deleteAdminPautaIdeaBySlug,
   loadAdminGlobalQuickLinks,
   saveAdminGlobalQuickLinks,
   loadAdminKanbanAutomationsBySlug,
@@ -145,22 +166,39 @@ import {
   listPortalAppointmentsBySlug,
   listPortalReportsBySlug,
   listPortalInvoicesBySlug,
-  listAdminContracts,
-  createAdminContract,
-  listAdminContractTemplates,
-  createAdminContractTemplate,
   loadPendingPortalContractBySlug,
   acceptPortalContractBySlug,
-  type ContractRecord as ApiContractRecord,
   type TextComment,
   type TextDocument,
   type TextTag,
+  type ClientReport,
   beginMetaConnection,
+  loadMetaAdAccounts,
   loadMetaAssets,
   loadMetaStatus,
   loadClientMetaAssetsBySlug,
+  loadClientMetaDestinationsBySlug,
+  loadClientMetaBestTimesBySlug,
+  createClientMetaDestinationBySlug,
+  updateClientMetaDestinationBySlug,
+  deleteClientMetaDestinationBySlug,
   saveClientMetaAssetsBySlug,
+  listMetaPublicationsBySlug,
+  createMetaPublicationBySlug,
+  cancelMetaPublicationBySlug,
+  cancelMetaPublications,
+  createMetaSavedLocation,
+  deleteMetaSavedLocation,
+  loadGlobalMetaPublications,
+  loadMetaSavedLocations,
+  rescheduleMetaPublications,
+  updateMetaSavedLocation,
   type ClientMetaAssets,
+  type GlobalMetaScheduledPublication,
+  type MetaSavedLocation,
+  type MetaPublishDestination,
+  type MetaScheduledPublication,
+  type MetaAdAccount,
   type MetaAssetPage,
 } from "./api";
 import { ACCESS_TOKEN_KEY, completePasswordResetWithApi, loginWithApi, requestPasswordResetWithApi, restoreApiSession } from "./authApi";
@@ -186,10 +224,12 @@ function normalizeTextTags(tags: unknown): TextTag[] {
 }
 import { usePreviewResource } from "./usePreviewResource";
 import { PortalReports, ReportsWorkspace } from "./ReportsWorkspace";
-import { BILLING_PENDING_LINE_KEY, BillingInvoiceDocument, BillingWorkspace, formatBillingDate, formatBillingMoney, getBillingInvoiceTotal, type BillingInvoice, type BillingLineRequest } from "./BillingWorkspace";
+import { BILLING_PENDING_LINE_KEY, BillingInvoiceDocument, BillingReceiptDocument, BillingWorkspace, formatBillingDate, formatBillingMoney, getBillingInvoiceTotal, type BillingInvoice, type BillingLineRequest } from "./BillingWorkspace";
 import liegePaschoaliniLogo from "./assets/liege-paschoalini-logo.png";
 import designHubV2Logo from "./assets/design-hub-v2-logo.png";
 import { normalizePortalLocale, portalLocaleTag, portalText, type PortalLocale } from "./portalI18n";
+import { composeClientMetaCalendarEvents, type ClientMetaCalendarPlatform } from "./metaCalendar";
+import { buildDashboardMetaScheduleRequest, canShowDashboardMetaAction, dashboardMetaDateTime, dashboardMetaMediaContext, mergeDashboardMetaPublications, scheduledMetaPlatformsAt } from "./dashboardMetaScheduling";
 
 const SESSION_KEY = "designhub-v2-session";
 const DEV_USER_ID_KEY = "designhub-v2-dev-user-id";
@@ -295,6 +335,69 @@ function formatScheduledCardDate(value: string) {
   }).format(date).replace(",", " às")}`;
 }
 
+function selectMetaPublicationsByCard(publications: MetaScheduledPublication[]) {
+  const priority: Record<MetaScheduledPublication["status"], number> = {
+    publishing: 0,
+    scheduled: 1,
+    failed: 2,
+    published: 3,
+    cancelled: 4,
+  };
+  const selectedByPlatform = new Map<string, MetaScheduledPublication>();
+  for (const publication of publications) {
+    if (!publication.cardId || publication.status === "cancelled") continue;
+    const key = `${publication.cardId}:${publication.destinationId ?? "legacy"}:${publication.platform}`;
+    const current = selectedByPlatform.get(key);
+    if (!current || priority[publication.status] < priority[current.status]) {
+      selectedByPlatform.set(key, publication);
+      continue;
+    }
+    if (priority[publication.status] !== priority[current.status]) continue;
+    const candidateTime = publication.status === "scheduled"
+      ? new Date(publication.scheduledAt).getTime()
+      : new Date(publication.publishedAt ?? publication.updatedAt).getTime();
+    const currentTime = current.status === "scheduled"
+      ? new Date(current.scheduledAt).getTime()
+      : new Date(current.publishedAt ?? current.updatedAt).getTime();
+    if (publication.status === "scheduled" ? candidateTime < currentTime : candidateTime > currentTime) {
+      selectedByPlatform.set(key, publication);
+    }
+  }
+  const selectedByCard = new Map<string, MetaScheduledPublication[]>();
+  for (const publication of selectedByPlatform.values()) {
+    const cardPublications = selectedByCard.get(publication.cardId!) ?? [];
+    selectedByCard.set(publication.cardId!, [...cardPublications, publication].sort((left, right) => Number(left.platform === "facebook") - Number(right.platform === "facebook")));
+  }
+  return selectedByCard;
+}
+
+function metaPublicationBadgeLabel(publication: MetaScheduledPublication) {
+  const platform = publication.platform === "facebook" ? "Facebook" : "Instagram";
+  if (publication.status === "publishing") return `Publicando no ${platform}…`;
+  if (publication.status === "published") return `Publicado no ${platform} ✓`;
+  if (publication.status === "failed") return publication.platform === "facebook" ? "Falha ao publicar no Facebook" : "Falha ao publicar";
+  const date = new Date(publication.scheduledAt);
+  if (Number.isNaN(date.getTime())) return `${platform} agendado`;
+  const formatted = new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date).replace(",", " às");
+  return `${platform} · ${formatted}`;
+}
+
+function metaPublicationDetailLabel(publication: MetaScheduledPublication, showDestination = false) {
+  const platform = publication.platform === "facebook" ? "Facebook" : "Instagram";
+  const destination = showDestination && publication.destinationName ? `${publication.destinationName} · ` : "";
+  if (publication.status === "publishing") return `${destination}Publicando no ${platform}…`;
+  if (publication.status === "published") return `${destination}Publicado no ${platform}`;
+  if (publication.status === "failed") return `${destination}Falhou ao publicar no ${platform}`;
+  if (publication.status === "cancelled") return `${destination}Agendamento cancelado`;
+  return `${destination}${platform} agendado · ${new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(publication.scheduledAt))}`;
+}
+
 function formatCalendarSchedule(date: string, time?: string | null) {
   const parsed = new Date(`${date.slice(0, 10)}T12:00:00`);
   const formattedDate = Number.isNaN(parsed.getTime())
@@ -311,6 +414,13 @@ function slugify(value: string) {
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/(^-|-$)/g, "");
+}
+
+function normalizeOptionalClientUrl(value: unknown) {
+  if (typeof value !== "string") return "";
+  const normalized = value.trim();
+  if (!normalized || /^https?:\/\/$/i.test(normalized)) return "";
+  return /^https?:\/\//i.test(normalized) ? normalized : `https://${normalized.replace(/^\/+/, "")}`;
 }
 
 function statusTone(status: string) {
@@ -504,13 +614,77 @@ function navClass(isActive: boolean) {
 
 type PageMetric = { label: string; value: string | number; note: string; icon: ReactNode; tone?: string };
 
+function playInternalApprovalChime() {
+  try {
+    const AudioContextCtor = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!AudioContextCtor) return;
+    const context = new AudioContextCtor();
+    const now = context.currentTime;
+    const master = context.createGain();
+    master.gain.setValueAtTime(0.0001, now);
+    master.gain.exponentialRampToValueAtTime(0.16, now + 0.02);
+    master.gain.exponentialRampToValueAtTime(0.0001, now + 0.62);
+    master.connect(context.destination);
+
+    const notes = [
+      { frequency: 659.25, start: 0, duration: 0.22 },
+      { frequency: 880, start: 0.19, duration: 0.34 },
+    ];
+    notes.forEach(({ frequency, start, duration }) => {
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "sine";
+      oscillator.frequency.setValueAtTime(frequency, now + start);
+      gain.gain.setValueAtTime(0.0001, now + start);
+      gain.gain.exponentialRampToValueAtTime(0.8, now + start + 0.015);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + start + duration);
+      oscillator.connect(gain);
+      gain.connect(master);
+      oscillator.start(now + start);
+      oscillator.stop(now + start + duration + 0.03);
+    });
+    window.setTimeout(() => { void context.close().catch(() => undefined); }, 900);
+  } catch {
+    // Notification remains visible even if the browser blocks audio.
+  }
+}
+
 function WorkspaceNavbar({ session, onLogout, clientKanban = false, workspaceContext, utilityAction }: { session: SessionUser; onLogout: () => void; clientKanban?: boolean; workspaceContext?: ReactNode; utilityAction?: ReactNode }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [messages, setMessages] = useState<InternalApprovalRecord[]>(() => loadInternalApprovalMessages(session.id));
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => { try { return JSON.parse(window.localStorage.getItem(`designhub-v2-read-notifications:${session.id}`) ?? "[]") as string[]; } catch { return []; } });
   const notificationMenuRef = useRef<HTMLDivElement>(null);
+  const knownNotificationIdsRef = useRef<Set<string>>(new Set(messages.map((item) => item.id)));
+  const audioUnlockedRef = useRef(false);
   const unreadMessages = messages.filter((item) => !readNotificationIds.includes(item.id));
-  useEffect(() => { const sync = () => { setMessages(loadInternalApprovalMessages(session.id)); try { setReadNotificationIds(JSON.parse(window.localStorage.getItem(`designhub-v2-read-notifications:${session.id}`) ?? "[]") as string[]); } catch { setReadNotificationIds([]); } }; window.addEventListener("storage", sync); const timer = window.setInterval(sync, 5_000); return () => { window.removeEventListener("storage", sync); window.clearInterval(timer); }; }, [session.id]);
+  useEffect(() => {
+    knownNotificationIdsRef.current = new Set(loadInternalApprovalMessages(session.id).map((item) => item.id));
+    const unlockAudio = () => { audioUnlockedRef.current = true; };
+    window.addEventListener("pointerdown", unlockAudio, { once: true });
+    window.addEventListener("keydown", unlockAudio, { once: true });
+
+    const sync = () => {
+      const nextMessages = loadInternalApprovalMessages(session.id);
+      const newItems = nextMessages.filter((item) => !knownNotificationIdsRef.current.has(item.id));
+      nextMessages.forEach((item) => knownNotificationIdsRef.current.add(item.id));
+      setMessages(nextMessages);
+      try {
+        setReadNotificationIds(JSON.parse(window.localStorage.getItem(`designhub-v2-read-notifications:${session.id}`) ?? "[]") as string[]);
+      } catch {
+        setReadNotificationIds([]);
+      }
+      if (newItems.length && audioUnlockedRef.current) playInternalApprovalChime();
+    };
+
+    window.addEventListener("storage", sync);
+    const timer = window.setInterval(sync, 5_000);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+      window.clearInterval(timer);
+    };
+  }, [session.id]);
   useEffect(() => { const close = (event: MouseEvent) => { if (!notificationMenuRef.current?.contains(event.target as Node)) setNotificationsOpen(false); }; const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setNotificationsOpen(false); }; document.addEventListener("mousedown", close); document.addEventListener("keydown", escape); return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", escape); }; }, []);
   const markNotificationRead = (id: string) => { setReadNotificationIds((current) => { if (current.includes(id)) return current; const next = [...current, id]; window.localStorage.setItem(`designhub-v2-read-notifications:${session.id}`, JSON.stringify(next)); return next; }); };
   return <div className={`dashboard-nav workspace-navbar${clientKanban ? " client-kanban-navbar" : ""}`}>
@@ -520,11 +694,83 @@ function WorkspaceNavbar({ session, onLogout, clientKanban = false, workspaceCon
   </div>;
 }
 
-function PageContextBanner({ eyebrow, title, description, metrics, action, titleClassName, titleIcon }: { eyebrow: string; title: ReactNode; description: string; metrics: PageMetric[]; action?: ReactNode; titleClassName?: string; titleIcon?: ReactNode }) {
+function PageContextBanner({ eyebrow, title, description, metrics, action, middle, titleClassName, titleIcon }: { eyebrow: string; title: ReactNode; description: string; metrics: PageMetric[]; action?: ReactNode; middle?: ReactNode; titleClassName?: string; titleIcon?: ReactNode }) {
   return <section className="page-context-banner">
     <div className="page-context-copy"><p className="eyebrow">{eyebrow}</p><div className={`page-context-title${titleClassName ? ` ${titleClassName}` : ""}`}>{titleIcon}{title}</div><p>{description}</p></div>
-    <div className="page-context-aside"><div className="dashboard-orbs page-context-orbs" aria-hidden="true"><i /><i /><i /></div><div className="dashboard-metrics dashboard-metrics-inline">{metrics.map((metric) => <article className={metric.tone ?? ""} key={metric.label}>{metric.icon}<div><span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.note}</small></div></article>)}</div>{action}</div>
+    {middle ? <div className="page-context-middle">{middle}</div> : null}
+    {metrics.length || action ? <div className="page-context-aside">{metrics.length > 1 ? <div className="dashboard-orbs page-context-orbs" aria-hidden="true"><i /><i /><i /></div> : null}{metrics.length ? <div className={`dashboard-metrics dashboard-metrics-inline${metrics.length === 1 ? " page-context-metrics-single" : ""}`}>{metrics.map((metric) => <article className={metric.tone ?? ""} key={metric.label}>{metric.icon}<div><span>{metric.label}</span><strong>{metric.value}</strong><small>{metric.note}</small></div></article>)}</div> : null}{action}</div> : null}
   </section>;
+}
+
+function MetaConnectionHeaderCards() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [status, setStatus] = useState<Awaited<ReturnType<typeof loadMetaStatus>> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [statusError, setStatusError] = useState("");
+  const [connecting, setConnecting] = useState(false);
+  const [connectionError, setConnectionError] = useState("");
+  const [oauthResult] = useState<"connected" | "error" | null>(() => {
+    const result = new URLSearchParams(location.search).get("meta");
+    return result === "connected" || result === "error" ? result : null;
+  });
+
+  const refreshStatus = useCallback(async () => {
+    setLoading(true);
+    setStatusError("");
+    try {
+      setStatus(await loadMetaStatus());
+    } catch (caught) {
+      setStatus(null);
+      setStatusError(caught instanceof Error ? caught.message : "Não foi possível carregar o status da conexão Meta.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { void refreshStatus(); }, [refreshStatus]);
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (!params.has("meta")) return;
+    params.delete("meta");
+    const search = params.toString();
+    navigate({ pathname: location.pathname, search: search ? `?${search}` : "" }, { replace: true });
+  }, [location.pathname, location.search, navigate]);
+
+  const connect = async () => {
+    if (connecting) return;
+    setConnecting(true);
+    setConnectionError("");
+    try {
+      const result = await beginMetaConnection("#/area/publicacoes-meta");
+      window.location.assign(result.authorizationUrl);
+    } catch (caught) {
+      setConnectionError(caught instanceof Error ? caught.message : "Não foi possível iniciar a conexão Meta.");
+      setConnecting(false);
+    }
+  };
+
+  const presentation = status ? metaConnectionPresentation(status) : null;
+  const state = statusError ? "error" : loading ? "loading" : presentation?.state ?? "disconnected";
+  const statusLabel = statusError ? "Status indisponível" : loading ? "Carregando conexão…" : presentation?.label ?? "Meta não conectada";
+  const accountName = status?.accountName?.trim() || null;
+  const expiryText = presentation?.expiresAt
+    ? `${presentation.expiryKind === "data_access" ? presentation.state === "expired" ? "Acesso aos dados expirou em" : "Acesso aos dados válido até" : presentation.state === "expired" ? "Expirou em" : "Válida até"} ${new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(presentation.expiresAt)}`
+    : presentation?.state === "healthy" ? "Conexão ativa" : null;
+  const actionLabel = presentation?.actionLabel ?? "Atualizar conexão";
+  const feedback = connectionError
+    || (oauthResult === "connected" ? "Conexão Meta atualizada com sucesso." : oauthResult === "error" ? "Não foi possível concluir a conexão Meta." : "Use o fluxo seguro já configurado para renovar o acesso.");
+
+  return <div className="dashboard-metrics dashboard-metrics-inline meta-connection-banner-cards page-context-action">
+      <article className={`meta-connection-card ${state}`} role="status">
+        <UiIcon name={state === "healthy" ? "check" : state === "warning" ? "clock" : "link"} />
+        <div><span>Conexão Meta</span><strong>{state === "healthy" ? "✓ " : state === "warning" ? "⚠ " : ""}{statusLabel}</strong>{accountName ? <small className="meta-connection-account">{accountName}</small> : null}{expiryText ? <small className="meta-connection-expiry">{expiryText}</small> : null}{statusError ? <small className="meta-connection-error">{statusError}</small> : null}</div>
+      </article>
+      <article className="meta-connection-card meta-connection-action-card">
+        <UiIcon name="link" />
+        <div><span>Atualização da conexão</span><button type="button" className="gradient-button" disabled={connecting || loading} onClick={() => void connect()}>{connecting ? "Abrindo Meta…" : actionLabel}</button><small className={connectionError || oauthResult === "error" ? "meta-connection-error" : oauthResult === "connected" ? "meta-connection-success" : undefined}>{feedback}</small></div>
+      </article>
+  </div>;
 }
 
 function WorkspaceSelector({ clientName, slug, options }: { clientName: string; slug: string; options: AdminClientOption[] }) {
@@ -870,6 +1116,7 @@ function AdminRail({ session, onCreateClient }: { session: SessionUser; onCreate
     { icon: "spark" as const, to: "/area/datas-comemorativas", label: "Datas comemorativas" },
     { icon: "brush" as const, to: "/area/briefs-design", label: "Briefs de design" },
     { icon: "calendar" as const, to: "/area/calendario-social", label: "Calendário social" },
+    ...(session.role === "super_admin" ? [{ icon: "layers" as const, to: "/area/publicacoes-meta", label: "Publicações Meta" }] : []),
     { icon: "users" as const, to: "/area/equipe", label: "Equipe" },
   ];
 
@@ -980,11 +1227,12 @@ type DrawerLink = { id: string; type: "heading" | "link"; title: string; url?: s
 type DrawerAttachment = { type: "link" | "image" | "video" | "pdf"; url: string; name: string };
 type DrawerDraft = { id: string; text: string; attachmentUrl?: string; createdAt?: string; color?: string };
 type DrawerNote = { id: string; text: string; createdAt: string; color: string; authorName?: string; attachments?: DrawerAttachment[] };
-type PautaIdea = { id: string; title: string; description: string; caption: string; createdAt: string; updatedAt?: string; plannedDate?: string | null; contentType?: string; internalNotes?: string; mediaUrls?: string[]; status?: "draft" | "sent" | "approved"; cardId?: string };
+type PautaIdea = { id: string; title: string; description: string; caption: string; createdAt: string; updatedAt?: string; plannedDate?: string | null; contentType?: string; internalNotes?: string; mediaUrls?: string[]; status?: "draft" | "sent" | "approved"; cardId?: string; radarSuggestionId?: string; createdBy?: string; radarSource?: string; sourceUrl?: string | null; pillar?: string | null; objective?: string };
 type WorkspaceDrawerData = { notes: DrawerNote[]; links: DrawerLink[]; quick: DrawerLink[]; draftsByUser: Record<string, DrawerDraft[]>; pautaIdeas: PautaIdea[] };
 type KanbanAutomation = { id: string; name: string; enabled: boolean; triggerType: "tag_added" | "column_moved"; triggerValue: string; actionType: "add_tag" | "move_column" | "change_color"; actionValue: string };
 
 const EMPTY_DRAWER: WorkspaceDrawerData = { notes: [], links: [], quick: [], draftsByUser: {}, pautaIdeas: [] };
+const PAUTA_IDEAS_UPDATED_EVENT = "design-hub:pauta-ideas-updated";
 const DEFAULT_DRAWER_NOTE_COLOR = "#fff6cf";
 const DRAWER_NOTE_COLORS = [
   { value: "#fff6cf", label: "Amarelo" },
@@ -1038,7 +1286,9 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
   const [noteColor, setNoteColor] = useState(DEFAULT_DRAWER_NOTE_COLOR);
   const [editingNoteIndex, setEditingNoteIndex] = useState<number | null>(null);
   const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
-  const [editingLinks, setEditingLinks] = useState(false);
+  const [linkDraft, setLinkDraft] = useState<{ tab: "links" | "quick"; items: DrawerLink[] } | null>(null);
+  const [linkSaving, setLinkSaving] = useState(false);
+  const [linkSaveError, setLinkSaveError] = useState("");
   const [trackerFilterOpen, setTrackerFilterOpen] = useState(false);
   const [automationOpen, setAutomationOpen] = useState(false);
   const [automations, setAutomations] = useState<KanbanAutomation[]>([]);
@@ -1048,6 +1298,9 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
   const [ideaDescription, setIdeaDescription] = useState("");
   const [ideaCaption, setIdeaCaption] = useState("");
   const [ideaSaved, setIdeaSaved] = useState(false);
+  const [ideaMediaFiles, setIdeaMediaFiles] = useState<File[]>([]);
+  const [ideaSaving, setIdeaSaving] = useState(false);
+  const [ideaError, setIdeaError] = useState("");
   useEffect(() => {
     if (!isOpen && !mobileMenuOpen) return;
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -1072,10 +1325,13 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
     setDrawer(next);
     // Keeps the dashboard shortcut in sync with the Kanban's single link source.
     window.dispatchEvent(new CustomEvent("design-hub:workspace-links-updated", { detail: { slug, links: next.links } }));
-    void saveAdminWorkspaceDrawerBySlug(slug, next);
+    void saveAdminWorkspaceDrawerBySlug(slug, Object.fromEntries(Object.entries(next).filter(([key, value]) => JSON.stringify(value) !== JSON.stringify((drawer as unknown as Record<string, unknown>)[key]))));
     if (quickChanged && canManageAccess) void saveAdminGlobalQuickLinks(next.quick);
   };
-  const items = tab === "quick" ? drawer.quick : tab === "links" ? drawer.links : [];
+  const linkTab = tab === "quick" || tab === "links" ? tab : null;
+  const storedLinkItems = linkTab === "quick" ? drawer.quick : linkTab === "links" ? drawer.links : [];
+  const editingLinks = Boolean(linkTab && linkDraft?.tab === linkTab);
+  const items = editingLinks ? linkDraft?.items ?? [] : storedLinkItems;
   const drafts = drawer.draftsByUser[userId] ?? [];
   const resetTextEditor = () => { setText(""); setNoteColor(DEFAULT_DRAWER_NOTE_COLOR); setEditingNoteIndex(null); setEditingDraftId(null); };
   const saveText = () => {
@@ -1100,11 +1356,68 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
   const deleteNote = (index: number) => persist({ ...drawer, notes: drawer.notes.filter((_, noteIndex) => noteIndex !== index) });
   const deleteDraft = (id: string) => persist({ ...drawer, draftsByUser: { ...drawer.draftsByUser, [userId]: drafts.filter((draft) => draft.id !== id) } });
   const addDraftAttachment = async (file: File | null) => { if (!file) return; const attachmentUrl = await uploadAdminMedia(file); persist({ ...drawer, draftsByUser: { ...drawer.draftsByUser, [userId]: [{ id: crypto.randomUUID(), text: text.trim() || file.name, attachmentUrl, createdAt: new Date().toISOString() }, ...drafts] } }); setText(""); };
-  const addLink = (type: "heading" | "link") => { const title = type === "heading" ? "Novo título" : "Novo link"; const next = [...items, { id: crypto.randomUUID(), type, title, url: type === "link" ? "https://" : undefined }]; persist({ ...drawer, [tab === "quick" ? "quick" : "links"]: next }); };
-  const updateLink = (id: string, changes: Partial<DrawerLink>) => { const next = items.map((item) => item.id === id ? { ...item, ...changes } : item); persist({ ...drawer, [tab === "quick" ? "quick" : "links"]: next }); };
-  const deleteLink = (id: string) => { const next = items.filter((item) => item.id !== id); persist({ ...drawer, [tab === "quick" ? "quick" : "links"]: next }); };
-  const moveLink = (id: string, direction: -1 | 1) => { const index = items.findIndex((item) => item.id === id); const target = index + direction; if (target < 0 || target >= items.length) return; const next = [...items]; [next[index], next[target]] = [next[target], next[index]]; persist({ ...drawer, [tab === "quick" ? "quick" : "links"]: next }); };
-  const saveIdea = () => { if (!ideaTitle.trim()) return; persist({ ...drawer, pautaIdeas: [{ id: crypto.randomUUID(), title: ideaTitle.trim(), description: ideaDescription.trim(), caption: ideaCaption.trim(), createdAt: new Date().toISOString() }, ...drawer.pautaIdeas] }); setIdeaTitle(""); setIdeaDescription(""); setIdeaCaption(""); setIdeaFormOpen(false); setIdeaSaved(true); window.setTimeout(() => setIdeaSaved(false), 3200); };
+  const startLinkEditing = () => {
+    if (!linkTab) return;
+    setLinkSaveError("");
+    setLinkDraft({ tab: linkTab, items: storedLinkItems.map((item) => ({ ...item })) });
+  };
+  const updateLinkDraft = (transform: (items: DrawerLink[]) => DrawerLink[]) => {
+    setLinkDraft((current) => current ? { ...current, items: transform(current.items) } : current);
+  };
+  const finishLinkEditing = async () => {
+    if (!linkDraft || linkSaving) return;
+    setLinkSaving(true);
+    setLinkSaveError("");
+    const next = { ...drawer, [linkDraft.tab]: linkDraft.items };
+    try {
+      if (linkDraft.tab === "quick") {
+        if (!canManageAccess) throw new Error("Apenas o super admin pode editar os links rápidos globais.");
+        await saveAdminGlobalQuickLinks(linkDraft.items);
+      } else {
+        await saveAdminWorkspaceDrawerBySlug(slug, { [linkDraft.tab]: linkDraft.items });
+        window.dispatchEvent(new CustomEvent("design-hub:workspace-links-updated", { detail: { slug, links: next.links } }));
+      }
+      setDrawer(next);
+      setLinkDraft(null);
+    } catch (caught) {
+      setLinkSaveError(caught instanceof Error ? caught.message : "Não foi possível salvar os links.");
+    } finally {
+      setLinkSaving(false);
+    }
+  };
+  const addLink = (type: "heading" | "link") => updateLinkDraft((current) => [...current, { id: crypto.randomUUID(), type, title: type === "heading" ? "Novo título" : "Novo link", url: type === "link" ? "https://" : undefined }]);
+  const updateLink = (id: string, changes: Partial<DrawerLink>) => updateLinkDraft((current) => current.map((item) => item.id === id ? { ...item, ...changes } : item));
+  const deleteLink = (id: string) => updateLinkDraft((current) => current.filter((item) => item.id !== id));
+  const moveLink = (id: string, direction: -1 | 1) => updateLinkDraft((current) => { const index = current.findIndex((item) => item.id === id); const target = index + direction; if (target < 0 || target >= current.length) return current; const next = [...current]; [next[index], next[target]] = [next[target], next[index]]; return next; });
+  const saveIdea = async () => {
+    if (!ideaTitle.trim() || ideaSaving) return;
+    const oversized = ideaMediaFiles.find((file) => file.size > MAX_MEDIA_FILE_SIZE);
+    if (oversized) {
+      setIdeaError(`“${oversized.name}” tem ${formatFileSize(oversized.size)}. O limite por foto é 12 MB.`);
+      return;
+    }
+    setIdeaSaving(true);
+    setIdeaError("");
+    try {
+      const mediaUrls: string[] = [];
+      for (const file of ideaMediaFiles) mediaUrls.push(await uploadAdminMedia(file));
+      const idea: PautaIdea = { id: crypto.randomUUID(), title: ideaTitle.trim(), description: ideaDescription.trim(), caption: ideaCaption.trim(), mediaUrls, createdAt: new Date().toISOString(), status: "draft" };
+      await createAdminPautaIdeaBySlug(slug, idea);
+      setDrawer((current) => ({ ...current, pautaIdeas: [idea, ...current.pautaIdeas.filter((item) => item.id !== idea.id)] }));
+      window.dispatchEvent(new CustomEvent(PAUTA_IDEAS_UPDATED_EVENT, { detail: { slug } }));
+      setIdeaTitle("");
+      setIdeaDescription("");
+      setIdeaCaption("");
+      setIdeaMediaFiles([]);
+      setIdeaFormOpen(false);
+      setIdeaSaved(true);
+      window.setTimeout(() => setIdeaSaved(false), 3200);
+    } catch (caught) {
+      setIdeaError(caught instanceof Error ? caught.message : "Não foi possível enviar as fotos agora.");
+    } finally {
+      setIdeaSaving(false);
+    }
+  };
   const formatNoteDate = (value: string) => {
     const date = new Date(value);
     return value && !Number.isNaN(date.getTime())
@@ -1121,13 +1434,13 @@ function WorkspaceDrawer({ slug, userId, initialQuickLinks, columns, tags, canMa
     </aside></>, document.body)}
     {isOpen ? createPortal(<div className="workspace-drawer-modal-backdrop" role="presentation" onMouseDown={() => setIsOpen(false)}><section className="workspace-drawer-panel workspace-drawer-modal" role="dialog" aria-modal="true" aria-labelledby="workspace-drawer-modal-title" onMouseDown={(event) => event.stopPropagation()}>
       <header><h3 id="workspace-drawer-modal-title">{tabs.find((item) => item.id === tab)?.label}{tab === "progress" ? <span className="drawer-title-count">{columns.reduce((count, column) => count + column.cards.length, 0)}</span> : null}</h3><div>{tab === "progress" ? <button className="tracker-header-filter" onClick={() => setTrackerFilterOpen((value) => !value)} title="Filtrar o que o cliente vê" aria-label="Filtrar o que o cliente vê">⌕</button> : <small>{loaded ? "Equipe interna" : "Carregando..."}</small>}<button className="workspace-drawer-close" onClick={() => setIsOpen(false)} aria-label="Fechar janela">×</button></div></header>
-      {tab === "tracker" ? <ClientSettingsPanel slug={slug} canManageAccess={canManageAccess} onTrackingChange={setTrackingActive} /> : tab === "progress" ? <ProjectTrackerPanel slug={slug} columns={columns} filterOpen={trackerFilterOpen} /> : tab === "ideas" ? <section className="drawer-ideas"><div className="drawer-ideas-count"><span>💡</span><div><strong>{drawer.pautaIdeas.length} {drawer.pautaIdeas.length === 1 ? "pauta" : "pautas"}</strong><small>salvas para este cliente</small></div></div><p className="drawer-helper">Registre uma ideia rápida aqui. A organização e o envio ficam na aba Pautas.</p><button className="gradient-button drawer-ideas-create" type="button" onClick={() => { setIdeaSaved(false); setIdeaFormOpen(true); }}>+ Nova ideia de pauta</button>{ideaSaved ? <p className="drawer-idea-success">Pauta enviada para a aba Pautas.</p> : null}{ideaFormOpen ? <div className="drawer-ideas-form"><label>Título<input autoFocus value={ideaTitle} onChange={(event) => setIdeaTitle(event.target.value)} placeholder="Ex.: Carrossel com mitos e verdades" /></label><label>Descrição<textarea value={ideaDescription} onChange={(event) => setIdeaDescription(event.target.value)} placeholder="Contexto e objetivo da pauta" /></label><label>Legenda sugerida<textarea value={ideaCaption} onChange={(event) => setIdeaCaption(event.target.value)} placeholder="Primeira direção para a legenda" /></label><div><button type="button" onClick={saveIdea}>Enviar para Pautas</button><button type="button" className="drawer-secondary-action" onClick={() => setIdeaFormOpen(false)}>Cancelar</button></div></div> : null}</section> : (tab === "notes" || tab === "drafts") ? <>
+      {tab === "tracker" ? <ClientSettingsPanel slug={slug} canManageAccess={canManageAccess} onTrackingChange={setTrackingActive} /> : tab === "progress" ? <ProjectTrackerPanel slug={slug} columns={columns} filterOpen={trackerFilterOpen} /> : tab === "ideas" ? <section className="drawer-ideas"><div className="drawer-ideas-count"><span>💡</span><div><strong>{drawer.pautaIdeas.length} {drawer.pautaIdeas.length === 1 ? "pauta" : "pautas"}</strong><small>salvas para este cliente</small></div></div><p className="drawer-helper">Registre uma ideia rápida aqui. A organização e o envio ficam na aba Pautas.</p><button className="gradient-button drawer-ideas-create" type="button" onClick={() => { setIdeaSaved(false); setIdeaError(""); setIdeaFormOpen(true); }}>+ Nova ideia de pauta</button>{ideaSaved ? <p className="drawer-idea-success">Pauta enviada para a aba Pautas.</p> : null}{ideaFormOpen ? <div className="drawer-ideas-form"><label>Título<input autoFocus value={ideaTitle} onChange={(event) => setIdeaTitle(event.target.value)} placeholder="Ex.: Carrossel com mitos e verdades" /></label><label>Descrição<textarea value={ideaDescription} onChange={(event) => setIdeaDescription(event.target.value)} placeholder="Contexto e objetivo da pauta" /></label><label>Legenda sugerida<textarea value={ideaCaption} onChange={(event) => setIdeaCaption(event.target.value)} placeholder="Primeira direção para a legenda" /></label><label className="pauta-photo-picker">Fotos <span>opcional · até 12 MB cada</span><input type="file" accept="image/*" multiple onChange={(event) => setIdeaMediaFiles(Array.from(event.target.files ?? []))} /></label>{ideaMediaFiles.length ? <div className="pauta-file-list">{ideaMediaFiles.map((file, index) => <span key={`${file.name}-${file.lastModified}`}><b>{file.name}</b><button type="button" onClick={() => setIdeaMediaFiles((files) => files.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remover ${file.name}`}>×</button></span>)}</div> : null}{ideaError ? <p className="form-error">{ideaError}</p> : null}<div><button type="button" disabled={ideaSaving || !ideaTitle.trim()} onClick={() => void saveIdea()}>{ideaSaving ? "Enviando fotos..." : "Enviar para Pautas"}</button><button type="button" className="drawer-secondary-action" disabled={ideaSaving} onClick={() => { setIdeaFormOpen(false); setIdeaMediaFiles([]); setIdeaError(""); }}>Cancelar</button></div></div> : null}</section> : (tab === "notes" || tab === "drafts") ? <>
         <p className="drawer-helper">{tab === "notes" ? "Recados são visíveis para toda a equipe." : "Rascunhos e anexos são visíveis somente para você."}</p>
         <div className="drawer-compose"><textarea value={text} onChange={(event) => setText(event.target.value)} placeholder={tab === "notes" ? "Escreva um recado para a equipe" : "Escreva uma anotação privada"} />{tab === "notes" ? <div className="drawer-note-color-picker"><span>Cor da notinha</span>{DRAWER_NOTE_COLORS.map((color) => <button type="button" key={color.value} className={noteColor === color.value ? "selected" : ""} style={{ "--drawer-note-color": color.value } as CSSProperties} onClick={() => setNoteColor(color.value)} aria-label={`Usar fundo ${color.label}`} title={color.label} />)}</div> : null}<div><button onClick={saveText}>{editingNoteIndex !== null || editingDraftId !== null ? "Salvar alterações" : tab === "notes" ? "Publicar recado" : "Salvar rascunho"}</button>{(editingNoteIndex !== null || editingDraftId !== null) ? <button className="drawer-secondary-action" onClick={resetTextEditor}>Cancelar</button> : null}{tab === "drafts" ? <label className="drawer-attachment">Anexar foto<input type="file" accept="image/*" onChange={(event) => void addDraftAttachment(event.target.files?.[0] ?? null)} /></label> : null}</div></div>
         {tab === "notes" ? <div className="drawer-card-list drawer-note-list">{drawer.notes.map((note, index) => <article className="drawer-note" key={note.id} style={{ "--drawer-note-color": note.color } as CSSProperties}>{note.authorName ? <small className="drawer-note-author">{note.authorName}</small> : null}<p>{note.text}</p>{note.attachments?.length ? <div className="drawer-note-attachments">{note.attachments.map((attachment, attachmentIndex) => <a key={`${attachment.url}-${attachmentIndex}`} href={attachment.url} target="_blank" rel="noreferrer">{attachment.name || "Ver anexo"} ↗</a>)}</div> : null}<footer className="drawer-note-footer"><div className="drawer-item-actions"><button onClick={() => editNote(note, index)}>Editar</button><button className="danger" onClick={() => deleteNote(index)}>Excluir</button></div><time dateTime={note.createdAt || undefined}>{formatNoteDate(note.createdAt)}</time></footer></article>)}</div> : <div className="drawer-card-list">{drafts.map((draft) => <article key={draft.id} className={draft.color ? "drawer-draft-colored" : undefined} style={draft.color ? { "--drawer-note-color": draft.color } as CSSProperties : undefined}><p>{draft.text}</p>{draft.attachmentUrl ? <a href={draft.attachmentUrl} target="_blank" rel="noreferrer">Ver anexo</a> : null}<footer className="drawer-note-footer"><div className="drawer-item-actions"><button onClick={() => editDraft(draft)}>Editar</button><button className="danger" onClick={() => deleteDraft(draft.id)}>Excluir</button></div>{draft.createdAt ? <time dateTime={draft.createdAt}>{formatNoteDate(draft.createdAt)}</time> : null}</footer></article>)}</div>}
       </> : <>
         <p className="drawer-helper">{tab === "links" ? "Crie títulos para organizar os links compartilhados da equipe." : "Acesse os atalhos mais usados do workspace."}</p>
-        <div className="drawer-link-actions"><button onClick={() => setEditingLinks((value) => !value)}>{editingLinks ? "Concluir edição" : "Organizar links"}</button>{editingLinks ? <><button onClick={() => addLink("heading")}>+ Adicionar título</button><button onClick={() => addLink("link")}>+ Adicionar link</button></> : null}</div><div className="drawer-link-list">{items.map((item) => item.type === "heading" ? <h4 key={item.id}>{editingLinks ? <><input value={item.title} onChange={(event) => updateLink(item.id, { title: event.target.value })} /><button className="drawer-inline-delete" onClick={() => deleteLink(item.id)}>Excluir</button></> : item.title}</h4> : <article key={item.id}>{editingLinks ? <><input value={item.title} onChange={(event) => updateLink(item.id, { title: event.target.value })} /><input value={item.url ?? ""} onChange={(event) => updateLink(item.id, { url: event.target.value })} /><button onClick={() => moveLink(item.id, -1)}>↑</button><button onClick={() => moveLink(item.id, 1)}>↓</button><button className="danger" onClick={() => deleteLink(item.id)}>Excluir</button></> : <a href={item.url} target="_blank" rel="noreferrer">{item.title} ↗</a>}</article>)}</div>
+        <div className="drawer-link-actions"><button disabled={linkSaving} onClick={() => editingLinks ? void finishLinkEditing() : startLinkEditing()}>{linkSaving ? "Salvando..." : editingLinks ? "Concluir edição" : "Organizar links"}</button>{editingLinks ? <><button disabled={linkSaving} onClick={() => addLink("heading")}>+ Adicionar título</button><button disabled={linkSaving} onClick={() => addLink("link")}>+ Adicionar link</button></> : null}</div>{linkSaveError ? <p className="form-feedback error-text">{linkSaveError}</p> : null}<div className="drawer-link-list">{items.map((item) => item.type === "heading" ? <h4 key={item.id}>{editingLinks ? <><input disabled={linkSaving} value={item.title} onChange={(event) => updateLink(item.id, { title: event.target.value })} /><button disabled={linkSaving} className="drawer-inline-delete" onClick={() => deleteLink(item.id)}>Excluir</button></> : item.title}</h4> : <article key={item.id}>{editingLinks ? <><input disabled={linkSaving} value={item.title} onChange={(event) => updateLink(item.id, { title: event.target.value })} /><input disabled={linkSaving} value={item.url ?? ""} onChange={(event) => updateLink(item.id, { url: event.target.value })} /><button disabled={linkSaving} onClick={() => moveLink(item.id, -1)}>↑</button><button disabled={linkSaving} onClick={() => moveLink(item.id, 1)}>↓</button><button disabled={linkSaving} className="danger" onClick={() => deleteLink(item.id)}>Excluir</button></> : <a href={item.url} target="_blank" rel="noreferrer">{item.title} ↗</a>}</article>)}</div>
       </>}
     </section></div>, document.body) : null}
     <AutomationModal open={automationOpen} automations={automations} columns={columns} tags={tags} onClose={() => setAutomationOpen(false)} onChange={(items) => { setAutomations(items); void saveAdminKanbanAutomationsBySlug(slug, items); }} />
@@ -1157,14 +1470,21 @@ const EMPTY_CLIENT_META_ASSETS: ClientMetaAssets = {
   facebookPageName: null,
   instagramAccountId: null,
   instagramUsername: null,
+  metaAdAccountId: null,
+  metaAdAccountName: null,
 };
 
 function ClientMetaIntegrationPanel({ slug }: { slug: string }) {
   const [status, setStatus] = useState<Awaited<ReturnType<typeof loadMetaStatus>> | null>(null);
   const [pages, setPages] = useState<MetaAssetPage[]>([]);
+  const [adAccounts, setAdAccounts] = useState<MetaAdAccount[]>([]);
   const [selection, setSelection] = useState<ClientMetaAssets>(EMPTY_CLIENT_META_ASSETS);
+  const [destinations, setDestinations] = useState<MetaPublishDestination[]>([]);
+  const [editingDestinationId, setEditingDestinationId] = useState<string | "new" | null>(null);
+  const [destinationForm, setDestinationForm] = useState({ name: "", facebookPageId: "", instagramAccountId: "", isDefault: false });
   const [loading, setLoading] = useState(true);
   const [loadingAssets, setLoadingAssets] = useState(false);
+  const [assetsLoaded, setAssetsLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -1172,11 +1492,12 @@ function ClientMetaIntegrationPanel({ slug }: { slug: string }) {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    Promise.all([loadMetaStatus(), loadClientMetaAssetsBySlug(slug)])
-      .then(([nextStatus, saved]) => {
+    Promise.all([loadMetaStatus(), loadClientMetaAssetsBySlug(slug), loadClientMetaDestinationsBySlug(slug)])
+      .then(([nextStatus, saved, destinationResult]) => {
         if (!active) return;
         setStatus(nextStatus);
         setSelection(saved.assets ?? EMPTY_CLIENT_META_ASSETS);
+        setDestinations(destinationResult.destinations);
       })
       .catch((caught) => { if (active) setError(caught instanceof Error ? caught.message : "Não foi possível carregar a integração Meta."); })
       .finally(() => { if (active) setLoading(false); });
@@ -1196,9 +1517,14 @@ function ClientMetaIntegrationPanel({ slug }: { slug: string }) {
   const revealAssets = async () => {
     setLoadingAssets(true); setError(""); setMessage("");
     try {
-      const result = await loadMetaAssets();
-      setPages(result.pages);
-      if (result.pages.length === 0) setMessage("Nenhuma Página foi disponibilizada por esta conta Meta.");
+      const [pageResult, adAccountResult] = await Promise.all([loadMetaAssets(), loadMetaAdAccounts()]);
+      setPages(pageResult.pages);
+      setAdAccounts(adAccountResult.adAccounts);
+      setAssetsLoaded(true);
+      if (adAccountResult.error) setError(adAccountResult.error.message);
+      if (pageResult.pages.length === 0 && adAccountResult.adAccounts.length === 0) {
+        setMessage("Nenhuma Página ou Conta de anúncios foi disponibilizada por esta conta Meta.");
+      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Não foi possível listar os ativos Meta.");
     } finally { setLoadingAssets(false); }
@@ -1206,23 +1532,93 @@ function ClientMetaIntegrationPanel({ slug }: { slug: string }) {
 
   const choosePage = (pageId: string) => {
     const page = pages.find((item) => item.id === pageId);
-    setSelection(page ? {
-      facebookPageId: page.id,
-      facebookPageName: page.name,
-      instagramAccountId: page.instagramAccount?.id ?? null,
-      instagramUsername: page.instagramAccount?.username ?? null,
-    } : EMPTY_CLIENT_META_ASSETS);
+    setDestinationForm((current) => ({
+      ...current,
+      facebookPageId: page?.id ?? "",
+      instagramAccountId: current.instagramAccountId && page?.instagramAccount?.id !== current.instagramAccountId ? "" : current.instagramAccountId,
+    }));
   };
 
-  const save = async () => {
+  const chooseAdAccount = (adAccountId: string) => {
+    const adAccount = adAccounts.find((item) => item.id === adAccountId);
+    setSelection((current) => ({
+      ...current,
+      metaAdAccountId: adAccount?.id ?? null,
+      metaAdAccountName: adAccount ? (adAccount.name ?? adAccount.account_id ?? adAccount.id) : null,
+    }));
+  };
+
+  const saveAdAccount = async () => {
     setSaving(true); setError(""); setMessage("");
     try {
-      const result = await saveClientMetaAssetsBySlug(slug, selection);
+      const legacyCompatibleSelection = selection.instagramAccountId && !selection.facebookPageId
+        ? { ...selection, instagramAccountId: null, instagramUsername: null }
+        : selection;
+      const result = await saveClientMetaAssetsBySlug(slug, legacyCompatibleSelection);
       setSelection(result.assets);
-      setMessage("Integração do cliente salva.");
+      setMessage("Conta de anúncios salva.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Não foi possível salvar a integração.");
     } finally { setSaving(false); }
+  };
+
+  const beginDestination = (destination?: MetaPublishDestination) => {
+    setEditingDestinationId(destination?.id ?? "new");
+    setDestinationForm({
+      name: destination?.name ?? "",
+      facebookPageId: destination?.facebookPageId ?? "",
+      instagramAccountId: destination?.instagramAccountId ?? "",
+      isDefault: destination?.isDefault ?? destinations.length === 0,
+    });
+    setError(""); setMessage("");
+  };
+
+  const saveDestination = async () => {
+    const page = pages.find((item) => item.id === destinationForm.facebookPageId);
+    const instagram = pages.map((item) => item.instagramAccount).find((item) => item?.id === destinationForm.instagramAccountId) ?? null;
+    const input = {
+      name: destinationForm.name.trim(),
+      facebookPageId: page?.id ?? null,
+      facebookPageName: page?.name ?? null,
+      instagramAccountId: instagram?.id ?? null,
+      instagramUsername: instagram?.username ?? null,
+      isDefault: destinationForm.isDefault,
+    };
+    setSaving(true); setError(""); setMessage("");
+    try {
+      const result = editingDestinationId === "new"
+        ? await createClientMetaDestinationBySlug(slug, input)
+        : await updateClientMetaDestinationBySlug(slug, editingDestinationId!, input);
+      const refreshed = await loadClientMetaDestinationsBySlug(slug);
+      setDestinations(refreshed.destinations);
+      setEditingDestinationId(null);
+      setMessage(`Destino “${result.destination.name}” salvo.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível salvar o destino Meta.");
+    } finally { setSaving(false); }
+  };
+
+  const removeDestination = async (destination: MetaPublishDestination) => {
+    if (!window.confirm(`Remover o destino “${destination.name}”?`)) return;
+    setSaving(true); setError(""); setMessage("");
+    try {
+      await deleteClientMetaDestinationBySlug(slug, destination.id);
+      const refreshed = await loadClientMetaDestinationsBySlug(slug);
+      setDestinations(refreshed.destinations);
+      setMessage("Destino Meta removido.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível remover o destino Meta.");
+    } finally { setSaving(false); }
+  };
+
+  const makeDefault = async (destination: MetaPublishDestination) => {
+    setSaving(true); setError("");
+    try {
+      await updateClientMetaDestinationBySlug(slug, destination.id, { isDefault: true });
+      setDestinations((await loadClientMetaDestinationsBySlug(slug)).destinations);
+      setMessage(`“${destination.name}” agora é o destino padrão.`);
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível alterar o destino padrão."); }
+    finally { setSaving(false); }
   };
 
   if (loading) return <p className="drawer-helper">Carregando integração Meta...</p>;
@@ -1234,16 +1630,18 @@ function ClientMetaIntegrationPanel({ slug }: { slug: string }) {
     {status?.expiresAt ? <small className="meta-expiration">Token válido até {new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium" }).format(new Date(status.expiresAt))}.</small> : null}
     {status?.connected ? <>
       <button className="drawer-secondary-action meta-assets-button" type="button" disabled={loadingAssets} onClick={() => void revealAssets()}>{loadingAssets ? "Buscando ativos..." : "Ver ativos disponíveis"}</button>
-      {pages.length ? <div className="meta-assets-form">
-        <label>Facebook<select value={selection.facebookPageId ?? ""} onChange={(event) => choosePage(event.target.value)}><option value="">Selecione uma Página</option>{pages.map((page) => <option key={page.id} value={page.id}>{page.name}</option>)}</select></label>
-        <label>Instagram<select value={selection.instagramAccountId ?? ""} disabled={!selection.facebookPageId} onChange={(event) => {
-          const page = pages.find((item) => item.id === selection.facebookPageId);
-          const instagram = page?.instagramAccount?.id === event.target.value ? page.instagramAccount : null;
-          setSelection((current) => ({ ...current, instagramAccountId: instagram?.id ?? null, instagramUsername: instagram?.username ?? null }));
-        }}><option value="">{selection.facebookPageId ? "Sem conta profissional conectada" : "Selecione uma Página primeiro"}</option>{pages.filter((page) => page.id === selection.facebookPageId && page.instagramAccount).map((page) => <option key={page.instagramAccount!.id} value={page.instagramAccount!.id}>@{page.instagramAccount!.username}</option>)}</select></label>
-        <button className="gradient-button" type="button" disabled={saving} onClick={() => void save()}>{saving ? "Salvando..." : "Salvar integração"}</button>
-      </div> : selection.facebookPageId ? <p className="meta-current-assets">Vínculo atual: {selection.facebookPageName}{selection.instagramUsername ? ` · @${selection.instagramUsername}` : " · sem Instagram"}</p> : null}
+      <div className="meta-destinations-heading"><div><strong>Destinos Meta</strong><small>Uma conexão pode publicar em várias marcas.</small></div>{assetsLoaded ? <button type="button" onClick={() => beginDestination()}>+ Adicionar destino</button> : null}</div>
+      <div className="meta-destination-list">{destinations.map((destination) => <article key={destination.id}><div><strong>{destination.name}</strong>{destination.isDefault ? <b>Padrão</b> : null}<small>{destination.instagramUsername ? `Instagram: @${destination.instagramUsername}` : "Sem Instagram"} · {destination.facebookPageName ? `Facebook: ${destination.facebookPageName}` : "Sem Facebook"}</small></div><div><button type="button" disabled={saving} onClick={() => beginDestination(destination)}>Editar</button>{!destination.isDefault ? <button type="button" disabled={saving} onClick={() => void makeDefault(destination)}>Definir padrão</button> : null}<button type="button" className="danger" disabled={saving} onClick={() => void removeDestination(destination)}>Remover</button></div></article>)}</div>
+      {assetsLoaded && editingDestinationId ? <div className="meta-assets-form meta-destination-form">
+        <label>Nome do destino<input value={destinationForm.name} maxLength={255} placeholder="Ex.: Kynagogi Detection" onChange={(event) => setDestinationForm((current) => ({ ...current, name: event.target.value }))} /></label>
+        <label>Facebook<select value={destinationForm.facebookPageId} onChange={(event) => choosePage(event.target.value)}><option value="">Somente Instagram / sem Facebook</option>{pages.map((page) => <option key={page.id} value={page.id}>{page.name}</option>)}</select></label>
+        <label>Instagram<select value={destinationForm.instagramAccountId} onChange={(event) => setDestinationForm((current) => ({ ...current, instagramAccountId: event.target.value }))}><option value="">Somente Facebook / sem Instagram</option>{pages.filter((page) => page.instagramAccount && (!destinationForm.facebookPageId || page.id === destinationForm.facebookPageId)).map((page) => <option key={page.instagramAccount!.id} value={page.instagramAccount!.id}>@{page.instagramAccount!.username} · {page.name}</option>)}</select></label>
+        <label className="meta-destination-default"><input type="checkbox" checked={destinationForm.isDefault} onChange={(event) => setDestinationForm((current) => ({ ...current, isDefault: event.target.checked }))} />Usar como destino padrão</label>
+        <div><button className="ghost-button" type="button" disabled={saving} onClick={() => setEditingDestinationId(null)}>Cancelar</button><button className="gradient-button" type="button" disabled={saving || !destinationForm.name.trim() || (!destinationForm.facebookPageId && !destinationForm.instagramAccountId)} onClick={() => void saveDestination()}>{saving ? "Salvando..." : "Salvar destino"}</button></div>
+      </div> : null}
+      {assetsLoaded ? <div className="meta-assets-form meta-ad-account-form"><label>Conta de anúncios<select value={selection.metaAdAccountId ?? ""} onChange={(event) => chooseAdAccount(event.target.value)}><option value="">Sem Conta de anúncios vinculada</option>{selection.metaAdAccountId && !adAccounts.some((account) => account.id === selection.metaAdAccountId) ? <option value={selection.metaAdAccountId}>{selection.metaAdAccountName ?? selection.metaAdAccountId} · vínculo atual</option> : null}{adAccounts.map((account) => <option key={account.id} value={account.id}>{[account.name ?? account.account_id ?? account.id, account.currency, account.business?.name].filter(Boolean).join(" · ")}</option>)}</select></label><button className="drawer-secondary-action" type="button" disabled={saving} onClick={() => void saveAdAccount()}>Salvar conta de anúncios</button></div> : null}
     </> : <p className="drawer-helper">Conecte a conta corporativa da Liege Studio para selecionar as Páginas e contas profissionais dos clientes.</p>}
+    {destinations.length ? <section className="meta-preflight-list" aria-label="Verificação Meta"><h4>Verificação Meta</h4><p>Confira cada destino sem publicar ou alterar cards.</p>{destinations.map((destination) => <MetaPreflightPanel key={`${destination.clientAccountId}:${destination.id}`} destination={destination} />)}</section> : null}
     {message ? <p className="client-access-message">{message}</p> : null}
     {error ? <p className="tracker-error">{error}</p> : null}
   </section>;
@@ -1563,12 +1961,15 @@ function DashboardRoutePage({ session, onLogout }: { session: SessionUser | null
   return <DashboardPage session={session} onLogout={onLogout} />;
 }
 
+
 type InternalApprovalRecord = { id: string; cardId: string; clientSlug?: string; cardTitle: string; recipients: string[]; message: string; createdAt: string };
 const INTERNAL_APPROVALS_STORAGE_KEY = "designhub-v2-internal-approvals";
 const DISMISSED_INTERNAL_MESSAGES_KEY = "designhub-v2-dismissed-internal-messages";
 function loadInternalApprovalMessages(userId?: string) {
   try { const records = JSON.parse(window.localStorage.getItem(INTERNAL_APPROVALS_STORAGE_KEY) ?? "[]") as InternalApprovalRecord[]; return userId ? records.filter((record) => record.recipients.includes(userId)) : records; } catch { return []; }
 }
+
+const EMPTY_DASHBOARD_STATISTICS: DashboardStatistics = { timeZone: "", month: "", postsThisMonth: 0, postsPreviousMonth: 0, pending: 0, scheduled: 0, published: 0, publishedPreviousMonth: 0 };
 
 function DashboardInternalMessagesWidget({ items, onOpen }: { items: InternalApprovalRecord[]; onOpen: (item: InternalApprovalRecord) => void }) {
   const [dismissedIds, setDismissedIds] = useState<string[]>(() => { try { return JSON.parse(window.localStorage.getItem(DISMISSED_INTERNAL_MESSAGES_KEY) ?? "[]") as string[]; } catch { return []; } });
@@ -1577,9 +1978,17 @@ function DashboardInternalMessagesWidget({ items, onOpen }: { items: InternalApp
   return <section className="dashboard-widget dashboard-internal-messages"><header className="dashboard-widget-head"><div><p className="eyebrow">Equipe</p><h3>Mensagens internas</h3><small>Cards enviados para sua revisão</small></div><span>{visibleItems.length}</span></header>{visibleItems.length ? <div className="dashboard-internal-list">{visibleItems.slice(0, 5).map((item) => <div className="dashboard-internal-row" key={item.id}><button className="dashboard-internal-open" onClick={() => onOpen(item)}><span className="dashboard-item-bullet" aria-hidden="true" /><span className="internal-message-icon">♙</span><div><strong>{item.cardTitle}</strong><small>{item.message}</small></div><time>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.createdAt))}</time></button><button className="dashboard-internal-dismiss" aria-label="Fechar mensagem" title="Fechar mensagem" onClick={() => setDismissedIds((current) => { const next = [...current, item.id]; window.localStorage.setItem(DISMISSED_INTERNAL_MESSAGES_KEY, JSON.stringify(next)); return next; })}>×</button></div>)}</div> : <div className="dashboard-internal-empty">Nenhuma mensagem interna por enquanto.</div>}</section>;
 }
 
+function useDashboardMasonry() {
+  // Keep a stable ref for the dashboard grid. The previous JS masonry algorithm
+  // used 1px implicit grid rows and produced very large vertical gaps with mixed
+  // column spans. The regular dense CSS grid is more predictable here.
+  return useRef<HTMLDivElement>(null);
+}
+
 function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: () => void }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const dashboardMasonryRef = useDashboardMasonry();
   const [currentTime, setCurrentTime] = useState(() => new Date());
   const [clients, setClients] = useState<AdminClientOption[]>([]);
   const [upcomingPosts, setUpcomingPosts] = useState<DashboardUpcomingPost[]>([]);
@@ -1588,10 +1997,14 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
   const [clientSubmissions, setClientSubmissions] = useState<DashboardSubmission[]>([]);
   const [clientActivities, setClientActivities] = useState<DashboardClientActivity[]>([]);
   const [approvedPautas, setApprovedPautas] = useState<DashboardApprovedPauta[]>([]);
+  const [statistics, setStatistics] = useState<DashboardStatistics>(EMPTY_DASHBOARD_STATISTICS);
   const [internalMessages, setInternalMessages] = useState<InternalApprovalRecord[]>(() => loadInternalApprovalMessages(session.id));
   const [scheduleActivity, setScheduleActivity] = useState<DashboardClientActivity | null>(null);
   const [scheduledNotice, setScheduledNotice] = useState<{ title: string; clientName: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dashboardMetaStatus, setDashboardMetaStatus] = useState<Awaited<ReturnType<typeof loadMetaStatus>> | null>(null);
+  const [metaRenewing, setMetaRenewing] = useState(false);
+  const [metaRenewError, setMetaRenewError] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -1606,6 +2019,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
   const [editForm, setEditForm] = useState<EditClientForm>({ name: "", slug: "", locale: "pt", greetingName: "", portalTitle: "", email: "", password: "", clientUserId: "", instagram: "", facebook: "", tiktok: "", youtube: "", linkedin: "", x: "", website: "" });
   const [editLogoFile, setEditLogoFile] = useState<File | null>(null);
   const [editDrawerData, setEditDrawerData] = useState<Record<string, unknown>>({});
+  const [editClientDetailsLoading, setEditClientDetailsLoading] = useState(false);
   const [shareUserId, setShareUserId] = useState("");
   const [shareRole, setShareRole] = useState<"admin" | "colaborador">("colaborador");
   const [logoFile, setLogoFile] = useState<File | null>(null);
@@ -1616,6 +2030,8 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
   const [linksOpen, setLinksOpen] = useState(false);
   const [kanbanLinks, setKanbanLinks] = useState<Array<{ slug: string; clientName: string; links: DrawerLink[] }>>([]);
   const [linksLoading, setLinksLoading] = useState(false);
+  const dashboardNotificationIdsRef = useRef<Set<string> | null>(null);
+  const dashboardAudioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     const interval = window.setInterval(() => setCurrentTime(new Date()), 1_000);
@@ -1632,7 +2048,102 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
     return () => window.clearTimeout(timeout);
   }, [scheduledNotice]);
 
+  useEffect(() => {
+    if (session.role !== "super_admin") {
+      setDashboardMetaStatus(null);
+      return;
+    }
+    let active = true;
+    const refreshMetaStatus = () => loadMetaStatus()
+      .then((status) => { if (active) setDashboardMetaStatus(status); })
+      .catch(() => { if (active) setDashboardMetaStatus(null); });
+    void refreshMetaStatus();
+    const timer = window.setInterval(refreshMetaStatus, 60 * 60_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [session.role]);
+
+
+  const playDashboardNotificationTone = useCallback(() => {
+    try {
+      const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) return;
+      const context = dashboardAudioContextRef.current ?? new AudioContextClass();
+      dashboardAudioContextRef.current = context;
+      const play = () => {
+        const now = context.currentTime;
+        const oscillator = context.createOscillator();
+        const gain = context.createGain();
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(880, now);
+        oscillator.frequency.exponentialRampToValueAtTime(660, now + 0.18);
+        gain.gain.setValueAtTime(0.0001, now);
+        gain.gain.exponentialRampToValueAtTime(0.16, now + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
+        oscillator.connect(gain);
+        gain.connect(context.destination);
+        oscillator.start(now);
+        oscillator.stop(now + 0.26);
+      };
+      if (context.state === "suspended") {
+        void context.resume().then(play).catch(() => undefined);
+      } else {
+        play();
+      }
+    } catch {
+      // Som é complementar; o dashboard continua funcionando sem áudio.
+    }
+  }, []);
+
+  useEffect(() => {
+    const unlockAudio = () => {
+      try {
+        const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+        if (!AudioContextClass) return;
+        const context = dashboardAudioContextRef.current ?? new AudioContextClass();
+        dashboardAudioContextRef.current = context;
+        if (context.state === "suspended") void context.resume().catch(() => undefined);
+      } catch {
+        // Alguns navegadores não permitem Web Audio; nada mais precisa ser feito.
+      }
+    };
+    window.addEventListener("pointerdown", unlockAudio, { once: true });
+    window.addEventListener("keydown", unlockAudio, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", unlockAudio);
+      window.removeEventListener("keydown", unlockAudio);
+      void dashboardAudioContextRef.current?.close().catch(() => undefined);
+      dashboardAudioContextRef.current = null;
+    };
+  }, []);
+
   const greeting = currentTime.getHours() < 12 ? "Bom dia" : currentTime.getHours() < 18 ? "Boa tarde" : "Boa noite";
+
+  const dashboardMetaExpiry = useMemo(() => {
+    if (!dashboardMetaStatus) return null;
+    const presentation = metaConnectionPresentation(dashboardMetaStatus, currentTime);
+    if (!presentation.expiresAt) return null;
+    return {
+      state: presentation.state,
+      daysRemaining: presentation.daysRemaining,
+      expiresAt: presentation.expiresAt,
+      expiryKind: presentation.expiryKind,
+      shouldWarn: presentation.state === "warning" || presentation.state === "expired",
+    };
+  }, [currentTime, dashboardMetaStatus]);
+
+  const renewDashboardMeta = async () => {
+    if (metaRenewing) return;
+    setMetaRenewing(true);
+    setMetaRenewError("");
+    try {
+      const result = await beginMetaConnection("#/dashboard");
+      window.location.assign(result.authorizationUrl);
+    } catch (caught) {
+      setMetaRenewError(caught instanceof Error ? caught.message : "Não foi possível iniciar a renovação da conexão Meta.");
+      setMetaRenewing(false);
+    }
+  };
+
 
   const refreshKanbanLinks = useCallback(async () => {
     setLinksLoading(true);
@@ -1671,9 +2182,23 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
       .then(({ items }) => { if (active) setClients(items); })
       .catch(() => { if (active) setClients([]); })
       .finally(() => { if (active) setLoading(false); });
+
     const refreshOverview = () => loadDashboardOverview()
       .then((overview) => {
         if (!active) return;
+        const nextNotificationIds = new Set<string>([
+          ...(overview.clientActivities ?? []).map((item) => `activity:${item.id}`),
+          ...(overview.approvedPautas ?? []).map((item) => `pauta:${item.id}`),
+          ...(overview.clientSubmissions ?? []).map((item) => `submission:${item.id}`),
+        ]);
+        const previousIds = dashboardNotificationIdsRef.current;
+        if (previousIds) {
+          const hasNewNotification = Array.from(nextNotificationIds).some((id) => !previousIds.has(id));
+          if (hasNewNotification) playDashboardNotificationTone();
+        }
+        dashboardNotificationIdsRef.current = nextNotificationIds;
+
+        setStatistics(overview.statistics ?? EMPTY_DASHBOARD_STATISTICS);
         setUpcomingPosts(overview.upcomingPosts);
         setPostsToday(overview.postsToday ?? []);
         setAgendaToday(overview.agendaToday);
@@ -1683,20 +2208,29 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
         setInternalMessages(loadInternalApprovalMessages(session.id));
       })
       .catch(() => undefined);
+
     const refreshDashboard = () => Promise.all([refreshClients(), refreshOverview()]);
     void refreshDashboard();
+
     let lastRefreshAt = Date.now();
-    const refreshOnFocus = () => {
+    const refreshVisibleDashboard = () => {
+      if (document.visibilityState !== "visible") return;
       if (Date.now() - lastRefreshAt < 10 * 60_000) return;
       lastRefreshAt = Date.now();
       void refreshDashboard();
     };
-    const refreshOnVisibility = () => { if (document.visibilityState === "visible") refreshOnFocus(); };
-    const interval = window.setInterval(() => { if (document.visibilityState === "visible") refreshOnFocus(); }, 10 * 60_000);
+    const interval = window.setInterval(refreshVisibleDashboard, 10 * 60_000);
+    const refreshOnFocus = () => refreshVisibleDashboard();
+    const refreshOnVisibility = () => { if (document.visibilityState === "visible") refreshVisibleDashboard(); };
     window.addEventListener("focus", refreshOnFocus);
     document.addEventListener("visibilitychange", refreshOnVisibility);
-    return () => { active = false; window.clearInterval(interval); window.removeEventListener("focus", refreshOnFocus); document.removeEventListener("visibilitychange", refreshOnVisibility); };
-  }, []);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener("focus", refreshOnFocus);
+      document.removeEventListener("visibilitychange", refreshOnVisibility);
+    };
+  }, [playDashboardNotificationTone, session.id]);
   useEffect(() => { const sync = () => setInternalMessages(loadInternalApprovalMessages(session.id)); window.addEventListener("storage", sync); const timer = window.setInterval(sync, 5_000); return () => { window.removeEventListener("storage", sync); window.clearInterval(timer); }; }, [session.id]);
 
   const updateForm = (key: keyof typeof form, value: string) => {
@@ -1726,7 +2260,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
 
   const openEditClient = async (client: AdminClientOption) => {
     setEditClient(client); setClientActionError(""); setClientAccesses([]);
-    setEditLogoFile(null); setEditDrawerData({});
+    setEditLogoFile(null); setEditDrawerData({}); setEditClientDetailsLoading(true);
     setEditForm({ name: client.name, slug: client.slug, locale: client.locale ?? "pt", greetingName: client.portal_title ?? client.name, portalTitle: client.portal_title ?? client.name, email: "", password: "", clientUserId: "", instagram: "", facebook: "", tiktok: "", youtube: "", linkedin: "", x: "", website: "" });
     try {
       const [result, drawerResult] = await Promise.all([loadClientAccesses(client.id), loadAdminWorkspaceDrawerBySlug(client.slug)]);
@@ -1739,20 +2273,28 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
         ...current,
         clientUserId: portalUser?.userId ?? "",
         email: portalUser?.email ?? "",
-        instagram: typeof socialLinks.instagram === "string" ? socialLinks.instagram : "",
-        facebook: typeof socialLinks.facebook === "string" ? socialLinks.facebook : "",
-        tiktok: typeof socialLinks.tiktok === "string" ? socialLinks.tiktok : "",
-        youtube: typeof socialLinks.youtube === "string" ? socialLinks.youtube : "",
-        linkedin: typeof socialLinks.linkedin === "string" ? socialLinks.linkedin : "",
-        x: typeof socialLinks.x === "string" ? socialLinks.x : "",
-        website: typeof socialLinks.website === "string" ? socialLinks.website : "",
+        instagram: normalizeOptionalClientUrl(socialLinks.instagram),
+        facebook: normalizeOptionalClientUrl(socialLinks.facebook),
+        tiktok: normalizeOptionalClientUrl(socialLinks.tiktok),
+        youtube: normalizeOptionalClientUrl(socialLinks.youtube),
+        linkedin: normalizeOptionalClientUrl(socialLinks.linkedin),
+        x: normalizeOptionalClientUrl(socialLinks.x),
+        website: normalizeOptionalClientUrl(socialLinks.website),
       }));
-    } catch (caught) { setClientActionError(caught instanceof Error ? caught.message : "Não foi possível carregar os acessos."); }
+    } catch (caught) {
+      setClientActionError(caught instanceof Error ? caught.message : "Não foi possível carregar os dados do cliente.");
+    } finally {
+      setEditClientDetailsLoading(false);
+    }
   };
 
   const saveEditedClient = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!editClient) return;
+    if (editClientDetailsLoading) {
+      setClientActionError("Aguarde os dados e links atuais terminarem de carregar antes de salvar.");
+      return;
+    }
     setClientActionSaving(true); setClientActionError("");
     try {
       const logoUrl = editLogoFile ? await uploadAdminMedia(editLogoFile) : editClient.logo_url ?? null;
@@ -1764,10 +2306,9 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
         logoUrl,
       });
       await saveAdminWorkspaceDrawerBySlug(slugify(editForm.slug), {
-        ...editDrawerData,
         socialLinks: {
-          instagram: editForm.instagram.trim(), facebook: editForm.facebook.trim(), tiktok: editForm.tiktok.trim(),
-          youtube: editForm.youtube.trim(), linkedin: editForm.linkedin.trim(), x: editForm.x.trim(), website: editForm.website.trim(),
+          instagram: normalizeOptionalClientUrl(editForm.instagram), facebook: normalizeOptionalClientUrl(editForm.facebook), tiktok: normalizeOptionalClientUrl(editForm.tiktok),
+          youtube: normalizeOptionalClientUrl(editForm.youtube), linkedin: normalizeOptionalClientUrl(editForm.linkedin), x: normalizeOptionalClientUrl(editForm.x), website: normalizeOptionalClientUrl(editForm.website),
         },
       });
       if (editForm.password) {
@@ -1823,8 +2364,8 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
       const client = await createAdminClient({ name, slug, locale: form.locale, portalTitle: form.greetingName.trim() || name, logoUrl, ownerUserId: session.id });
       await saveAdminWorkspaceDrawerBySlug(client.slug, {
         socialLinks: {
-          instagram: form.instagram.trim(), facebook: form.facebook.trim(), tiktok: form.tiktok.trim(),
-          youtube: form.youtube.trim(), linkedin: form.linkedin.trim(), x: form.x.trim(), website: form.website.trim(),
+          instagram: normalizeOptionalClientUrl(form.instagram), facebook: normalizeOptionalClientUrl(form.facebook), tiktok: normalizeOptionalClientUrl(form.tiktok),
+          youtube: normalizeOptionalClientUrl(form.youtube), linkedin: normalizeOptionalClientUrl(form.linkedin), x: normalizeOptionalClientUrl(form.x), website: normalizeOptionalClientUrl(form.website),
         },
       });
       if (email && password) {
@@ -1851,11 +2392,20 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
             <div className="dashboard-welcome">
               <div className="dashboard-liquid-field" aria-hidden="true"><i /><i /><i /></div>
               <div className="dashboard-welcome-copy"><p className="eyebrow">Seu estúdio hoje</p><h1>{greeting}, {session.name.split(" ")[0]}</h1><p className="dashboard-date">{new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" }).format(currentTime)}</p></div>
-              <div className="dashboard-welcome-aside"><div className="dashboard-orbs" aria-hidden="true"><i /><i /><i /></div><div className="dashboard-metrics dashboard-metrics-inline"><article className="dashboard-metric clients"><UiIcon name="users" /><div><span>Clientes ativos</span><strong>{loading ? "-" : clients.length}</strong><small>Contas em andamento</small></div></article><article className="dashboard-metric posts"><UiIcon name="calendar" /><div><span>Posts este mês</span><strong>128</strong><small>+18% vs mês anterior</small></div></article><article className="dashboard-metric pending"><UiIcon name="clock" /><div><span>Pendentes</span><strong>24</strong><small className="dashboard-alert">8 vencem hoje</small></div></article><article className="dashboard-metric approved"><UiIcon name="check" /><div><span>Aprovados</span><strong>88</strong><small>+20% vs mês anterior</small></div></article></div></div>
+              <div className="dashboard-welcome-aside"><div className="dashboard-orbs" aria-hidden="true"><i /><i /><i /></div><DashboardMetrics activeClients={clients.length} statistics={statistics} loading={loading} renderIcon={(name) => <UiIcon name={name} />} /></div>
             </div>
           </div>
 
-          <div className="dashboard-grid">
+          {session.role === "super_admin" && dashboardMetaStatus && dashboardMetaExpiry?.shouldWarn ? <section className={`dashboard-meta-expiry-alert${dashboardMetaExpiry.state === "expired" ? " is-expired" : ""}`} role="status">
+            <div className="dashboard-meta-expiry-icon"><span>f</span></div>
+            <div className="dashboard-meta-expiry-copy">
+              <strong>{dashboardMetaExpiry.state === "expired" ? dashboardMetaExpiry.expiryKind === "data_access" ? "Acesso aos dados Meta expirado" : "Conexão Meta expirada" : `${dashboardMetaExpiry.expiryKind === "data_access" ? "Acesso aos dados Meta" : "Meta"} expira em ${dashboardMetaExpiry.daysRemaining} ${dashboardMetaExpiry.daysRemaining === 1 ? "dia" : "dias"}`}</strong>
+              <span>{dashboardMetaStatus.accountName || "Conta Meta"} · {dashboardMetaExpiry.expiryKind === "data_access" ? dashboardMetaExpiry.state === "expired" ? "acesso aos dados expirou em" : "acesso aos dados válido até" : dashboardMetaExpiry.state === "expired" ? "expirou em" : "conexão válida até"} {new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(dashboardMetaExpiry.expiresAt)}</span>
+              {metaRenewError ? <small>{metaRenewError}</small> : null}
+            </div>
+            <button type="button" onClick={() => void renewDashboardMeta()} disabled={metaRenewing}>{metaRenewing ? "Abrindo Meta…" : "Atualizar conexão"}</button>
+          </section> : null}
+          <div className="dashboard-grid" ref={dashboardMasonryRef}>
             <DashboardClockWidget currentTime={currentTime} />
             <DashboardNotesWidget userId={session.id} canPersist={session.source === "api"} />
             {upcomingPosts.length > 0 ? <DashboardTasksWidget posts={upcomingPosts} /> : null}
@@ -1874,11 +2424,12 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
               onDeleted={(eventId) => setAgendaToday((current) => current.filter((event) => event.id !== eventId))}
             /> : null}
             <SeasonalDashboardWidget clients={clients} />
+            {session.source === "api" ? <RadarSuggestionsWidget key={session.id} /> : null}
             {postsToday.length > 0 ? <DashboardTodayPostsWidget items={postsToday} /> : null}
-            {approvedPautas.length > 0 ? <DashboardApprovedPautasWidget items={approvedPautas} /> : null}
-            {clientActivities.length > 0 ? <DashboardClientActivitiesWidget items={clientActivities} userId={session.id} onSchedule={setScheduleActivity} /> : null}
+            {approvedPautas.length > 0 ? <DashboardApprovedPautasWidget items={approvedPautas} userId={session.id} canPersist={session.source === "api"} /> : null}
+            {clientActivities.length > 0 ? <DashboardClientActivitiesWidget items={clientActivities} userId={session.id} canPersist={session.source === "api"} onSchedule={setScheduleActivity} /> : null}
             {internalMessages.length > 0 ? <DashboardInternalMessagesWidget items={internalMessages} onOpen={(item) => { if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; }} /> : null}
-            {clientSubmissions.length > 0 ? <DashboardClientSubmissionsWidget items={clientSubmissions} userId={session.id} /> : null}
+            {clientSubmissions.length > 0 ? <DashboardClientSubmissionsWidget items={clientSubmissions} userId={session.id} canPersist={session.source === "api"} /> : null}
           </div>
           <div className="dashboard-section-divider" aria-hidden="true"><span /></div>
           <section id="dashboard-clients" className="dashboard-clients-panel dashboard-clients-full">
@@ -1895,9 +2446,26 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
           {scheduledNotice ? <div className="dashboard-scheduled-notice" role="status" aria-live="polite"><span className="dashboard-scheduled-calendar"><UiIcon name="calendar" /><i>✓</i></span><div><strong>Post agendado!</strong><small>{scheduledNotice.title} · {scheduledNotice.clientName}</small></div><span className="dashboard-scheduled-spark one" /><span className="dashboard-scheduled-spark two" /><span className="dashboard-scheduled-spark three" /></div> : null}
         </section>
         {createOpen ? <CreateClientModal form={form} logoFile={logoFile} creating={creating} error={createError} onChange={updateForm} onLogoChange={setLogoFile} onClose={closeCreate} onSubmit={submitClient} /> : null}
-        {editClient ? <EditClientModal client={editClient} form={editForm} logoFile={editLogoFile} accesses={clientAccesses} saving={clientActionSaving} error={clientActionError} onChange={(key, value) => setEditForm((current) => ({ ...current, [key]: value }))} onLogoChange={setEditLogoFile} onClose={() => setEditClient(null)} onSubmit={saveEditedClient} /> : null}
+        {editClient ? <EditClientModal client={editClient} form={editForm} logoFile={editLogoFile} accesses={clientAccesses} saving={clientActionSaving} detailsLoading={editClientDetailsLoading} error={clientActionError} onChange={(key, value) => setEditForm((current) => ({ ...current, [key]: value }))} onLogoChange={setEditLogoFile} onClose={() => { setEditClientDetailsLoading(false); setEditClient(null); }} onSubmit={saveEditedClient} /> : null}
         {shareClient ? <ShareClientModal client={shareClient} accesses={clientAccesses} users={managedUsers} userId={shareUserId} role={shareRole} saving={clientActionSaving} error={clientActionError} onUserChange={setShareUserId} onRoleChange={setShareRole} onClose={() => setShareClient(null)} onShare={() => void shareSelectedClient()} /> : null}
-        {scheduleActivity ? <DashboardScheduleModal activity={scheduleActivity} onClose={() => setScheduleActivity(null)} onScheduled={() => { setClientActivities((current) => current.filter((item) => item.cardId !== scheduleActivity.cardId)); setScheduledNotice({ title: scheduleActivity.title, clientName: scheduleActivity.clientName }); setScheduleActivity(null); }} /> : null}
+        {scheduleActivity ? <DashboardScheduleModal activity={scheduleActivity} canScheduleMeta={session.role === "super_admin"} onClose={() => setScheduleActivity(null)} onScheduled={() => {
+          const matchingFeedbackIds = clientActivities
+            .filter((item) => item.cardId && item.cardId === scheduleActivity.cardId)
+            .map((item) => item.id);
+          if (matchingFeedbackIds.length) {
+            const storageKey = `designhub-v2-dismissed-client-feedback:${session.id}`;
+            try {
+              const current = JSON.parse(window.localStorage.getItem(storageKey) ?? "[]") as string[];
+              window.localStorage.setItem(storageKey, JSON.stringify([...new Set([...current, ...matchingFeedbackIds])]));
+            } catch {
+              // The dashboard still removes the scheduled feedback for this visit.
+            }
+            void Promise.all(matchingFeedbackIds.map((id) => dismissDashboardItem("client_feedback", id))).catch(() => undefined);
+          }
+          setClientActivities((current) => current.filter((item) => item.cardId !== scheduleActivity.cardId));
+          setScheduledNotice({ title: scheduleActivity.title, clientName: scheduleActivity.clientName });
+          setScheduleActivity(null);
+        }} /> : null}
       </main>
     </div>
   );
@@ -2071,7 +2639,7 @@ function DashboardTasksWidget({ posts }: { posts: DashboardUpcomingPost[] }) {
     return () => observer.disconnect();
   }, [expanded, posts]);
   const displayedPosts = expanded ? posts : posts.slice(0, visibleLimit);
-  const hiddenCount = Math.max(0, posts.length - displayedPosts.length);
+  const hasMore = posts.length > visibleLimit;
   return <section className="dashboard-tasks-widget dashboard-first-row-widget" ref={widgetRef}>
     <header><div><span className="dashboard-task-icon">◴</span><h3>Próximos posts</h3></div><span className="dashboard-task-count">Próximos 3 dias ({postCount})</span></header>
     <div className="dashboard-task-rows" ref={rowsRef}>
@@ -2079,12 +2647,12 @@ function DashboardTasksWidget({ posts }: { posts: DashboardUpcomingPost[] }) {
         <span className="dashboard-task-dot" />
         <span className="dashboard-task-avatar">{post.clientLogoUrl ? <img src={post.clientLogoUrl} alt="" /> : post.clientName.slice(0, 2).toUpperCase()}</span>
         <div><strong>{post.title}</strong><small>{post.clientName}</small></div>
-        <span className="dashboard-task-status">⌁ {post.clientLabel || "Agendado"}</span>
+        <span className="dashboard-task-status">⌁ Agendado</span>
         <span className="dashboard-task-date">◷ {formatDashboardDate(post.scheduledAt)}</span>
       </article>)}
       {displayedPosts.length === 0 ? <p className="dashboard-upcoming-empty">Nenhum post previsto para os próximos 3 dias.</p> : null}
     </div>
-    {hiddenCount > 0 ? <button className="dashboard-task-link" type="button" onClick={() => setExpanded(true)}>Ver mais...</button> : null}
+    {hasMore ? <button className="dashboard-task-link" type="button" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>{expanded ? "Ver menos" : "Ver mais..."}</button> : null}
   </section>;
 }
 
@@ -2206,182 +2774,22 @@ function useCalendarArtworkHover() {
   };
 }
 
+const AGENDA_NEUTRAL_COLOR = "#d8dde7";
+const AGENDA_DEFAULT_COLOR = "#c9f7df";
+
+function agendaEventVisualState(event: AgendaEvent) {
+  const isPast = new Date(event.startsAt).getTime() < Date.now();
+  return {
+    color: isPast ? AGENDA_NEUTRAL_COLOR : event.color || AGENDA_DEFAULT_COLOR,
+    className: isPast ? " is-past" : "",
+  };
+}
+
 function AgendaPage({ session, onLogout }: { session: SessionUser | null; onLogout: () => void }) {
-  const [month, setMonth] = useState(() => new Date());
-  const [calendarView, setCalendarView] = useState<"day" | "week" | "month">("month");
-  const [events, setEvents] = useState<AgendaEvent[]>([]);
-  const [labels, setLabels] = useState<AgendaLabel[]>([]);
-  const [clients, setClients] = useState<AdminClientOption[]>([]);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [labelsOpen, setLabelsOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [taskDescription, setTaskDescription] = useState("");
-  const [startsAt, setStartsAt] = useState("");
-  const [clientAccountId, setClientAccountId] = useState("");
-  const [color, setColor] = useState("#c9f7df");
-  const [recurrenceType, setRecurrenceType] = useState<AgendaRecurrence>("none");
-  const [repeatUntil, setRepeatUntil] = useState("");
-  const [meetLink, setMeetLink] = useState("");
-  const [selectedEvent, setSelectedEvent] = useState<AgendaEvent | null>(null);
-  const [rescheduleAt, setRescheduleAt] = useState("");
-  const [meetLinkEdit, setMeetLinkEdit] = useState("");
-  const [clientAccountIdEdit, setClientAccountIdEdit] = useState("");
-  const [labelId, setLabelId] = useState("");
-  const [newLabelName, setNewLabelName] = useState("");
-  const [newLabelColor, setNewLabelColor] = useState("#4285f4");
-  const [error, setError] = useState("");
-  const [refresh, setRefresh] = useState(0);
-  const [draggedAgendaEvent, setDraggedAgendaEvent] = useState<AgendaEvent | null>(null);
-  const [agendaDropDay, setAgendaDropDay] = useState("");
-  const range = useMemo(() => agendaViewRange(month, calendarView), [month, calendarView]);
-
-  const [clientsError, setClientsError] = useState("");
-  useEffect(() => {
-    if (!session) return;
-    void loadAgendaEvents(range.from, range.to).then((agenda) => setEvents(agenda.items)).catch(() => setEvents([]));
-    void listAdminClients().then((result) => { setClients(result.items); setClientsError(""); }).catch((cause) => setClientsError(cause instanceof Error ? cause.message : "Não foi possível carregar a lista de clientes."));
-    void loadAgendaLabels().then((result) => setLabels(result.items)).catch(() => setLabels([]));
-  }, [range.from, range.to, refresh, session]);
-  useEffect(() => {
-    if (!createOpen) return;
-    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setCreateOpen(false); };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
-  }, [createOpen]);
-
   if (!session || session.role === "client") return <Navigate to="/login" replace />;
-
-  async function submitAgendaEvent(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError("");
-    if (session?.source !== "api") {
-      setError("Esta é uma sessão de demonstração. Saia e entre novamente com seu e-mail e senha para salvar no banco.");
-      return;
-    }
-    if (!title.trim() || !startsAt) {
-      setError("Informe o compromisso e a data com horário.");
-      return;
-    }
-    try {
-      await createAgendaEvent({ title: title.trim(), taskDescription: taskDescription.trim() || null, startsAt, color, clientAccountId: clientAccountId || null, labelId: labelId || null, recurrenceType, repeatUntil: repeatUntil || null, meetLink: meetLink.trim() || null });
-      setTitle(""); setTaskDescription(""); setStartsAt(""); setClientAccountId(""); setLabelId(""); setRecurrenceType("none"); setRepeatUntil(""); setMeetLink("");
-      setCreateOpen(false); setRefresh((value) => value + 1);
-    } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "Não foi possível criar o compromisso.";
-      setError(message === "Sessão obrigatória." || message === "Token inválido ou expirado." ? "Sua sessão expirou. Saia e entre novamente para salvar no banco." : message);
-    }
-  }
-
-  function openAgendaDay(day: Date) {
-    const selected = new Date(day);
-    selected.setHours(9, 0, 0, 0);
-    setStartsAt(toDateTimeLocal(selected.toISOString()));
-    setTitle(""); setTaskDescription(""); setClientAccountId(""); setLabelId(""); setColor("#c9f7df"); setRecurrenceType("none"); setRepeatUntil(""); setMeetLink(""); setError("");
-    setCreateOpen(true);
-  }
-
-  async function addAgendaLabel() {
-    if (!newLabelName.trim()) return;
-    try {
-      const result = await createAgendaLabel({ name: newLabelName.trim(), color: newLabelColor });
-      setLabels((current) => [...current, result.label]);
-      setNewLabelName("");
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível criar a etiqueta."); }
-  }
-
-  async function removeAgendaLabel(id: string) {
-    try { await deleteAgendaLabel(id); setLabels((current) => current.filter((label) => label.id !== id)); if (labelId === id) setLabelId(""); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível excluir a etiqueta."); }
-  }
-
-  async function dropAgendaEvent(day: Date) {
-    const agendaEvent = draggedAgendaEvent;
-    setDraggedAgendaEvent(null); setAgendaDropDay("");
-    if (!agendaEvent || calendarView === "day") return;
-    const destination = localDateKey(day);
-    if (destination === localDateKey(new Date(agendaEvent.startsAt))) return;
-    const currentLocal = toDateTimeLocal(agendaEvent.startsAt);
-    const nextStartsAt = `${destination}T${currentLocal.slice(11, 16)}`;
-    const sourceId = agendaEvent.sourceEventId ?? agendaEvent.id;
-    setEvents((current) => current.map((item) => item.id === sourceId ? { ...item, startsAt: nextStartsAt } : item));
-    setError("");
-    try {
-      await updateAgendaEvent(sourceId, { startsAt: nextStartsAt });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Não foi possível mover o compromisso.");
-      setRefresh((value) => value + 1);
-    }
-  }
-
-  const visibleEvents = expandAgendaEvents(events, range.from, range.to);
-  const eventsByDay = new Map<string, AgendaEvent[]>();
-  visibleEvents.forEach((event) => {
-    const key = localDateKey(new Date(event.startsAt));
-    eventsByDay.set(key, [...(eventsByDay.get(key) ?? []), event]);
-  });
-  const mobileAgendaDays = calendarView === "month"
-    ? range.days.filter((day) => day.getMonth() === month.getMonth() && day.getFullYear() === month.getFullYear())
-    : range.days;
-
-  return <div className="page-grid admin-layout agenda-layout">
-    <AdminRail session={session} />
-    <main className="main-column agenda-main-column">
-      <AgendaTopNavigation session={session} onLogout={onLogout} />
-      <PageContextBanner eyebrow="Agenda" title="Planejamento da equipe" description="Organize compromissos, prazos e rotinas de cada cliente." metrics={[{ label: "Visão atual", value: calendarView === "day" ? "Dia" : calendarView === "week" ? "Semana" : "Mês", note: "Período selecionado", icon: <UiIcon name="calendar" />, tone: "posts" }, { label: "Compromissos", value: visibleEvents.length, note: "No período", icon: <UiIcon name="clock" />, tone: "pending" }]} titleClassName="billing-banner-title" titleIcon={<UiIcon name="calendar" />} />
-      <section className="agenda-page">
-        <header className="agenda-toolbar">
-          <button className="ghost-button" onClick={() => setMonth(new Date())}>Hoje</button>
-          <div className="agenda-month-nav"><button aria-label="Período anterior" onClick={() => setMonth((date) => moveAgendaDate(date, calendarView, -1))}>‹</button><strong>{formatAgendaRangeTitle(month, calendarView)}</strong><button aria-label="Próximo período" onClick={() => setMonth((date) => moveAgendaDate(date, calendarView, 1))}>›</button></div>
-          <div className="agenda-view-switch"><button className={calendarView === "day" ? "active" : ""} onClick={() => setCalendarView("day")}>▣ Dia</button><button className={calendarView === "week" ? "active" : ""} onClick={() => setCalendarView("week")}>▣ Semana</button><button className={calendarView === "month" ? "active" : ""} onClick={() => setCalendarView("month")}>▣ Mês</button></div>
-          <button className="ghost-button agenda-labels-button" onClick={() => { setError(""); setLabelsOpen(true); }}>◇ Etiquetas</button>
-          <button className="gradient-button" onClick={() => setCreateOpen(true)}>＋ Novo compromisso</button>
-        </header>
-        <section className={`agenda-calendar agenda-calendar-${calendarView}`}>
-          {calendarView !== "day" ? <div className="agenda-weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => <strong key={day}>{day}</strong>)}</div> : null}
-          <div className="agenda-month-grid">{range.days.map((day) => {
-            const key = localDateKey(day); const dayEvents = eventsByDay.get(key) ?? []; const isCurrentMonth = calendarView !== "month" || day.getMonth() === month.getMonth();
-            const dropActive = agendaDropDay === key;
-            return <article key={key} className={`${isCurrentMonth ? "agenda-day" : "agenda-day muted"}${dropActive ? " agenda-day-drop-active" : ""}`} onClick={() => openAgendaDay(day)} onDragOver={(event) => { if (!draggedAgendaEvent || calendarView === "day") return; event.preventDefault(); event.dataTransfer.dropEffect = "move"; if (agendaDropDay !== key) setAgendaDropDay(key); }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setAgendaDropDay(""); }} onDrop={(event) => { event.preventDefault(); event.stopPropagation(); void dropAgendaEvent(day); }}><time>{day.getDate()}</time>{dayEvents.slice(0, 3).map((item) => <div className={`agenda-event-pill${draggedAgendaEvent?.id === item.id ? " dragging" : ""}`} key={item.id} draggable={calendarView !== "day"} style={{ backgroundColor: item.color, color: calendarTextColor(item.color) }} onDragStart={(event) => { event.stopPropagation(); event.dataTransfer.effectAllowed = "move"; event.dataTransfer.setData("text/plain", item.sourceEventId ?? item.id); setDraggedAgendaEvent(item); }} onDragEnd={() => { setDraggedAgendaEvent(null); setAgendaDropDay(""); }} onClick={(event) => { event.stopPropagation(); setSelectedEvent(item); setRescheduleAt(toDateTimeLocal(item.startsAt)); setMeetLinkEdit(item.meetLink ?? ""); setClientAccountIdEdit(item.clientAccountId ?? ""); }}><span>{formatAgendaTime(item.startsAt)}</span> {item.title}</div>)}{dayEvents.length > 3 ? <span className="agenda-more">+{dayEvents.length - 3} mais</span> : null}</article>;
-          })}</div>
-        </section>
-        <div className="social-calendar-mobile agenda-mobile-list">
-          {mobileAgendaDays.map((day) => {
-            const key = localDateKey(day);
-            const dayEvents = eventsByDay.get(key) ?? [];
-            const isToday = key === localDateKey(new Date());
-            return <article className={`social-agenda-day${isToday ? " today" : ""}`} key={key}>
-              <header><div><time>{day.getDate()}</time><span><strong>{new Intl.DateTimeFormat("pt-BR", { weekday: "long" }).format(day)}</strong><small>{new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(day)}</small></span></div><button type="button" onClick={() => openAgendaDay(day)} aria-label={`Adicionar compromisso em ${new Intl.DateTimeFormat("pt-BR").format(day)}`}>＋</button></header>
-              <div className="social-agenda-items">
-                {dayEvents.map((item) => <button key={item.id} type="button" className="social-agenda-item appointment" style={{ "--calendar-event-color": item.color } as CSSProperties} onClick={() => { setSelectedEvent(item); setRescheduleAt(toDateTimeLocal(item.startsAt)); setMeetLinkEdit(item.meetLink ?? ""); setClientAccountIdEdit(item.clientAccountId ?? ""); }}><span className="social-agenda-time">{formatAgendaTime(item.startsAt)}</span><i><UiIcon name="clock" /></i><span><strong>{item.title}</strong><small>{item.taskDescription || item.labelName || item.clientName || "Compromisso"}</small></span><b>›</b></button>)}
-                {dayEvents.length === 0 ? <button type="button" className="social-agenda-empty" onClick={() => openAgendaDay(day)}>＋ Adicionar compromisso</button> : null}
-              </div>
-            </article>;
-          })}
-        </div>
-      </section>
-      {createOpen ? <div className="modal-backdrop agenda-modal-backdrop" onMouseDown={() => setCreateOpen(false)}>
-        <form className="agenda-create-modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={submitAgendaEvent}>
-          <div className="column-editor-head"><div><p className="eyebrow">Agenda</p><h3>Novo compromisso</h3></div><button type="button" className="icon-close" onClick={() => setCreateOpen(false)}>×</button></div>
-          <label className="field-stack">Compromisso<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Reunião com cliente" /></label>
-          <label className="field-stack">Tarefa a realizar<textarea value={taskDescription} onChange={(event) => setTaskDescription(event.target.value)} placeholder="Ex.: Preparar pauta, revisar design e enviar para aprovação." rows={4} /></label>
-          <label className="field-stack">Data e horário<input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} /></label>
-          <label className="field-stack">Repetição<select value={recurrenceType} onChange={(event) => setRecurrenceType(event.target.value as AgendaRecurrence)}><option value="none">Uma vez</option><option value="weekdays">De segunda a sexta</option><option value="weekly">Toda semana</option><option value="monthly_nth_weekday">Uma vez por mês, no mesmo dia da semana</option></select></label>
-          {recurrenceType !== "none" ? <label className="field-stack">Repetir até<input type="date" value={repeatUntil} onChange={(event) => setRepeatUntil(event.target.value)} /></label> : null}
-          <label className="field-stack">Cliente<select value={clientAccountId} onChange={(event) => setClientAccountId(event.target.value)}><option value="">Sem cliente específico</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select>{clientsError ? <em>{clientsError}</em> : null}</label>
-          <label className="field-stack">Etiqueta<select value={labelId} onChange={(event) => { const nextId = event.target.value; setLabelId(nextId); const label = labels.find((item) => item.id === nextId); if (label) setColor(label.color); }}><option value="">Sem etiqueta</option>{labels.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}</select></label>
-          <label className="field-stack">Cor<input type="color" value={color} onChange={(event) => { setColor(event.target.value); setLabelId(""); }} /></label>
-          <label className="field-stack">Link do Google Meet (opcional)<input value={meetLink} onChange={(event) => setMeetLink(event.target.value)} placeholder="https://meet.google.com/..." /></label>
-          {error ? <p className="form-feedback error-text">{error}</p> : null}<button className="gradient-button" type="submit">Criar compromisso</button>
-        </form>
-      </div> : null}
-      {labelsOpen ? <div className="modal-backdrop" onClick={() => setLabelsOpen(false)}><section className="agenda-label-modal" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Agenda</p><h3>Gerenciar etiquetas</h3></div><button className="icon-close" onClick={() => setLabelsOpen(false)}>×</button></header><div className="agenda-label-create"><input value={newLabelName} onChange={(event) => setNewLabelName(event.target.value)} placeholder="Nome da etiqueta" onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void addAgendaLabel(); } }} /><input type="color" value={newLabelColor} onChange={(event) => setNewLabelColor(event.target.value)} /><button className="gradient-button" onClick={() => void addAgendaLabel()} aria-label="Criar etiqueta">＋</button></div><div className="agenda-label-list">{labels.length === 0 ? <p>Crie sua primeira etiqueta para usar em tarefas recorrentes.</p> : labels.map((label) => <article key={label.id} style={{ "--agenda-label-color": label.color } as CSSProperties}><span /><strong>{label.name}</strong><button onClick={() => void removeAgendaLabel(label.id)} aria-label={`Excluir ${label.name}`}>×</button></article>)}</div></section></div> : null}
-      {selectedEvent ? <div className="modal-backdrop" onClick={() => setSelectedEvent(null)}><section className="agenda-detail-modal" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Compromisso</p><h3>{selectedEvent.title}</h3></div><button className="icon-close" onClick={() => setSelectedEvent(null)}>×</button></header><p>{selectedEvent.taskDescription || "Sem tarefa detalhada."}</p><dl><div><dt>Quando</dt><dd>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(selectedEvent.startsAt))}</dd></div><div><dt>Cliente</dt><dd>{selectedEvent.clientName || "Sem cliente específico"}</dd></div><div><dt>Etiqueta</dt><dd>{selectedEvent.labelName || "Sem etiqueta"}</dd></div><div><dt>Repetição</dt><dd>{selectedEvent.recurrenceType === "weekdays" ? "Segunda a sexta" : selectedEvent.recurrenceType === "weekly" ? "Toda semana" : selectedEvent.recurrenceType === "monthly_nth_weekday" ? "Mensal, no mesmo dia da semana" : "Uma vez"}</dd></div></dl>{selectedEvent.meetLink ? <a className="ghost-button" href={selectedEvent.meetLink} target="_blank" rel="noreferrer"><UiIcon name="link" />Entrar no Google Meet</a> : null}{selectedEvent.recurrenceType !== "none" ? <p className="agenda-series-note">Este é um compromisso recorrente: reagendar ou excluir altera toda a série.</p> : null}<label className="field-stack agenda-reschedule-field">Reagendar para<input type="datetime-local" value={rescheduleAt} onChange={(event) => setRescheduleAt(event.target.value)} /></label><label className="field-stack">Cliente<select value={clientAccountIdEdit} onChange={(event) => setClientAccountIdEdit(event.target.value)}><option value="">Sem cliente específico</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label><label className="field-stack">Link do Google Meet<input value={meetLinkEdit} onChange={(event) => setMeetLinkEdit(event.target.value)} placeholder="https://meet.google.com/..." /></label><div className="agenda-detail-actions"><button className="ghost-button" onClick={async () => { if (!rescheduleAt) return; await updateAgendaEvent(selectedEvent.sourceEventId ?? selectedEvent.id, { startsAt: rescheduleAt }); setSelectedEvent(null); setRefresh((value) => value + 1); }}>Salvar nova data</button><button className="ghost-button" onClick={async () => { await updateAgendaEvent(selectedEvent.sourceEventId ?? selectedEvent.id, { clientAccountId: clientAccountIdEdit || null }); setSelectedEvent(null); setRefresh((value) => value + 1); }}>Salvar cliente</button><button className="ghost-button" onClick={async () => { await updateAgendaEvent(selectedEvent.sourceEventId ?? selectedEvent.id, { meetLink: meetLinkEdit.trim() || null }); setSelectedEvent(null); setRefresh((value) => value + 1); }}>Salvar link do Meet</button><button className="danger-button" onClick={async () => { if (!window.confirm("Excluir este compromisso? Uma repetição excluirá a série inteira.")) return; await deleteAgendaEvent(selectedEvent.sourceEventId ?? selectedEvent.id); setSelectedEvent(null); setRefresh((value) => value + 1); }}>Excluir</button></div></section></div> : null}
-    </main>
-  </div>;
+  return <div className="page-grid admin-layout agenda-layout"><AdminRail session={session} /><main className="main-column agenda-main-column"><AgendaTopNavigation session={session} onLogout={onLogout} /><PageContextBanner eyebrow="Agenda" title="Planejamento da equipe" description="Organize compromissos, prazos e rotinas de cada cliente." metrics={[]} titleClassName="billing-banner-title" titleIcon={<UiIcon name="calendar" />} /><AgendaWorkspace canSave={session.source === "api"} /></main></div>;
 }
 function localDateKey(date: Date) { return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; }
-function moveAgendaDate(date: Date, view: "day" | "week" | "month", direction: -1 | 1) { const next = new Date(date); if (view === "month") next.setMonth(next.getMonth() + direction); else next.setDate(next.getDate() + (view === "week" ? 7 : 1) * direction); return next; }
-function formatAgendaRangeTitle(anchor: Date, view: "day" | "week" | "month") { const date = new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long", year: "numeric" }); if (view === "day") return new Intl.DateTimeFormat("pt-BR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(anchor); if (view === "week") { const range = agendaViewRange(anchor, "week"); return `${date.format(range.days[0])} - ${date.format(range.days[6])}`; } return new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(anchor); }
 function agendaViewRange(anchor: Date, view: "day" | "week" | "month") { const first = new Date(anchor.getFullYear(), anchor.getMonth(), view === "month" ? 1 : anchor.getDate()); const start = new Date(first); const count = view === "day" ? 1 : view === "week" ? 7 : 42; if (view === "month") start.setDate(first.getDate() - ((first.getDay() + 6) % 7)); else if (view === "week") start.setDate(first.getDate() - ((first.getDay() + 6) % 7)); const days = Array.from({ length: count }, (_, index) => { const day = new Date(start); day.setDate(start.getDate() + index); return day; }); const end = new Date(days[days.length - 1]); end.setDate(end.getDate() + 1); return { from: start.toISOString(), to: end.toISOString(), days }; }
 function expandAgendaEvents(events: AgendaEvent[], from: string, to: string) { const rangeStart = new Date(from); const rangeEnd = new Date(to); const items: AgendaEvent[] = []; for (const event of events) { const start = new Date(event.startsAt); const until = event.repeatUntil ? new Date(`${event.repeatUntil}T23:59:59`) : new Date(start.getFullYear() + 1, start.getMonth(), start.getDate()); const recurring = event.recurrenceType && event.recurrenceType !== "none"; for (let day = new Date(start); day < rangeEnd && day <= until; day.setDate(day.getDate() + 1)) { const eligible = !recurring ? day.getTime() === start.getTime() : event.recurrenceType === "weekdays" ? day.getDay() >= 1 && day.getDay() <= 5 : event.recurrenceType === "weekly" ? day.getDay() === start.getDay() : day.getDay() === start.getDay() && Math.ceil(day.getDate() / 7) === Math.ceil(start.getDate() / 7); if (eligible && day >= rangeStart) { const occurrence = new Date(day); occurrence.setHours(start.getHours(), start.getMinutes(), 0, 0); items.push({ ...event, id: `${event.id}:${localDateKey(day)}`, sourceEventId: event.id, startsAt: occurrence.toISOString() }); } if (!recurring) break; } } return items; }
 
@@ -2397,16 +2805,14 @@ function DashboardTodayPostsWidget({ items }: { items: DashboardTodayPost[] }) {
   return <section className="dashboard-list dashboard-today-posts"><header><div><UiIcon name="calendar" /><h3>Posts para Hoje</h3></div><span>{items.length}</span></header>{displayedItems.length ? <div>{displayedItems.map((item) => <article key={item.id}><span className="dashboard-list-dot" /><img src={item.clientLogoUrl || item.mediaUrl || ""} alt="" /><div><strong>{item.title}</strong><small>{item.clientName}</small></div><time>{time(item.scheduledAt)}</time></article>)}</div> : <p className="dashboard-today-empty">Nenhum post previsto para hoje.</p>}{hasMore ? <button type="button" className="dashboard-link" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>{expanded ? "Ver menos" : "Ver mais..."}</button> : null}</section>;
 }
 
-function DashboardClientSubmissionsWidget({ items, userId }: { items: DashboardSubmission[]; userId: string }) {
+function DashboardClientSubmissionsWidget({ items, userId, canPersist }: { items: DashboardSubmission[]; userId: string; canPersist: boolean }) {
   const storageKey = `designhub-v2-dismissed-client-suggestions:${userId}`;
   const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
-    try {
-      return JSON.parse(window.localStorage.getItem(storageKey) ?? "[]") as string[];
-    } catch {
-      return [];
-    }
+    try { return JSON.parse(window.localStorage.getItem(storageKey) ?? "[]") as string[]; }
+    catch { return []; }
   });
   const [expanded, setExpanded] = useState(false);
+  const [dismissError, setDismissError] = useState("");
   const formatSubmissionDate = (value: string) => {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return "Hoje";
@@ -2417,23 +2823,31 @@ function DashboardClientSubmissionsWidget({ items, userId }: { items: DashboardS
   };
   const visibleItems = items.filter((item) => !dismissedIds.includes(item.id));
   const displayedItems = expanded ? visibleItems : visibleItems.slice(0, 3);
-  const hiddenCount = Math.max(0, visibleItems.length - displayedItems.length);
-  const dismissSuggestion = (id: string) => {
+  const hasMore = visibleItems.length > 3;
+  const persistLocalDismissal = (id: string) => {
     setDismissedIds((current) => {
       const next = current.includes(id) ? current : [...current, id];
-      try {
-        window.localStorage.setItem(storageKey, JSON.stringify(next));
-      } catch {
-        // Keep the dismissal working for the current visit if storage is unavailable.
-      }
+      try { window.localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* Session fallback only. */ }
       return next;
     });
+  };
+  const dismissSuggestion = async (id: string) => {
+    setDismissError("");
+    if (canPersist) {
+      try { await dismissDashboardItem("client_submission", id); }
+      catch {
+        setDismissError("Não foi possível marcar esta sugestão como visualizada. Tente novamente.");
+        return;
+      }
+    }
+    persistLocalDismissal(id);
   };
 
   if (visibleItems.length === 0) return null;
 
   return <section className="dashboard-list dashboard-client-submissions compact">
     <header className="dashboard-submissions-head"><h3>Sugestões dos clientes</h3><span>{visibleItems.length}</span></header>
+    {dismissError ? <p className="form-feedback error-text dashboard-dismiss-error" role="alert">{dismissError}</p> : null}
     <div className="dashboard-submission-list">{displayedItems.map((item) => <article key={item.id}>
       <span className="dashboard-item-bullet" aria-hidden="true" />
       <span className="dashboard-submission-avatar">
@@ -2441,31 +2855,61 @@ function DashboardClientSubmissionsWidget({ items, userId }: { items: DashboardS
       </span>
       <div className="dashboard-submission-copy"><strong>{item.clientName}</strong><p>Sugeriu “{item.title}”</p></div>
       <small>{formatSubmissionDate(item.createdAt)}</small>
-      <button className="dashboard-submission-dismiss" type="button" onClick={() => dismissSuggestion(item.id)} aria-label={`Remover sugestão de ${item.clientName}`} title="Já vi esta sugestão">×</button>
+      <button className="dashboard-submission-dismiss" type="button" onClick={() => void dismissSuggestion(item.id)} aria-label={`Remover sugestão de ${item.clientName}`} title="Já vi esta sugestão">×</button>
     </article>)}</div>
-    {hiddenCount > 0 ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded(true)}>Ver mais...</button> : null}
+    {hasMore ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>{expanded ? "Ver menos" : "Ver mais..."}</button> : null}
   </section>;
 }
 
-function DashboardApprovedPautasWidget({ items }: { items: DashboardApprovedPauta[] }) {
+function DashboardApprovedPautasWidget({ items, userId, canPersist }: { items: DashboardApprovedPauta[]; userId: string; canPersist: boolean }) {
+  const storageKey = `designhub-v2-dismissed-approved-pautas:${userId}`;
+  const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
+    try { return JSON.parse(window.localStorage.getItem(storageKey) ?? "[]") as string[]; }
+    catch { return []; }
+  });
   const [expanded, setExpanded] = useState(false);
-  const displayedItems = expanded ? items : items.slice(0, 4);
+  const [dismissError, setDismissError] = useState("");
+  const visibleItems = items.filter((item) => !dismissedIds.includes(item.id));
+  const displayedItems = expanded ? visibleItems : visibleItems.slice(0, 4);
+  const persistLocalDismissal = (id: string) => {
+    setDismissedIds((current) => {
+      const next = current.includes(id) ? current : [...current, id];
+      try { window.localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* Session fallback only. */ }
+      return next;
+    });
+  };
+  const dismiss = async (id: string) => {
+    setDismissError("");
+    if (canPersist) {
+      try { await dismissDashboardItem("approved_pauta", id); }
+      catch {
+        setDismissError("Não foi possível marcar esta pauta como visualizada. Tente novamente.");
+        return;
+      }
+    }
+    persistLocalDismissal(id);
+  };
   const formatDate = (value: string) => {
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? "Aprovada" : new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(date).replace(".", "");
   };
+  if (!visibleItems.length) return null;
   return <section className="dashboard-list dashboard-approved-pautas compact">
-    <header className="dashboard-submissions-head"><div><h3>Pautas aprovadas</h3><small>Ideias aprovadas pelos clientes, separadas dos feedbacks de posts</small></div><span>{items.length}</span></header>
-    <div className="dashboard-approved-pautas-list">{displayedItems.map((item) => <button type="button" key={item.id} onClick={() => { window.location.hash = `/admin/${encodeURIComponent(item.clientSlug)}`; }}>
-      <span className="dashboard-approved-pauta-icon">✓</span>
-      <span><strong>{item.title}</strong><small>{item.clientName}</small></span>
-      <time>{formatDate(item.approvedAt)}</time>
-    </button>)}</div>
-    {items.length > 4 ? <button type="button" className="dashboard-link" onClick={() => setExpanded((current) => !current)}>{expanded ? "Ver menos" : "Ver todas"}</button> : null}
+    <header className="dashboard-submissions-head"><div><h3>Pautas aprovadas</h3><small>Ideias aprovadas pelos clientes, separadas dos feedbacks de posts</small></div><span>{visibleItems.length}</span></header>
+    {dismissError ? <p className="form-feedback error-text dashboard-dismiss-error" role="alert">{dismissError}</p> : null}
+    <div className="dashboard-approved-pautas-list">{displayedItems.map((item) => <div className="dashboard-approved-pauta-row" key={item.id}>
+      <button type="button" className="dashboard-approved-pauta-open" onClick={() => { window.location.hash = `/admin/${encodeURIComponent(item.clientSlug)}`; }}>
+        <span className="dashboard-approved-pauta-icon">✓</span>
+        <span><strong>{item.title}</strong><small>{item.clientName}</small></span>
+        <time>{formatDate(item.approvedAt)}</time>
+      </button>
+      <button type="button" className="dashboard-approved-pauta-dismiss" onClick={() => void dismiss(item.id)} aria-label={`Marcar ${item.title} como visualizada`} title="Já vi esta pauta">×</button>
+    </div>)}</div>
+    {visibleItems.length > 4 ? <button type="button" className="dashboard-link" onClick={() => setExpanded((current) => !current)}>{expanded ? "Ver menos" : "Ver todas"}</button> : null}
   </section>;
 }
 
-function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items: DashboardClientActivity[]; userId: string; onSchedule: (item: DashboardClientActivity) => void }) {
+function DashboardClientActivitiesWidget({ items, userId, canPersist, onSchedule }: { items: DashboardClientActivity[]; userId: string; canPersist: boolean; onSchedule: (item: DashboardClientActivity) => void }) {
   const storageKey = `designhub-v2-dismissed-client-feedback:${userId}`;
   const [dismissedIds, setDismissedIds] = useState<string[]>(() => {
     try {
@@ -2475,6 +2919,7 @@ function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items:
     }
   });
   const [expanded, setExpanded] = useState(false);
+  const [dismissError, setDismissError] = useState("");
   const isNotApproved = (item: DashboardClientActivity) => item.activityType === "comment" && /^(n[aã]o|nao aprovado|não aprovado|reprovad|not approved)\b/i.test(item.detail.trim());
   const activityTone = (item: DashboardClientActivity) => item.activityType === "approved" || item.activityType === "contract_accepted" || item.activityType === "proposal_accepted" ? "approved" : item.activityType === "changes_requested" ? "changes_requested" : isNotApproved(item) ? "not_approved" : item.activityType;
   const activityLabel = (item: DashboardClientActivity) => item.activityType === "approved" ? "Aprovou o conteúdo" : item.activityType === "changes_requested" ? "Solicitou alterações" : item.activityType === "brand_brain" ? "Sugeriu uma atualização da marca" : item.activityType === "contract_accepted" ? "Aceitou o contrato" : item.activityType === "proposal_accepted" ? "Aceitou a proposta" : isNotApproved(item) ? "Não aprovou o conteúdo" : "Deixou um feedback";
@@ -2483,7 +2928,7 @@ function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items:
     if (Number.isNaN(date.getTime())) return "Agora";
     return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(date).replace(",", " ·");
   };
-  const decisionCardIds = new Set(items.filter((item) => item.cardId && (item.activityType === "approved" || item.activityType === "changes_requested")).map((item) => item.cardId));
+  const decisionCardIds = new Set(items.filter((item) => !item.recordedDecision && item.cardId && (item.activityType === "approved" || item.activityType === "changes_requested")).map((item) => item.cardId));
   const latestCommentByCard = new Map<string, DashboardClientActivity>();
   items.forEach((item) => {
     if (item.cardId && item.activityType === "comment" && !latestCommentByCard.has(item.cardId)) latestCommentByCard.set(item.cardId, item);
@@ -2491,22 +2936,29 @@ function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items:
   const mergedItems = items
     .filter((item) => !(item.activityType === "comment" && item.cardId && decisionCardIds.has(item.cardId)))
     .map((item) => {
-      if (!item.cardId || (item.activityType !== "approved" && item.activityType !== "changes_requested")) return item;
+      if (item.recordedDecision || !item.cardId || (item.activityType !== "approved" && item.activityType !== "changes_requested")) return item;
       return { ...item, detail: latestCommentByCard.get(item.cardId)?.detail ?? "" };
     });
   const visibleItems = mergedItems.filter((item) => !dismissedIds.includes(item.id));
   const displayedItems = expanded ? visibleItems : visibleItems.slice(0, 3);
-  const hiddenCount = Math.max(0, visibleItems.length - displayedItems.length);
-  const dismissFeedback = (id: string) => {
+  const hasMore = visibleItems.length > 3;
+  const persistLocalDismissal = (id: string) => {
     setDismissedIds((current) => {
       const next = current.includes(id) ? current : [...current, id];
-      try {
-        window.localStorage.setItem(storageKey, JSON.stringify(next));
-      } catch {
-        // A remoção continua valendo enquanto a página estiver aberta.
-      }
+      try { window.localStorage.setItem(storageKey, JSON.stringify(next)); } catch { /* Session fallback only. */ }
       return next;
     });
+  };
+  const dismissFeedback = async (id: string) => {
+    setDismissError("");
+    if (canPersist) {
+      try { await dismissDashboardItem("client_feedback", id); }
+      catch {
+        setDismissError("Não foi possível marcar este feedback como visualizado. Tente novamente.");
+        return;
+      }
+    }
+    persistLocalDismissal(id);
   };
   const openCard = (item: DashboardClientActivity) => {
     if (!item.cardId) return;
@@ -2517,21 +2969,22 @@ function DashboardClientActivitiesWidget({ items, userId, onSchedule }: { items:
 
   return <section className="dashboard-list dashboard-client-activities compact">
     <header className="dashboard-submissions-head"><div><h3>Feedback dos clientes</h3><small>Comentários, aprovações, aceites e alterações</small></div><span>{visibleItems.length}</span></header>
+    {dismissError ? <p className="form-feedback error-text dashboard-dismiss-error" role="alert">{dismissError}</p> : null}
     <div className="dashboard-activity-list">{displayedItems.map((item) => {
       const tone = activityTone(item);
       return <article key={item.id} className={`dashboard-activity-row ${tone}`}>
         <span className="dashboard-item-bullet" aria-hidden="true" />
         <span className="dashboard-submission-avatar">{item.clientLogoUrl ? <img src={item.clientLogoUrl} alt={`Logo de ${item.clientName}`} /> : item.clientName.slice(0, 2).toUpperCase()}</span>
         <div className="dashboard-activity-copy"><span className="dashboard-activity-kind">{tone === "approved" ? "✓" : tone === "changes_requested" ? "↻" : tone === "not_approved" ? "×" : item.activityType === "brand_brain" ? "✦" : "💬"} {activityLabel(item)}</span><strong>{item.title}</strong><small>{item.clientName}</small>{item.detail ? <p>“{item.detail}”</p> : <p className="dashboard-feedback-empty">Sem comentário adicional.</p>}</div>
-        <div className="dashboard-activity-actions"><time title="Data do retorno do cliente">{activityTime(item.occurredAt)}</time>{item.activityType === "brand_brain" ? <button type="button" onClick={() => { window.location.hash = `/admin/${item.clientSlug}?view=brand`; }}><UiIcon name="spark" />Revisar</button> : item.activityType === "contract_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/contratos"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "proposal_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/propostas"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "changes_requested" || tone === "not_approved" ? <button type="button" onClick={() => openCard(item)}><UiIcon name="eye" />Ver</button> : <button type="button" onClick={() => onSchedule(item)}><UiIcon name="calendar" />Agendar</button>}</div>
-        <button className="dashboard-activity-dismiss" type="button" onClick={() => dismissFeedback(item.id)} aria-label={`Remover feedback de ${item.clientName}`} title="Marcar como visualizado">×</button>
+        <div className="dashboard-activity-actions"><time title="Data do retorno do cliente">{activityTime(item.occurredAt)}</time>{item.activityType === "brand_brain" ? <button type="button" onClick={() => { window.location.hash = `/admin/${item.clientSlug}?view=brand`; }}><UiIcon name="spark" />Revisar</button> : item.activityType === "contract_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/contratos"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "proposal_accepted" ? <button type="button" onClick={() => { window.location.hash = "/area/propostas"; }}><UiIcon name="eye" />Ver</button> : item.activityType === "changes_requested" || tone === "not_approved" || item.canSchedule === 0 || item.canSchedule === false ? <button type="button" onClick={() => openCard(item)}><UiIcon name="eye" />Ver</button> : <button type="button" onClick={() => onSchedule(item)}><UiIcon name="calendar" />Agendar</button>}</div>
+        <button className="dashboard-activity-dismiss" type="button" onClick={() => void dismissFeedback(item.id)} aria-label={`Remover feedback de ${item.clientName}`} title="Marcar como visualizado">×</button>
       </article>;
     })}</div>
-    {hiddenCount > 0 ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded(true)}>Ver mais...</button> : null}
+    {hasMore ? <button className="dashboard-link dashboard-submissions-more" type="button" onClick={() => setExpanded((current) => !current)} aria-expanded={expanded}>{expanded ? "Ver menos" : "Ver mais..."}</button> : null}
   </section>;
 }
 
-function DashboardScheduleModal({ activity, onClose, onScheduled }: { activity: DashboardClientActivity; onClose: () => void; onScheduled: () => void }) {
+function DashboardScheduleModal({ activity, canScheduleMeta, onClose, onScheduled }: { activity: DashboardClientActivity; canScheduleMeta: boolean; onClose: () => void; onScheduled: () => void }) {
   const [detail, setDetail] = useState<CardDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [scheduleDate, setScheduleDate] = useState("");
@@ -2539,6 +2992,14 @@ function DashboardScheduleModal({ activity, onClose, onScheduled }: { activity: 
   const [saving, setSaving] = useState(false);
   const [captionCopied, setCaptionCopied] = useState(false);
   const [error, setError] = useState("");
+  const [metaDestinations, setMetaDestinations] = useState<MetaPublishDestination[]>([]);
+  const [metaPublications, setMetaPublications] = useState<MetaScheduledPublication[]>([]);
+  const [metaLoading, setMetaLoading] = useState(canScheduleMeta);
+  const [metaScheduleOpen, setMetaScheduleOpen] = useState(false);
+  const [metaScheduling, setMetaScheduling] = useState(false);
+  const [metaFeedback, setMetaFeedback] = useState("");
+  const [metaFeedbackError, setMetaFeedbackError] = useState(false);
+  const [metaDetailsOpen, setMetaDetailsOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -2568,6 +3029,32 @@ function DashboardScheduleModal({ activity, onClose, onScheduled }: { activity: 
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
   }, [activity]);
+
+  useEffect(() => {
+    let active = true;
+    if (!canScheduleMeta || !activity.cardId) { setMetaLoading(false); return () => { active = false; }; }
+    setMetaLoading(true);
+    void Promise.all([
+      loadClientMetaDestinationsBySlug(activity.clientSlug),
+      listMetaPublicationsBySlug(activity.clientSlug),
+    ]).then(([destinationResult, publications]) => {
+      if (!active) return;
+      setMetaDestinations(destinationResult.destinations);
+      setMetaPublications(publications.publications);
+    }).catch(() => {
+      if (active) { setMetaDestinations([]); setMetaPublications([]); }
+    }).finally(() => { if (active) setMetaLoading(false); });
+    return () => { active = false; };
+  }, [activity.cardId, activity.clientSlug, canScheduleMeta]);
+
+  const metaContext = useMemo(() => dashboardMetaMediaContext(detail?.card ?? null), [detail?.card]);
+  const metaDateTime = dashboardMetaDateTime(scheduleDate, scheduleTime);
+  const currentMetaPublications = activity.cardId ? selectMetaPublicationsByCard(metaPublications).get(activity.cardId) ?? [] : [];
+  const linkedPlatforms = Array.from(new Set(metaDestinations.flatMap((destination) => [
+    ...(destination.instagramAccountId ? ["instagram" as const] : []),
+    ...(destination.facebookPageId ? ["facebook" as const] : []),
+  ])));
+  const canOpenMeta = canShowDashboardMetaAction({ canScheduleMeta, cardId: activity.cardId, mediaUrls: metaContext.mediaUrls, hasLinkedPlatform: linkedPlatforms.length > 0 });
 
   const saveSchedule = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -2607,6 +3094,44 @@ function DashboardScheduleModal({ activity, onClose, onScheduled }: { activity: 
     }
   };
 
+  const openMetaSchedule = () => {
+    if (!activity.cardId || !detail) return;
+    if (!metaDateTime.value) { setError(metaDateTime.error ?? "Escolha a data e o horário antes de agendar na Meta."); return; }
+    if (metaContext.unavailableReason) { setError(metaContext.unavailableReason); return; }
+    if (!linkedPlatforms.length) { setError("Este cliente ainda não possui Instagram ou Facebook vinculado."); return; }
+    setError("");
+    setMetaScheduleOpen(true);
+  };
+
+  const scheduleOnMeta = async (
+    platforms: ("instagram" | "facebook")[],
+    localDateTime: string,
+    timezone: string,
+    options: { destinationId: string; publicationFormat: "story" | null; reelCoverUrl: string | null; locationId: string | null; locationName: string | null; instagramUserTags: Array<{ username: string; x: number; y: number }> },
+  ) => {
+    if (!activity.cardId) return;
+    setMetaScheduling(true);
+    setMetaFeedback("");
+    setMetaFeedbackError(false);
+    try {
+      const duplicates = scheduledMetaPlatformsAt(metaPublications, activity.cardId, localDateTime, options.destinationId);
+      const platformsToCreate = platforms.filter((platform) => !duplicates.includes(platform));
+      if (!platformsToCreate.length) throw new Error("Este agendamento Meta já existe para as plataformas selecionadas.");
+      const request = buildDashboardMetaScheduleRequest({ clientSlug: activity.clientSlug, cardId: activity.cardId, platforms: platformsToCreate, localDateTime, timezone, options });
+      const result = await createMetaPublicationBySlug(request.clientSlug, request.publication);
+      setMetaPublications((current) => mergeDashboardMetaPublications(current, result.publications));
+      setMetaScheduleOpen(false);
+      setMetaDetailsOpen(true);
+      setMetaFeedback(`Meta agendada: ${result.publications.map((publication) => publication.platform === "instagram" ? "Instagram" : "Facebook").join(" + ")}.`);
+      onScheduled();
+    } catch (cause) {
+      setMetaFeedbackError(true);
+      setMetaFeedback(cause instanceof Error ? cause.message : "Não foi possível agendar a publicação na Meta.");
+    } finally {
+      setMetaScheduling(false);
+    }
+  };
+
   return <div className="modal-backdrop dashboard-schedule-backdrop" onMouseDown={onClose}>
     <form className="dashboard-schedule-modal" onSubmit={saveSchedule} onMouseDown={(event) => event.stopPropagation()}>
       <header><div><p className="eyebrow">Agendamento pelo dashboard</p><h2>{activity.title}</h2><p>{activity.clientName} · feedback em {new Intl.DateTimeFormat("pt-BR", { dateStyle: "long", timeStyle: "short" }).format(new Date(activity.occurredAt))}</p></div><button type="button" className="icon-close" onClick={onClose}>×</button></header>
@@ -2614,8 +3139,24 @@ function DashboardScheduleModal({ activity, onClose, onScheduled }: { activity: 
         <section className="dashboard-schedule-preview"><h3>Prévia do post</h3>{portalCardAssets(detail.card).length ? <ClosedCardMedia card={detail.card} /> : <div className="dashboard-schedule-no-media"><UiIcon name="image" />Sem arte cadastrada</div>}</section>
         <section className="dashboard-schedule-content"><div className="dashboard-schedule-caption portal-summary-card"><div className="portal-summary-heading"><span><UiIcon name="file" /></span><div><small>CONTEÚDO DO POST</small><div className="dashboard-caption-title"><h4>Legenda</h4><button type="button" className="portal-caption-edit-button dashboard-caption-copy-button" disabled={!detail.card.subtitle?.trim()} onClick={() => void copyCaption()} aria-label={captionCopied ? "Legenda copiada" : "Copiar legenda"} title={captionCopied ? "Legenda copiada" : "Copiar legenda"} aria-live="polite"><UiIcon name={captionCopied ? "check" : "copy"} /></button></div></div></div><PortalFormattedCaption text={detail.card.subtitle ?? ""} /></div><div className="dashboard-schedule-feedback"><span>{activity.activityType === "approved" ? "✓" : activity.activityType === "changes_requested" ? "↻" : "💬"}</span><div><small>Retorno do cliente</small><strong>{activity.detail}</strong><time>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(activity.occurredAt))}</time></div></div><div className="dashboard-schedule-fields"><label>Data da publicação<input type="date" value={scheduleDate} onChange={(event) => setScheduleDate(event.target.value)} required /></label><label>Horário<input type="time" value={scheduleTime} onChange={(event) => setScheduleTime(event.target.value)} required /></label></div></section>
       </div> : null}
+      {metaDetailsOpen && currentMetaPublications.length ? <section className="dashboard-meta-schedule-status" aria-live="polite"><header><strong>Publicação Meta</strong><button type="button" onClick={() => setMetaDetailsOpen(false)} aria-label="Fechar detalhes Meta">×</button></header><div>{currentMetaPublications.map((publication) => <span key={publication.id} className={`${publication.platform} ${publication.status}`}><b>{publication.platform === "instagram" ? "IG" : "FB"}</b>{metaPublicationDetailLabel(publication, new Set(currentMetaPublications.map((item) => item.destinationId)).size > 1)}{publication.publishedPermalink ? <a href={publication.publishedPermalink} target="_blank" rel="noreferrer">Abrir ↗</a> : null}</span>)}</div></section> : null}
+      {metaFeedback ? <p className={`form-feedback dashboard-meta-feedback${metaFeedbackError ? " error-text" : ""}`}>{metaFeedback}</p> : null}
       {error ? <p className="form-feedback error-text">{error}</p> : null}
-      <footer><NavLink to={`/admin/${activity.clientSlug}`} className="ghost-button">Abrir no Kanban</NavLink><button type="button" className="ghost-button" onClick={onClose}>Cancelar</button><button type="submit" className="gradient-button" disabled={saving || loading || !detail}><UiIcon name="calendar" />{saving ? "Agendando..." : "Confirmar agendamento"}</button></footer>
+      <footer><NavLink to={`/admin/${activity.clientSlug}`} className="ghost-button">Abrir no Kanban</NavLink><button type="button" className="ghost-button" onClick={onClose}>Cancelar</button>{canOpenMeta ? <button type="button" className="dashboard-meta-schedule-button" disabled={metaLoading || metaScheduling || loading || !detail} onClick={openMetaSchedule}><UiIcon name="send" />{metaLoading ? "Carregando Meta..." : "Agendar na Meta"}</button> : null}<button type="submit" className="gradient-button" disabled={saving || loading || !detail}><UiIcon name="calendar" />{saving ? "Agendando..." : "Confirmar agendamento"}</button></footer>
+      {metaScheduleOpen && metaDateTime.value ? <MetaScheduleModal
+        mediaUrls={metaContext.mediaUrls}
+        mediaMode={metaContext.mediaMode}
+        caption={metaContext.caption}
+        suggestedAt={metaDateTime.value}
+        destinations={metaDestinations}
+        submitting={metaScheduling}
+        clientSlug={activity.clientSlug}
+        cardId={activity.cardId ?? undefined}
+        existingPublications={metaPublications}
+        lockSuggestedAt
+        onClose={() => { if (!metaScheduling) setMetaScheduleOpen(false); }}
+        onSubmit={scheduleOnMeta}
+      /> : null}
     </form>
   </div>;
 }
@@ -2668,10 +3209,10 @@ function SocialNetworkIcon({ network }: { network: "instagram" | "facebook" | "t
   return <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M3.5 12h17M12 3c2.4 2.5 3.7 5.5 3.7 9s-1.3 6.5-3.7 9c-2.4-2.5-3.7-5.5-3.7-9S9.6 5.5 12 3Z" /></svg>;
 }
 
-function EditClientModal({ client, form, logoFile, accesses, saving, error, onChange, onLogoChange, onClose, onSubmit }: { client: AdminClientOption; form: EditClientForm; logoFile: File | null; accesses: ClientAccess[]; saving: boolean; error: string; onChange: (key: keyof EditClientForm, value: string) => void; onLogoChange: (file: File | null) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+function EditClientModal({ client, form, logoFile, accesses, saving, detailsLoading, error, onChange, onLogoChange, onClose, onSubmit }: { client: AdminClientOption; form: EditClientForm; logoFile: File | null; accesses: ClientAccess[]; saving: boolean; detailsLoading: boolean; error: string; onChange: (key: keyof EditClientForm, value: string) => void; onLogoChange: (file: File | null) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const portalUsers = accesses.filter((access) => access.globalRole === "cliente");
   const socialFields: Array<[keyof EditClientForm, string, string]> = [["instagram", "Instagram", "https://instagram.com/..."], ["facebook", "Facebook", "https://facebook.com/..."], ["tiktok", "TikTok", "https://tiktok.com/@..."], ["youtube", "YouTube", "https://youtube.com/..."], ["linkedin", "LinkedIn", "https://linkedin.com/..."], ["x", "X", "https://x.com/..."], ["website", "Site", "https://meusite.com.br"]];
-  return <div className="client-modal-backdrop" onMouseDown={onClose}><form className="client-modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={onSubmit}><header><div><p className="eyebrow">Detalhes do cliente</p><h2>Editar Cliente</h2></div><button type="button" onClick={onClose} aria-label="Fechar">×</button></header><label>Nome do Cliente<input required value={form.name} onChange={(event) => onChange("name", event.target.value)} /></label><label>Nome para saudação no portal<input required value={form.greetingName} onChange={(event) => onChange("greetingName", event.target.value)} placeholder="Ex: Liege" /></label><label>Slug (URL)<span className="slug-input"><em>/client/</em><input required value={form.slug} onChange={(event) => onChange("slug", event.target.value)} /></span></label><label>Idioma do Cliente<select value={form.locale} onChange={(event) => onChange("locale", event.target.value)}><option value="pt">🇧🇷 Português</option><option value="en">🇺🇸 English</option><option value="es">🇪🇸 Español</option><option value="it">🇮🇹 Italiano</option><option value="sv">🇸🇪 Svenska</option></select></label><label>Título do portal<input required value={form.portalTitle} onChange={(event) => onChange("portalTitle", event.target.value)} /></label><label>Logo<span className="logo-picker"><input type="file" accept="image/*" onChange={(event) => onLogoChange(event.target.files?.[0] ?? null)} /><strong>{logoFile ? logoFile.name : client.logo_url ? "▧ Manter logo atual" : "▧ Selecionar logo"}</strong></span></label><fieldset><legend>Redes Sociais</legend>{socialFields.map(([key, label, placeholder]) => <label key={key} className="social-field"><span>{label}</span><input type="url" value={form[key]} onChange={(event) => onChange(key, event.target.value)} placeholder={placeholder} /></label>)}</fieldset><fieldset className="client-login"><legend>Login do Cliente</legend>{portalUsers.length === 0 ? <p>Esta conta ainda não possui login de cliente.</p> : <><label>Login<select value={form.clientUserId} onChange={(event) => onChange("clientUserId", event.target.value)}>{portalUsers.map((user) => <option key={user.userId} value={user.userId}>{user.fullName} · {user.email}</option>)}</select></label><label>E-mail do cliente<input value={form.email} disabled /></label><label>Nova senha <small>Deixe em branco para manter a atual.</small><input type="password" minLength={8} value={form.password} onChange={(event) => onChange("password", event.target.value)} placeholder="Mínimo de 8 caracteres" /></label></>}</fieldset>{error ? <p className="form-error">{error}</p> : null}<button className="gradient-button client-submit" disabled={saving}>{saving ? "Salvando..." : "Salvar alterações"}</button></form></div>;
+  return <div className="client-modal-backdrop" onMouseDown={onClose}><form className="client-modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={onSubmit}><header><div><p className="eyebrow">Detalhes do cliente</p><h2>Editar Cliente</h2></div><button type="button" onClick={onClose} aria-label="Fechar">×</button></header><label>Nome do Cliente<input required value={form.name} onChange={(event) => onChange("name", event.target.value)} /></label><label>Nome para saudação no portal<input required value={form.greetingName} onChange={(event) => onChange("greetingName", event.target.value)} placeholder="Ex: Liege" /></label><label>Slug (URL)<span className="slug-input"><em>/client/</em><input required value={form.slug} onChange={(event) => onChange("slug", event.target.value)} /></span></label><label>Idioma do Cliente<select value={form.locale} onChange={(event) => onChange("locale", event.target.value)}><option value="pt">🇧🇷 Português</option><option value="en">🇺🇸 English</option><option value="es">🇪🇸 Español</option><option value="it">🇮🇹 Italiano</option><option value="sv">🇸🇪 Svenska</option></select></label><label>Título do portal<input required value={form.portalTitle} onChange={(event) => onChange("portalTitle", event.target.value)} /></label><label>Logo<span className="logo-picker"><input type="file" accept="image/*" onChange={(event) => onLogoChange(event.target.files?.[0] ?? null)} /><strong>{logoFile ? logoFile.name : client.logo_url ? "▧ Manter logo atual" : "▧ Selecionar logo"}</strong></span></label><fieldset><legend>Redes Sociais</legend>{socialFields.map(([key, label, placeholder]) => <label key={key} className="social-field"><span>{label}</span><input type="url" value={form[key]} onChange={(event) => onChange(key, event.target.value)} placeholder={placeholder} /></label>)}</fieldset><fieldset className="client-login"><legend>Login do Cliente</legend>{portalUsers.length === 0 ? <p>Esta conta ainda não possui login de cliente.</p> : <><label>Login<select value={form.clientUserId} onChange={(event) => onChange("clientUserId", event.target.value)}>{portalUsers.map((user) => <option key={user.userId} value={user.userId}>{user.fullName} · {user.email}</option>)}</select></label><label>E-mail do cliente<input value={form.email} disabled /></label><label>Nova senha <small>Deixe em branco para manter a atual.</small><input type="password" minLength={8} value={form.password} onChange={(event) => onChange("password", event.target.value)} placeholder="Mínimo de 8 caracteres" /></label></>}</fieldset>{detailsLoading ? <p className="form-feedback">Carregando links e dados atuais do cliente…</p> : null}{error ? <p className="form-error">{error}</p> : null}<button className="gradient-button client-submit" disabled={saving || detailsLoading}>{detailsLoading ? "Carregando dados..." : saving ? "Salvando..." : "Salvar alterações"}</button></form></div>;
 }
 
 function ShareClientModal({ client, accesses, users, userId, role, saving, error, onUserChange, onRoleChange, onClose, onShare }: { client: AdminClientOption; accesses: ClientAccess[]; users: ManagedUser[]; userId: string; role: "admin" | "colaborador"; saving: boolean; error: string; onUserChange: (value: string) => void; onRoleChange: (value: "admin" | "colaborador") => void; onClose: () => void; onShare: () => void }) {
@@ -2792,6 +3333,11 @@ function AdminWorkspacePage({
   const [refreshKey, setRefreshKey] = useState(0);
   const [boardView, setBoardView] = useState<"board" | "archived" | "texts" | "calendar" | "activities" | "brand" | "pautas">(() => window.location.hash.includes("view=brand") ? "brand" : "board");
   const kanbanScrollRef = useRef<HTMLDivElement>(null);
+  const kanbanBottomScrollRef = useRef<HTMLDivElement>(null);
+  const kanbanBottomDockRef = useRef<HTMLDivElement>(null);
+  const [kanbanScrollContentWidth, setKanbanScrollContentWidth] = useState(0);
+  const [kanbanDockSpace, setKanbanDockSpace] = useState(112);
+  const [isDesktopKanban, setIsDesktopKanban] = useState(() => window.matchMedia("(min-width: 761px)").matches);
   const boardPanRef = useRef<{ pointerId: number; startX: number; scrollLeft: number } | null>(null);
   const [boardPanning, setBoardPanning] = useState(false);
   const workspaceMode = boardView === "archived" ? "archived" : "board";
@@ -2817,6 +3363,10 @@ function AdminWorkspacePage({
   };
   const workspaceViewChanging = workspaceResource.data.mode !== workspaceMode;
   const data = resource.data;
+  const visibleKanbanCardIds = useMemo(() => new Set([
+    ...data.columns.flatMap((column) => column.cards.map((card) => card.id)),
+    ...data.withoutColumn.map((card) => card.id),
+  ]), [data.columns, data.withoutColumn]);
   useEffect(() => {
     if (boardView !== "board") return;
 
@@ -2833,10 +3383,12 @@ function AdminWorkspacePage({
     return () => { window.clearInterval(interval); window.removeEventListener("focus", refreshScheduledCards); document.removeEventListener("visibilitychange", refreshOnVisibility); };
   }, [boardView]);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(() => new URLSearchParams(location.search).get("card"));
+  const [metaPublications, setMetaPublications] = useState<MetaScheduledPublication[]>([]);
   const [editingColumn, setEditingColumn] = useState<BoardColumn | "new" | null>(null);
   const [invoiceLineDialog, setInvoiceLineDialog] = useState<BillingLineRequest | null>(null);
   const [openColumnMenuId, setOpenColumnMenuId] = useState<string | null>(null);
   const [newCardTarget, setNewCardTarget] = useState<{ columnId: string | null } | null>(null);
+  const [bulkCardColumn, setBulkCardColumn] = useState<BoardColumn | null>(null);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
   const [bulkColumnDialog, setBulkColumnDialog] = useState<"copy" | "move" | null>(null);
@@ -2856,6 +3408,28 @@ function AdminWorkspacePage({
   const tagFilterButtonRef = useRef<HTMLButtonElement>(null);
   const [clientOptions, setClientOptions] = useState<AdminClientOption[]>([]);
   const [sectionCounts, setSectionCounts] = useState({ archived: 0, texts: 0, pautas: 0 });
+  const metaPublicationsByCard = useMemo(() => selectMetaPublicationsByCard(metaPublications), [metaPublications]);
+  const publishedMetaPublicationsByCard = useMemo(() => selectMetaPublicationsByCard(metaPublications.filter((publication) => publication.status === "published")), [metaPublications]);
+  const refreshKanbanMetaPublications = useCallback(async () => {
+    if (session.role !== "super_admin") return;
+    const result = await listMetaPublicationsBySlug(slug);
+    setMetaPublications(result.publications);
+    if (boardView === "board" && result.publications.some((publication) => publication.status === "published" && publication.cardId && visibleKanbanCardIds.has(publication.cardId))) {
+      setRefreshKey((value) => value + 1);
+    }
+  }, [boardView, session.role, slug, visibleKanbanCardIds]);
+
+  useEffect(() => {
+    if (session.role !== "super_admin" || (boardView !== "board" && boardView !== "archived")) {
+      setMetaPublications([]);
+      return;
+    }
+    void refreshKanbanMetaPublications().catch(() => setMetaPublications([]));
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshKanbanMetaPublications().catch(() => undefined);
+    }, 60_000);
+    return () => window.clearInterval(interval);
+  }, [boardView, refreshKanbanMetaPublications, session.role]);
   const openCardContextMenu = useCallback((event: React.MouseEvent, card: BoardCard, columnId: string | null) => {
     const viewportGap = 12;
     const menuWidth = Math.min(320, window.innerWidth - viewportGap * 2);
@@ -3026,6 +3600,14 @@ function AdminWorkspacePage({
   };
 
   useEffect(() => {
+    const media = window.matchMedia("(min-width: 761px)");
+    const update = () => setIsDesktopKanban(media.matches);
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
     const scroller = kanbanScrollRef.current;
     if (!scroller || boardView !== "board") return;
 
@@ -3061,6 +3643,56 @@ function AdminWorkspacePage({
     scroller.addEventListener("wheel", handleWheel, { passive: false });
     return () => scroller.removeEventListener("wheel", handleWheel);
   }, [boardView, data.columns.length]);
+
+  useEffect(() => {
+    const boardScroller = kanbanScrollRef.current;
+    if (!boardScroller || boardView !== "board" || !isDesktopKanban) return;
+
+    const syncMetrics = () => {
+      setKanbanScrollContentWidth(boardScroller.scrollWidth);
+      const bottomScroller = kanbanBottomScrollRef.current;
+      if (!bottomScroller) return;
+      const boardRange = Math.max(1, boardScroller.scrollWidth - boardScroller.clientWidth);
+      const bottomRange = Math.max(0, bottomScroller.scrollWidth - bottomScroller.clientWidth);
+      bottomScroller.scrollLeft = (boardScroller.scrollLeft / boardRange) * bottomRange;
+    };
+
+    const observer = new ResizeObserver(syncMetrics);
+    observer.observe(boardScroller);
+    Array.from(boardScroller.children).forEach((child) => observer.observe(child));
+    window.addEventListener("resize", syncMetrics);
+    syncMetrics();
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", syncMetrics);
+    };
+  }, [boardView, data.columns.length, isDesktopKanban]);
+
+  useEffect(() => {
+    const dock = kanbanBottomDockRef.current;
+    if (!dock || boardView !== "board" || !isDesktopKanban) return;
+
+    const updateDockSpace = () => {
+      const boardShell = kanbanScrollRef.current?.closest<HTMLElement>(".board-shell");
+      const shellScale = boardShell?.offsetHeight
+        ? boardShell.getBoundingClientRect().height / boardShell.offsetHeight
+        : 1;
+      const safeScale = Number.isFinite(shellScale) && shellScale > 0 ? shellScale : 1;
+      const dockTop = dock.getBoundingClientRect().top;
+      const visualSpace = Math.max(0, window.innerHeight - dockTop) + 12;
+      setKanbanDockSpace(Math.ceil(visualSpace / safeScale));
+    };
+
+    const observer = new ResizeObserver(updateDockSpace);
+    observer.observe(dock);
+    window.addEventListener("resize", updateDockSpace);
+    updateDockSpace();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateDockSpace);
+    };
+  }, [boardView, isDesktopKanban, selectionMode]);
 
   const handleKanbanHorizontalKeys = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
@@ -3110,21 +3742,82 @@ function AdminWorkspacePage({
     setRefreshKey((value) => value + 1);
   };
 
-  const kanbanCards = [...data.columns.flatMap((column) => column.cards), ...data.withoutColumn];
+  const createMultipleCards = async (columnId: string, quantity: number) => {
+    let created = 0;
+    try {
+      for (let index = 1; index <= quantity; index += 1) {
+        await createAdminCardBySlug(slug, {
+          columnId,
+          title: `${index} -`,
+          caption: null,
+          primaryMediaUrl: null,
+          externalLinkUrl: null,
+          artType: "Post único",
+          status: ["Pendente"],
+          tags: [],
+        });
+        created += 1;
+      }
+    } catch (caught) {
+      setRefreshKey((value) => value + 1);
+      const reason = caught instanceof Error ? caught.message : "Não foi possível concluir a criação.";
+      throw new Error(created > 0 ? `${created} de ${quantity} posts foram criados. ${reason}` : reason);
+    }
+    setRefreshKey((value) => value + 1);
+  };
+
   const unassignedCards = filterCardsByTags(data.withoutColumn);
-  const pendingPosts = kanbanCards.filter((card) => {
-    const statusText = [card.clientLabel, ...card.statusBadges]
-      .join(" ")
-      .toLocaleLowerCase("pt-BR");
-    return /(pend|rascunho|aguard|alterac)/.test(statusText);
-  }).length;
+
+  const boardActions = boardView === "board" ? <div className="board-actions">
+    <button className={selectionMode ? "ghost-button active" : "ghost-button"} onClick={() => {
+      setSelectionMode((active) => !active);
+      setSelectedCardIds([]);
+    }}>Selecionar</button>
+    <button ref={tagFilterButtonRef} className={tagFilterOpen || selectedTagFilters.length ? "ghost-button active" : "ghost-button"} onClick={() => setTagFilterOpen((open) => !open)}>Etiquetas{selectedTagFilters.length ? ` (${selectedTagFilters.length})` : ""}</button>
+    <button className="ghost-button" onClick={() => setEditingColumn("new")}>
+      Criar coluna
+    </button>
+    <button
+      className="gradient-button"
+      onClick={() => setNewCardTarget({ columnId: data.columns[0]?.id ?? null })}
+    >
+      Novo post
+    </button>
+  </div> : null;
+
+  const tagFilterPanel = boardView === "board" && tagFilterOpen ? <section ref={tagFilterPanelRef} className="tag-filter-panel">
+    <div className="tag-filter-search"><span>⌕</span><input autoFocus value={tagQuery} onChange={(event) => setTagQuery(event.target.value)} placeholder="Buscar..." /><button type="button" className="tag-filter-close" onClick={() => setTagFilterOpen(false)} aria-label="Fechar etiquetas">×</button></div>
+    <div className="tag-filter-tabs"><button className="active">Todas</button><button onClick={() => setSelectedTagFilters([])}>Limpar seleção</button></div>
+    <div className="tag-filter-list">{filteredTagDefinitions.map((tag) => { const selected = selectedTagFilters.includes(tag.name); return <button key={tag.id} className={selected ? "selected" : ""} onClick={() => setSelectedTagFilters((current) => selected ? current.filter((item) => item !== tag.name) : [...current, tag.name])}><span className="tag-filter-check">{selected ? "✓" : ""}</span><span className="tag-filter-dot" style={{ backgroundColor: tag.color }} /><strong>{tag.name}</strong></button>; })}{filteredTagDefinitions.length === 0 ? <p>Nenhuma etiqueta encontrada.</p> : null}</div>
+  </section> : null;
+
+  const bulkActionBar = selectionMode ? <BulkActionBar
+    selectedCount={selectedCards.length}
+    onCancel={() => { setSelectionMode(false); setSelectedCardIds([]); }}
+    onDelete={async () => {
+      if (!window.confirm(`Excluir ${selectedCards.length} cards? Esta ação não pode ser desfeita.`)) return;
+      await Promise.all(selectedCards.map((card) => deleteAdminCardBySlug(slug, card.id)));
+      finishBulkAction();
+    }}
+    onArchive={async () => { await Promise.all(selectedCards.map((card) => archiveAdminCardBySlug(slug, card.id))); finishBulkAction(); }}
+    onSendToClient={async () => { await Promise.all(selectedCards.map((card) => updateAdminCardBySlug(slug, card.id, { status: ["Enviar para Cliente", ...card.statusBadges.slice(1)] }))); finishBulkAction(); }}
+    onStatus={async (status) => { await Promise.all(selectedCards.map((card) => updateAdminCardBySlug(slug, card.id, { status: status ? [status, ...card.statusBadges.slice(1)] : [] }))); finishBulkAction(); }}
+    onCopy={() => setBulkColumnDialog("copy")}
+    onMove={() => setBulkColumnDialog("move")}
+  /> : null;
+
+  const desktopKanbanActions = isDesktopKanban && boardView === "board" ? <div className="kanban-header-actions">
+    {boardActions}
+    {tagFilterPanel}
+    {bulkActionBar}
+  </div> : null;
 
   return (
     <div className="page-grid admin-layout kanban-admin-layout">
       <AdminRail session={session} />
 
       <main className="main-column">
-        <WorkspaceNavbar session={session} onLogout={onLogout} clientKanban workspaceContext={<PageContextBanner eyebrow="Social" title={<><span className="client-context-logo"><img src={designHubV2Logo} alt="Design Hub" /></span><WorkspaceSelector clientName={data.clientName} slug={slug} options={clientOptions} /></>} description="" metrics={[{ label: "Colunas", value: data.columns.length, note: "Etapas do fluxo", icon: <UiIcon name="layers" />, tone: "posts" }, { label: "Posts", value: data.columns.reduce((total, column) => total + column.cards.length, 0), note: "No quadro atual", icon: <UiIcon name="file" />, tone: "clients" }, { label: "Pendentes", value: pendingPosts, note: "Aguardando ação", icon: <UiIcon name="clock" />, tone: "pending" }]} />} />
+        <WorkspaceNavbar session={session} onLogout={onLogout} clientKanban workspaceContext={<PageContextBanner eyebrow="Social" title={<><span className="client-context-logo"><img src={designHubV2Logo} alt="Design Hub" /></span><WorkspaceSelector clientName={data.clientName} slug={slug} options={clientOptions} /></>} middle={desktopKanbanActions} description="" metrics={[]} />} />
 
         <section className="workspace">
           <div className="board-shell glass">
@@ -3138,32 +3831,14 @@ function AdminWorkspacePage({
                 <button className={boardView === "brand" ? "tab active" : "tab"} onClick={() => setBoardView("brand")}>Brand Brain</button>
                 <button className={boardView === "pautas" ? "tab active" : "tab"} onClick={() => setBoardView("pautas")}>Pautas <span className="tab-count">{sectionCounts.pautas}</span></button>
               </div>
-              {boardView === "board" ? <div className="board-actions">
-                <button className={selectionMode ? "ghost-button active" : "ghost-button"} onClick={() => {
-                  setSelectionMode((active) => !active);
-                  setSelectedCardIds([]);
-                }}>Selecionar</button>
-                <button ref={tagFilterButtonRef} className={tagFilterOpen || selectedTagFilters.length ? "ghost-button active" : "ghost-button"} onClick={() => setTagFilterOpen((open) => !open)}>Etiquetas{selectedTagFilters.length ? ` (${selectedTagFilters.length})` : ""}</button>
-                <button className="ghost-button" onClick={() => setEditingColumn("new")}>
-                  Criar coluna
-                </button>
-                <button
-                  className="gradient-button"
-                  onClick={() => setNewCardTarget({ columnId: data.columns[0]?.id ?? null })}
-                >
-                  Novo post
-                </button>
-              </div> : null}
-              {boardView === "board" && tagFilterOpen ? <section ref={tagFilterPanelRef} className="tag-filter-panel">
-                <div className="tag-filter-search"><span>⌕</span><input autoFocus value={tagQuery} onChange={(event) => setTagQuery(event.target.value)} placeholder="Buscar..." /><button type="button" className="tag-filter-close" onClick={() => setTagFilterOpen(false)} aria-label="Fechar etiquetas">×</button></div>
-                <div className="tag-filter-tabs"><button className="active">Todas</button><button onClick={() => setSelectedTagFilters([])}>Limpar seleção</button></div>
-                <div className="tag-filter-list">{filteredTagDefinitions.map((tag) => { const selected = selectedTagFilters.includes(tag.name); return <button key={tag.id} className={selected ? "selected" : ""} onClick={() => setSelectedTagFilters((current) => selected ? current.filter((item) => item !== tag.name) : [...current, tag.name])}><span className="tag-filter-check">{selected ? "✓" : ""}</span><span className="tag-filter-dot" style={{ backgroundColor: tag.color }} /><strong>{tag.name}</strong></button>; })}{filteredTagDefinitions.length === 0 ? <p>Nenhuma etiqueta encontrada.</p> : null}</div>
-              </section> : null}
+              {!isDesktopKanban ? boardActions : null}
+              {!isDesktopKanban ? tagFilterPanel : null}
             </div>
 
-            <div className="board-layout">
-              {boardView === "texts" ? <AdminTextsView clientName={data.clientName} slug={slug} onCountChange={updateTextsCount} /> : boardView === "calendar" ? <ClientKanbanCalendar slug={slug} /> : boardView === "activities" ? <KanbanActivities slug={slug} /> : boardView === "brand" ? <BrandBrainWorkspaceV2 slug={slug} clientName={data.clientName} /> : boardView === "pautas" ? <PautasWorkspace slug={slug} clientName={data.clientName} columns={data.columns} onSent={() => setRefreshKey((value) => value + 1)} onCountChange={updatePautasCount} /> : boardView === "archived" && (workspaceViewChanging || resource.loading) ? <div className="archived-empty">Carregando cards arquivados...</div> : boardView === "archived" ? <ArchivedCardsView
+            <div className="board-layout" style={{ "--kanban-floating-actions-space": `${boardView === "board" ? kanbanDockSpace : 12}px` } as CSSProperties}>
+              {boardView === "texts" ? <AdminTextsView clientName={data.clientName} slug={slug} onCountChange={updateTextsCount} /> : boardView === "calendar" ? <ClientKanbanCalendar slug={slug} canLoadMeta={session.role === "super_admin"} onOpenCard={setSelectedCardId} /> : boardView === "activities" ? <KanbanActivities slug={slug} /> : boardView === "brand" ? <BrandBrainWorkspaceV2 slug={slug} clientName={data.clientName} /> : boardView === "pautas" ? <PautasWorkspace slug={slug} clientName={data.clientName} columns={data.columns} onSent={() => setRefreshKey((value) => value + 1)} onCountChange={updatePautasCount} /> : boardView === "archived" && (workspaceViewChanging || resource.loading) ? <div className="archived-empty">Carregando cards arquivados...</div> : boardView === "archived" ? <ArchivedCardsView
                 cards={archivedCards}
+                metaPublicationsByCard={publishedMetaPublicationsByCard}
                 onOpenCard={setSelectedCardId}
                 onPreviewMedia={openMediaPreview}
                 onRemoveTag={removeTagFromCard}
@@ -3189,6 +3864,14 @@ function AdminWorkspacePage({
                 tabIndex={0}
                 role="region"
                 aria-label="Colunas do Kanban. Use as setas para navegar."
+                onScroll={(event) => {
+                  const bottomScroller = kanbanBottomScrollRef.current;
+                  if (!bottomScroller) return;
+                  const boardRange = Math.max(1, event.currentTarget.scrollWidth - event.currentTarget.clientWidth);
+                  const bottomRange = Math.max(0, bottomScroller.scrollWidth - bottomScroller.clientWidth);
+                  const nextScrollLeft = (event.currentTarget.scrollLeft / boardRange) * bottomRange;
+                  if (Math.abs(bottomScroller.scrollLeft - nextScrollLeft) > 1) bottomScroller.scrollLeft = nextScrollLeft;
+                }}
                 onKeyDown={handleKanbanHorizontalKeys}
                 onPointerDown={(event) => {
                   if (event.button !== 0 || event.target !== event.currentTarget) return;
@@ -3234,6 +3917,7 @@ function AdminWorkspacePage({
                     {columnDropIndex === columnIndex ? <div className="column-drop-indicator"><span>Soltar coluna aqui</span></div> : null}
                     <BoardColumnView
                     column={{ ...column, cards: filterCardsByTags(column.cards) }}
+                    metaPublicationsByCard={metaPublicationsByCard}
                     onOpenCard={setSelectedCardId}
                     onBill={() => { setOpenColumnMenuId(null); setInvoiceLineDialog({ clientName: data.clientName, description: `👉 ${column.name}`, quantity: 1, unitPrice: 0, notes: "" }); }}
                     menuOpen={openColumnMenuId === column.id}
@@ -3277,6 +3961,10 @@ function AdminWorkspacePage({
                     }}
                     onArchiveCurrentMonth={() => void archiveColumnCurrentMonth(column)}
                     onAddCard={() => setNewCardTarget({ columnId: column.id })}
+                    onAddMultipleCards={() => {
+                      setOpenColumnMenuId(null);
+                      setBulkCardColumn(column);
+                    }}
                     onQuickAddCard={(title) => createQuickCard(column.id, title)}
                     selectionMode={selectionMode}
                     selectedCardIds={selectedCardIds}
@@ -3363,6 +4051,7 @@ function AdminWorkspacePage({
                           {dropTarget?.columnId === null && dropTarget.index === index ? <div className="card-drop-indicator"><span>Soltar aqui</span></div> : null}
                           <CardView
                             card={card}
+                            metaPublications={metaPublicationsByCard.get(card.id)}
                             onOpen={() => selectionMode ? toggleCardSelection(card.id) : setSelectedCardId(card.id)}
                             onContextMenu={(event) => {
                               event.preventDefault();
@@ -3471,6 +4160,26 @@ function AdminWorkspacePage({
         </section>
       </main>
 
+      {isDesktopKanban && boardView === "board" ? createPortal(<div ref={kanbanBottomDockRef} className="kanban-bottom-dock kanban-scroll-dock">
+        <div
+          ref={kanbanBottomScrollRef}
+          className="kanban-bottom-scrollbar"
+          role="scrollbar"
+          aria-label="Navegar horizontalmente pelas colunas"
+          aria-orientation="horizontal"
+          onScroll={(event) => {
+            const boardScroller = kanbanScrollRef.current;
+            if (!boardScroller) return;
+            const bottomRange = Math.max(1, event.currentTarget.scrollWidth - event.currentTarget.clientWidth);
+            const boardRange = Math.max(0, boardScroller.scrollWidth - boardScroller.clientWidth);
+            const nextScrollLeft = (event.currentTarget.scrollLeft / bottomRange) * boardRange;
+            if (Math.abs(boardScroller.scrollLeft - nextScrollLeft) > 1) boardScroller.scrollLeft = nextScrollLeft;
+          }}
+        >
+          <span style={{ width: `${Math.max(kanbanScrollContentWidth, 1)}px` }} />
+        </div>
+      </div>, document.body) : null}
+
       <CardDetailModal
         mode="admin"
         titlePrefix="Card administrativo"
@@ -3502,7 +4211,11 @@ function AdminWorkspacePage({
         }
         onRefresh={() => setRefreshKey((value) => value + 1)}
         onClose={() => { setSelectedCardId(null); if (location.search) navigate(`/admin/${slug}`, { replace: true }); }}
-        adminContext={{ slug, columns: data.columns }}
+        adminContext={{ slug, columns: data.columns, canScheduleMeta: session.role === "super_admin", onMetaPublicationsSaved: (publications) => setMetaPublications((current) => [...publications, ...current.filter((item) => !publications.some((publication) => publication.id === item.id))]), onCardUpdated: (updated) => resource.setData((current) => ({
+          ...current,
+          columns: current.columns.map((column) => ({ ...column, cards: column.cards.map((item) => item.id === updated.id ? { ...item, ...updated } : item) })),
+          withoutColumn: current.withoutColumn.map((item) => item.id === updated.id ? { ...item, ...updated } : item),
+        })) }}
       />
 
       <MediaPreviewModal media={previewMedia} onClose={() => setPreviewMedia(null)} onNavigate={(direction) => setPreviewMedia((current) => current ? { ...current, index: Math.max(0, Math.min(current.index + direction, current.urls.length - 1)) } : null)} />
@@ -3539,20 +4252,7 @@ function AdminWorkspacePage({
       ) : null}
       {cardClientDialog ? <CardClientDialog card={cardClientDialog} clients={clientOptions.filter((client) => client.slug !== slug)} onClose={() => setCardClientDialog(null)} onConfirm={async (targetSlug, mode, columnId) => { await createAdminCardBySlug(targetSlug, { columnId, title: `${cardClientDialog.title}${mode === "copy" ? " (copia)" : ""}`, caption: cardClientDialog.subtitle ?? null, primaryMediaUrl: cardClientDialog.mediaUrl ?? null, externalLinkUrl: cardClientDialog.externalLinkUrl ?? null, artType: cardClientDialog.typeLabel, status: cardClientDialog.statusBadges, tags: cardClientDialog.tags, mediaUrls: cardClientDialog.mediaUrls, hashtags: cardClientDialog.hashtags, deadlineAt: cardClientDialog.deadlineAt, scheduledAt: cardClientDialog.scheduledAt, scheduledTimeZone: cardClientDialog.scheduledTimeZone, clientLabel: cardClientDialog.clientLabel }); if (mode === "move") await deleteAdminCardBySlug(slug, cardClientDialog.id); setRefreshKey((value) => value + 1); }} /> : null}
 
-      {selectionMode ? <BulkActionBar
-        selectedCount={selectedCards.length}
-        onCancel={() => { setSelectionMode(false); setSelectedCardIds([]); }}
-        onDelete={async () => {
-          if (!window.confirm(`Excluir ${selectedCards.length} cards? Esta ação não pode ser desfeita.`)) return;
-          await Promise.all(selectedCards.map((card) => deleteAdminCardBySlug(slug, card.id)));
-          finishBulkAction();
-        }}
-        onArchive={async () => { await Promise.all(selectedCards.map((card) => archiveAdminCardBySlug(slug, card.id))); finishBulkAction(); }}
-        onSendToClient={async () => { await Promise.all(selectedCards.map((card) => updateAdminCardBySlug(slug, card.id, { status: ["Enviar para Cliente", ...card.statusBadges.slice(1)] }))); finishBulkAction(); }}
-        onStatus={async (status) => { await Promise.all(selectedCards.map((card) => updateAdminCardBySlug(slug, card.id, { status: status ? [status, ...card.statusBadges.slice(1)] : [] }))); finishBulkAction(); }}
-        onCopy={() => setBulkColumnDialog("copy")}
-        onMove={() => setBulkColumnDialog("move")}
-      /> : null}
+      {!isDesktopKanban ? bulkActionBar : null}
 
       {bulkColumnDialog ? <BulkColumnDialog mode={bulkColumnDialog} columns={data.columns} selectedCount={selectedCards.length} onClose={() => setBulkColumnDialog(null)} onConfirm={async (columnId) => {
         if (bulkColumnDialog === "move") {
@@ -3644,6 +4344,15 @@ function AdminWorkspacePage({
         }}
       />
 
+      {bulkCardColumn ? <BulkCardsModal
+        column={bulkCardColumn}
+        onClose={() => setBulkCardColumn(null)}
+        onConfirm={async (quantity) => {
+          await createMultipleCards(bulkCardColumn.id, quantity);
+          setBulkCardColumn(null);
+        }}
+      /> : null}
+
       {invoiceLineDialog ? <BillingLineModal
         request={invoiceLineDialog}
         onClose={() => setInvoiceLineDialog(null)}
@@ -3656,6 +4365,42 @@ function AdminWorkspacePage({
       /> : null}
     </div>
   );
+}
+
+function BulkCardsModal({ column, onClose, onConfirm }: { column: BoardColumn; onClose: () => void; onConfirm: (quantity: number) => Promise<void> }) {
+  const [quantity, setQuantity] = useState("8");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const parsedQuantity = Number(quantity);
+  const validQuantity = Number.isInteger(parsedQuantity) && parsedQuantity >= 1 && parsedQuantity <= 50;
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!validQuantity || saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      await onConfirm(parsedQuantity);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Não foi possível criar os posts.");
+      setSaving(false);
+    }
+  };
+
+  return <div className="modal-backdrop" onMouseDown={() => { if (!saving) onClose(); }}>
+    <section className="modal-panel glass billing-line-modal bulk-cards-modal" role="dialog" aria-modal="true" aria-labelledby="bulk-cards-title" onMouseDown={(event) => event.stopPropagation()}>
+      <header className="billing-line-modal-head">
+        <div><p className="eyebrow">Coluna · {column.name}</p><h2 id="bulk-cards-title">Adicionar vários posts</h2><p>Informe quantos cartões deseja criar nesta coluna.</p></div>
+        <button type="button" className="icon-close" disabled={saving} onClick={onClose} aria-label="Fechar">×</button>
+      </header>
+      <form onSubmit={submit}>
+        <label>Quantidade<input autoFocus type="number" min="1" max="50" step="1" value={quantity} onChange={(event) => setQuantity(event.target.value)} /></label>
+        <p className="bulk-cards-preview">Os cartões serão numerados como <strong>1 -</strong>, <strong>2 -</strong>, <strong>3 -</strong> e assim por diante.</p>
+        {error ? <p className="form-error">{error}</p> : null}
+        <footer className="billing-line-modal-actions"><button type="button" className="ghost-button" disabled={saving} onClick={onClose}>Cancelar</button><button className="gradient-button" type="submit" disabled={!validQuantity || saving}>{saving ? `Criando ${parsedQuantity} posts...` : `Criar ${parsedQuantity} ${parsedQuantity === 1 ? "post" : "posts"}`}</button></footer>
+      </form>
+    </section>
+  </div>;
 }
 
 function BillingLineModal({ request, onChange, onClose, onConfirm }: { request: BillingLineRequest; onChange: (request: BillingLineRequest) => void; onClose: () => void; onConfirm: (request: BillingLineRequest) => void }) {
@@ -3680,6 +4425,7 @@ function BillingLineModal({ request, onChange, onClose, onConfirm }: { request: 
 
 function BoardColumnView({
   column,
+  metaPublicationsByCard,
   onOpenCard,
   onBill,
   menuOpen,
@@ -3690,6 +4436,7 @@ function BoardColumnView({
   onDelete,
   onArchiveCurrentMonth,
   onAddCard,
+  onAddMultipleCards,
   onQuickAddCard,
   onCardContextMenu,
   selectionMode,
@@ -3709,6 +4456,7 @@ function BoardColumnView({
   onColumnDragEnd,
 }: {
   column: BoardColumn;
+  metaPublicationsByCard: ReadonlyMap<string, MetaScheduledPublication[]>;
   onOpenCard: (cardId: string) => void;
   onBill: () => void;
   menuOpen: boolean;
@@ -3719,6 +4467,7 @@ function BoardColumnView({
   onDelete: () => void;
   onArchiveCurrentMonth: () => void;
   onAddCard: () => void;
+  onAddMultipleCards: () => void;
   onQuickAddCard: (title: string) => Promise<void>;
   onCardContextMenu: (event: React.MouseEvent<HTMLButtonElement>, card: BoardCard) => void;
   selectionMode: boolean;
@@ -3813,6 +4562,10 @@ function BoardColumnView({
                 <UiIcon name="plus" />
                 <span>Adicionar post</span>
               </button>
+              <button role="menuitem" onClick={onAddMultipleCards}>
+                <UiIcon name="copy" />
+                <span>Adicionar vários posts</span>
+              </button>
               <button role="menuitem" onClick={onEdit}>
                 <UiIcon name="pencil" />
                 <span>Editar</span>
@@ -3862,7 +4615,7 @@ function BoardColumnView({
         {column.cards.map((card, index) => (
           <div key={card.id} className={draggedCardId === card.id ? "card-drag-wrap dragging" : "card-drag-wrap"} onDragOver={(event) => { if (!draggedCardId) return; event.preventDefault(); event.stopPropagation(); const cardBounds = event.currentTarget.querySelector<HTMLElement>(".content-card")?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect(); onDragOver(event, event.clientY > cardBounds.top + cardBounds.height / 2 ? index + 1 : index); }} onDrop={(event) => { if (!draggedCardId) return; event.preventDefault(); event.stopPropagation(); const cardBounds = event.currentTarget.querySelector<HTMLElement>(".content-card")?.getBoundingClientRect() ?? event.currentTarget.getBoundingClientRect(); onDrop(event.clientY > cardBounds.top + cardBounds.height / 2 ? index + 1 : index); }}>
             {dropIndex === index ? <div className="card-drop-indicator"><span>Soltar aqui</span></div> : null}
-            <CardView card={card} onOpen={() => selectionMode ? onToggleCardSelection(card.id) : onOpenCard(card.id)} onContextMenu={(event) => onCardContextMenu(event, card)} selectionMode={selectionMode} selected={selectedCardIds.includes(card.id)} onToggleSelection={() => onToggleCardSelection(card.id)} onPreviewMedia={onPreviewMedia} onRemoveTag={onRemoveTag} draggable={dragEnabled && !selectionMode} onDragStart={() => onDragStart(card.id)} onDragEnd={onDragEnd} />
+            <CardView card={card} metaPublications={metaPublicationsByCard.get(card.id)} onOpen={() => selectionMode ? onToggleCardSelection(card.id) : onOpenCard(card.id)} onContextMenu={(event) => onCardContextMenu(event, card)} selectionMode={selectionMode} selected={selectedCardIds.includes(card.id)} onToggleSelection={() => onToggleCardSelection(card.id)} onPreviewMedia={onPreviewMedia} onRemoveTag={onRemoveTag} draggable={dragEnabled && !selectionMode} onDragStart={() => onDragStart(card.id)} onDragEnd={onDragEnd} />
           </div>
         ))}
         {dropIndex === column.cards.length ? <div className="card-drop-indicator"><span>Soltar aqui</span></div> : null}
@@ -4580,20 +5333,26 @@ function AdminTextsView({ clientName, slug, onCountChange }: { clientName: strin
   const downloadPdf = async () => {
     if (!selected || pdfSaving) return;
     setPdfSaving(true);
-    const printable = document.createElement("div");
-    printable.style.cssText = "position:fixed;left:-10000px;top:0;width:760px;padding:32px;background:#fff;color:#192342;font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;line-height:1.55;";
-    printable.innerHTML = `${coverImage ? `<img src="${coverImage}" alt="Banner" style="display:block;width:100%;height:180px;object-fit:cover;border-radius:14px;margin-bottom:24px;" />` : ""}<h1 style="font-size:32px;margin:0 0 24px;">${selected.title}</h1><div>${editorRef.current?.innerHTML ?? selected.contentHtml}</div>`;
-    document.body.appendChild(printable);
+    const bodyHtml = editorRef.current?.innerHTML ?? selected.contentHtml;
+    const printableFrame = createPrintableTextFrame({
+      title: selected.title,
+      bodyHtml,
+      coverImage,
+    });
+    if (!printableFrame) {
+      setActionMessage("Não foi possível preparar o PDF. Atualize a página e tente novamente.");
+      setPdfSaving(false);
+      return;
+    }
     try {
-      const { jsPDF } = await import("jspdf");
-      const pdf = new jsPDF({ unit: "pt", format: "a4" });
-      await pdf.html(printable, { margin: [36, 36, 36, 36], autoPaging: "text", width: 523, windowWidth: 760 });
-      pdf.save(`${selected.title.slice(0, 55)}.pdf`);
-      setActionMessage("PDF baixado com banner e imagens do artigo.");
-    } catch (error) {
-      window.print();
-      setActionMessage(error instanceof Error ? "A janela de impressão foi aberta para salvar o PDF." : "A janela de impressão foi aberta para salvar o PDF.");
-    } finally { printable.remove(); setPdfSaving(false); }
+      await printWhenImagesReady(printableFrame.target);
+      setActionMessage("Escolha “Salvar como PDF” na janela de impressão.");
+    } catch {
+      setActionMessage("Não foi possível abrir a impressão do PDF. Atualize a página e tente novamente.");
+    } finally {
+      window.setTimeout(printableFrame.cleanup, 1500);
+      setPdfSaving(false);
+    }
   };
   const sendToClient = async () => {
     if (!selected) return;
@@ -4670,7 +5429,7 @@ function AdminTextsView({ clientName, slug, onCountChange }: { clientName: strin
   </section>;
 }
 
-function ArchivedCardsView({ cards, onOpenCard, onPreviewMedia, onRemoveTag, onRestore, onDelete }: { cards: BoardCard[]; onOpenCard: (cardId: string) => void; onPreviewMedia: (card: BoardCard) => void; onRemoveTag: (card: BoardCard, tag: string) => void; onRestore: (card: BoardCard) => void; onDelete: (cardId: string) => void }) {
+function ArchivedCardsView({ cards, metaPublicationsByCard, onOpenCard, onPreviewMedia, onRemoveTag, onRestore, onDelete }: { cards: BoardCard[]; metaPublicationsByCard: ReadonlyMap<string, MetaScheduledPublication[]>; onOpenCard: (cardId: string) => void; onPreviewMedia: (card: BoardCard) => void; onRemoveTag: (card: BoardCard, tag: string) => void; onRestore: (card: BoardCard) => void; onDelete: (cardId: string) => void }) {
   const groups = new Map<string, BoardCard[]>();
   [...cards]
     .sort((left, right) => getArchiveGroupDate(right).getTime() - getArchiveGroupDate(left).getTime())
@@ -4686,7 +5445,7 @@ function ArchivedCardsView({ cards, onOpenCard, onPreviewMedia, onRemoveTag, onR
 
   return <section className="archived-board">
     <header className="archived-board-head"><div><p className="column-kicker">Histórico</p><h3>Arquivados</h3></div><span>{cards.length} {cards.length === 1 ? "card" : "cards"}</span></header>
-    {cards.length === 0 ? <div className="archived-empty">Nenhum card arquivado ainda.</div> : <div className="archive-month-columns">{[...groups.entries()].map(([month, monthCards]) => <section className="archive-month" key={month}><header><h4>{month}</h4><span>({monthCards.length})</span></header><div className="archive-month-cards">{monthCards.map((card) => <article key={card.id} className="archived-card"><CardView card={card} onOpen={() => onOpenCard(card.id)} onPreviewMedia={onPreviewMedia} onRemoveTag={onRemoveTag} /><div className="archived-card-actions"><button className="restore-card-button" onClick={() => onRestore(card)}>↶ <span>Restaurar</span></button><button className="danger" title="Excluir definitivamente" aria-label={`Excluir ${card.title} definitivamente`} onClick={() => onDelete(card.id)}><UiIcon name="trash" /></button></div></article>)}</div></section>)}</div>}
+    {cards.length === 0 ? <div className="archived-empty">Nenhum card arquivado ainda.</div> : <div className="archive-month-columns">{[...groups.entries()].map(([month, monthCards]) => <section className="archive-month" key={month}><header><h4>{month}</h4><span>({monthCards.length})</span></header><div className="archive-month-cards">{monthCards.map((card) => <article key={card.id} className="archived-card"><CardView card={card} metaPublications={metaPublicationsByCard.get(card.id)} onOpen={() => onOpenCard(card.id)} onPreviewMedia={onPreviewMedia} onRemoveTag={onRemoveTag} /><div className="archived-card-actions"><button className="restore-card-button" onClick={() => onRestore(card)}>↶ <span>Restaurar</span></button><button className="danger" title="Excluir definitivamente" aria-label={`Excluir ${card.title} definitivamente`} onClick={() => onDelete(card.id)}><UiIcon name="trash" /></button></div></article>)}</div></section>)}</div>}
   </section>;
 }
 
@@ -4779,7 +5538,8 @@ function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen =
     >
       <div className="artwork-carousel-track" style={{ "--artwork-index": index } as CSSProperties}>
         {urls.map((url, itemIndex) => {
-          const isVideo = /\.(mp4|webm|mov)(\?.*)?$/i.test(url) || (urls.length === 1 && /video|reels?/i.test(mediaType ?? ""));
+          const isLinkedExternalMedia = /(?:drive|docs)\.google\.com/i.test(url);
+          const isVideo = !isLinkedExternalMedia && (/\.(mp4|webm|mov)(\?.*)?$/i.test(url) || (urls.length === 1 && /video|reels?/i.test(mediaType ?? "")));
           const detectedKind = mediaKinds[itemIndex] ?? (isVideo ? "video" : undefined);
           return <figure className={`${itemIndex === index ? "artwork-carousel-slide active" : "artwork-carousel-slide"}${detectedKind === "video" ? " video" : ""}`} key={`${url}-${itemIndex}`} aria-hidden={itemIndex !== index}>
             <ResilientCardMedia
@@ -4815,9 +5575,14 @@ function ClosedCardMedia({ card, onPreview, showOverlay = false }: { card: Board
       : null;
   }
   const multiple = urls.length > 1;
-  return <div className={`closed-card-media${onPreview ? " card-media-zoom" : ""}${multiple ? " carousel" : ""}`} onClick={(event) => { if (!onPreview) return; event.stopPropagation(); onPreview(); }}>
+  const singleUrl = urls[0] ?? "";
+  const singleIsVideo = !multiple && (
+    /video|reels?/i.test(`${card.mediaType ?? ""} ${card.typeLabel ?? ""}`)
+    || /\.(mp4|webm|mov)(\?.*)?$/i.test(singleUrl)
+  );
+  return <div className={`closed-card-media${onPreview ? " card-media-zoom" : ""}${multiple ? " carousel" : ""}${singleIsVideo ? " video" : ""}`} onClick={(event) => { if (!onPreview) return; event.stopPropagation(); onPreview(); }}>
     {showOverlay ? <div className="card-media-overlay"><span className="card-type">{compactArtTypeLabel(card.typeLabel)}</span><span className="card-media-menu">{onPreview ? "⌕" : "..."}</span></div> : null}
-    {multiple ? <ArtworkCarousel urls={urls} title={card.title} compact /> : <div className={`media-frame ${card.mediaAspect}`}><ResilientCardMedia url={urls[0]} title={card.title} /></div>}
+    {multiple ? <ArtworkCarousel urls={urls} title={card.title} compact /> : <div className={`media-frame ${card.mediaAspect}`}><ResilientCardMedia url={singleUrl} title={card.title} video={singleIsVideo} /></div>}
   </div>;
 }
 
@@ -4837,7 +5602,7 @@ function MediaPreviewModal({ media, onClose, onNavigate }: { media: { urls: stri
   return <div className="media-preview-backdrop" onMouseDown={onClose} role="presentation"><section className="media-preview-modal" role="dialog" aria-modal="true" aria-label={`Visualização de ${media.title}`} onMouseDown={(event) => event.stopPropagation()}><button className="media-preview-close" onClick={onClose} aria-label="Fechar visualização">×</button><ArtworkCarousel urls={media.urls} title={media.title} activeIndex={media.index} onIndexChange={(next) => { if (next !== media.index) onNavigate(next > media.index ? 1 : -1); }} fullscreen /></section></div>;
 }
 
-function CardView({ card, onOpen, onContextMenu, selectionMode = false, selected = false, onToggleSelection, onPreviewMedia, onRemoveTag, draggable = false, onDragStart, onDragEnd }: { card: BoardCard; onOpen: () => void; onContextMenu?: (event: React.MouseEvent<HTMLButtonElement>) => void; selectionMode?: boolean; selected?: boolean; onToggleSelection?: () => void; onPreviewMedia?: (card: BoardCard) => void; onRemoveTag?: (card: BoardCard, tag: string) => void; draggable?: boolean; onDragStart?: () => void; onDragEnd?: () => void }) {
+function CardView({ card, metaPublications = [], onOpen, onContextMenu, selectionMode = false, selected = false, onToggleSelection, onPreviewMedia, onRemoveTag, draggable = false, onDragStart, onDragEnd }: { card: BoardCard; metaPublications?: MetaScheduledPublication[]; onOpen: () => void; onContextMenu?: (event: React.MouseEvent<HTMLButtonElement>) => void; selectionMode?: boolean; selected?: boolean; onToggleSelection?: () => void; onPreviewMedia?: (card: BoardCard) => void; onRemoveTag?: (card: BoardCard, tag: string) => void; draggable?: boolean; onDragStart?: () => void; onDragEnd?: () => void }) {
   const primaryBadge = card.statusBadges[0] ?? null;
   const isInDevelopment = /^em desenvolvimento$/i.test(primaryBadge?.trim() ?? "");
   const isApprovedBrief = card.isBriefApproval && !isInDevelopment && /aprovad/i.test(`${card.clientLabel} ${card.statusBadges.join(" ")}`);
@@ -4859,6 +5624,7 @@ function CardView({ card, onOpen, onContextMenu, selectionMode = false, selected
         ) : null}
       </div>
       <ClosedCardMedia card={card} onPreview={onPreviewMedia ? () => onPreviewMedia(card) : undefined} showOverlay />
+      {metaPublications.length ? <div className="meta-kanban-badges">{metaPublications.map((publication) => <span key={publication.id} className={`meta-kanban-badge ${publication.status} ${publication.platform}`}><i aria-hidden="true">{publication.platform === "facebook" ? "f" : "◎"}</i>{metaPublicationBadgeLabel(publication)}</span>)}</div> : null}
 
       <div className="card-meta">
         <div className="card-inline">
@@ -4976,45 +5742,70 @@ function ClientProfileMenu({ session, slug, onLogout, clientLogoUrl, accountName
 function ClientPortalInvoicesView({ invoices, onViewInvoice }: { invoices: BillingInvoice[]; onViewInvoice?: (invoiceId: string) => void }) {
   const { t, localeTag } = usePortalTranslation();
   const [previewInvoice, setPreviewInvoice] = useState<BillingInvoice | null>(null);
+  const [previewKind, setPreviewKind] = useState<"invoice" | "receipt">("invoice");
   const [printRequested, setPrintRequested] = useState(false);
   const invoiceRef = useRef<HTMLDivElement>(null);
-  const printInvoice = () => {
-    const paper = invoiceRef.current?.querySelector(".invoice-paper");
+  const printDocument = () => {
+    const selector = previewKind === "receipt" ? ".receipt-paper" : ".invoice-paper";
+    const paper = invoiceRef.current?.querySelector(selector);
     if (!paper) return;
     const headMarkup = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]')).map((el) => el.outerHTML).join("");
     const printWindow = window.open("", "_blank", "width=880,height=1120");
     if (!printWindow) return;
+    const title = previewKind === "receipt" ? t("Recibo") : t("Fatura");
     printWindow.document.open();
-    printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8" /><title>Fatura</title>${headMarkup}<style>html,body{margin:0;background:#fbfaf8;}body{display:flex;justify-content:center;padding:24px;}.invoice-paper{max-width:720px;min-height:0;margin:0;box-shadow:none;}@media print{@page{size:A4;margin:14mm;}body{padding:0;background:#fff;}.invoice-paper{max-width:none;}}</style></head><body>${paper.outerHTML}</body></html>`);
+    printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8" /><title>${title}</title>${headMarkup}<style>html,body{margin:0;background:#fbfaf8;}body{display:flex;justify-content:center;padding:24px;}.invoice-paper,.receipt-paper{max-width:720px;min-height:0;margin:0;box-shadow:none;}@media print{@page{size:A4;margin:14mm;}body{padding:0;background:#fff;}.invoice-paper,.receipt-paper{max-width:none;}}</style></head><body>${paper.outerHTML}</body></html>`);
     printWindow.document.close();
-    const triggerPrint = () => { printWindow.focus(); printWindow.print(); };
-    printWindow.onload = triggerPrint;
-    window.setTimeout(triggerPrint, 400);
+    void printWhenImagesReady(printWindow);
   };
   useEffect(() => {
     if (!previewInvoice || !printRequested) return;
     const timer = window.setTimeout(() => {
-      printInvoice();
+      printDocument();
       setPrintRequested(false);
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [previewInvoice, printRequested]);
-  const downloadInvoice = (invoice: BillingInvoice) => {
+  }, [previewInvoice, previewKind, printRequested]);
+  const openDocument = (invoice: BillingInvoice, kind: "invoice" | "receipt", print = false) => {
     onViewInvoice?.(invoice.id);
     setPreviewInvoice(invoice);
-    setPrintRequested(true);
-  };
-  const previewInvoiceForClient = (invoice: BillingInvoice) => {
-    onViewInvoice?.(invoice.id);
-    setPreviewInvoice(invoice);
+    setPreviewKind(kind);
+    setPrintRequested(print);
   };
 
   const date = (value: string) => new Intl.DateTimeFormat(localeTag).format(new Date(`${value.slice(0, 10)}T12:00:00`));
   return <section className="portal-invoices-view glass">
     <header className="portal-invoices-head"><div><p className="eyebrow">{t("Financeiro")}</p><h1>{t("Faturas")}</h1><p>{t("Consulte os lançamentos disponibilizados para sua conta.")}</p></div><span>{invoices.length} {t(invoices.length === 1 ? "fatura" : "faturas")}</span></header>
-    {invoices.length ? <div className="portal-invoices-list">{invoices.map((invoice) => <article key={invoice.id} className="portal-invoice-row"><div className="portal-invoice-number">#{invoice.number}</div><div className="portal-invoice-main"><strong>{invoice.title}</strong><span>{t("Emitida em")} {date(invoice.issueDate)} · {t("Vencimento")} {date(invoice.dueDate)}</span></div><div className="portal-invoice-value"><strong>{formatBillingMoney(getBillingInvoiceTotal(invoice), invoice.currency)}</strong><em className={`invoice-status ${invoice.status}`}>{t(invoice.status === "paid" ? "Paga" : invoice.status === "overdue" ? "Atrasada" : invoice.status === "cancelled" ? "Cancelada" : "Aberta")}</em></div><div className="portal-invoice-actions"><button className="ghost-button" onClick={() => previewInvoiceForClient(invoice)}><UiIcon name="eye" />{t("Visualizar")}</button><button className="ghost-button" onClick={() => downloadInvoice(invoice)}><UiIcon name="file" />{t("Baixar")}</button></div></article>)}</div> : <div className="portal-invoices-empty"><span>▣</span><h2>{t("Nenhuma fatura disponível")}</h2><p>{t("Quando uma fatura for liberada para esta conta, ela aparecerá aqui.")}</p></div>}
-    {previewInvoice ? <div className="modal-backdrop" onClick={() => setPreviewInvoice(null)}><section className="portal-invoice-preview-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">{t("Visualização da fatura")}</p><h2>{previewInvoice.title}</h2><span>{t("Fatura")} #{previewInvoice.number}</span></div><button className="icon-close" onClick={() => setPreviewInvoice(null)} aria-label={t("Fechar")}>×</button></header><div ref={invoiceRef}><BillingInvoiceDocument invoice={previewInvoice} /></div><footer><button className="ghost-button" onClick={() => setPreviewInvoice(null)}>{t("Fechar")}</button><button className="gradient-button" onClick={printInvoice}><UiIcon name="file" />{t("Baixar")}</button></footer></section></div> : null}
+    {invoices.length ? <div className="portal-invoices-list">{invoices.map((invoice) => <article key={invoice.id} className="portal-invoice-row"><div className="portal-invoice-number">#{invoice.number}</div><div className="portal-invoice-main"><strong>{invoice.title}</strong><span>{t("Emitida em")} {date(invoice.issueDate)} · {t("Vencimento")} {date(invoice.dueDate)}</span>{invoice.receiptSnapshot ? <small className="portal-invoice-receipt-note">{t("Recibo disponível")} · {invoice.receiptNumber}</small> : null}</div><div className="portal-invoice-value"><strong>{formatBillingMoney(getBillingInvoiceTotal(invoice), invoice.currency)}</strong><em className={`invoice-status ${invoice.status}`}>{t(invoice.status === "paid" ? "Paga" : invoice.status === "overdue" ? "Atrasada" : invoice.status === "cancelled" ? "Cancelada" : "Aberta")}</em></div><div className="portal-invoice-actions"><button className="ghost-button" onClick={() => openDocument(invoice, "invoice")}><UiIcon name="eye" />{t("Visualizar")}</button><button className="ghost-button" onClick={() => openDocument(invoice, "invoice", true)}><UiIcon name="file" />{t("Baixar")}</button>{invoice.receiptSnapshot ? <><button className="ghost-button receipt" onClick={() => openDocument(invoice, "receipt")}><UiIcon name="receipt" />{t("Ver recibo")}</button><button className="ghost-button receipt" onClick={() => openDocument(invoice, "receipt", true)}><UiIcon name="file" />{t("Baixar recibo")}</button></> : null}</div></article>)}</div> : <div className="portal-invoices-empty"><span>▣</span><h2>{t("Nenhuma fatura disponível")}</h2><p>{t("Quando uma fatura for liberada para esta conta, ela aparecerá aqui.")}</p></div>}
+    {previewInvoice ? <div className="modal-backdrop" onClick={() => setPreviewInvoice(null)}><section className="portal-invoice-preview-modal" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">{t(previewKind === "receipt" ? "Visualização do recibo" : "Visualização da fatura")}</p><h2>{previewKind === "receipt" ? (previewInvoice.receiptNumber ?? t("Recibo")) : previewInvoice.title}</h2><span>{previewKind === "receipt" ? `${t("Fatura")} #${previewInvoice.number}` : `${t("Fatura")} #${previewInvoice.number}`}</span></div><button className="icon-close" onClick={() => setPreviewInvoice(null)} aria-label={t("Fechar")}>×</button></header><div ref={invoiceRef}>{previewKind === "receipt" ? <BillingReceiptDocument invoice={previewInvoice} /> : <BillingInvoiceDocument invoice={previewInvoice} />}</div><footer><button className="ghost-button" onClick={() => setPreviewInvoice(null)}>{t("Fechar")}</button><button className="gradient-button" onClick={printDocument}><UiIcon name="file" />{t(previewKind === "receipt" ? "Baixar recibo" : "Baixar")}</button></footer></section></div> : null}
   </section>;
+}
+function changesRequestedPortalLabel(locale: string) {
+  const normalized = locale.toLocaleLowerCase("pt-BR");
+  if (normalized.startsWith("it") || normalized.includes("ital")) return "Modifica richiesta";
+  if (normalized.startsWith("es") || normalized.includes("espa")) return "Cambio solicitado";
+  if (normalized.startsWith("en") || normalized.includes("ingl")) return "Changes requested";
+  if (normalized.startsWith("sv") || normalized.includes("suec")) return "Ändring begärd";
+  return "Alteração solicitada";
+}
+
+function hasPortalChangesRequested(card: BoardCard) {
+  const normalized = [card.clientLabel, ...card.statusBadges]
+    .join(" ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase("pt-BR")
+    .replace(/[_-]+/g, " ");
+  return /(alteracao solicitada|revisao solicitada|revisao|changes requested|modifica richiesta|cambio solicitado|andring begard)/.test(normalized);
+}
+
+function isClientSuggestionCard(card: BoardCard) {
+  return card.statusBadges.some((status) => status
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase("pt-BR") === "sugestao do cliente");
 }
 
 function awaitingApprovalLabel(locale: string) {
@@ -5026,7 +5817,51 @@ function awaitingApprovalLabel(locale: string) {
   return "Aguardando aprovação";
 }
 
+function awaitingPostReviewPortalLabel(locale: string) {
+  const normalized = locale.toLocaleLowerCase("pt-BR");
+  if (normalized.startsWith("it") || normalized.includes("ital")) return "Post da revisionare";
+  if (normalized.startsWith("es") || normalized.includes("espa")) return "Post para revisión";
+  if (normalized.startsWith("en") || normalized.includes("ingl")) return "Post for review";
+  if (normalized.startsWith("sv") || normalized.includes("suec")) return "Inlägg för granskning";
+  return "Post para revisão";
+}
+
+function awaitingReReviewPortalLabel(locale: string) {
+  const normalized = locale.toLocaleLowerCase("pt-BR");
+  if (normalized.startsWith("it") || normalized.includes("ital")) return "In attesa di nuova revisione";
+  if (normalized.startsWith("es") || normalized.includes("espa")) return "Esperando nueva revisión";
+  if (normalized.startsWith("en") || normalized.includes("ingl")) return "Awaiting review";
+  if (normalized.startsWith("sv") || normalized.includes("suec")) return "Väntar på ny granskning";
+  return "Aguardando nova revisão";
+}
+
+function changeRequestConfirmationCopy(locale: string) {
+  const normalized = locale.toLocaleLowerCase("pt-BR");
+  if (normalized.startsWith("it") || normalized.includes("ital")) {
+    return { title: "Modifica richiesta", detail: "La richiesta è stata inviata. Il nostro team esaminerà il feedback e lavorerà sugli aggiornamenti." };
+  }
+  if (normalized.startsWith("es") || normalized.includes("espa")) {
+    return { title: "Cambio solicitado", detail: "La solicitud fue enviada. Nuestro equipo revisará el feedback y trabajará en los ajustes." };
+  }
+  if (normalized.startsWith("en") || normalized.includes("ingl")) {
+    return { title: "Changes requested", detail: "Your request was sent. Our team will review the feedback and work on the updates." };
+  }
+  if (normalized.startsWith("sv") || normalized.includes("suec")) {
+    return { title: "Ändring begärd", detail: "Din begäran har skickats. Vårt team granskar feedbacken och arbetar vidare med justeringarna." };
+  }
+  return { title: "Alteração solicitada", detail: "Sua solicitação foi enviada. Nossa equipe vai revisar o feedback e trabalhar nos ajustes." };
+}
+
+function hasPortalFirstPostReview(card: BoardCard) {
+  return card.approvalState === "pending" && card.latestApprovalAction === "converted_to_post";
+}
+
+function hasPortalResubmittedReview(card: BoardCard) {
+  return card.approvalState === "pending" && card.latestApprovalAction === "resubmitted";
+}
+
 function isPortalApproved(card: BoardCard) {
+  if (card.approvalState) return card.approvalState === "approved";
   const statusText = [card.clientLabel, ...card.statusBadges].join(" ").toLocaleLowerCase("pt-BR");
   return /(aprovad|finalizad|publicad)/.test(statusText);
 }
@@ -5042,6 +5877,24 @@ function portalCardAssets(card: BoardCard) {
 function linkedCardMaterial(card: BoardCard) {
   return card.externalLinkUrl ?? portalCardAssets(card).find((url) => /(?:drive|docs)\.google\.com/i.test(url)) ?? null;
 }
+
+function clientFeedbackToneClass(value: string) {
+  const normalized = value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("pt-BR");
+  if (/aprovad/.test(normalized)) return "approved";
+  if (/(alteracao|revisao)/.test(normalized)) return "changes";
+  return "pending";
+}
+
+function linkedMaterialPortalLabel(locale: string, url: string) {
+  const normalized = locale.toLocaleLowerCase("pt-BR");
+  const isGoogleDrive = /(?:drive|docs)\.google\.com/i.test(url);
+  if (normalized.startsWith("it") || normalized.includes("ital")) return isGoogleDrive ? "Apri materiale su Google Drive ↗" : "Apri materiale esterno ↗";
+  if (normalized.startsWith("es") || normalized.includes("espa")) return isGoogleDrive ? "Abrir material en Google Drive ↗" : "Abrir material externo ↗";
+  if (normalized.startsWith("en") || normalized.includes("ingl")) return isGoogleDrive ? "Open material in Google Drive ↗" : "Open external material ↗";
+  if (normalized.startsWith("sv") || normalized.includes("suec")) return isGoogleDrive ? "Öppna material i Google Drive ↗" : "Öppna externt material ↗";
+  return isGoogleDrive ? "Abrir material no Google Drive ↗" : "Abrir material externo ↗";
+}
+
 
 function portalAssetExtension(url: string, contentType?: string | null) {
   const urlExtension = url.split("?")[0].match(/\.([a-z0-9]{2,5})$/i)?.[1];
@@ -5198,7 +6051,7 @@ function getPortalSearchStatuses(card: BoardCard, t: (source: string) => string)
   const statuses: Array<{ label: string; tone: string }> = [];
   if (card.scheduledAt) statuses.push({ label: t("Agendado"), tone: "scheduled" });
   if (isPortalApproved(card)) statuses.push({ label: t("Aprovado"), tone: "approved" });
-  else if (/(alteração|alteracao|revis)/i.test(combined)) statuses.push({ label: t("Alteração solicitada"), tone: "revision" });
+  else if (card.approvalState === "changes_requested" || (!card.approvalState && /(alteração|alteracao|revis)/i.test(combined))) statuses.push({ label: t("Alteração solicitada"), tone: "revision" });
   else statuses.push({ label: t("Aguardando aprovação"), tone: "pending" });
   return statuses;
 }
@@ -5209,7 +6062,7 @@ function getPortalCardLifecycle(card: BoardCard, t: (source: string) => string) 
   if (card.publishedAt) return { label: t("Publicado"), tone: "published", icon: "check" as const };
   if (card.scheduledAt) return { label: t("Agendado"), tone: "scheduled", icon: "calendar" as const };
   if (isPortalApproved(card)) return { label: t("Aprovado"), tone: "approved", icon: "check" as const };
-  if (/(alteração|alteracao|revis)/i.test(combined)) return { label: t("Alteração solicitada"), tone: "revision", icon: "comment" as const };
+  if (card.approvalState === "changes_requested" || (!card.approvalState && /(alteração|alteracao|revis)/i.test(combined))) return { label: t("Alteração solicitada"), tone: "revision", icon: "comment" as const };
   return { label: t("Aguardando aprovação"), tone: "pending", icon: "clock" as const };
 }
 
@@ -5358,17 +6211,16 @@ function ClientUpcomingPostsWidget({ items, onSelectPost }: { items: ClientPorta
   </section>;
 }
 
-type PortalPostDraft = { columnId: string; title: string; caption: string; commentText: string; artType: string; externalLinkUrl: string };
+type PortalPostDraft = { title: string; caption: string; commentText: string; artType: string; externalLinkUrl: string };
 
-function ClientPostSuggestionModal({ draft, columns, files, submitting, error, onChange, onFilesChange, onClose, onSubmit }: { draft: PortalPostDraft; columns: Array<{ id: string; name: string; color: string }>; files: File[]; submitting: boolean; error: string; onChange: (field: keyof PortalPostDraft, value: string) => void; onFilesChange: (files: File[]) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+function ClientPostSuggestionModal({ draft, files, submitting, error, onChange, onFilesChange, onClose, onSubmit }: { draft: PortalPostDraft; files: File[]; submitting: boolean; error: string; onChange: (field: keyof PortalPostDraft, value: string) => void; onFilesChange: (files: File[]) => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const { t } = usePortalTranslation();
   return <div className="modal-backdrop portal-post-modal-backdrop" onMouseDown={onClose}>
     <form className="portal-post-modal" onSubmit={onSubmit} onMouseDown={(event) => event.stopPropagation()}>
-      <header><div><p className="eyebrow">{t("Novo post")}</p><h2>{t("Criar post")}</h2><p>{t("Envie o conteúdo para a equipe. Ele ficará pendente até entrar no planejamento.")}</p></div><button type="button" onClick={onClose} aria-label={t("Fechar")}>×</button></header>
+      <header><div><p className="eyebrow">{t("Nova sugestão")}</p><h2>{t("Sugerir pauta")}</h2><p>{t("Envie sua ideia para a equipe. Ela entrará automaticamente na coluna Entrada.")}</p></div><button type="button" onClick={onClose} aria-label={t("Fechar")}>×</button></header>
       <div className="portal-post-fields">
         <label>{t("Título do post *")}<input autoFocus value={draft.title} onChange={(event) => onChange("title", event.target.value)} placeholder={t("Ex.: Carrossel com dúvidas frequentes")} maxLength={255} /></label>
         <label>{t("Formato")}<select value={draft.artType} onChange={(event) => onChange("artType", event.target.value)}>{ART_TYPE_OPTIONS.map((option) => <option key={option}>{t(option)}</option>)}</select></label>
-        <label className="wide">{t("Coluna do Kanban *")}<select required value={draft.columnId} onChange={(event) => onChange("columnId", event.target.value)}><option value="">{t("Escolha uma coluna")}</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select><small>{t("O post aparecerá nesta coluna na sua área do cliente.")}</small></label>
         <label className="wide">{t("Descrição ou legenda")}<textarea value={draft.caption} onChange={(event) => onChange("caption", event.target.value)} placeholder={t("Conte a ideia, o objetivo e qualquer orientação para a equipe...")} maxLength={5000} /></label>
         <label className="wide">{t("Comentário para a equipe")}<textarea value={draft.commentText} onChange={(event) => onChange("commentText", event.target.value)} placeholder={t("Adicione um comentário ou observação sobre este post...")} maxLength={5000} /></label>
         <label className="wide">{t("Link de referência")}<input type="url" value={draft.externalLinkUrl} onChange={(event) => onChange("externalLinkUrl", event.target.value)} placeholder="https://..." /></label>
@@ -5376,9 +6228,29 @@ function ClientPostSuggestionModal({ draft, columns, files, submitting, error, o
       </div>
       {files.length ? <div className="portal-post-file-list">{files.map((file, index) => <span key={`${file.name}-${index}`}>{file.name}<button type="button" onClick={() => onFilesChange(files.filter((_, itemIndex) => itemIndex !== index))}>×</button></span>)}</div> : null}
       {error ? <p className="form-feedback error-text">{error}</p> : null}
-      <footer><button className="ghost-button" type="button" disabled={submitting} onClick={onClose}>{t("Cancelar")}</button><button className="gradient-button" type="submit" disabled={submitting || !draft.title.trim() || !draft.columnId}>{t(submitting ? "Criando post..." : "Criar post")}</button></footer>
+      <footer><button className="ghost-button" type="button" disabled={submitting} onClick={onClose}>{t("Cancelar")}</button><button className="gradient-button" type="submit" disabled={submitting || !draft.title.trim()}>{t(submitting ? "Enviando sugestão..." : "Enviar sugestão")}</button></footer>
     </form>
   </div>;
+}
+
+function ClientPortalApprovalCard({ card, locale, localeTag, canEditSuggestion, deleting, onView, onEdit, onDelete }: { card: BoardCard; locale: string; localeTag: string; canEditSuggestion: boolean; deleting: boolean; onView: () => void; onEdit: () => void; onDelete: () => void }) {
+  const { t } = usePortalTranslation();
+  if (isClientSuggestionCard(card)) {
+    return <article className="portal-card portal-suggestion-card">
+      <ClosedCardMedia card={card} />
+      <div className="portal-card-copy">
+        <small className="portal-suggestion-label">{t("Sugestão de pauta")}</small>
+        <h4>{card.title}</h4>
+        {card.subtitle ? <p>{card.subtitle.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 140)}</p> : <p>{t("Abra para conferir os detalhes desta sugestão.")}</p>}
+      </div>
+      <div className="portal-suggestion-card-actions">
+        <button type="button" className="ghost-button" disabled={deleting} onClick={onView}><UiIcon name="eye" />{t("Visualizar")}</button>
+        {canEditSuggestion ? <button type="button" className="gradient-button" disabled={deleting} onClick={onEdit}><UiIcon name="pencil" />{t("Editar")}</button> : null}
+        {canEditSuggestion ? <button type="button" className="danger-button" disabled={deleting} onClick={onDelete}><UiIcon name="trash" />{t(deleting ? "Excluindo..." : "Excluir")}</button> : null}
+      </div>
+    </article>;
+  }
+  return <button className={`portal-card card-button${hasPortalChangesRequested(card) ? " has-change-request" : ""}${hasPortalFirstPostReview(card) || hasPortalResubmittedReview(card) ? " has-awaiting-rereview" : ""}`} onClick={onView}><ClosedCardMedia card={card} />{hasPortalChangesRequested(card) ? <span className="portal-change-request-tab">{changesRequestedPortalLabel(locale)}</span> : hasPortalFirstPostReview(card) ? <span className="portal-review-wait-tab">{awaitingPostReviewPortalLabel(locale)}</span> : hasPortalResubmittedReview(card) ? <span className="portal-review-wait-tab">{awaitingReReviewPortalLabel(locale)}</span> : null}<div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{new Intl.DateTimeFormat(localeTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(card.scheduledAt))}</p> : null}</div></button>;
 }
 
 function ClientPortalWorkspacePage({
@@ -5391,7 +6263,12 @@ function ClientPortalWorkspacePage({
   onLogout: () => void;
 }) {
   const [refreshKey, setRefreshKey] = useState(0);
-  const resource = usePreviewResource(emptyClientPortal, () => loadClientPortalBySlug(slug), [
+  const lastPortalSnapshot = useRef<{ slug: string; data: ClientPortalPreview } | null>(null);
+  const resource = usePreviewResource(emptyClientPortal, async () => {
+    const result = await loadClientPortalBySlug(slug, lastPortalSnapshot.current?.slug === slug ? lastPortalSnapshot.current.data : undefined);
+    lastPortalSnapshot.current = { slug, data: result };
+    return result;
+  }, [
     slug,
     refreshKey,
   ]);
@@ -5404,9 +6281,11 @@ function ClientPortalWorkspacePage({
         setRefreshKey((value) => value + 1);
       }
     };
+    const refreshTimer = window.setInterval(refreshWhenVisible, 60_000);
     window.addEventListener("focus", refreshWhenVisible);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     return () => {
+      window.clearInterval(refreshTimer);
       window.removeEventListener("focus", refreshWhenVisible);
       document.removeEventListener("visibilitychange", refreshWhenVisible);
     };
@@ -5418,7 +6297,9 @@ function ClientPortalWorkspacePage({
   const tr = (source: string) => portalText(portalLocale, source);
   const clientLocaleTag = portalLocaleTag(portalLocale);
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
-  const [portalView, setPortalView] = useState<"board" | "approved" | "texts" | "reports" | "invoices" | "tracker" | "archived" | "search" | "brand">("board");
+  const [selectedCardIntent, setSelectedCardIntent] = useState<"view" | "edit-suggestion">("view");
+  const [deletingSuggestionId, setDeletingSuggestionId] = useState<string | null>(null);
+  const [portalView, setPortalView] = useState<"board" | "approved" | "texts" | "reports" | "invoices" | "briefs" | "tracker" | "archived" | "search" | "brand">("board");
   const [portalMobileMenuOpen, setPortalMobileMenuOpen] = useState(false);
   const portalMobileMenuButtonRef = useRef<HTMLButtonElement>(null);
   const portalNavRef = useRef<HTMLElement>(null);
@@ -5426,7 +6307,8 @@ function ClientPortalWorkspacePage({
   const [portalAppointments, setPortalAppointments] = useState<AgendaEvent[]>([]);
   const [portalInvoices, setPortalInvoices] = useState<BillingInvoice[]>([]);
   const [viewedInvoiceIds, setViewedInvoiceIds] = useState<string[]>([]);
-  const [portalReportsCount, setPortalReportsCount] = useState(0);
+  const [portalReports, setPortalReports] = useState<ClientReport[]>([]);
+  const [viewedReportIds, setViewedReportIds] = useState<string[]>([]);
   const [portalTexts, setPortalTexts] = useState<TextDocument[]>([]);
   const [selectedPortalTextId, setSelectedPortalTextId] = useState<string | null>(null);
   const [portalTextTagFilters, setPortalTextTagFilters] = useState<string[]>([]);
@@ -5435,13 +6317,12 @@ function ClientPortalWorkspacePage({
   const [portalTextSubmitting, setPortalTextSubmitting] = useState<"comment" | "approve" | "changes" | null>(null);
   const [portalTextFeedback, setPortalTextFeedback] = useState<string | null>(null);
   const [createPostOpen, setCreatePostOpen] = useState(false);
-  const [postDraft, setPostDraft] = useState<PortalPostDraft>({ columnId: "", title: "", caption: "", commentText: "", artType: "Post único", externalLinkUrl: "" });
+  const [postDraft, setPostDraft] = useState<PortalPostDraft>({ title: "", caption: "", commentText: "", artType: "Post único", externalLinkUrl: "" });
   const [postFiles, setPostFiles] = useState<File[]>([]);
   const [postSubmitting, setPostSubmitting] = useState(false);
   const [postError, setPostError] = useState("");
   const [postSuccess, setPostSuccess] = useState("");
   const [approvedTransfer, setApprovedTransfer] = useState<{ title: string; targetX: number; targetY: number } | null>(null);
-  const [locallyApprovedCardIds, setLocallyApprovedCardIds] = useState<string[]>([]);
   const [portalArchivedCards, setPortalArchivedCards] = useState<BoardCard[]>([]);
   const [portalArchivedLoading, setPortalArchivedLoading] = useState(false);
   const [portalArchivedError, setPortalArchivedError] = useState("");
@@ -5450,6 +6331,36 @@ function ClientPortalWorkspacePage({
     [slug],
   );
   const detail = useCardDetail(data, selectedCardId, loadCardDetail, refreshKey);
+  const openPortalCard = useCallback((cardId: string, intent: "view" | "edit-suggestion" = "view") => {
+    setSelectedCardIntent(intent);
+    setSelectedCardId(cardId);
+  }, []);
+  const closePortalCard = useCallback(() => {
+    setSelectedCardId(null);
+    setSelectedCardIntent("view");
+  }, []);
+  const deletePortalSuggestion = useCallback(async (card: BoardCard) => {
+    if (!window.confirm(tr(`Excluir a sugestão “${card.title}”? Esta ação não pode ser desfeita.`))) return;
+    setDeletingSuggestionId(card.id);
+    try {
+      await deletePortalSuggestionBySlug(slug, card.id);
+      resource.setData((current) => {
+        const next = {
+          ...current,
+          boardColumns: current.boardColumns.map((column) => ({ ...column, cards: column.cards.filter((item) => item.id !== card.id) })),
+          withoutColumn: current.withoutColumn.filter((item) => item.id !== card.id),
+        };
+        lastPortalSnapshot.current = { slug, data: next };
+        return next;
+      });
+      setPostSuccess(tr("Sugestão excluída."));
+      setRefreshKey((value) => value + 1);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : tr("Não foi possível excluir a sugestão."));
+    } finally {
+      setDeletingSuggestionId(null);
+    }
+  }, [resource, slug, tr]);
   useEffect(() => {
     const closePortalMenu = (event: KeyboardEvent) => {
       if (event.key === "Escape") setPortalMobileMenuOpen(false);
@@ -5501,18 +6412,43 @@ function ClientPortalWorkspacePage({
   }, [resource.loading, slug, refreshKey]);
   useEffect(() => {
     if (!data.permissions.allowClientViewReports) {
-      setPortalReportsCount(0);
+      setPortalReports([]);
       return;
     }
     void listPortalReportsBySlug(slug)
-      .then((response) => setPortalReportsCount(response.items.length))
-      .catch(() => setPortalReportsCount(0));
+      .then((response) => setPortalReports(response.items))
+      .catch(() => setPortalReports([]));
   }, [data.permissions.allowClientViewReports, slug, refreshKey]);
+  useEffect(() => {
+    try {
+      setViewedReportIds(JSON.parse(window.localStorage.getItem(`designhub-v2-viewed-reports:${slug}`) ?? "[]") as string[]);
+    } catch {
+      setViewedReportIds([]);
+    }
+  }, [slug]);
+  const markReportViewed = useCallback((reportId: string) => {
+    setViewedReportIds((current) => {
+      if (current.includes(reportId)) return current;
+      const next = [...current, reportId];
+      try {
+        window.localStorage.setItem(`designhub-v2-viewed-reports:${slug}`, JSON.stringify(next));
+      } catch {
+        // The badge still clears for the current visit if storage is unavailable.
+      }
+      return next;
+    });
+  }, [slug]);
+  const latestPortalReport = portalReports[0] ?? null;
+  const latestPortalReportIsNew = Boolean(latestPortalReport && !viewedReportIds.includes(latestPortalReport.id));
+  const unreadPortalReportCount = latestPortalReportIsNew ? 1 : 0;
   useEffect(() => {
     if ((portalView === "texts" && !data.permissions.allowClientViewTexts) || (portalView === "invoices" && !data.permissions.allowClientViewInvoices) || (portalView === "reports" && !data.permissions.allowClientViewReports) || (portalView === "brand" && !data.permissions.allowClientViewBrandBrain)) {
       setPortalView("board");
     }
   }, [data.permissions.allowClientViewBrandBrain, data.permissions.allowClientViewInvoices, data.permissions.allowClientViewReports, data.permissions.allowClientViewTexts, portalView]);
+  useEffect(() => {
+    if (portalView === "reports" && latestPortalReport) markReportViewed(latestPortalReport.id);
+  }, [latestPortalReport, markReportViewed, portalView]);
   useEffect(() => {
     if (resource.loading) return;
     if (!data.permissions.allowClientViewTexts) {
@@ -5530,13 +6466,13 @@ function ClientPortalWorkspacePage({
   const filteredPortalTexts = portalTextTagFilters.length ? portalTexts.filter((item) => portalTextTagFilters.every((name) => item.tags?.some((tag) => tag.name === name))) : portalTexts;
   const selectedPortalTextBanner = selectedPortalText ? window.localStorage.getItem(`designhub-text-cover:${slug}:${selectedPortalText.id}`) : null;
   const portalCards = [...data.boardColumns.flatMap((column) => column.cards), ...data.withoutColumn];
-  const portalCardsWithLocalApprovals = portalCards.map((card) => locallyApprovedCardIds.includes(card.id) ? { ...card, clientLabel: "Aprovado pelo cliente", statusBadges: Array.from(new Set([...card.statusBadges, "Aprovado"])) } : card);
+  const portalCardsWithLocalApprovals = portalCards;
   const approvedPortalCards = portalCardsWithLocalApprovals.filter(isPortalApproved);
   const approvedPortalTexts = portalTexts.filter((text) => text.status === "Aprovado");
   const approvalPortalCards = portalCardsWithLocalApprovals.filter((card) => !isPortalApproved(card));
   const pautaApprovalCards = approvalPortalCards.filter((card) => card.isBriefApproval);
   const contentApprovalCardIds = new Set(approvalPortalCards.filter((card) => !card.isBriefApproval).map((card) => card.id));
-  const visiblePortalColumns = data.boardColumns.filter((column) => !isPortalApprovedColumn(column.name));
+  const visiblePortalColumns = data.boardColumns.filter((column) => !isPortalApprovedColumn(column.name) || column.cards.some((card) => contentApprovalCardIds.has(card.id)));
   const portalTrackerEnabled = data.widgets.tracking && data.permissions.allowClientViewTracking;
   const upcomingPortalAppointments = useMemo(() => {
     const now = new Date();
@@ -5611,14 +6547,13 @@ function ClientPortalWorkspacePage({
 
   async function submitPostSuggestion(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!postDraft.title.trim() || !postDraft.columnId) return;
+    if (!postDraft.title.trim()) return;
     setPostSubmitting(true);
     setPostError("");
     try {
       const mediaUrls: string[] = [];
       for (const file of postFiles) mediaUrls.push(await uploadPortalMediaBySlug(slug, file));
       await createPortalPostBySlug(slug, {
-        columnId: postDraft.columnId,
         title: postDraft.title.trim(),
         caption: postDraft.caption.trim() || null,
         commentText: postDraft.commentText.trim() || null,
@@ -5626,7 +6561,7 @@ function ClientPortalWorkspacePage({
         externalLinkUrl: postDraft.externalLinkUrl.trim() || null,
         mediaUrls,
       });
-      setPostDraft({ columnId: "", title: "", caption: "", commentText: "", artType: "Post único", externalLinkUrl: "" });
+      setPostDraft({ title: "", caption: "", commentText: "", artType: "Post único", externalLinkUrl: "" });
       setPostFiles([]);
       setCreatePostOpen(false);
       setPostSuccess(tr("Post enviado. Ele já está no quadro da equipe com status pendente."));
@@ -5638,13 +6573,22 @@ function ClientPortalWorkspacePage({
     }
   }
 
+  function applyPortalDecision(cardId: string, result: Awaited<ReturnType<typeof submitPortalCardDecisionBySlug>>) {
+    resource.setData((current) => {
+      const update = (card: BoardCard) => card.id === cardId ? { ...card, clientLabel: result.card.clientLabel, statusBadges: result.card.status, approvalState: result.card.approvalState, approvalRevision: result.card.approvalRevision } : card;
+      const next = { ...current, boardColumns: current.boardColumns.map((column) => ({ ...column, cards: column.cards.map(update) })), withoutColumn: current.withoutColumn.map(update) };
+      lastPortalSnapshot.current = { slug, data: next };
+      return next;
+    });
+  }
+
   async function approvePortalCard(cardId: string, commentText: string) {
     const cardTitle = portalCards.find((card) => card.id === cardId)?.title ?? "Post";
-    await submitPortalCardDecisionBySlug(slug, cardId, { approved: true, commentText });
+    const result = await submitPortalCardDecisionBySlug(slug, cardId, { approved: true, commentText, expectedApprovalRevision: detail.data?.card.approvalRevision ?? 0 });
+    applyPortalDecision(cardId, result);
     const approvedButton = document.querySelector<HTMLElement>('[data-portal-view="approved"]');
     const target = approvedButton?.getBoundingClientRect();
-    setLocallyApprovedCardIds((current) => current.includes(cardId) ? current : [...current, cardId]);
-    setSelectedCardId(null);
+    closePortalCard();
     setApprovedTransfer({
       title: cardTitle,
       targetX: target ? target.left + target.width / 2 - window.innerWidth / 2 : -Math.min(320, window.innerWidth * .35),
@@ -5655,7 +6599,7 @@ function ClientPortalWorkspacePage({
   return (
     <PortalLocaleContext.Provider value={portalLocale}>
     <div className="portal-page" lang={portalLocale}>
-      <ClientContractAcceptance slug={slug} accountName={data.accountName} canAccept={canRespondToClientContent} />
+      <ClientContractAcceptance slug={slug} accountName={data.accountName} canAccept={canRespondToClientContent} onExit={onLogout} />
       <aside className="portal-sidebar glass">
         <div className="portal-brand-zone">
           <div className="brand-lockup compact">
@@ -5673,15 +6617,16 @@ function ClientPortalWorkspacePage({
           {[
             { view: "board" as const, label: tr("Aprovações"), count: approvalPortalCards.length },
             ...(data.permissions.allowClientViewTexts ? [{ view: "texts" as const, label: tr("Textos"), count: portalTexts.filter((item) => item.status !== "Aprovado").length }] : []),
+            { view: "briefs" as const, label: "Briefs", count: 0 },
             { view: "approved" as const, label: tr("Aprovados"), count: approvedPortalCards.length + approvedPortalTexts.length },
             ...(data.permissions.allowClientViewBrandBrain ? [{ view: "brand" as const, label: "Brand Brain", count: 0 }] : []),
             ...(data.permissions.allowClientSearch ? [{ view: "search" as const, label: tr("Pesquisa"), count: 0 }] : []),
             ...(portalTrackerEnabled ? [{ view: "tracker" as const, label: "Tracker", count: portalCardsWithLocalApprovals.length }] : []),
             ...(data.showArchivedToClient ? [{ view: "archived" as const, label: tr("Arquivados"), count: portalArchivedCards.length }] : []),
             ...(data.permissions.allowClientViewInvoices ? [{ view: "invoices" as const, label: tr("Faturas"), count: portalInvoices.filter((invoice) => !viewedInvoiceIds.includes(invoice.id)).length }] : []),
-            ...(data.permissions.allowClientViewReports ? [{ view: "reports" as const, label: tr("Relatórios"), count: portalReportsCount }] : []),
+            ...(data.permissions.allowClientViewReports ? [{ view: "reports" as const, label: tr("Relatórios"), count: unreadPortalReportCount }] : []),
           ].map(({ view, label, count }) => (
-            <button key={view} data-portal-view={view === "approved" ? "approved" : undefined} onClick={() => { setPortalView(view); setPortalMobileMenuOpen(false); }} className={`${portalView === view ? "portal-nav-item active" : "portal-nav-item"}${view === "approved" && approvedTransfer ? " receiving-approval" : ""}`}>
+            <button key={view} data-portal-view={view === "approved" ? "approved" : undefined} onClick={() => { if (view === "reports" && latestPortalReport) markReportViewed(latestPortalReport.id); setPortalView(view); setPortalMobileMenuOpen(false); }} className={`${portalView === view ? "portal-nav-item active" : "portal-nav-item"}${view === "approved" && approvedTransfer ? " receiving-approval" : ""}`}>
               <span>{label}</span>
               {count > 0 ? <b className="portal-nav-count">{count}</b> : null}
             </button>
@@ -5697,15 +6642,16 @@ function ClientPortalWorkspacePage({
           </div>
           <div className="portal-welcome-copy">
             <p>{tr("Área do cliente")}</p>
-            <h1>{tr("Olá")}, {data.accountName}! <span aria-hidden="true">👋</span></h1>
+            <h1>{tr("Olá")}, {data.clientGreetingName || data.accountName}! <span aria-hidden="true">👋</span></h1>
             <small>{tr("Bem-vindo à sua área do cliente. Aqui você acompanha conteúdos, aprovações e próximos passos.")}</small>
           </div>
           <span className="portal-welcome-spark" aria-hidden="true">✦</span>
         </section> : null}
         {postSuccess ? <div className="portal-post-success"><span>✓</span><p>{postSuccess}</p><button onClick={() => setPostSuccess("")} aria-label={tr("Fechar aviso")}>×</button></div> : null}
+        {data.boardRefreshFailed ? <p className="client-access-notice" role="status">{tr("Não foi possível atualizar o quadro. Os últimos conteúdos carregados foram mantidos.")}</p> : null}
         {approvedTransfer ? <><span className="portal-approved-fly-to-nav" style={{ "--approved-target-x": `${approvedTransfer.targetX}px`, "--approved-target-y": `${approvedTransfer.targetY}px` } as CSSProperties} aria-hidden="true"><UiIcon name="send" /></span><div className="portal-approved-transfer" role="status" aria-live="polite"><div><strong>{tr("Enviado para Aprovados!")}</strong><small>{approvedTransfer.title}</small></div><span className="portal-approved-check">✓</span></div></> : null}
 
-        {portalView === "brand" && data.permissions.allowClientViewBrandBrain ? <ClientBrandBrainView slug={slug} clientName={data.accountName} allowEdit={canUseEnabledClientTools && data.permissions.allowClientEditBrandBrain} /> : portalView === "search" && data.permissions.allowClientSearch ? <ClientPortalSearchView slug={slug} onOpenCard={setSelectedCardId} /> : portalView === "archived" && data.showArchivedToClient ? <ClientPortalArchivedView cards={portalArchivedCards} loading={portalArchivedLoading} error={portalArchivedError} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} /> : portalView === "tracker" && portalTrackerEnabled ? <ClientPortalTrackerView columns={data.boardColumns} withoutColumn={data.withoutColumn} onOpenCard={setSelectedCardId} /> : portalView === "approved" ? <ClientApprovedPostsView cards={portalCardsWithLocalApprovals} texts={portalTexts} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} onOpenText={(textId) => { setSelectedPortalTextId(textId); setPortalView("texts"); }} /> : portalView === "invoices" && data.permissions.allowClientViewInvoices ? <ClientPortalInvoicesView invoices={portalInvoices} onViewInvoice={markInvoiceViewed} /> : portalView === "reports" && data.permissions.allowClientViewReports ? <PortalReports slug={slug} clientName={data.accountName} locale={portalLocale} /> : portalView === "texts" ? <section className="portal-texts-view glass"><aside>{portalTextTagLibrary.length ? <div className="text-tag-filters portal-text-tag-filters"><header><span>{tr("Filtrar por etiquetas")}</span>{portalTextTagFilters.length ? <button type="button" onClick={() => setPortalTextTagFilters([])}>{tr("Limpar")}</button> : null}</header><div>{portalTextTagLibrary.map((tag) => { const active = portalTextTagFilters.includes(tag.name); return <button type="button" key={tag.name} className={active ? "active" : ""} style={{ backgroundColor: active ? tag.color : undefined, color: active ? calendarTextColor(tag.color) : undefined, borderColor: tag.color }} onClick={() => setPortalTextTagFilters((items) => active ? items.filter((name) => name !== tag.name) : [...items, tag.name])}><i style={{ backgroundColor: tag.color }} />{tag.name}{active ? " ✓" : ""}</button>; })}</div></div> : null}{filteredPortalTexts.map((item) => <button key={item.id} className={item.id === selectedPortalTextId ? "selected" : ""} onClick={() => { setSelectedPortalTextId(item.id); setPortalTextCommentDraft(""); setPortalTextFeedback(null); }}><small>{item.contentType}</small><strong>{item.tags?.length ? <em className="text-title-tags">{item.tags.map((tag) => <i key={tag.name} style={{ backgroundColor: tag.color, color: calendarTextColor(tag.color) }}>{tag.name}</i>)}</em> : null}{item.title}</strong></button>)}</aside><article>{selectedPortalText ? <><p className="eyebrow">{selectedPortalText.contentType}</p>{selectedPortalTextBanner ? <div className="portal-text-banner" style={{ backgroundImage: `url(${selectedPortalTextBanner})` }} aria-label={tr("Banner do texto")} /> : null}<div className="portal-text-heading"><div>{selectedPortalText.tags?.length ? <div className="text-heading-tags">{selectedPortalText.tags.map((tag) => <span key={tag.name} style={{ backgroundColor: tag.color, color: calendarTextColor(tag.color) }}>{tag.name}</span>)}</div> : null}<h1>{selectedPortalText.title}</h1><span className={`portal-text-status ${selectedPortalText.status === "Aprovado" ? "approved" : ""}`}>{tr(selectedPortalText.status)}</span></div></div>{canUseEnabledClientTools && data.permissions.allowClientEditCaption ? <ClientPortalRichTextEditor slug={slug} text={selectedPortalText} availableTags={portalTextTagLibrary} onSaved={(savedText) => setPortalTexts((items) => items.map((item) => item.id === savedText.id ? savedText : item))} /> : <div className="portal-text-content" dangerouslySetInnerHTML={{ __html: selectedPortalText.contentHtml }} />}{canRespondToClientContent ? <section className="portal-text-feedback"><h3>{tr("Seu feedback")}</h3><p>{tr("Comente sobre este texto ou escolha uma ação para enviar seu retorno à equipe.")}</p><textarea value={portalTextCommentDraft} onChange={(event) => setPortalTextCommentDraft(event.target.value)} placeholder={tr("Escreva aqui seu comentário sobre este texto")} /><div className="portal-text-actions"><button className="ghost-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("comment")}>{tr(portalTextSubmitting === "comment" ? "Enviando..." : "Adicionar comentário")}</button><button className="gradient-button" disabled={portalTextSubmitting !== null} onClick={() => void handlePortalTextAction("approve")}>{tr(portalTextSubmitting === "approve" ? "Enviando..." : "Aprovar")}</button><button className="danger-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("changes")}>{tr(portalTextSubmitting === "changes" ? "Enviando..." : "Pedir alteração")}</button></div>{portalTextFeedback ? <p className="portal-text-feedback-message">{portalTextFeedback}</p> : null}<div className="portal-text-comments"><h4>{tr("Comentários")} ({portalTextComments.length})</h4>{portalTextComments.map((comment) => <article key={comment.id}><div><strong>{comment.authorName}</strong><span>{comment.authorRole}</span></div><p>{comment.commentText}</p></article>)}</div></section> : <p className="client-access-notice">{tr("Acesso somente para visualização.")}</p>}</> : <p>{tr("Nenhum texto foi enviado para sua área ainda.")}</p>}</article></section> : <section className="portal-grid">
+        {portalView === "brand" && data.permissions.allowClientViewBrandBrain ? <ClientBrandBrainView slug={slug} clientName={data.accountName} allowEdit={canUseEnabledClientTools && data.permissions.allowClientEditBrandBrain} /> : portalView === "search" && data.permissions.allowClientSearch ? <ClientPortalSearchView slug={slug} onOpenCard={setSelectedCardId} /> : portalView === "archived" && data.showArchivedToClient ? <ClientPortalArchivedView cards={portalArchivedCards} loading={portalArchivedLoading} error={portalArchivedError} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} /> : portalView === "tracker" && portalTrackerEnabled ? <ClientPortalTrackerView columns={data.boardColumns} withoutColumn={data.withoutColumn} onOpenCard={setSelectedCardId} /> : portalView === "approved" ? <ClientApprovedPostsView cards={portalCardsWithLocalApprovals} texts={portalTexts} allowDownload={data.permissions.allowClientDownload} onOpenCard={setSelectedCardId} onOpenText={(textId) => { setSelectedPortalTextId(textId); setPortalView("texts"); }} /> : portalView === "invoices" && data.permissions.allowClientViewInvoices ? <ClientPortalInvoicesView invoices={portalInvoices} onViewInvoice={markInvoiceViewed} /> : portalView === "briefs" ? <PortalBriefsFoundation slug={slug} canRespond={canRespondToClientContent} /> : portalView === "reports" && data.permissions.allowClientViewReports ? <PortalReports slug={slug} clientName={data.accountName} locale={portalLocale} /> : portalView === "texts" ? <section className="portal-texts-view glass"><aside>{portalTextTagLibrary.length ? <div className="text-tag-filters portal-text-tag-filters"><header><span>{tr("Filtrar por etiquetas")}</span>{portalTextTagFilters.length ? <button type="button" onClick={() => setPortalTextTagFilters([])}>{tr("Limpar")}</button> : null}</header><div>{portalTextTagLibrary.map((tag) => { const active = portalTextTagFilters.includes(tag.name); return <button type="button" key={tag.name} className={active ? "active" : ""} style={{ backgroundColor: active ? tag.color : undefined, color: active ? calendarTextColor(tag.color) : undefined, borderColor: tag.color }} onClick={() => setPortalTextTagFilters((items) => active ? items.filter((name) => name !== tag.name) : [...items, tag.name])}><i style={{ backgroundColor: tag.color }} />{tag.name}{active ? " ✓" : ""}</button>; })}</div></div> : null}{filteredPortalTexts.map((item) => <button key={item.id} className={item.id === selectedPortalTextId ? "selected" : ""} onClick={() => { setSelectedPortalTextId(item.id); setPortalTextCommentDraft(""); setPortalTextFeedback(null); }}><small>{item.contentType}</small><strong>{item.tags?.length ? <em className="text-title-tags">{item.tags.map((tag) => <i key={tag.name} style={{ backgroundColor: tag.color, color: calendarTextColor(tag.color) }}>{tag.name}</i>)}</em> : null}{item.title}</strong></button>)}</aside><article>{selectedPortalText ? <><p className="eyebrow">{selectedPortalText.contentType}</p>{selectedPortalTextBanner ? <div className="portal-text-banner" style={{ backgroundImage: `url(${selectedPortalTextBanner})` }} aria-label={tr("Banner do texto")} /> : null}<div className="portal-text-heading"><div>{selectedPortalText.tags?.length ? <div className="text-heading-tags">{selectedPortalText.tags.map((tag) => <span key={tag.name} style={{ backgroundColor: tag.color, color: calendarTextColor(tag.color) }}>{tag.name}</span>)}</div> : null}<h1>{selectedPortalText.title}</h1><span className={`portal-text-status ${selectedPortalText.status === "Aprovado" ? "approved" : ""}`}>{tr(selectedPortalText.status)}</span></div></div>{canUseEnabledClientTools && data.permissions.allowClientEditCaption ? <ClientPortalRichTextEditor slug={slug} text={selectedPortalText} availableTags={portalTextTagLibrary} onSaved={(savedText) => setPortalTexts((items) => items.map((item) => item.id === savedText.id ? savedText : item))} /> : <div className="portal-text-content" dangerouslySetInnerHTML={{ __html: selectedPortalText.contentHtml }} />}{canRespondToClientContent ? <section className="portal-text-feedback"><h3>{tr("Seu feedback")}</h3><p>{tr("Comente sobre este texto ou escolha uma ação para enviar seu retorno à equipe.")}</p><textarea value={portalTextCommentDraft} onChange={(event) => setPortalTextCommentDraft(event.target.value)} placeholder={tr("Escreva aqui seu comentário sobre este texto")} /><div className="portal-text-actions"><button className="ghost-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("comment")}>{tr(portalTextSubmitting === "comment" ? "Enviando..." : "Adicionar comentário")}</button><button className="gradient-button" disabled={portalTextSubmitting !== null} onClick={() => void handlePortalTextAction("approve")}>{tr(portalTextSubmitting === "approve" ? "Enviando..." : "Aprovar")}</button><button className="danger-button" disabled={portalTextSubmitting !== null || !portalTextCommentDraft.trim()} onClick={() => void handlePortalTextAction("changes")}>{tr(portalTextSubmitting === "changes" ? "Enviando..." : "Pedir alteração")}</button></div>{portalTextFeedback ? <p className="portal-text-feedback-message">{portalTextFeedback}</p> : null}<div className="portal-text-comments"><h4>{tr("Comentários")} ({portalTextComments.length})</h4>{portalTextComments.map((comment) => <article key={comment.id}><div><strong>{comment.authorName}</strong><span>{comment.authorRole}</span></div><p>{comment.commentText}</p></article>)}</div></section> : <p className="client-access-notice">{tr("Acesso somente para visualização.")}</p>}</> : <p>{tr("Nenhum texto foi enviado para sua área ainda.")}</p>}</article></section> : <section className="portal-grid">
           <div className="portal-primary">
             <div className="glass board-shell">
               <div className="board-topbar">
@@ -5727,7 +6673,7 @@ function ClientPortalWorkspacePage({
                     <b>{pautaApprovalCards.length} {tr(pautaApprovalCards.length === 1 ? "pauta" : "pautas")}</b>
                   </header>
                   <div className="portal-pauta-grid">{pautaApprovalCards.map((card) => <button key={card.id} type="button" className="portal-pauta-card" onClick={() => setSelectedCardId(card.id)}>
-                    <span className="portal-pauta-icon"><UiIcon name="file" /></span>
+                    <span className={card.mediaUrl ? "portal-pauta-icon has-image" : "portal-pauta-icon"}>{card.mediaUrl ? <img src={card.mediaUrl} alt="" /> : <UiIcon name="file" />}</span>
                     <span className="portal-pauta-copy"><small>{tr("PAUTA")}</small><strong>{card.title}</strong><p>{card.subtitle || tr("Proposta de conteúdo enviada para sua avaliação.")}</p></span>
                     <span className="portal-pauta-review">{tr("Revisar")} <UiIcon name="eye" /></span>
                   </button>)}</div>
@@ -5739,13 +6685,13 @@ function ClientPortalWorkspacePage({
                     {visiblePortalColumns.map((column) => { const approvalCards = column.cards.filter((card) => contentApprovalCardIds.has(card.id)); return (
                       <section key={column.id} className="portal-column glass-subtle">
                         <header className="portal-column-head" style={{ borderColor: column.color }}><h3>{column.name}</h3><span>{approvalCards.length}</span></header>
-                        {approvalCards.length ? <div className="portal-card-list">{approvalCards.map((card) => <button key={card.id} className="portal-card card-button" onClick={() => setSelectedCardId(card.id)}><ClosedCardMedia card={card} /><div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{new Intl.DateTimeFormat(clientLocaleTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(card.scheduledAt))}</p> : null}</div></button>)}</div> : <p className="portal-column-empty">{tr("Nenhum conteúdo nesta etapa.")}</p>}
+                        {approvalCards.length ? <div className="portal-card-list">{approvalCards.map((card) => <ClientPortalApprovalCard key={card.id} card={card} locale={data.locale} localeTag={clientLocaleTag} canEditSuggestion={canUseEnabledClientTools && data.permissions.allowClientCreatePost} deleting={deletingSuggestionId === card.id} onView={() => openPortalCard(card.id)} onEdit={() => openPortalCard(card.id, "edit-suggestion")} onDelete={() => void deletePortalSuggestion(card)} />)}</div> : <p className="portal-column-empty">{tr("Nenhum conteúdo nesta etapa.")}</p>}
                       </section>
                     ); })}
 
                     {data.withoutColumn.some((card) => contentApprovalCardIds.has(card.id)) ? <section className="portal-column glass-subtle">
                       <header className="portal-column-head" style={{ borderColor: "#7a86a9" }}><h3>{tr("Em criação")}</h3><span>{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).length}</span></header>
-                      <div className="portal-card-list">{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).map((card) => <button key={card.id} className="portal-card card-button" onClick={() => setSelectedCardId(card.id)}><ClosedCardMedia card={card} /><div className="portal-card-copy"><h4>{card.title}</h4>{card.scheduledAt ? <p>{new Intl.DateTimeFormat(clientLocaleTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(card.scheduledAt))}</p> : null}</div></button>)}</div>
+                      <div className="portal-card-list">{data.withoutColumn.filter((card) => contentApprovalCardIds.has(card.id)).map((card) => <ClientPortalApprovalCard key={card.id} card={card} locale={data.locale} localeTag={clientLocaleTag} canEditSuggestion={canUseEnabledClientTools && data.permissions.allowClientCreatePost} deleting={deletingSuggestionId === card.id} onView={() => openPortalCard(card.id)} onEdit={() => openPortalCard(card.id, "edit-suggestion")} onDelete={() => void deletePortalSuggestion(card)} />)}</div>
                     </section> : null}
                   </div>
                 </section> : null}
@@ -5771,7 +6717,7 @@ function ClientPortalWorkspacePage({
                         <strong>{event.title}</strong>
                         <p>{new Intl.DateTimeFormat(clientLocaleTag, { dateStyle: "short", timeStyle: "short" }).format(new Date(event.startsAt))}</p>
                       </div>
-                      {event.meetLink ? <a className="ghost-button compact-button" href={event.meetLink} target="_blank" rel="noreferrer" onClick={(mouseEvent) => mouseEvent.stopPropagation()}><UiIcon name="link" />Meet</a> : null}
+                      {normalizeExternalHttpUrl(event.meetLink) ? <a className="ghost-button compact-button" href={normalizeExternalHttpUrl(event.meetLink)} onClick={(mouseEvent) => mouseEvent.stopPropagation()}><UiIcon name="link" />Meet</a> : null}
                     </article>
                   ))}
                 </div>
@@ -5779,14 +6725,25 @@ function ClientPortalWorkspacePage({
             ) : null}
 
             {data.widgets.reports ? (
-              <section className="glass widget-card">
+              <section className="glass widget-card portal-latest-report-widget">
                 <div className="widget-head">
                   <h3>{tr("Relatórios")}</h3>
                   <span>{tr("Mensal")}</span>
                 </div>
-                <p className="widget-paragraph">
-                  {tr("O cliente encontra aqui os relatórios liberados por permissão, sem ver nada do restante da operação interna.")}
-                </p>
+                {latestPortalReport ? (
+                  <button type="button" className="portal-latest-report-card" onClick={() => { markReportViewed(latestPortalReport.id); setPortalView("reports"); }}>
+                    <span className="portal-latest-report-icon"><UiIcon name="file" /></span>
+                    <span className="portal-latest-report-copy">
+                      <small>{tr("Último relatório")}</small>
+                      <strong>{latestPortalReport.title}</strong>
+                      <em>{new Intl.DateTimeFormat(clientLocaleTag, { day: "2-digit", month: "short", year: "numeric" }).format(new Date(`${latestPortalReport.periodEnd}T12:00:00`))}</em>
+                    </span>
+                    {latestPortalReportIsNew ? <b className="portal-latest-report-new">{tr("Novo")}</b> : null}
+                    <span className="portal-latest-report-open">{tr("Ver relatório")} <UiIcon name="chevron-right" /></span>
+                  </button>
+                ) : (
+                  <p className="widget-paragraph">{tr("Nenhum relatório publicado ainda.")}</p>
+                )}
               </section>
             ) : null}
           </div>
@@ -5803,20 +6760,34 @@ function ClientPortalWorkspacePage({
           addPortalCardCommentBySlug(slug, cardId, { commentText })
         }
         onApprove={approvePortalCard}
-        onRequestChanges={(cardId, commentText) =>
-          submitPortalCardDecisionBySlug(slug, cardId, { approved: false, commentText })
-        }
+        onRequestChanges={async (cardId, commentText) => {
+          const result = await submitPortalCardDecisionBySlug(slug, cardId, { approved: false, commentText, expectedApprovalRevision: detail.data?.card.approvalRevision ?? 0 });
+          applyPortalDecision(cardId, result);
+          closePortalCard();
+          const confirmation = changeRequestConfirmationCopy(data.locale);
+          window.dispatchEvent(new CustomEvent("design-hub:success", {
+            detail: {
+              title: confirmation.title,
+              detail: confirmation.detail,
+              tone: "success",
+              id: `${Date.now()}-changes-requested`,
+            },
+          }));
+        }}
         canRespond={canRespondToClientContent}
         allowEditCaption={canUseEnabledClientTools && data.permissions.allowClientEditCaption}
         onUpdateCaption={(cardId, caption) => updatePortalCardCaptionBySlug(slug, cardId, caption)}
+        allowEditSuggestion={canUseEnabledClientTools && data.permissions.allowClientCreatePost}
+        onUpdateSuggestion={(cardId, input) => updatePortalSuggestionBySlug(slug, cardId, input)}
+        initialEditSuggestion={selectedCardIntent === "edit-suggestion"}
         allowManageTags={canUseEnabledClientTools && data.permissions.allowClientCreateTags}
         onLoadTags={() => listPortalTagsBySlug(slug)}
         onCreateTag={(input) => createPortalTagBySlug(slug, input)}
         onUpdateTags={(cardId, tags) => updatePortalCardTagsBySlug(slug, cardId, tags)}
         onRefresh={() => setRefreshKey((value) => value + 1)}
-        onClose={() => setSelectedCardId(null)}
+        onClose={closePortalCard}
       />
-      {createPostOpen ? <ClientPostSuggestionModal draft={postDraft} columns={data.postCreationColumns} files={postFiles} submitting={postSubmitting} error={postError} onChange={(field, value) => setPostDraft((current) => ({ ...current, [field]: value }))} onFilesChange={setPostFiles} onClose={() => { if (!postSubmitting) setCreatePostOpen(false); }} onSubmit={submitPostSuggestion} /> : null}
+      {createPostOpen ? <ClientPostSuggestionModal draft={postDraft} files={postFiles} submitting={postSubmitting} error={postError} onChange={(field, value) => setPostDraft((current) => ({ ...current, [field]: value }))} onFilesChange={setPostFiles} onClose={() => { if (!postSubmitting) setCreatePostOpen(false); }} onSubmit={submitPostSuggestion} /> : null}
     </div>
     </PortalLocaleContext.Provider>
   );
@@ -5847,6 +6818,9 @@ function CardDetailModal({
   canRespond = true,
   allowEditCaption,
   onUpdateCaption,
+  allowEditSuggestion,
+  onUpdateSuggestion,
+  initialEditSuggestion,
   allowManageTags,
   onLoadTags,
   onCreateTag,
@@ -5866,13 +6840,16 @@ function CardDetailModal({
   canRespond?: boolean;
   allowEditCaption?: boolean;
   onUpdateCaption?: (cardId: string, caption: string | null) => Promise<unknown>;
+  allowEditSuggestion?: boolean;
+  onUpdateSuggestion?: (cardId: string, input: { title: string; caption: string | null; externalLinkUrl: string | null }) => Promise<unknown>;
+  initialEditSuggestion?: boolean;
   allowManageTags?: boolean;
   onLoadTags?: () => Promise<{ items: ClientTagDefinition[] }>;
   onCreateTag?: (input: { name: string; color: string }) => Promise<{ ok: true; tag: ClientTagDefinition }>;
   onUpdateTags?: (cardId: string, tags: string[]) => Promise<unknown>;
   onRefresh: () => void;
   onClose: () => void;
-  adminContext?: { slug: string; columns: BoardColumn[] };
+  adminContext?: { slug: string; columns: BoardColumn[]; canScheduleMeta?: boolean; onMetaPublicationsSaved?: (publications: MetaScheduledPublication[]) => void; onCardUpdated?: (card: BoardCard) => void };
 }) {
   const { t, localeTag } = usePortalTranslation();
   const [commentDraft, setCommentDraft] = useState("");
@@ -5881,6 +6858,11 @@ function CardDetailModal({
   const [editingCaption, setEditingCaption] = useState(false);
   const [captionDraft, setCaptionDraft] = useState(detail?.card.subtitle ?? "");
   const [captionSaving, setCaptionSaving] = useState(false);
+  const [editingSuggestion, setEditingSuggestion] = useState(false);
+  const [suggestionTitle, setSuggestionTitle] = useState(detail?.card.title ?? "");
+  const [suggestionCaption, setSuggestionCaption] = useState(detail?.card.subtitle ?? "");
+  const [suggestionLink, setSuggestionLink] = useState(detail?.card.externalLinkUrl ?? "");
+  const [suggestionSaving, setSuggestionSaving] = useState(false);
   const [tagEditorOpen, setTagEditorOpen] = useState(false);
   const [portalTagLibrary, setPortalTagLibrary] = useState<ClientTagDefinition[]>([]);
   const [selectedPortalTags, setSelectedPortalTags] = useState<string[]>(detail?.card.tags ?? []);
@@ -5892,6 +6874,17 @@ function CardDetailModal({
     if (!detail || editingCaption) return;
     setCaptionDraft(detail.card.subtitle ?? "");
   }, [detail?.card.id, detail?.card.subtitle, editingCaption]);
+  useEffect(() => {
+    if (!detail || editingSuggestion) return;
+    setSuggestionTitle(detail.card.title);
+    setSuggestionCaption(detail.card.subtitle ?? "");
+    setSuggestionLink(detail.card.externalLinkUrl ?? "");
+  }, [detail?.card.id, detail?.card.title, detail?.card.subtitle, detail?.card.externalLinkUrl, editingSuggestion]);
+  useEffect(() => {
+    if (!initialEditSuggestion || !detail || mode !== "portal" || !allowEditSuggestion || !isClientSuggestionCard(detail.card)) return;
+    setEditingCaption(false);
+    setEditingSuggestion(true);
+  }, [allowEditSuggestion, detail?.card.id, initialEditSuggestion, mode]);
   useEffect(() => {
     setSelectedPortalTags(detail?.card.tags ?? []);
     setTagEditorOpen(false);
@@ -5919,6 +6912,9 @@ function CardDetailModal({
         detail={detail}
         columns={adminContext.columns}
         slug={adminContext.slug}
+        canScheduleMeta={Boolean(adminContext.canScheduleMeta)}
+        onMetaPublicationsSaved={adminContext.onMetaPublicationsSaved}
+        onCardUpdated={adminContext.onCardUpdated}
         onAddComment={onAddComment}
         onRefresh={onRefresh}
         onClose={onClose}
@@ -5966,6 +6962,48 @@ function CardDetailModal({
     }
   }
 
+  function resetSuggestionDraft() {
+    if (!detail) return;
+    setSuggestionTitle(detail.card.title);
+    setSuggestionCaption(detail.card.subtitle ?? "");
+    setSuggestionLink(detail.card.externalLinkUrl ?? "");
+    setEditingSuggestion(false);
+  }
+
+  async function savePortalSuggestion() {
+    if (!onUpdateSuggestion || !detail) return;
+    const title = suggestionTitle.trim();
+    if (!title) {
+      setFeedback(t("Informe um título para a sugestão."));
+      return;
+    }
+    let externalLinkUrl = suggestionLink.trim();
+    if (externalLinkUrl && !/^https?:\/\//i.test(externalLinkUrl)) externalLinkUrl = `https://${externalLinkUrl}`;
+    try {
+      if (externalLinkUrl) new URL(externalLinkUrl);
+    } catch {
+      setFeedback(t("Informe um link válido, começando com https://"));
+      return;
+    }
+    setSuggestionSaving(true);
+    setFeedback(null);
+    try {
+      await onUpdateSuggestion(detail.card.id, {
+        title,
+        caption: suggestionCaption.trim() || null,
+        externalLinkUrl: externalLinkUrl || null,
+      });
+      setEditingSuggestion(false);
+      setCaptionDraft(suggestionCaption.trim());
+      setFeedback(t("Sugestão atualizada com sucesso."));
+      onRefresh();
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : t("Não foi possível salvar a sugestão."));
+    } finally {
+      setSuggestionSaving(false);
+    }
+  }
+
   async function createPortalTag() {
     const name = newPortalTagName.trim();
     if (!name || !onCreateTag) return;
@@ -6000,6 +7038,12 @@ function CardDetailModal({
     }
   }
   const hasPortalVisualMedia = portalCardAssets(detail.card).length > 0;
+  const isClientSuggestion = detail.card.statusBadges.some((status) => status
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLocaleLowerCase("pt-BR") === "sugestao do cliente");
+  const canEditClientSuggestion = Boolean(isClientSuggestion && allowEditSuggestion && onUpdateSuggestion);
   const lifecycle = getPortalCardLifecycle(detail.card, t);
   const clientResponseTone = /aprovad/i.test(detail.card.clientLabel)
     ? "approved"
@@ -6021,7 +7065,7 @@ function CardDetailModal({
         <div className="modal-head">
           <div>
             <p className="eyebrow">{titlePrefix}</p>
-            <h3>{detail.card.title}</h3>
+            <h3>{editingSuggestion ? suggestionTitle || detail.card.title : detail.card.title}</h3>
           </div>
           <button className="ghost-button" onClick={onClose}>
             {t("Fechar")}
@@ -6060,16 +7104,17 @@ function CardDetailModal({
               ))}
             </div>
             {linkedCardMaterial(detail.card) ? (
-              <a className="external-card-link" href={linkedCardMaterial(detail.card) ?? undefined} target="_blank" rel="noreferrer">
-                {t("Abrir link externo ↗")}
+              <a className="external-card-link portal-linked-material-cta" href={linkedCardMaterial(detail.card) ?? undefined} target="_blank" rel="noreferrer">
+                <UiIcon name="link" />
+                <span>{linkedMaterialPortalLabel(localeTag, linkedCardMaterial(detail.card) ?? "")}</span>
               </a>
             ) : null}
           </div>
 
           <div className="modal-sidebar-copy">
             <section className="glass-subtle modal-card portal-summary-card">
-              <header className="portal-summary-heading"><span><UiIcon name="file" /></span><div><small>{t("CONTEÚDO DO POST")}</small><h4>{t("Legenda")}</h4></div>{allowEditCaption && !editingCaption ? <button type="button" className="portal-caption-edit-button" onClick={() => setEditingCaption(true)}><UiIcon name="file" />{t("Editar legenda")}</button> : null}</header>
-              {editingCaption ? <div className="portal-caption-editor"><label htmlFor={`portal-caption-${detail.card.id}`}>{t("Edite o texto abaixo")}</label><textarea id={`portal-caption-${detail.card.id}`} autoFocus value={captionDraft} onChange={(event) => setCaptionDraft(event.target.value)} maxLength={5000} placeholder={t("Escreva a legenda do post...")} /><div className="portal-caption-editor-footer"><small>{captionDraft.length}/5000 {t("caracteres")}</small><div><button type="button" className="ghost-button" disabled={captionSaving} onClick={() => { setCaptionDraft(detail.card.subtitle ?? ""); setEditingCaption(false); }}>{t("Cancelar")}</button><button type="button" className="gradient-button" disabled={captionSaving} onClick={() => void savePortalCaption()}>{t(captionSaving ? "Salvando..." : "Salvar legenda")}</button></div></div></div> : <PortalFormattedCaption text={captionDraft} />}
+              <header className="portal-summary-heading"><span><UiIcon name="file" /></span><div><small>{t(isClientSuggestion ? "SUGESTÃO DE PAUTA" : "CONTEÚDO DO POST")}</small><h4>{t(isClientSuggestion ? "Detalhes da sugestão" : "Legenda")}</h4></div>{canEditClientSuggestion && !editingSuggestion ? <button type="button" className="portal-caption-edit-button" onClick={() => { setEditingCaption(false); setEditingSuggestion(true); }}><UiIcon name="file" />{t("Editar sugestão")}</button> : allowEditCaption && !editingCaption && !isClientSuggestion ? <button type="button" className="portal-caption-edit-button" onClick={() => setEditingCaption(true)}><UiIcon name="file" />{t("Editar legenda")}</button> : null}</header>
+              {editingSuggestion ? <div className="portal-suggestion-editor"><label>{t("Título da pauta")}<input autoFocus value={suggestionTitle} onChange={(event) => setSuggestionTitle(event.target.value)} maxLength={255} placeholder={t("Título da sugestão")} /></label><label>{t("Texto da sugestão")}<textarea value={suggestionCaption} onChange={(event) => setSuggestionCaption(event.target.value)} maxLength={5000} placeholder={t("Descreva a ideia da pauta...")} /></label><label>{t("Link de referência")}<input type="url" value={suggestionLink} onChange={(event) => setSuggestionLink(event.target.value)} maxLength={1024} placeholder="https://..." /></label><div className="portal-caption-editor-footer"><small>{suggestionCaption.length}/5000 {t("caracteres")}</small><div><button type="button" className="ghost-button" disabled={suggestionSaving} onClick={resetSuggestionDraft}>{t("Cancelar")}</button></div></div></div> : editingCaption ? <div className="portal-caption-editor"><label htmlFor={`portal-caption-${detail.card.id}`}>{t("Edite o texto abaixo")}</label><textarea id={`portal-caption-${detail.card.id}`} autoFocus value={captionDraft} onChange={(event) => setCaptionDraft(event.target.value)} maxLength={5000} placeholder={t("Escreva a legenda do post...")} /><div className="portal-caption-editor-footer"><small>{captionDraft.length}/5000 {t("caracteres")}</small><div><button type="button" className="ghost-button" disabled={captionSaving} onClick={() => { setCaptionDraft(detail.card.subtitle ?? ""); setEditingCaption(false); }}>{t("Cancelar")}</button><button type="button" className="gradient-button" disabled={captionSaving} onClick={() => void savePortalCaption()}>{t(captionSaving ? "Salvando..." : "Salvar legenda")}</button></div></div></div> : <PortalFormattedCaption text={captionDraft} />}
               {allowManageTags ? <section className="portal-tag-manager"><header><div><small>{t("ETIQUETAS DO POST")}</small><strong>{selectedPortalTags.length ? `${selectedPortalTags.length} ${t(selectedPortalTags.length === 1 ? "etiqueta selecionada" : "etiquetas selecionadas")}` : t("Nenhuma etiqueta")}</strong></div><button type="button" onClick={() => setTagEditorOpen((open) => !open)}>{t(tagEditorOpen ? "Fechar" : "Gerenciar tags")}</button></header>{selectedPortalTags.length ? <div className="portal-tag-pills">{selectedPortalTags.map((name) => { const tag = portalTagLibrary.find((item) => item.name === name); return <span key={name} style={{ "--portal-tag-color": tag?.color ?? "#7568dc" } as CSSProperties}>{name}</span>; })}</div> : null}{tagEditorOpen ? <div className="portal-tag-editor"><div className="portal-tag-options">{portalTagLibrary.map((tag) => { const selected = selectedPortalTags.includes(tag.name); return <button key={tag.id} type="button" className={selected ? "selected" : ""} onClick={() => setSelectedPortalTags((current) => selected ? current.filter((name) => name !== tag.name) : [...current, tag.name])}><i style={{ backgroundColor: tag.color }} />{tag.name}<span>{selected ? "✓" : "+"}</span></button>; })}{portalTagLibrary.length === 0 ? <p>{t("Nenhuma tag criada. Crie a primeira abaixo.")}</p> : null}</div><div className="portal-tag-create"><input value={newPortalTagName} onChange={(event) => setNewPortalTagName(event.target.value)} maxLength={100} placeholder={t("Nome da nova tag")} /><input type="color" value={newPortalTagColor} onChange={(event) => setNewPortalTagColor(event.target.value)} aria-label={t("Cor da nova tag")} /><button type="button" disabled={portalTagWorking || !newPortalTagName.trim()} onClick={() => void createPortalTag()}>{t("+ Criar")}</button></div><div className="portal-tag-actions"><button type="button" className="ghost-button" disabled={portalTagWorking} onClick={() => { setSelectedPortalTags(detail.card.tags); setTagEditorOpen(false); }}>{t("Cancelar")}</button><button type="button" className="gradient-button" disabled={portalTagWorking} onClick={() => void savePortalTags()}>{t(portalTagWorking ? "Salvando..." : "Salvar etiquetas")}</button></div></div> : null}</section> : null}
               <div className="portal-card-meta-grid">
                 <article className={`portal-card-meta status ${lifecycle.tone}`}>
@@ -6171,11 +7216,12 @@ function CardDetailModal({
             ) : null}
           </div>
         </div>
-        {mode === "portal" && canRespond ? <footer className="portal-card-sticky-actions">
+        {mode === "portal" && (canRespond || canEditClientSuggestion) ? <footer className={`portal-card-sticky-actions${canEditClientSuggestion ? " has-suggestion-action" : ""}`}>
           <div><strong>{t("Seu feedback")}</strong><small>{commentDraft.trim() ? t("Seu comentário será enviado junto com a decisão.") : t("Você pode aprovar agora ou escrever um comentário acima.")}</small></div>
-          <button className="ghost-button" disabled={submitting !== null || !commentDraft.trim()} onClick={() => handleAction("comment", () => onAddComment(detail.card.id, commentDraft.trim()))}>{t(submitting === "comment" ? "Salvando..." : "Comentar")}</button>
-          <button className="danger-button" disabled={submitting !== null} onClick={() => handleAction("changes", () => onRequestChanges(detail.card.id, commentDraft.trim()))}>{t(submitting === "changes" ? "Enviando..." : "Pedir alteração")}</button>
-          <button className="gradient-button" disabled={submitting !== null} onClick={() => handleAction("approve", () => onApprove(detail.card.id, commentDraft.trim()))}>{t(submitting === "approve" ? "Enviando..." : "Aprovar")}</button>
+          {canRespond ? <button className="ghost-button" disabled={submitting !== null || !commentDraft.trim()} onClick={() => handleAction("comment", () => onAddComment(detail.card.id, commentDraft.trim()))}>{t(submitting === "comment" ? "Salvando..." : "Comentar")}</button> : null}
+          {canEditClientSuggestion ? <button className="suggestion-save-button" disabled={suggestionSaving || submitting !== null} onClick={() => editingSuggestion ? void savePortalSuggestion() : setEditingSuggestion(true)}>{t(suggestionSaving ? "Salvando..." : editingSuggestion ? "Salvar alterações" : "Editar sugestão")}</button> : null}
+          {canRespond ? <button className="danger-button" disabled={submitting !== null || suggestionSaving} onClick={() => handleAction("changes", () => onRequestChanges(detail.card.id, commentDraft.trim()))}>{t(submitting === "changes" ? "Enviando..." : "Pedir alteração")}</button> : null}
+          {canRespond ? <button className="gradient-button" disabled={submitting !== null || suggestionSaving} onClick={() => handleAction("approve", () => onApprove(detail.card.id, commentDraft.trim()))}>{t(submitting === "approve" ? "Enviando..." : "Aprovar")}</button> : null}
         </footer> : null}
       </div>
       {videoPreviewUrl ? <div className="portal-video-player-backdrop" role="dialog" aria-modal="true" aria-label={t("Reproduzir vídeo")} onClick={(event) => { event.stopPropagation(); setVideoPreviewUrl(null); }}>
@@ -6189,6 +7235,7 @@ function CardDetailModal({
 }
 
 type CardRecoveryDraft = {
+  approvalRevision?: number;
   title: string; caption: string; artType: string; columnId: string; status: string; clientLabel: string;
   priorityLevel: CardPriority | ""; tags: string; hashtags: string; scheduledAt: string; externalLinkUrl: string; mediaUrls: string[];
 };
@@ -6197,24 +7244,31 @@ function AdminCardEditor({
   detail,
   columns,
   slug,
+  canScheduleMeta,
+  onMetaPublicationsSaved,
   onAddComment,
+  onCardUpdated,
   onRefresh,
   onClose,
 }: {
   detail: CardDetail;
   columns: BoardColumn[];
   slug: string;
+  canScheduleMeta: boolean;
+  onMetaPublicationsSaved?: (publications: MetaScheduledPublication[]) => void;
   onAddComment: (cardId: string, commentText: string) => Promise<unknown>;
+  onCardUpdated?: (card: BoardCard) => void;
   onRefresh: () => void;
   onClose: () => void;
 }) {
   const card = detail.card;
   const recoveryKey = `designhub-v2-card-draft:${slug}:${card.id}`;
   const serverDraft = useMemo<CardRecoveryDraft>(() => ({
+    approvalRevision: card.approvalRevision ?? 0,
     title: card.title,
     caption: card.subtitle ?? "",
     artType: normalizeArtType(card.typeLabel),
-    columnId: columns.find((column) => column.cards.some((item) => item.id === card.id))?.id ?? "",
+    columnId: card.columnId ?? columns.find((column) => column.cards.some((item) => item.id === card.id))?.id ?? "",
     status: card.statusBadges[0] ?? "",
     clientLabel: card.clientLabel,
     priorityLevel: card.priorityLevel ?? "",
@@ -6225,7 +7279,12 @@ function AdminCardEditor({
     mediaUrls: card.mediaUrls ?? (card.mediaUrl ? [card.mediaUrl] : []),
   }), [card, columns]);
   const recoveredDraft = useMemo(() => readRecoveryDraft<CardRecoveryDraft>(recoveryKey), [recoveryKey]);
-  const initialDraft = recoveredDraft ?? serverDraft;
+  const initialDraft = recoveredDraft ? { ...recoveredDraft, approvalRevision: recoveredDraft.approvalRevision ?? 0 } : serverDraft;
+  const [approvalRevision, setApprovalRevision] = useState(initialDraft.approvalRevision ?? 0);
+  const [resubmitting, setResubmitting] = useState(false);
+  const resubmittingRef = useRef(false);
+  const statusBadgesRef = useRef(card.statusBadges);
+  const [newApprovalUrl, setNewApprovalUrl] = useState("");
   const [title, setTitle] = useState(initialDraft.title);
   const [caption, setCaption] = useState(initialDraft.caption);
   const [artType, setArtType] = useState(initialDraft.artType);
@@ -6238,6 +7297,10 @@ function AdminCardEditor({
   const [newTagName, setNewTagName] = useState("");
   const [newTagColor, setNewTagColor] = useState("#5e5cf1");
   const [creatingTag, setCreatingTag] = useState(false);
+  const [editingTagId, setEditingTagId] = useState<string | null>(null);
+  const [editingTagName, setEditingTagName] = useState("");
+  const [editingTagColor, setEditingTagColor] = useState("#5e5cf1");
+  const [editingTagSaving, setEditingTagSaving] = useState(false);
   const [tagPickerOpen, setTagPickerOpen] = useState(false);
   const [tagSearch, setTagSearch] = useState("");
   const [hashtags, setHashtags] = useState(initialDraft.hashtags);
@@ -6250,6 +7313,12 @@ function AdminCardEditor({
   const [mediaUrls, setMediaUrls] = useState(initialDraft.mediaUrls);
   const [commentDraft, setCommentDraft] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [metaDestinations, setMetaDestinations] = useState<MetaPublishDestination[]>([]);
+  const [metaPublications, setMetaPublications] = useState<MetaScheduledPublication[]>([]);
+  const [metaScheduleOpen, setMetaScheduleOpen] = useState(false);
+  const [metaScheduling, setMetaScheduling] = useState(false);
+  const [scheduleMenuOpen, setScheduleMenuOpen] = useState(false);
+  const [internalScheduleOpen, setInternalScheduleOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [approvalLinkCopied, setApprovalLinkCopied] = useState(false);
@@ -6269,12 +7338,14 @@ function AdminCardEditor({
   const [externalLinkCopied, setExternalLinkCopied] = useState(false);
   const captionCopiedTimerRef = useRef<number | null>(null);
   const externalLinkCopiedTimerRef = useRef<number | null>(null);
+  const scheduleActionsRef = useRef<HTMLDivElement>(null);
   const editorMainRef = useRef<HTMLDivElement>(null);
   const editorSideRef = useRef<HTMLElement>(null);
   const saveInFlightRef = useRef(false);
+  const isBriefApprovalRef = useRef(card.isBriefApproval ?? false);
   const lastSavedDraftRef = useRef(JSON.stringify(serverDraft));
   const savedColumnIdRef = useRef(serverDraft.columnId);
-  const draft = useMemo<CardRecoveryDraft>(() => ({ title, caption, artType, columnId, status, clientLabel, priorityLevel, tags, hashtags, scheduledAt, externalLinkUrl, mediaUrls }), [artType, caption, clientLabel, columnId, externalLinkUrl, hashtags, mediaUrls, priorityLevel, scheduledAt, status, tags, title]);
+  const draft = useMemo<CardRecoveryDraft>(() => ({ approvalRevision, title, caption, artType, columnId, status, clientLabel, priorityLevel, tags, hashtags, scheduledAt, externalLinkUrl, mediaUrls }), [approvalRevision, artType, caption, clientLabel, columnId, externalLinkUrl, hashtags, mediaUrls, priorityLevel, scheduledAt, status, tags, title]);
   const latestDraftRef = useRef(draft);
   latestDraftRef.current = draft;
 
@@ -6282,6 +7353,18 @@ function AdminCardEditor({
     if (captionCopiedTimerRef.current !== null) window.clearTimeout(captionCopiedTimerRef.current);
     if (externalLinkCopiedTimerRef.current !== null) window.clearTimeout(externalLinkCopiedTimerRef.current);
   }, []);
+
+  useEffect(() => {
+    if (!scheduleMenuOpen && !internalScheduleOpen) return;
+    const closeScheduleActions = (event: MouseEvent) => {
+      if (!scheduleActionsRef.current?.contains(event.target as Node)) {
+        setScheduleMenuOpen(false);
+        setInternalScheduleOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", closeScheduleActions);
+    return () => document.removeEventListener("mousedown", closeScheduleActions);
+  }, [internalScheduleOpen, scheduleMenuOpen]);
 
   useEffect(() => {
     editorMainRef.current?.scrollTo({ top: 0 });
@@ -6293,6 +7376,26 @@ function AdminCardEditor({
     listAdminHashtagGroupsBySlug(slug).then((result) => setHashtagGroups(result.items)).catch(() => undefined);
     listManagedUsers().then((result) => setInternalUsers(result.items.filter((user) => user.isActive && user.globalRole !== "cliente"))).catch(() => setInternalUsers([]));
   }, [slug]);
+
+  const refreshMetaPublications = useCallback(async () => {
+    if (!canScheduleMeta) return;
+    const [destinationResult, publicationsResult] = await Promise.all([
+      loadClientMetaDestinationsBySlug(slug),
+      listMetaPublicationsBySlug(slug),
+    ]);
+    setMetaDestinations(destinationResult.destinations);
+    setMetaPublications(publicationsResult.publications);
+  }, [canScheduleMeta, slug]);
+
+  useEffect(() => {
+    if (!canScheduleMeta) return;
+    void refreshMetaPublications().catch(() => {
+      setMetaDestinations([]);
+      setMetaPublications([]);
+    });
+    const timer = window.setInterval(() => void refreshMetaPublications().catch(() => undefined), 60_000);
+    return () => window.clearInterval(timer);
+  }, [canScheduleMeta, refreshMetaPublications]);
 
   useEffect(() => {
     const draftJson = JSON.stringify(draft);
@@ -6414,9 +7517,10 @@ ${internalMessage.trim()}`, isInternal: true });
     }
   }
 
-  async function persistCard(closeAfterSave: boolean) {
-    const currentDraft = latestDraftRef.current;
-    const draftJson = JSON.stringify(currentDraft);
+  async function persistCard(closeAfterSave: boolean, forResubmission = false) {
+    if (resubmittingRef.current && !forResubmission) return false;
+    let currentDraft = latestDraftRef.current;
+    let draftJson = JSON.stringify(currentDraft);
     if (!currentDraft.title.trim()) {
       setFeedback("Informe um título para salvar o card.");
       setAutosaveState("error");
@@ -6432,23 +7536,35 @@ ${internalMessage.trim()}`, isInternal: true });
     setAutosaveState("saving");
     if (closeAfterSave) setFeedback(null);
     try {
-      await updateAdminCardBySlug(slug, card.id, {
+      const saved = await updateAdminCardBySlug(slug, card.id, {
+        expectedApprovalRevision: currentDraft.approvalRevision ?? 0,
         title: currentDraft.title.trim(),
         caption: currentDraft.caption.trim() || null,
         artType: currentDraft.artType,
-        mediaType: currentDraft.artType.toLowerCase().includes("video") ? "video" : "image",
+        mediaType: /video|reel/i.test(currentDraft.artType) ? "video" : "image",
         primaryMediaUrl: currentDraft.mediaUrls[0] ?? null,
         mediaUrls: currentDraft.mediaUrls,
         externalLinkUrl: currentDraft.externalLinkUrl.trim() || null,
-        status: currentDraft.status ? [currentDraft.status, ...card.statusBadges.slice(1)] : [],
+        status: currentDraft.status ? [currentDraft.status, ...statusBadgesRef.current.slice(1)] : [],
         tags: splitValues(currentDraft.tags),
         hashtags: splitValues(currentDraft.hashtags).map((item) => item.startsWith("#") ? item : `#${item}`),
-        isBriefApproval: card.isBriefApproval ?? false,
+        isBriefApproval: isBriefApprovalRef.current,
         scheduledAt: currentDraft.scheduledAt || null,
         scheduledTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         clientLabel: currentDraft.clientLabel.trim() || "Pendente",
         priorityLevel: currentDraft.priorityLevel || null,
       });
+      isBriefApprovalRef.current = saved.card.isBriefApproval ?? false;
+      if (saved.card.approvalRevision !== currentDraft.approvalRevision) {
+        const workflow = { approvalRevision: saved.card.approvalRevision ?? 0,
+          status: saved.card.status[0] ?? "", clientLabel: saved.card.clientLabel };
+        statusBadgesRef.current = saved.card.status;
+        currentDraft = { ...currentDraft, ...workflow };
+        latestDraftRef.current = { ...latestDraftRef.current, ...workflow };
+        draftJson = JSON.stringify(currentDraft);
+        setApprovalRevision(workflow.approvalRevision); setStatus(workflow.status); setClientLabel(workflow.clientLabel);
+        onRefresh();
+      }
       if (currentDraft.columnId !== savedColumnIdRef.current) {
         await moveAdminCardBySlug(slug, card.id, currentDraft.columnId || null);
         savedColumnIdRef.current = currentDraft.columnId;
@@ -6471,6 +7587,7 @@ ${internalMessage.trim()}`, isInternal: true });
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : "Não foi possível salvar as alterações.");
       setAutosaveState("error");
+      onRefresh();
       return false;
     } finally {
       saveInFlightRef.current = false;
@@ -6478,8 +7595,99 @@ ${internalMessage.trim()}`, isInternal: true });
     }
   }
 
+  const currentMetaPublications = selectMetaPublicationsByCard(card.archived
+    ? metaPublications.filter((publication) => publication.status === "published")
+    : metaPublications).get(card.id) ?? [];
+  const hasLinkedMetaPlatform = metaDestinations.some((destination) => destination.instagramAccountId || destination.facebookPageId);
+  const metaVideoUrls = mediaUrls.filter((url) => /\.(mp4|mov)(?:$|[?#])/i.test(url));
+  const metaDeclaredReel = /reel/i.test(artType);
+  const metaDeclaredStory = /stor(?:y|ies)/i.test(artType);
+  const metaMediaMode: "image" | "carousel" | "reel" | "story" = metaDeclaredStory
+    ? "story"
+    : mediaUrls.length === 1 && (metaVideoUrls.length === 1 || metaDeclaredReel)
+    ? "reel"
+    : mediaUrls.length > 1 ? "carousel" : "image";
+  const metaScheduleUnavailableReason = mediaUrls.length === 0
+    ? null
+    : metaMediaMode === "story" && mediaUrls.length !== 1
+      ? "Stories aceita exatamente uma imagem ou um vídeo nesta etapa."
+      : metaMediaMode === "story" && !hasLinkedMetaPlatform
+        ? "Stories exige Instagram ou Facebook vinculado ao cliente."
+      : metaVideoUrls.length > 1 || (mediaUrls.length > 1 && (metaVideoUrls.length > 0 || metaDeclaredReel))
+        ? "Reels aceita somente um vídeo, sem imagens adicionais."
+        : mediaUrls.length > 10
+          ? "O carrossel aceita no máximo 10 imagens."
+          : metaMediaMode === "carousel" && !hasLinkedMetaPlatform
+            ? "Carrossel exige Instagram ou Facebook vinculado ao cliente."
+            : metaMediaMode === "reel" && !hasLinkedMetaPlatform
+              ? "Reels exige Instagram ou Facebook vinculado ao cliente."
+            : null;
+  const metaCompatibleMedia = mediaUrls.length >= 1 && !metaScheduleUnavailableReason;
+  const metaSchedulingAvailable = canScheduleMeta && hasLinkedMetaPlatform && metaCompatibleMedia;
+  const metaSchedulingOptionHint = !canScheduleMeta
+      ? "Disponível somente para administradores autorizados."
+      : !hasLinkedMetaPlatform
+        ? "Nenhuma conta Meta vinculada a este cliente."
+        : mediaUrls.length === 0
+          ? "Adicione uma mídia ao card para publicar."
+          : metaScheduleUnavailableReason ?? "Instagram ou Facebook";
+
+  async function scheduleMetaPublication(
+    platforms: ("instagram" | "facebook")[],
+    localDateTime: string,
+    timezone: string,
+    options: { destinationId: string; publicationFormat: "story" | null; reelCoverUrl: string | null; locationId: string | null; locationName: string | null; instagramUserTags: Array<{ username: string; x: number; y: number }> },
+  ) {
+    setMetaScheduling(true);
+    setFeedback(null);
+    try {
+      if (!await persistCard(false)) return;
+      const date = new Date(localDateTime);
+      if (Number.isNaN(date.getTime())) throw new Error("Informe uma data e hora válidas.");
+      const result = await createMetaPublicationBySlug(slug, {
+        cardId: card.id,
+        destinationId: options.destinationId,
+        platforms,
+        scheduledAt: date.toISOString(),
+        timezone,
+        publicationFormat: options.publicationFormat,
+        reelCoverUrl: options.reelCoverUrl,
+        locationId: options.locationId,
+        locationName: options.locationName,
+        instagramUserTags: options.instagramUserTags,
+      });
+      setMetaPublications((current) => [...result.publications, ...current.filter((item) => !result.publications.some((publication) => publication.id === item.id))]);
+      onMetaPublicationsSaved?.(result.publications);
+      setMetaScheduleOpen(false);
+      onClose();
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Não foi possível agendar a publicação na Meta.");
+    } finally {
+      setMetaScheduling(false);
+    }
+  }
+
+  async function cancelMetaPublication(publicationId: string) {
+    try {
+      await cancelMetaPublicationBySlug(slug, publicationId);
+      await refreshMetaPublications();
+      setFeedback("Agendamento Meta cancelado.");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Não foi possível cancelar o agendamento.");
+    }
+  }
+
+  async function sendToClientAndClose() {
+    if (saving || uploading || resubmittingRef.current || approvalConflict) return;
+    const nextDraft = { ...latestDraftRef.current, status: "Enviar para Cliente" };
+    latestDraftRef.current = nextDraft;
+    setStatus("Enviar para Cliente");
+    setAutosaveState("pending");
+    await persistCard(true);
+  }
+
   async function requestClose() {
-    if (saving || uploading) return;
+    if (saving || uploading || resubmittingRef.current) return;
     if (JSON.stringify(latestDraftRef.current) !== lastSavedDraftRef.current) {
       await persistCard(true);
       return;
@@ -6511,12 +7719,70 @@ ${internalMessage.trim()}`, isInternal: true });
     }
   }
 
+  const approvalConflict = approvalRevision < (card.approvalRevision ?? 0);
+  function adoptCurrentApproval() {
+    const nextDraft = { ...latestDraftRef.current, approvalRevision: card.approvalRevision ?? 0,
+      status: card.statusBadges[0] ?? "", clientLabel: card.clientLabel, columnId: card.columnId ?? "" };
+    statusBadgesRef.current = card.statusBadges;
+    savedColumnIdRef.current = nextDraft.columnId;
+    lastSavedDraftRef.current = JSON.stringify(serverDraft);
+    latestDraftRef.current = nextDraft;
+    setApprovalRevision(nextDraft.approvalRevision); setStatus(nextDraft.status);
+    setClientLabel(nextDraft.clientLabel); setColumnId(nextDraft.columnId);
+    setFeedback("Estado da aprovação atualizado. Sua legenda e seus arquivos em edição foram mantidos; confira antes de salvar.");
+  }
+
+  const legacyDecisionValues = [card.clientLabel, ...card.statusBadges, ...card.tags];
+  const hasClientDecision = approvalRevision > (card.approvalRevision ?? 0) ? false : card.approvalState ? card.approvalState !== "pending" : legacyDecisionValues.some((value) => /^(aprovado(?: pelo cliente)?|alterad[oa]|altera[çc][ãa]o solicitada|revis[ãa]o solicitada)$/i.test(value.trim()));
+  const resendBlocked = card.archived || card.archivedAt ? "Restaure o post antes de reenviar."
+    : card.publishedAt || /^publicado$/i.test(status) ? "Este post já foi publicado. Crie uma nova versão para aprovação."
+    : scheduledAt || /^agendados?$/i.test(status) ? "Remova o agendamento e o status Agendado antes de reenviar." : null;
+
+  async function resendApproval() {
+    if (resubmittingRef.current || saveInFlightRef.current || uploading || resendBlocked || approvalConflict) return;
+    resubmittingRef.current = true;
+    setResubmitting(true);
+    setFeedback("Salvando a correção e preparando a nova revisão...");
+    editorMainRef.current?.setAttribute("inert", "");
+    editorSideRef.current?.setAttribute("inert", "");
+    try {
+      if (!(await persistCard(false, true))) return;
+      if (JSON.stringify(latestDraftRef.current) !== lastSavedDraftRef.current) {
+        setFeedback("Conclua o salvamento da correção antes de reenviar.");
+        return;
+      }
+      const result = await resubmitAdminApprovalBySlug(slug, card.id, latestDraftRef.current.approvalRevision ?? 0);
+      const nextDraft = { ...latestDraftRef.current, approvalRevision: result.card.approvalRevision ?? 0,
+        status: result.card.statusBadges[0] ?? "", clientLabel: result.card.clientLabel, columnId: result.card.columnId ?? "" };
+      statusBadgesRef.current = result.card.statusBadges;
+      savedColumnIdRef.current = nextDraft.columnId;
+      latestDraftRef.current = nextDraft;
+      lastSavedDraftRef.current = JSON.stringify(nextDraft);
+      setApprovalRevision(nextDraft.approvalRevision);
+      setStatus(nextDraft.status); setClientLabel(nextDraft.clientLabel); setColumnId(nextDraft.columnId);
+      try { window.localStorage.removeItem(recoveryKey); } catch { /* Recovery is optional. */ }
+      onCardUpdated?.(result.card);
+      setNewApprovalUrl(`${window.location.origin}/#/approval/${result.approvalLink.token}`);
+      setApprovalLinkCopied(false);
+      setAutosaveState("saved"); setAutosavedAt(new Date());
+      setFeedback("Enviado novamente para aprovação. O conteúdo já está disponível no portal; comentários e histórico foram mantidos.");
+      onRefresh();
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Não foi possível reenviar. Confira o estado atualizado antes de tentar novamente.");
+      onRefresh();
+    } finally {
+      resubmittingRef.current = false; setResubmitting(false);
+      editorMainRef.current?.removeAttribute("inert"); editorSideRef.current?.removeAttribute("inert");
+    }
+  }
+
   async function createApprovalLink() {
     if (creatingApprovalLink) return;
     setCreatingApprovalLink(true);
     setApprovalLinkCopied(false);
     try {
-      const result = await createAdminApprovalLinkBySlug(slug, card.id);
+      if (!(await persistCard(false))) return;
+      const result = await createAdminApprovalLinkBySlug(slug, card.id, latestDraftRef.current.approvalRevision ?? 0);
       const origin = window.location.origin;
       const link = `${origin}/#/approval/${result.approvalLink.token}`;
       await navigator.clipboard.writeText(link);
@@ -6547,6 +7813,32 @@ ${internalMessage.trim()}`, isInternal: true });
       setFeedback(error instanceof Error ? error.message : "Não foi possível criar a etiqueta.");
     } finally {
       setCreatingTag(false);
+    }
+  }
+
+  function startEditingTag(tag: ClientTagDefinition) {
+    setEditingTagId(tag.id);
+    setEditingTagName(tag.name);
+    setEditingTagColor(tag.color);
+    setFeedback(null);
+  }
+
+  async function saveTagEdit() {
+    const currentTag = tagLibrary.find((tag) => tag.id === editingTagId);
+    const name = editingTagName.trim();
+    if (!currentTag || !name || editingTagSaving) return;
+    setEditingTagSaving(true);
+    try {
+      const result = await updateAdminTagBySlug(slug, currentTag.id, { name, color: editingTagColor });
+      setTagLibrary((current) => current.map((tag) => tag.id === currentTag.id ? result.tag : tag).sort((left, right) => left.name.localeCompare(right.name)));
+      setTags((current) => splitValues(current).map((tagName) => tagName === currentTag.name ? result.tag.name : tagName).join(", "));
+      setEditingTagId(null);
+      setFeedback(`Etiqueta “${result.tag.name}” atualizada.`);
+      onRefresh();
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Não foi possível editar a etiqueta.");
+    } finally {
+      setEditingTagSaving(false);
     }
   }
 
@@ -6613,21 +7905,25 @@ ${internalMessage.trim()}`, isInternal: true });
                   {mediaUrls.length > 1 ? <small className="media-order-help">Arraste os slides para mudar a ordem. O primeiro será usado como capa.</small> : null}
                 </div>
               </EditorField>
-              <EditorField label="Ou usar link externo">
-                <input type="url" value={externalLinkUrl} onChange={(event) => setExternalLinkUrl(event.target.value)} placeholder="https://drive.google.com/..." />
-                {externalLinkUrl.trim() ? <div className="editor-external-link-preview">
-                  <a href={/^https?:\/\//i.test(externalLinkUrl.trim()) ? externalLinkUrl.trim() : `https://${externalLinkUrl.trim()}`} target="_blank" rel="noreferrer" title={externalLinkUrl.trim()}>
-                    <span><UiIcon name="link" /></span>
-                    <span className="editor-external-link-copy"><small>Abrir link</small><strong>{externalLinkUrl.trim()}</strong></span>
-                    <span className="editor-external-link-arrow" aria-hidden="true">↗</span>
-                  </a>
-                  <button type="button" className={externalLinkCopied ? "copied" : ""} onClick={() => void copyExternalLink()} title={externalLinkCopied ? "Link copiado" : "Copiar link"} aria-label={externalLinkCopied ? "Link copiado" : "Copiar link"} aria-live="polite">
+              <EditorField label="Link externo">
+                <div className={`editor-external-link-preview${externalLinkUrl.trim() ? " has-link" : ""}`}>
+                  <span className="editor-external-link-icon"><UiIcon name="link" /></span>
+                  <label className="editor-external-link-copy">
+                    <small>{externalLinkUrl.trim() ? "Editar link" : "Adicionar link"}</small>
+                    <input type="url" value={externalLinkUrl} onChange={(event) => { setExternalLinkUrl(event.target.value); setExternalLinkCopied(false); }} placeholder="https://drive.google.com/..." aria-label="Link externo" />
+                  </label>
+                  {externalLinkUrl.trim() ? <a className="editor-external-link-open" href={/^https?:\/\//i.test(externalLinkUrl.trim()) ? externalLinkUrl.trim() : `https://${externalLinkUrl.trim()}`} target="_blank" rel="noreferrer" title="Abrir link" aria-label="Abrir link em uma nova aba">↗</a> : null}
+                  <button type="button" className={`editor-external-link-action${externalLinkCopied ? " copied" : ""}`} onClick={() => void copyExternalLink()} disabled={!externalLinkUrl.trim()} title={externalLinkCopied ? "Link copiado" : "Copiar link"} aria-label={externalLinkCopied ? "Link copiado" : "Copiar link"} aria-live="polite">
                     <UiIcon name={externalLinkCopied ? "check" : "copy"} />
                     <span>{externalLinkCopied ? "Copiado!" : "Copiar"}</span>
                   </button>
-                </div> : null}
+                  <button type="button" className="editor-external-link-action delete" onClick={() => { setExternalLinkUrl(""); setExternalLinkCopied(false); }} disabled={!externalLinkUrl.trim()} title="Apagar link" aria-label="Apagar link">
+                    <UiIcon name="trash" />
+                  </button>
+                </div>
               </EditorField>
             </div>
+            {detail.approvalEvents?.some((event) => event.action !== "legacy_snapshot") ? <section className="approval-history-panel"><h4>Histórico de aprovação</h4>{detail.approvalEvents.filter((event) => event.action !== "legacy_snapshot").map((event) => <article key={event.id}><strong>{event.action === "converted_to_post" ? "Pauta convertida em post — nova aprovação" : event.action === "resubmitted" ? "Enviado novamente para aprovação" : event.action === "approved" ? "Aprovado pelo cliente" : "Alteração solicitada"}</strong><small>{event.actorName} · {event.source === "public_link" ? "Link público" : event.source === "portal" ? "Portal" : "Equipe"} · {new Date(event.createdAt).toLocaleString("pt-BR")}</small>{event.commentText ? <p>{event.commentText}</p> : null}</article>)}</section> : null}
             <section className="editor-comments">
             <h4>Comentários ({detail.comments.length})</h4>
             {detail.comments.map((comment) => (
@@ -6646,12 +7942,13 @@ ${internalMessage.trim()}`, isInternal: true });
           </div>
         </div>
         <aside className="admin-card-side" ref={editorSideRef}>
+          {approvalConflict && !resubmitting ? <section className="approval-resubmit-panel" role="alert"><strong>A aprovação foi atualizada</strong><small>Seu rascunho foi preservado. Atualize o estado da aprovação antes de salvar.</small><button type="button" className="ghost-button" onClick={adoptCurrentApproval}>Atualizar estado da aprovação</button><button type="button" className="ghost-button" onClick={onClose}>Fechar mantendo rascunho</button></section> : null}
           <CardTimeTracker slug={slug} cardId={card.id} cardTitle={title || card.title} />
           <ArtTypeSelect value={artType} onChange={setArtType} />
           <EditorSelect label="Status" value={status} onChange={setStatus} options={CARD_STATUS_OPTIONS} emptyLabel="Sem status" />
           <label className="editor-field"><span>Prioridade</span><select value={priorityLevel} onChange={(event) => setPriorityLevel(event.target.value as CardPriority | "")}><option value="">Sem prioridade</option><option value="high">Alta prioridade</option><option value="medium">Média prioridade</option><option value="normal">Prioridade normal</option></select></label>
-          <EditorSelect label="Feedback do cliente" value={clientLabel} onChange={setClientLabel} options={["Pendente", "Aprovado", "Alteração solicitada"]} />
-          <EditorField label="Agendamento"><input type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} /><small className="editor-field-hint">Na data e hora informadas, o card será movido para Arquivados.</small></EditorField>
+          {approvalRevision > 0 ? <div className="editor-field client-feedback-field"><span>Retorno do cliente</span><span className={`client-feedback-badge ${clientFeedbackToneClass(clientLabel)}`}><i aria-hidden="true" />{clientLabel === "Pendente" ? "Aguardando aprovação" : clientLabel}</span></div> : <EditorSelect label="Feedback do cliente" value={clientLabel} onChange={setClientLabel} options={["Pendente", "Aprovado", "Alteração solicitada"]} />}
+          {newApprovalUrl ? <section className="approval-resubmit-panel" aria-label="Novo link de aprovação"><small>O novo link é válido por 7 dias. Os links anteriores foram encerrados.</small><input aria-label="Novo link de aprovação" readOnly value={newApprovalUrl} onFocus={(event) => event.target.select()} /><button type="button" className="ghost-button" onClick={() => { void navigator.clipboard.writeText(newApprovalUrl).then(() => setApprovalLinkCopied(true)).catch(() => setFeedback("O reenvio foi concluído. Selecione o link acima para copiá-lo manualmente.")); }}>{approvalLinkCopied ? "Link copiado" : "Copiar novo link"}</button></section> : null}
           <label className="editor-field"><span>Coluna</span><select value={columnId} onChange={(event) => setColumnId(event.target.value)}><option value="">Sem coluna</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select></label>
           <section className="tag-library">
             <div className="tag-library-head"><span>Etiquetas</span></div>
@@ -6668,11 +7965,12 @@ ${internalMessage.trim()}`, isInternal: true });
               <div className="tag-picker-list">
                 {tagLibrary.filter((tag) => tag.name.toLocaleLowerCase("pt-BR").includes(tagSearch.toLocaleLowerCase("pt-BR"))).map((tag) => {
                   const selected = splitValues(tags).includes(tag.name);
-                  return <button key={tag.id} type="button" className={selected ? "tag-picker-item selected" : "tag-picker-item"} onClick={() => setTags((current) => selected ? splitValues(current).filter((item) => item !== tag.name).join(", ") : [...splitValues(current), tag.name].join(", "))}><i style={{ backgroundColor: cardTagColor(tag.name, tag.color) }} />{cardStatusLabel(tag.name)}<span>{selected ? "Selecionada" : ""}</span></button>;
+                  return <div className="tag-picker-item-row" key={tag.id}><button type="button" className={selected ? "tag-picker-item selected" : "tag-picker-item"} onClick={() => setTags((current) => selected ? splitValues(current).filter((item) => item !== tag.name).join(", ") : [...splitValues(current), tag.name].join(", "))}><i style={{ backgroundColor: cardTagColor(tag.name, tag.color) }} />{cardStatusLabel(tag.name)}<span>{selected ? "Selecionada" : ""}</span></button><button type="button" className="tag-picker-edit" title={`Editar ${tag.name}`} aria-label={`Editar etiqueta ${tag.name}`} onClick={() => startEditingTag(tag)}><UiIcon name="pencil" /></button></div>;
                 })}
                 {tagLibrary.length === 0 ? <p className="tag-empty">Nenhuma etiqueta criada ainda.</p> : null}
                 {tagLibrary.length > 0 && tagLibrary.filter((tag) => tag.name.toLocaleLowerCase("pt-BR").includes(tagSearch.toLocaleLowerCase("pt-BR"))).length === 0 ? <p className="tag-empty">Nenhuma etiqueta encontrada.</p> : null}
               </div>
+              {editingTagId ? <div className="tag-edit-row"><input autoFocus value={editingTagName} maxLength={100} onChange={(event) => setEditingTagName(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); void saveTagEdit(); } }} aria-label="Nome da etiqueta" /><input className="tag-color-input" type="color" value={editingTagColor} onChange={(event) => setEditingTagColor(event.target.value)} aria-label="Cor da etiqueta" /><button type="button" className="tag-edit-save" onClick={() => void saveTagEdit()} disabled={editingTagSaving || !editingTagName.trim()}>{editingTagSaving ? "..." : "Salvar"}</button><button type="button" className="tag-edit-cancel" onClick={() => setEditingTagId(null)} aria-label="Cancelar edição">×</button></div> : null}
               <div className="tag-create-row"><input value={newTagName} onChange={(event) => setNewTagName(event.target.value)} placeholder="Nova etiqueta" /><input className="tag-color-input" type="color" value={newTagColor} onChange={(event) => setNewTagColor(event.target.value)} aria-label="Cor da etiqueta" /><button type="button" onClick={createTag} disabled={creatingTag}>{creatingTag ? "Criando..." : "+ Nova"}</button></div>
             </div> : null}
           </section>
@@ -6682,25 +7980,431 @@ ${internalMessage.trim()}`, isInternal: true });
             {hashtagPickerOpen ? <div className="hashtag-popover">
               <header><strong>Grupos de Hashtags</strong><button type="button" onClick={() => setHashtagPickerOpen(false)}>×</button></header>
               <div className="hashtag-group-list">
-                {hashtagGroups.map((group) => <article key={group.id} className="hashtag-group-card"><div><strong>{group.name}</strong><p>{group.hashtags.join(" ")}</p></div><div className="hashtag-group-actions"><button type="button" title="Copiar" onClick={() => navigator.clipboard.writeText(group.hashtags.join(" "))}>⧉</button><button type="button" title="Excluir" className="danger" onClick={() => removeHashtagGroup(group)}>♜</button></div><button type="button" className="insert-hashtags" onClick={() => insertHashtagGroup(group)}>Inserir na legenda</button></article>)}
+                {hashtagGroups.map((group) => <article key={group.id} className="hashtag-group-card"><button type="button" className="hashtag-group-summary" onClick={() => insertHashtagGroup(group)} title={`Inserir ${group.name} na legenda`}><span className="hashtag-group-symbol">#</span><span><strong>{group.name}</strong><small>{group.hashtags.length} {group.hashtags.length === 1 ? "hashtag" : "hashtags"}</small></span></button><div className="hashtag-group-actions"><button type="button" title="Copiar hashtags" aria-label={`Copiar grupo ${group.name}`} onClick={() => navigator.clipboard.writeText(group.hashtags.join(" "))}>⧉</button><button type="button" title="Excluir grupo" aria-label={`Excluir grupo ${group.name}`} className="danger" onClick={() => removeHashtagGroup(group)}>♜</button></div><details className="hashtag-group-preview"><summary>Ver hashtags</summary><p>{group.hashtags.join(" ")}</p></details><button type="button" className="insert-hashtags" onClick={() => insertHashtagGroup(group)}>+ Adicionar à legenda</button></article>)}
                 {hashtagGroups.length === 0 ? <p className="tag-empty">Nenhum grupo criado ainda.</p> : null}
               </div>
               <div className="hashtag-create"><input value={newHashtagGroupName} onChange={(event) => setNewHashtagGroupName(event.target.value)} placeholder="Nome do grupo" /><textarea value={newHashtagGroupText} onChange={(event) => setNewHashtagGroupText(event.target.value)} placeholder="#hashtag1 #hashtag2 #hashtag3" /><button type="button" onClick={createHashtagGroup}>+ Novo grupo</button></div>
             </div> : null}
           </section>
+          {hasClientDecision ? <section className="approval-resubmit-panel approval-resubmit-actions">
+            <button type="button" className="gradient-button" disabled={resubmitting || saving || uploading || creatingApprovalLink || restoringCaptionVersionId !== null || Boolean(resendBlocked) || approvalConflict} onClick={() => void resendApproval()}>{resubmitting ? "Enviando..." : "Enviar novamente para aprovação"}</button>
+            <small>{resendBlocked || "O conteúdo voltará para revisão. Os comentários e o histórico serão mantidos."}</small>
+          </section> : null}
           <button type="button" className={`side-action approval-link-action${approvalLinkCopied ? " copied" : ""}`} onClick={() => void createApprovalLink()} disabled={creatingApprovalLink}><span className="side-action-icon">{approvalLinkCopied ? <UiIcon name="check" /> : "⌁"}</span>{creatingApprovalLink ? "Criando link..." : approvalLinkCopied ? "Link copiado" : "Enviar link para aprovação"}</button>
           <button className="side-action" onClick={() => setInternalApprovalOpen(true)}><span className="side-action-icon">♙</span>Aprovação interna</button>
           {internalApprovalOpen ? <div className="internal-approval-popover"><header><div><span>REVISÃO DA EQUIPE</span><h4>Enviar para aprovação interna</h4></div><button type="button" onClick={() => setInternalApprovalOpen(false)}>×</button></header><p>Escolha quem deve revisar este card. Clientes não aparecem nesta lista.</p><div className="internal-recipient-list">{internalUsers.length ? internalUsers.map((user) => <label key={user.id}><input type="checkbox" checked={internalRecipientIds.includes(user.id)} onChange={(event) => setInternalRecipientIds((current) => event.target.checked ? [...current, user.id] : current.filter((id) => id !== user.id))} /><span><strong>{user.fullName}</strong><small>{user.globalRole} · {user.email}</small></span></label>) : <small>Nenhum membro interno disponível.</small>}</div><textarea value={internalMessage} onChange={(event) => setInternalMessage(event.target.value)} placeholder="Escreva uma mensagem para quem vai revisar..." /><footer><button type="button" className="ghost-button" onClick={() => setInternalApprovalOpen(false)}>Cancelar</button><button type="button" className="gradient-button" disabled={internalSending || !internalRecipientIds.length || !internalMessage.trim()} onClick={() => void sendInternalApproval()}>{internalSending ? "Enviando..." : "Enviar para revisão"}</button></footer></div> : null}
         </aside>
         <footer className="admin-card-footer">
-          <div>{feedback ? <p className="editor-feedback">{feedback}</p> : null}<AutosaveIndicator state={autosaveState} savedAt={autosavedAt} /></div>
-          <button type="button" className="ghost-button" onClick={() => void requestClose()} disabled={saving || uploading}>Cancelar</button>
-          <button className="gradient-button editor-save" onClick={() => void persistCard(true)} disabled={saving || uploading}>{saving ? "Salvando..." : "Salvar e fechar"}</button>
+          <div className="admin-card-feedback">{feedback ? <p className={`editor-feedback${newApprovalUrl && feedback.startsWith("Enviado novamente") ? " approval-success" : ""}`}>{feedback}</p> : null}<AutosaveIndicator state={autosaveState} savedAt={autosavedAt} /></div>
+          <button type="button" className="ghost-button" onClick={() => void requestClose()} disabled={saving || uploading || resubmitting}>Cancelar</button>
+          <button type="button" className="send-client-button" onClick={() => void sendToClientAndClose()} disabled={saving || uploading || resubmitting || approvalConflict}>{saving ? "Salvando..." : "Enviar para cliente"}</button>
+          <div className="admin-schedule-actions" ref={scheduleActionsRef}>
+            <button type="button" className="admin-schedule-trigger" aria-haspopup="menu" aria-expanded={scheduleMenuOpen} disabled={saving || uploading || resubmitting} onClick={() => { setScheduleMenuOpen((open) => !open); setInternalScheduleOpen(false); }}>Agendar <span aria-hidden="true">⌄</span></button>
+            {scheduleMenuOpen ? <div className="admin-schedule-menu" role="menu">
+              <button type="button" role="menuitem" onClick={() => { setScheduleMenuOpen(false); setInternalScheduleOpen(true); }}><UiIcon name="calendar" /><span><strong>Agendamento interno</strong><small>{scheduledAt ? formatScheduledCardDate(scheduledAt) : "Mover para Arquivados na data escolhida"}</small></span></button>
+              <button type="button" role="menuitem" disabled={!metaSchedulingAvailable} onClick={() => { setScheduleMenuOpen(false); setInternalScheduleOpen(false); setMetaScheduleOpen(true); }}><UiIcon name="send" /><span><strong>Publicação Meta</strong><small>{metaSchedulingAvailable ? "Instagram ou Facebook" : metaSchedulingOptionHint}</small></span></button>
+              {currentMetaPublications.length ? <div className="admin-schedule-meta-status"><span>PUBLICAÇÕES META</span>{currentMetaPublications.map((publication) => <article key={publication.id} className={publication.platform}><div><small>{publication.platform === "facebook" ? "Facebook" : "Instagram"}</small><strong>{metaPublicationDetailLabel(publication, new Set(currentMetaPublications.map((item) => item.destinationId)).size > 1)}</strong></div>{publication.status === "failed" && publication.lastError ? <details><summary>Ver erro</summary><p>{publication.lastError}</p></details> : null}<footer>{publication.publishedPermalink ? <a href={publication.publishedPermalink} target="_blank" rel="noreferrer">Abrir publicação ↗</a> : null}{publication.status === "scheduled" || publication.status === "failed" ? <button type="button" onClick={() => void cancelMetaPublication(publication.id)}>Cancelar</button> : null}</footer></article>)}</div> : null}
+            </div> : null}
+            {internalScheduleOpen ? <div className="admin-internal-schedule-panel">
+              <header><div><strong>Agendamento interno</strong><small>O card será movido para Arquivados nesta data.</small></div><button type="button" aria-label="Fechar agendamento interno" onClick={() => setInternalScheduleOpen(false)}>×</button></header>
+              <input autoFocus type="datetime-local" value={scheduledAt} onChange={(event) => setScheduledAt(event.target.value)} />
+              <footer>{scheduledAt ? <button type="button" className="ghost-button" onClick={() => setScheduledAt("")}>Remover</button> : <span />}<button type="button" className="gradient-button" onClick={() => setInternalScheduleOpen(false)}>Concluir</button></footer>
+            </div> : null}
+          </div>
+          <button className="gradient-button editor-save" onClick={() => void persistCard(true)} disabled={saving || uploading || resubmitting}>{saving ? "Salvando..." : "Salvar e fechar"}</button>
         </footer>
+        {metaScheduleOpen ? <MetaScheduleModal
+          mediaUrls={mediaUrls}
+          mediaMode={metaMediaMode}
+          caption={caption}
+          suggestedAt={scheduledAt}
+          destinations={metaDestinations}
+          submitting={metaScheduling}
+          clientSlug={slug}
+          cardId={card.id}
+          existingPublications={metaPublications}
+          onClose={() => { if (!metaScheduling) setMetaScheduleOpen(false); }}
+          onSubmit={scheduleMetaPublication}
+        /> : null}
       </section>
     </div>,
     document.body,
   );
+}
+
+function MetaSavedLocationsDialog({ locations, initialMode, onUpsert, onDelete, onClose }: {
+  locations: MetaSavedLocation[];
+  initialMode: "create" | "manage";
+  onUpsert: (location: MetaSavedLocation, select: boolean) => void;
+  onDelete: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [editing, setEditing] = useState<MetaSavedLocation | "new" | null>(initialMode === "create" ? "new" : null);
+  const [name, setName] = useState("");
+  const [metaPlaceId, setMetaPlaceId] = useState("");
+  const [notes, setNotes] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [error, setError] = useState("");
+
+  const beginEdit = (location: MetaSavedLocation | "new") => {
+    setEditing(location);
+    setName(location === "new" ? "" : location.name);
+    setMetaPlaceId(location === "new" ? "" : location.metaPlaceId);
+    setNotes(location === "new" ? "" : location.notes ?? "");
+    setError("");
+  };
+
+  const save = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (!editing) return;
+    const normalizedName = name.trim();
+    const normalizedId = metaPlaceId.trim();
+    if (!normalizedName) { setError("Informe o nome da localização."); return; }
+    if (!/^\d+$/.test(normalizedId)) { setError("O Meta Place ID deve conter somente números."); return; }
+    setSaving(true);
+    setError("");
+    try {
+      const result = editing === "new"
+        ? await createMetaSavedLocation({ name: normalizedName, metaPlaceId: normalizedId, notes: notes.trim() || null })
+        : await updateMetaSavedLocation(editing.id, { name: normalizedName, metaPlaceId: normalizedId, notes: notes.trim() || null });
+      onUpsert(result.location, editing === "new");
+      if (editing === "new") onClose();
+      else setEditing(null);
+    } catch (saveError) {
+      setError(saveError instanceof Error ? saveError.message : "Não foi possível salvar a localização.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (location: MetaSavedLocation) => {
+    if (!window.confirm(`Excluir a localização “${location.name}”?`)) return;
+    setDeletingId(location.id);
+    setError("");
+    try {
+      await deleteMetaSavedLocation(location.id);
+      onDelete(location.id);
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Não foi possível excluir a localização.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return createPortal(<div
+    className="meta-saved-location-backdrop"
+    onMouseDown={(event) => event.stopPropagation()}
+    onClick={(event) => {
+      event.stopPropagation();
+      if (event.target === event.currentTarget) onClose();
+    }}
+  >
+    <section
+      className="meta-saved-location-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="meta-saved-location-title"
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+    >
+      <header><div><span>LOCALIZAÇÕES META</span><h3 id="meta-saved-location-title">{editing ? editing === "new" ? "Salvar nova localização" : "Editar localização" : "Gerenciar localizações"}</h3></div><button type="button" onClick={onClose} aria-label="Fechar">×</button></header>
+      {editing ? <form onSubmit={(event) => void save(event)}>
+        <label><span>Nome da localização</span><input autoFocus value={name} maxLength={255} placeholder="Ex.: Venezia" onChange={(event) => setName(event.target.value)} /></label>
+        <label><span>Meta Place ID</span><input value={metaPlaceId} maxLength={190} inputMode="numeric" placeholder="Ex.: 1234567890" onChange={(event) => setMetaPlaceId(event.target.value.replace(/\s+/g, ""))} /></label>
+        <label><span>Observação <small>Opcional</small></span><textarea value={notes} maxLength={2000} rows={3} placeholder="Informação interna para identificar o local" onChange={(event) => setNotes(event.target.value)} /></label>
+        {error ? <em>{error}</em> : null}
+        <footer><button type="button" className="ghost-button" disabled={saving} onClick={() => editing === "new" && initialMode === "create" ? onClose() : setEditing(null)}>Cancelar</button><button type="submit" className="gradient-button" disabled={saving || !name.trim() || !metaPlaceId.trim()}>{saving ? "Salvando…" : "Salvar"}</button></footer>
+      </form> : <>
+        <button type="button" className="meta-saved-location-add" onClick={() => beginEdit("new")}>+ Salvar nova localização</button>
+        <div className="meta-saved-location-list">{locations.length ? locations.map((location) => <article key={location.id}><div><strong>{location.name}</strong>{location.notes ? <small>{location.notes}</small> : <small>Meta Place ID cadastrado</small>}</div><div><button type="button" onClick={() => beginEdit(location)}>Editar</button><button type="button" className="danger" disabled={deletingId === location.id} onClick={() => void remove(location)}>{deletingId === location.id ? "Excluindo…" : "Excluir"}</button></div></article>) : <p>Nenhuma localização salva ainda.</p>}</div>
+        {error ? <em>{error}</em> : null}
+      </>}
+    </section>
+  </div>, document.body);
+}
+
+function MetaScheduleModal({ mediaUrls, mediaMode, caption, suggestedAt, destinations, submitting, clientSlug, cardId, existingPublications = [], lockSuggestedAt = false, onClose, onSubmit }: {
+  mediaUrls: string[];
+  mediaMode: "image" | "carousel" | "reel" | "story";
+  caption: string;
+  suggestedAt: string;
+  destinations: MetaPublishDestination[];
+  submitting: boolean;
+  clientSlug?: string;
+  cardId?: string;
+  existingPublications?: MetaScheduledPublication[];
+  lockSuggestedAt?: boolean;
+  onClose: () => void;
+  onSubmit: (
+    platforms: ("instagram" | "facebook")[],
+    localDateTime: string,
+    timezone: string,
+    options: { destinationId: string; publicationFormat: "story" | null; reelCoverUrl: string | null; locationId: string | null; locationName: string | null; instagramUserTags: Array<{ username: string; x: number; y: number }> },
+  ) => Promise<void>;
+}) {
+  const fallback = new Date(Date.now() + 60 * 60_000);
+  fallback.setSeconds(0, 0);
+  const storyFromCard = mediaMode === "story";
+  const [publishAsStory, setPublishAsStory] = useState(storyFromCard);
+  const isStory = publishAsStory;
+  const isCarousel = !isStory && mediaMode === "carousel";
+  const isReel = !isStory && mediaMode === "reel";
+  const firstMediaUrl = mediaUrls[0];
+  const isStoryVideo = isStory && /\.(mp4|mov)(?:$|[?#])/i.test(firstMediaUrl);
+  const previewIsVideo = isReel || isStoryVideo;
+  const [localDateTime, setLocalDateTime] = useState(suggestedAt || toDateTimeLocal(fallback.toISOString()));
+  const [bestPublishingTimes, setBestPublishingTimes] = useState<Array<{ weekday: number | null; hour: number; averageFollowers: number; samples: number }>>([]);
+  const initialDestination = destinations.find((destination) => destination.isDefault) ?? destinations[0] ?? null;
+  const [selectedDestinationId, setSelectedDestinationId] = useState(initialDestination?.id ?? "");
+  const selectedDestination = destinations.find((destination) => destination.id === selectedDestinationId) ?? initialDestination;
+  const instagramAvailable = Boolean(selectedDestination?.instagramAccountId);
+  const facebookAvailable = Boolean(selectedDestination?.facebookPageId);
+  const [platforms, setPlatforms] = useState<("instagram" | "facebook")[]>(instagramAvailable ? ["instagram"] : facebookAvailable ? ["facebook"] : []);
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  useEffect(() => {
+    if (!clientSlug || !instagramAvailable || lockSuggestedAt) {
+      setBestPublishingTimes([]);
+      return;
+    }
+    let active = true;
+    void loadClientMetaBestTimesBySlug(clientSlug, timezone, selectedDestination?.id)
+      .then((result) => {
+        if (!active) return;
+        setBestPublishingTimes(result.available ? result.recommendations.slice(0, 3) : []);
+      })
+      .catch(() => {
+        if (!active) return;
+        setBestPublishingTimes([]);
+      });
+    return () => { active = false; };
+  }, [clientSlug, instagramAvailable, lockSuggestedAt, selectedDestination?.id, timezone]);
+
+  const applyBestPublishingTime = (weekday: number | null, hour: number) => {
+    const now = new Date();
+    const target = new Date(now);
+    target.setSeconds(0, 0);
+    target.setHours(hour, 0, 0, 0);
+    if (weekday === null) {
+      if (target.getTime() <= now.getTime()) target.setDate(target.getDate() + 1);
+    } else {
+      let daysAhead = (weekday - target.getDay() + 7) % 7;
+      if (daysAhead === 0 && target.getTime() <= now.getTime()) daysAhead = 7;
+      target.setDate(target.getDate() + daysAhead);
+    }
+    setLocalDateTime(toDateTimeLocal(target.toISOString()));
+  };
+
+  const [locationId, setLocationId] = useState("");
+  const [locationQuery, setLocationQuery] = useState("");
+  const [savedLocations, setSavedLocations] = useState<MetaSavedLocation[]>([]);
+  const [selectedLocation, setSelectedLocation] = useState<MetaSavedLocation | null>(null);
+  const [locationLibraryLoading, setLocationLibraryLoading] = useState(true);
+  const [locationLibraryError, setLocationLibraryError] = useState("");
+  const [locationSearchOpen, setLocationSearchOpen] = useState(false);
+  const [locationDialogMode, setLocationDialogMode] = useState<"create" | "manage" | null>(null);
+  const [manualLocationMode, setManualLocationMode] = useState(false);
+  const [reelCoverUrl, setReelCoverUrl] = useState<string | null>(null);
+  const [reelCoverUploading, setReelCoverUploading] = useState(false);
+  const [reelCoverError, setReelCoverError] = useState("");
+  const [storyMediaError, setStoryMediaError] = useState("");
+  const reelCoverInputRef = useRef<HTMLInputElement>(null);
+  const [tagUsername, setTagUsername] = useState("");
+  const [pendingTagUsername, setPendingTagUsername] = useState<string | null>(null);
+  const [instagramUserTags, setInstagramUserTags] = useState<Array<{ username: string; x: number; y: number }>>([]);
+  const [tagError, setTagError] = useState("");
+  const instagramSelected = platforms.includes("instagram");
+  const facebookSelected = platforms.includes("facebook");
+  const blockedPlatforms = cardId ? scheduledMetaPlatformsAt(existingPublications, cardId, localDateTime, selectedDestination?.id) : [];
+  const filteredSavedLocations = useMemo(() => {
+    const query = locationQuery.trim().toLocaleLowerCase("pt-BR");
+    return savedLocations.filter((location) => !query || location.name.toLocaleLowerCase("pt-BR").includes(query)).slice(0, 8);
+  }, [locationQuery, savedLocations]);
+
+  useEffect(() => {
+    let active = true;
+    setLocationLibraryLoading(true);
+    void loadMetaSavedLocations().then((result) => {
+      if (active) setSavedLocations(result.locations);
+    }).catch(() => {
+      if (active) setLocationLibraryError("Não foi possível carregar as localizações salvas.");
+    }).finally(() => {
+      if (active) setLocationLibraryLoading(false);
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedDestination && destinations.length) setSelectedDestinationId(initialDestination?.id ?? destinations[0].id);
+  }, [destinations, initialDestination?.id, selectedDestination]);
+
+  useEffect(() => {
+    setPlatforms((current) => {
+      const remaining = current.filter((platform) => (platform === "instagram" ? instagramAvailable : facebookAvailable) && !blockedPlatforms.includes(platform));
+      if (remaining.length) return remaining;
+      if (instagramAvailable && !blockedPlatforms.includes("instagram")) return ["instagram"];
+      if (facebookAvailable && !blockedPlatforms.includes("facebook")) return ["facebook"];
+      return [];
+    });
+    if (!instagramAvailable) {
+      setInstagramUserTags([]);
+      setPendingTagUsername(null);
+      setTagError("");
+    }
+  }, [blockedPlatforms.join("|"), facebookAvailable, instagramAvailable]);
+
+  const togglePlatform = (platform: "instagram" | "facebook") => {
+    if (blockedPlatforms.includes(platform)) return;
+    setPlatforms((current) => current.includes(platform) ? current.filter((item) => item !== platform) : [...current, platform]);
+    if (platform === "instagram" && instagramSelected) {
+      setPendingTagUsername(null);
+      setTagError("");
+    }
+  };
+
+  const selectStoryFormat = (selected: boolean) => {
+    setPublishAsStory(selected);
+    setStoryMediaError("");
+    if (selected) {
+      setLocationId("");
+      setLocationQuery("");
+      setSelectedLocation(null);
+      setInstagramUserTags([]);
+      setPendingTagUsername(null);
+      setReelCoverUrl(null);
+    }
+  };
+
+  const prepareTag = () => {
+    const username = tagUsername.trim().replace(/^@+/, "");
+    if (!/^[A-Za-z0-9._]{1,30}$/.test(username)) {
+      setTagError("Digite um @username válido do Instagram.");
+      return;
+    }
+    if (instagramUserTags.length >= 20 && !instagramUserTags.some((tag) => tag.username.toLowerCase() === username.toLowerCase())) {
+      setTagError("O Instagram aceita no máximo 20 marcações por publicação.");
+      return;
+    }
+    setPendingTagUsername(username);
+    setTagError("");
+  };
+
+  const placeTag = (event: React.MouseEvent<HTMLButtonElement>) => {
+    if (!pendingTagUsername) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    const y = Math.min(1, Math.max(0, (event.clientY - rect.top) / rect.height));
+    const tag = { username: pendingTagUsername, x: Number(x.toFixed(4)), y: Number(y.toFixed(4)) };
+    setInstagramUserTags((current) => [
+      ...current.filter((item) => item.username.toLowerCase() !== pendingTagUsername.toLowerCase()),
+      tag,
+    ]);
+    setPendingTagUsername(null);
+    setTagUsername("");
+  };
+
+  const normalizedLocationId = locationId.trim();
+  const locationInvalid = Boolean(normalizedLocationId && !/^\d+$/.test(normalizedLocationId));
+
+  const upsertSavedLocation = (location: MetaSavedLocation, select: boolean) => {
+    setSavedLocations((current) => [...current.filter((item) => item.id !== location.id), location].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")));
+    if (select || selectedLocation?.id === location.id) {
+      setSelectedLocation(location);
+      setLocationId(location.metaPlaceId);
+      setLocationQuery(location.name);
+      setManualLocationMode(false);
+      setLocationSearchOpen(false);
+    }
+  };
+
+  const removeSavedLocation = (id: string) => {
+    setSavedLocations((current) => current.filter((item) => item.id !== id));
+    if (selectedLocation?.id === id) {
+      setSelectedLocation(null);
+      setLocationId("");
+      setLocationQuery("");
+    }
+  };
+
+  const uploadReelCover = async (file: File | null) => {
+    if (!file) return;
+    if (!["image/jpeg", "image/png"].includes(file.type)) {
+      setReelCoverError("Envie uma capa JPG, JPEG ou PNG.");
+      if (reelCoverInputRef.current) reelCoverInputRef.current.value = "";
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      setReelCoverError("A capa do Reel pode ter no máximo 8 MB.");
+      if (reelCoverInputRef.current) reelCoverInputRef.current.value = "";
+      return;
+    }
+    setReelCoverUploading(true);
+    setReelCoverError("");
+    try {
+      setReelCoverUrl(await uploadAdminMedia(file));
+    } catch (error) {
+      setReelCoverError(error instanceof Error ? error.message : "Não foi possível enviar a capa do Reel.");
+    } finally {
+      setReelCoverUploading(false);
+      if (reelCoverInputRef.current) reelCoverInputRef.current.value = "";
+    }
+  };
+
+  return <div className="meta-schedule-backdrop" onClick={onClose}>
+    <section className="meta-schedule-modal" role="dialog" aria-modal="true" aria-labelledby="meta-schedule-title" onClick={(event) => event.stopPropagation()}>
+      <header><div><span>PUBLICAÇÃO META</span><h3 id="meta-schedule-title">Agendar publicação</h3></div><button type="button" onClick={onClose} aria-label="Fechar">×</button></header>
+      <label className={`meta-destination-picker${destinations.length < 2 ? " single" : ""}`}><span>Destino</span>{destinations.length > 1 ? <select value={selectedDestination?.id ?? ""} onChange={(event) => setSelectedDestinationId(event.target.value)}>{destinations.map((destination) => <option key={destination.id} value={destination.id}>{destination.name}{destination.isDefault ? " · padrão" : ""}</option>)}</select> : <strong>{selectedDestination?.name ?? "Nenhum destino configurado"}</strong>}{selectedDestination ? <small>{selectedDestination.instagramUsername ? `Instagram @${selectedDestination.instagramUsername}` : "Sem Instagram"} · {selectedDestination.facebookPageName ? `Facebook ${selectedDestination.facebookPageName}` : "Sem Facebook"}</small> : null}</label>
+      {!storyFromCard && mediaUrls.length === 1 ? <div className="meta-format-options" role="group" aria-label="Formato da publicação">
+        <button type="button" className={!isStory ? "selected" : ""} aria-pressed={!isStory} onClick={() => selectStoryFormat(false)}>{mediaMode === "reel" ? "Reel" : "Publicação"}</button>
+        <button type="button" className={isStory ? "selected" : ""} aria-pressed={isStory} onClick={() => selectStoryFormat(true)}>Story</button>
+      </div> : null}
+      <div className="meta-platform-options" role="group" aria-label="Plataformas de publicação">
+        <button type="button" className={platforms.includes("instagram") ? "selected instagram" : "instagram"} disabled={!instagramAvailable || blockedPlatforms.includes("instagram")} aria-pressed={platforms.includes("instagram")} onClick={() => togglePlatform("instagram")}><i aria-hidden="true">◎</i><span><strong>Instagram</strong>{!instagramAvailable ? <small>Não vinculado a este cliente</small> : blockedPlatforms.includes("instagram") ? <small>Já agendado neste horário</small> : <small>{isStory ? `✓ Story de ${isStoryVideo ? "vídeo" : "imagem"}` : isReel ? "✓ Reel · ✓ Capa personalizada" : isCarousel ? `Carrossel · ${mediaUrls.length} imagens` : "Imagem única"}</small>}</span></button>
+        <button type="button" className={platforms.includes("facebook") ? "selected facebook" : "facebook"} disabled={!facebookAvailable || blockedPlatforms.includes("facebook")} aria-pressed={platforms.includes("facebook")} onClick={() => togglePlatform("facebook")}><i aria-hidden="true">f</i><span><strong>Facebook</strong>{!facebookAvailable ? <small>Não vinculado a este cliente</small> : blockedPlatforms.includes("facebook") ? <small>Já agendado neste horário</small> : isStory ? <small>{`✓ Story de ${isStoryVideo ? "vídeo" : "imagem"}`}</small> : isReel ? <small>✓ Reel · ✓ Capa personalizada</small> : isCarousel ? <small>{`✓ Carrossel · ${mediaUrls.length} imagens`}</small> : <small>Imagem única</small>}</span></button>
+      </div>
+
+      <div className={`meta-schedule-preview${isCarousel ? " carousel" : isReel || isStory ? " reel" : ""}`}><div className="meta-schedule-preview-media">{previewIsVideo ? <video src={firstMediaUrl} controls preload="metadata" aria-label={isStory ? "Prévia da Story" : "Prévia do Reel"} onLoadedMetadata={(event) => { if (!isStory) return; const duration = event.currentTarget.duration; setStoryMediaError(Number.isFinite(duration) && (duration < 3 || duration > 60) ? "O vídeo da Story deve ter entre 3 e 60 segundos." : ""); }} /> : <img src={firstMediaUrl} alt={isStory ? "Prévia da Story" : "Prévia da publicação"} />}{isCarousel ? <span>{mediaUrls.length} imagens</span> : isStory ? <span>{`Story · ${isStoryVideo ? "vídeo" : "imagem"}`}</span> : isReel ? <span>Reel</span> : null}</div><div><p>{isStory ? `Story · ${isStoryVideo ? "vídeo" : "imagem"}` : caption.trim() || "Sem legenda"}</p>{isCarousel ? <div className="meta-carousel-thumbnails">{mediaUrls.slice(1, 5).map((url, index) => <img key={`${url}-${index}`} src={url} alt={`Imagem ${index + 2} do carrossel`} />)}{mediaUrls.length > 5 ? <span>+{mediaUrls.length - 5}</span> : null}</div> : null}</div></div>
+      {storyMediaError ? <div className="meta-tag-error">{storyMediaError}</div> : null}
+
+      <section className="meta-publish-options">
+        {isReel ? <div className="meta-reel-cover-option">
+          <div className="meta-option-heading"><div><strong>Capa do Reel</strong><small>Opcional · JPG, JPEG ou PNG · até 8 MB</small></div></div>
+          <input ref={reelCoverInputRef} className="meta-reel-cover-input" type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" onChange={(event) => void uploadReelCover(event.target.files?.[0] ?? null)} />
+          {reelCoverUrl ? <div className="meta-reel-cover-preview"><img src={reelCoverUrl} alt="Capa personalizada do Reel" /><div><span>Capa do Reel</span><div><button type="button" disabled={reelCoverUploading || submitting} onClick={() => reelCoverInputRef.current?.click()}>Alterar</button><button type="button" disabled={reelCoverUploading || submitting} onClick={() => { setReelCoverUrl(null); setReelCoverError(""); }}>Remover</button></div></div></div> : <button type="button" className="meta-reel-cover-upload" disabled={reelCoverUploading || submitting} onClick={() => reelCoverInputRef.current?.click()}>{reelCoverUploading ? "Enviando capa…" : "Enviar imagem de capa"}</button>}
+          {reelCoverError ? <em>{reelCoverError}</em> : null}
+        </div> : null}
+        {!isStory ? <div className="meta-location-picker">
+          <div className="meta-option-heading"><div><strong>Localização</strong></div></div>
+          {selectedLocation ? <div className="meta-location-selected"><span aria-hidden="true">⌖</span><div><strong>{selectedLocation.name}</strong><small>Meta Place ID aplicado</small></div><button type="button" aria-label="Remover localização" onClick={() => { setSelectedLocation(null); setLocationId(""); setLocationQuery(""); }}>×</button></div> : manualLocationMode ? <label className="meta-location-manual"><span>ID manual da localização</span><input value={locationId} disabled={isReel && !facebookSelected} inputMode="numeric" placeholder="ID numérico da Meta" onChange={(event) => setLocationId(event.target.value.replace(/\s+/g, ""))} aria-invalid={locationInvalid} />{locationInvalid ? <em>O ID da localização deve conter somente números.</em> : null}</label> : <div className="meta-location-search"><input value={locationQuery} disabled={isReel && !facebookSelected} placeholder="Buscar entre localizações salvas" onFocus={() => setLocationSearchOpen(true)} onChange={(event) => { setLocationQuery(event.target.value); setLocationSearchOpen(true); }} />{locationLibraryLoading ? <span>Carregando…</span> : null}{locationSearchOpen && !locationLibraryLoading ? <div className="meta-location-results">{filteredSavedLocations.length ? filteredSavedLocations.map((location) => <button type="button" key={location.id} onClick={() => { setSelectedLocation(location); setLocationId(location.metaPlaceId); setLocationQuery(location.name); setLocationSearchOpen(false); }}><strong>{location.name}</strong><small>{location.notes || "Localização salva"}</small></button>) : <p>{locationQuery.trim() ? "Nenhuma localização encontrada." : "Nenhuma localização salva ainda."}</p>}</div> : null}</div>}
+          {locationLibraryError ? <em>{locationLibraryError}</em> : null}
+          <div className="meta-location-actions"><button type="button" onClick={() => setLocationDialogMode("create")}>+ Salvar nova localização</button><button type="button" onClick={() => setLocationDialogMode("manage")}>Gerenciar</button>{!selectedLocation ? <button type="button" className="meta-location-mode" onClick={() => { setManualLocationMode((current) => !current); setLocationId(""); setLocationQuery(""); setLocationSearchOpen(false); }}>{manualLocationMode ? "Usar localizações salvas" : "Usar ID manual"}</button> : null}</div>
+          
+        </div> : null}
+
+        
+        {instagramSelected && !isCarousel && !isReel && !isStory ? <div className="meta-instagram-tags">
+          <div className="meta-option-heading"><div><strong>Marcar pessoas no Instagram</strong><small>Opcional · até 20 contas públicas</small></div><span>{instagramUserTags.length}/20</span></div>
+          <div className="meta-tag-input-row">
+            <input value={tagUsername} placeholder="@usuario" onChange={(event) => { setTagUsername(event.target.value); setTagError(""); }} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); prepareTag(); } }} />
+            <button type="button" disabled={!tagUsername.trim() || submitting} onClick={prepareTag}>{pendingTagUsername ? "Trocar usuário" : "Marcar na imagem"}</button>
+          </div>
+          {pendingTagUsername ? <div className="meta-tag-placement-note">Clique na imagem onde <strong>@{pendingTagUsername}</strong> deve aparecer.</div> : null}
+          {tagError ? <div className="meta-tag-error">{tagError}</div> : null}
+          {(pendingTagUsername || instagramUserTags.length > 0) ? <button type="button" className={pendingTagUsername ? "meta-tag-canvas is-placing" : "meta-tag-canvas"} onClick={placeTag} aria-label={pendingTagUsername ? `Clique para posicionar @${pendingTagUsername}` : "Prévia das marcações"} disabled={!pendingTagUsername}>
+            <img src={firstMediaUrl} alt="Imagem para posicionar marcações do Instagram" />
+            {instagramUserTags.map((tag) => <span key={tag.username} className="meta-tag-marker" style={{ left: `${tag.x * 100}%`, top: `${tag.y * 100}%` }}>@{tag.username}</span>)}
+          </button> : null}
+          {instagramUserTags.length ? <div className="meta-tag-list">{instagramUserTags.map((tag) => <span key={tag.username}>@{tag.username}<button type="button" aria-label={`Remover @${tag.username}`} onClick={() => setInstagramUserTags((current) => current.filter((item) => item.username !== tag.username))}>×</button></span>)}</div> : null}
+        </div> : null}
+      </section>
+
+      {!lockSuggestedAt && instagramAvailable && bestPublishingTimes.length ? <div className="meta-best-publishing-times"><div><strong>Melhores horários</strong><small>Picos de atividade dos seguidores no Instagram</small><small>Baseado na atividade dos seguidores nos últimos 7 dias</small></div><div>{bestPublishingTimes.map((slot) => <button type="button" key={`${slot.weekday ?? "any"}-${slot.hour}`} onClick={() => applyBestPublishingTime(slot.weekday, slot.hour)}>{slot.weekday === null ? "" : `${["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"][slot.weekday]} · `}{String(slot.hour).padStart(2, "0")}h</button>)}</div></div> : null}
+      {lockSuggestedAt ? <div className="meta-schedule-fixed-time"><span>Data e hora</span><strong>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(localDateTime))}</strong><small>Definidas no modal de feedback</small></div> : <label><span>Data e hora</span><input type="datetime-local" value={localDateTime} onChange={(event) => setLocalDateTime(event.target.value)} /></label>}
+      <small>Fuso horário: {timezone}</small>
+      <footer><button type="button" className="ghost-button" disabled={submitting || reelCoverUploading} onClick={onClose}>Cancelar</button><button type="button" className="gradient-button" disabled={submitting || reelCoverUploading || !selectedDestination || !localDateTime || platforms.length === 0 || platforms.some((platform) => blockedPlatforms.includes(platform)) || locationInvalid || Boolean(pendingTagUsername) || Boolean(storyMediaError)} onClick={() => selectedDestination && void onSubmit(platforms, localDateTime, timezone, { destinationId: selectedDestination.id, publicationFormat: isStory ? "story" : null, reelCoverUrl: isReel ? reelCoverUrl : null, locationId: isStory ? null : normalizedLocationId || null, locationName: isStory ? null : selectedLocation?.name ?? null, instagramUserTags: isCarousel || isReel || isStory ? [] : instagramUserTags })}>{submitting ? "Agendando…" : reelCoverUploading ? "Enviando capa…" : "Agendar publicação"}</button></footer>
+    </section>
+    {locationDialogMode ? <MetaSavedLocationsDialog locations={savedLocations} initialMode={locationDialogMode} onUpsert={upsertSavedLocation} onDelete={removeSavedLocation} onClose={() => setLocationDialogMode(null)} /> : null}
+  </div>;
 }
 
 function EditorField({ label, action, children }: { label: string; action?: ReactNode; children: ReactNode }) {
@@ -6942,6 +8646,7 @@ const INTERNAL_AREAS: Record<string, { title: string; description: string; restr
   "datas-comemorativas": { title: "Datas comemorativas", description: "Planeje campanhas e oportunidades importantes." },
   "briefs-design": { title: "Briefs de design", description: "Organize as referências e direcionamentos criativos." },
   "calendario-social": { title: "Calendário social", description: "Visualize o planejamento de conteúdo nas redes sociais." },
+  "publicacoes-meta": { title: "Publicações Meta", description: "Acompanhe agendamentos e publicações reais no Instagram e Facebook.", restricted: true },
   equipe: { title: "Equipe", description: "Acompanhe as pessoas e responsabilidades do seu time." },
 };
 
@@ -7191,12 +8896,12 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
                     {isPublishedPost(card) ? <small>✓ {t("Publicado")}</small> : null}
                   </button>
                 ))}
-                {visibleEvents.map((event) => (
-                  <button key={event.id} type="button" className="social-calendar-event" style={{ "--calendar-event-color": event.color || "#8b45dd" } as CSSProperties} onClick={() => setSelectedEvent(event)}>
+                {visibleEvents.map((event) => { const visual = agendaEventVisualState(event); return (
+                  <button key={event.id} type="button" className={`social-calendar-event appointment${visual.className}`} style={{ "--calendar-event-color": visual.color } as CSSProperties} onClick={() => setSelectedEvent(event)}>
                     <span>{event.meetLink ? "🎥 " : ""}{event.title}</span>
                     <small>{new Intl.DateTimeFormat(localeTag, { timeStyle: "short" }).format(new Date(event.startsAt))}</small>
                   </button>
-                ))}
+                ); })}
                 {hiddenCount > 0 ? <span className="social-calendar-more">+{hiddenCount}</span> : null}
               </div>
             );
@@ -7213,7 +8918,7 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
             <header><div><time>{day.getDate()}</time><span><strong>{new Intl.DateTimeFormat(localeTag, { weekday: "long" }).format(day)}</strong><small>{new Intl.DateTimeFormat(localeTag, { month: "long", year: "numeric" }).format(day)}</small></span></div></header>
             <div className="social-agenda-items">
               {posts.map((card) => { const imageUrl = portalCardAssets(card)[0] ?? ""; const calendarDate = postCalendarDate(card); const published = isPublishedPost(card); return <button key={card.id} type="button" className={`social-agenda-item post${published ? " published" : ""}${card.calendarOnly ? " calendar-only" : ""}`} onClick={() => { if (!card.calendarOnly) onSelectCard(card.id); }}><span className="social-agenda-time">{new Intl.DateTimeFormat(localeTag, { timeStyle: "short" }).format(calendarDate)}</span>{imageUrl ? <img src={imageUrl} alt="" /> : <i><UiIcon name={published ? "check" : "send"} /></i>}<span><strong>{card.title}</strong><small>{t(published ? "Publicado" : "Post agendado")}</small></span>{card.calendarOnly ? null : <b>›</b>}</button>; })}
-              {events.map((event) => <button key={event.id} type="button" className="social-agenda-item appointment" style={{ "--calendar-event-color": event.color || "#8b45dd" } as CSSProperties} onClick={() => setSelectedEvent(event)}><span className="social-agenda-time">{new Intl.DateTimeFormat(localeTag, { timeStyle: "short" }).format(new Date(event.startsAt))}</span><i><UiIcon name={event.meetLink ? "link" : "clock"} /></i><span><strong>{event.title}</strong><small>{event.taskDescription || event.labelName || t("Compromisso")}</small></span><b>›</b></button>)}
+              {events.map((event) => { const visual = agendaEventVisualState(event); return <button key={event.id} type="button" className={`social-agenda-item appointment${visual.className}`} style={{ "--calendar-event-color": visual.color } as CSSProperties} onClick={() => setSelectedEvent(event)}><span className="social-agenda-time">{new Intl.DateTimeFormat(localeTag, { timeStyle: "short" }).format(new Date(event.startsAt))}</span><i><UiIcon name={event.meetLink ? "link" : "clock"} /></i><span><strong>{event.title}</strong><small>{event.taskDescription || event.labelName || t("Compromisso")}</small></span><b>›</b></button>; })}
             </div>
           </article>;
         }) : <div className="social-agenda-year-empty portal-calendar-empty"><UiIcon name="calendar" /><strong>{t("Nenhum item agendado neste mês.")}</strong><small>{t("Use as setas acima para consultar outro mês.")}</small></div>}
@@ -7224,7 +8929,7 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
             <header><div><p className="eyebrow">{t("Compromisso")}</p><h3>{selectedEvent.title}</h3></div><button className="icon-close" onClick={() => setSelectedEvent(null)} aria-label={t("Fechar")}>×</button></header>
             <p>{selectedEvent.taskDescription || t("Sem detalhes adicionais.")}</p>
             <dl><div><dt>{t("Quando")}</dt><dd>{new Intl.DateTimeFormat(localeTag, { dateStyle: "full", timeStyle: "short" }).format(new Date(selectedEvent.startsAt))}</dd></div></dl>
-            {selectedEvent.meetLink ? <div className="portal-meet-card"><span><UiIcon name="link" /></span><div><small>{t("VIDEOCHAMADA")}</small><strong>Google Meet</strong><p>{t("O link será aberto em uma nova aba.")}</p></div><a href={selectedEvent.meetLink} target="_blank" rel="noreferrer">{t("Entrar na reunião")} <UiIcon name="link" /></a></div> : null}
+            {normalizeExternalHttpUrl(selectedEvent.meetLink) ? <div className="portal-meet-card"><span><UiIcon name="link" /></span><div><small>{t("VIDEOCHAMADA")}</small><strong>Google Meet</strong><p>{t("Abra a reunião e use Voltar para retornar ao portal.")}</p></div><a href={normalizeExternalHttpUrl(selectedEvent.meetLink)}>{t("Entrar na reunião")} <UiIcon name="link" /></a></div> : null}
           </section>
         </div>
       ) : null}
@@ -7233,26 +8938,128 @@ function ClientPortalCalendarView({ cards, appointments, onSelectCard }: { cards
   );
 }
 
-function ClientKanbanCalendar({ slug }: { slug: string }) {
+type ClientCalendarDisplayEvent = {
+  id: string;
+  title: string;
+  type: "post" | "manual";
+  cardId?: string | null;
+  source?: "internal" | "meta" | "combined";
+  color?: string;
+  imageUrl?: string;
+  details?: string;
+  when?: string;
+  time?: string;
+  destinationName?: string;
+  platforms?: ClientMetaCalendarPlatform[];
+  published?: boolean;
+};
+
+function metaCalendarChipText(platform: ClientMetaCalendarPlatform) {
+  const name = platform.platform === "instagram" ? "IG" : "FB";
+  const symbol = platform.status === "published" ? "✓" : platform.status === "publishing" ? "…" : platform.status === "failed" ? "!" : "◷";
+  return `${name} ${symbol}`;
+}
+
+function ClientKanbanCalendar({ slug, canLoadMeta, onOpenCard }: { slug: string; canLoadMeta: boolean; onOpenCard: (cardId: string) => void }) {
   const [month, setMonth] = useState(() => new Date());
   const [posts, setPosts] = useState<CalendarEvent[]>([]);
+  const [metaPublications, setMetaPublications] = useState<MetaScheduledPublication[]>([]);
+  const [metaLoadError, setMetaLoadError] = useState(false);
   const [manualEvents, setManualEvents] = useState<AgendaEvent[]>([]);
   const [clientAccountId, setClientAccountId] = useState("");
   const [eventDay, setEventDay] = useState<Date | null>(null);
   const [eventTitle, setEventTitle] = useState("");
   const [eventColor, setEventColor] = useState("#7c6cf2");
   const [savingEvent, setSavingEvent] = useState(false);
-  const artworkHover = useCalendarArtworkHover();
+  const [selectedCalendarEvent, setSelectedCalendarEvent] = useState<ClientCalendarDisplayEvent | null>(null);
   const range = agendaViewRange(month, "month");
-  const refresh = () => { const from = range.from.slice(0, 10); const to = range.to.slice(0, 10); return Promise.all([loadAdminClientCalendarBySlug(slug, from, to), loadAgendaEvents(from, to)]).then(([calendar, agenda]) => { setClientAccountId(calendar.clientAccountId); setPosts(calendar.events); setManualEvents(agenda.items.filter((item) => item.clientAccountId === calendar.clientAccountId)); }).catch(() => { setPosts([]); setManualEvents([]); }); };
-  useEffect(() => { void refresh(); }, [slug, range.from, range.to]);
-  const eventsByDay = new Map<string, Array<{ id: string; title: string; type: "post" | "manual"; color?: string; imageUrl?: string }>>();
-  posts.forEach((post) => { const key = post.publishDate.slice(0, 10); eventsByDay.set(key, [...(eventsByDay.get(key) ?? []), { id: post.id, title: post.title, type: "post", color: post.color, imageUrl: post.mediaUrls?.[0] }]); });
+  const refresh = useCallback(async () => {
+    const from = range.from.slice(0, 10);
+    const to = range.to.slice(0, 10);
+    const metaRequest = canLoadMeta
+      ? listMetaPublicationsBySlug(slug, { from: range.from, to: range.to })
+        .then((result) => ({ publications: result.publications, failed: false }))
+        .catch(() => ({ publications: [] as MetaScheduledPublication[], failed: true }))
+      : Promise.resolve({ publications: [] as MetaScheduledPublication[], failed: false });
+    try {
+      const [calendar, agenda, meta] = await Promise.all([
+        loadAdminClientCalendarBySlug(slug, from, to),
+        loadAgendaEvents(from, to),
+        metaRequest,
+      ]);
+      setClientAccountId(calendar.clientAccountId);
+      setPosts(calendar.events);
+      setManualEvents(agenda.items.filter((item) => item.clientAccountId === calendar.clientAccountId));
+      setMetaPublications(meta.publications);
+      setMetaLoadError(meta.failed);
+    } catch {
+      setPosts([]);
+      setManualEvents([]);
+      const meta = await metaRequest;
+      setMetaPublications(meta.publications);
+      setMetaLoadError(meta.failed);
+    }
+  }, [canLoadMeta, range.from, range.to, slug]);
+  useEffect(() => {
+    void refresh();
+    const interval = window.setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 60_000);
+    return () => window.clearInterval(interval);
+  }, [refresh]);
+
+  const calendarEvents = useMemo(() => composeClientMetaCalendarEvents(posts, metaPublications), [metaPublications, posts]);
+  const eventsByDay = new Map<string, ClientCalendarDisplayEvent[]>();
+  calendarEvents.forEach((event) => {
+    const key = localDateKey(new Date(event.scheduledAt));
+    const sameSlotDestinationCount = calendarEvents.filter((candidate) => candidate.cardId === event.cardId && Math.floor(new Date(candidate.scheduledAt).getTime() / 60_000) === Math.floor(new Date(event.scheduledAt).getTime() / 60_000) && candidate.destinationId).length;
+    eventsByDay.set(key, [...(eventsByDay.get(key) ?? []), {
+      id: event.id,
+      title: event.title,
+      type: "post",
+      cardId: event.cardId,
+      source: event.source,
+      color: event.color,
+      imageUrl: event.imageUrl,
+      details: event.details,
+      when: new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.scheduledAt)),
+      time: event.source === "internal" ? undefined : new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(event.scheduledAt)),
+      destinationName: sameSlotDestinationCount > 1 ? event.destinationName ?? undefined : undefined,
+      platforms: event.platforms,
+      published: event.published,
+    }]);
+  });
   const uniqueManualEvents = manualEvents.filter((event, index, items) => items.findIndex((item) => item.title === event.title && localDateKey(new Date(item.startsAt)) === localDateKey(new Date(event.startsAt))) === index);
-  uniqueManualEvents.forEach((event) => { const key = localDateKey(new Date(event.startsAt)); eventsByDay.set(key, [...(eventsByDay.get(key) ?? []), { id: event.id, title: event.title, type: "manual", color: event.color }]); });
+  uniqueManualEvents.forEach((event) => {
+    const key = localDateKey(new Date(event.startsAt));
+    eventsByDay.set(key, [...(eventsByDay.get(key) ?? []), {
+      id: event.id,
+      title: event.title,
+      type: "manual",
+      color: event.color,
+      details: event.taskDescription?.trim() || undefined,
+      when: new Intl.DateTimeFormat("pt-BR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(event.startsAt)),
+    }]);
+  });
   const columnLegend = Array.from(new Map(posts.filter((post) => post.columnName).map((post) => [post.columnName as string, post.color ?? "#8278ef"])).entries());
+  const openCalendarEvent = (event: ClientCalendarDisplayEvent) => {
+    if (event.cardId) { onOpenCard(event.cardId); return; }
+    setSelectedCalendarEvent(event);
+  };
   const saveManualEvent = async () => { if (savingEvent || !eventDay || !eventTitle.trim() || !clientAccountId) return; setSavingEvent(true); try { await createAgendaEvent({ title: eventTitle.trim(), startsAt: `${localDateKey(eventDay)}T09:00`, color: eventColor, clientAccountId }); setEventDay(null); setEventTitle(""); await refresh(); } finally { setSavingEvent(false); } };
-  return <section className="client-kanban-calendar"><header><button onClick={() => setMonth((value) => new Date(value.getFullYear(), value.getMonth() - 1, 1))}>‹</button><h2>{new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(month)}</h2><button onClick={() => setMonth((value) => new Date(value.getFullYear(), value.getMonth() + 1, 1))}>›</button></header>{columnLegend.length ? <div className="client-calendar-column-legend">{columnLegend.map(([name, color]) => <span key={name}><i style={{ backgroundColor: color }} />{name}</span>)}</div> : null}<div className="client-calendar-weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}</div><div className="client-calendar-grid">{range.days.map((day) => { const key = localDateKey(day); const events = eventsByDay.get(key) ?? []; return <button key={key} className={day.getMonth() === month.getMonth() ? "client-calendar-day" : "client-calendar-day muted"} onClick={() => setEventDay(day)}><strong>{day.getDate()}</strong>{events.map((event) => <span key={event.id} className={event.type} style={{ backgroundColor: event.color, color: calendarTextColor(event.color) }} onMouseEnter={(mouseEvent) => event.imageUrl ? artworkHover.show(mouseEvent, event.imageUrl, event.title) : undefined} onMouseMove={(mouseEvent) => event.imageUrl ? artworkHover.move(mouseEvent, event.imageUrl, event.title) : undefined} onMouseLeave={artworkHover.hide}><b>{event.type === "post" ? "▧ Post" : "◷ Agenda"}</b><em>{event.title}</em></span>)}</button>; })}</div><p><i /> <strong>Post</strong> — conteúdo programado <i className="manual" /> <strong>Agenda</strong> — compromisso do cliente. Clique em um dia para adicionar um compromisso.</p>{eventDay ? <div className="modal-backdrop agenda-modal-backdrop" onClick={() => setEventDay(null)}><section className="client-calendar-event-modal" onClick={(event) => event.stopPropagation()}><h3>Novo evento</h3><p>{eventDay.toLocaleDateString("pt-BR", { dateStyle: "full" })}</p><input autoFocus value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} placeholder="Nome do evento" /><label>Cor <input type="color" value={eventColor} onChange={(event) => setEventColor(event.target.value)} /></label><button className="gradient-button" disabled={savingEvent} onClick={() => void saveManualEvent()}>{savingEvent ? "Adicionando..." : "Adicionar evento"}</button></section></div> : null}{artworkHover.preview}</section>;
+  return <section className="client-kanban-calendar"><header><button onClick={() => setMonth((value) => new Date(value.getFullYear(), value.getMonth() - 1, 1))}>‹</button><h2>{new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(month)}</h2><button onClick={() => setMonth((value) => new Date(value.getFullYear(), value.getMonth() + 1, 1))}>›</button></header>{columnLegend.length ? <div className="client-calendar-column-legend">{columnLegend.map(([name, color]) => <span key={name}><i style={{ backgroundColor: color }} />{name}</span>)}</div> : null}<div className="client-calendar-weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}</div><div className="client-calendar-grid">{range.days.map((day) => { const key = localDateKey(day); const events = eventsByDay.get(key) ?? []; return <button key={key} className={day.getMonth() === month.getMonth() ? "client-calendar-day" : "client-calendar-day muted"} onClick={() => setEventDay(day)}><strong>{day.getDate()}</strong>{events.map((event) => <span
+  key={event.id}
+  className={`${event.type}${event.source ? ` ${event.source}` : ""}${event.published ? " published" : ""} client-calendar-event-item`}
+  style={event.published ? { backgroundColor: "#eaf8f2", color: "#167152" } : { backgroundColor: event.color, color: calendarTextColor(event.color) }}
+  data-tooltip={event.details || event.title}
+  role="button"
+  tabIndex={0}
+  onClick={(clickEvent) => { clickEvent.stopPropagation(); openCalendarEvent(event); }}
+  onKeyDown={(keyEvent) => {
+    if (keyEvent.key !== "Enter" && keyEvent.key !== " ") return;
+    keyEvent.preventDefault();
+    keyEvent.stopPropagation();
+    openCalendarEvent(event);
+  }}
+>{event.time ? <time>{event.time}</time> : null}<b>{event.published ? "✓ Publicado" : event.type === "post" ? event.source === "meta" ? "Meta" : "▧ Post" : "◷ Agenda"}</b><em>{event.title}</em>{event.destinationName ? <small>{event.destinationName}</small> : null}{event.platforms?.length ? <small className="client-calendar-meta-chips">{event.platforms.map((platform) => <i key={platform.platform} className={`${platform.platform} ${platform.status}`} title={`${platform.platform === "instagram" ? "Instagram" : "Facebook"}: ${metaPublicationStatusLabel(platform.status)}`}>{metaCalendarChipText(platform)}</i>)}</small> : null}</span>)}</button>; })}</div><p><i className="scheduled" /> <strong>Agendado</strong> — conteúdo programado <i className="published" /> <strong>Publicado</strong> — conteúdo concluído <i className="manual" /> <strong>Agenda</strong> — compromisso <i className="instagram" /> <strong>IG</strong> — Instagram <i className="facebook" /> <strong>FB</strong> — Facebook. Clique em um dia para adicionar um compromisso.</p>{metaLoadError ? <small className="client-calendar-meta-error">Os agendamentos Meta não puderam ser atualizados. O calendário interno continua disponível.</small> : null}{eventDay ? <div className="modal-backdrop agenda-modal-backdrop" onClick={() => setEventDay(null)}><section className="client-calendar-event-modal" onClick={(event) => event.stopPropagation()}><h3>Novo evento</h3><p>{eventDay.toLocaleDateString("pt-BR", { dateStyle: "full" })}</p><input autoFocus value={eventTitle} onChange={(event) => setEventTitle(event.target.value)} placeholder="Nome do evento" /><label>Cor <input type="color" value={eventColor} onChange={(event) => setEventColor(event.target.value)} /></label><button className="gradient-button" disabled={savingEvent} onClick={() => void saveManualEvent()}>{savingEvent ? "Adicionando..." : "Adicionar evento"}</button></section></div> : null}{selectedCalendarEvent ? <div className="modal-backdrop agenda-modal-backdrop" onClick={() => setSelectedCalendarEvent(null)}><section className="client-calendar-detail-modal" onClick={(event) => event.stopPropagation()}><header><div><p className="eyebrow">{selectedCalendarEvent.type === "post" ? "Publicação Meta" : "Compromisso"}</p><h3>{selectedCalendarEvent.title}</h3>{selectedCalendarEvent.destinationName ? <small>{selectedCalendarEvent.destinationName}</small> : null}</div><button type="button" className="icon-close" onClick={() => setSelectedCalendarEvent(null)} aria-label="Fechar">×</button></header>{selectedCalendarEvent.when ? <p className="client-calendar-detail-when">{selectedCalendarEvent.when}</p> : null}{selectedCalendarEvent.imageUrl ? <img src={selectedCalendarEvent.imageUrl} alt="" /> : null}{selectedCalendarEvent.platforms?.length ? <div className="client-calendar-detail-platforms">{selectedCalendarEvent.platforms.map((platform) => <span key={platform.platform} className={platform.status}>{platform.platform === "instagram" ? "Instagram" : "Facebook"} · {metaPublicationStatusLabel(platform.status)}</span>)}</div> : null}<div className="client-calendar-detail-text">{selectedCalendarEvent.details || "Sem descrição adicional."}</div></section></div> : null}</section>;
 }
 
 function calendarTextColor(color?: string) {
@@ -7282,17 +9089,29 @@ function KanbanActivities({ slug }: { slug: string }) {
 
 const EMPTY_BRAND_BRAIN: BrandBrain = { mission: "", vision: "", positioning: "", brandPromise: "", audience: "", audiencePains: [], audienceDesires: [], voice: "", personalityTraits: [], voiceExamples: [], voiceAvoidExamples: [], visualNotes: "", typographyDisplay: "", typographyBody: "", typographyAccent: "", typographySample: "A identidade ganha voz quando cada detalhe fala a mesma língua.", approvedWords: [], avoidWords: [], expressions: [], colors: ["#5b5ce2", "#18b98b", "#f5a41a"], differentiators: [], proofPoints: [], references: [], pillars: [] };
 function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: { slug: string; clientName: string; columns: BoardColumn[]; onSent: () => void; onCountChange?: (count: number) => void }) {
-  const [ideas, setIdeas] = useState<PautaIdea[]>([]); const [query, setQuery] = useState(""); const [filter, setFilter] = useState<"all" | "draft" | "sent" | "approved">("all"); const [sending, setSending] = useState<string | null>(null);
+  const [ideas, setIdeas] = useState<PautaIdea[]>([]);
+  const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "draft" | "sent" | "approved">("all");
+  const [sending, setSending] = useState<string | null>(null);
   const [pautaCards, setPautaCards] = useState<BoardCard[]>([]);
-  const [editing, setEditing] = useState<PautaIdea | null>(null); const [brainOpen, setBrainOpen] = useState(false); const [brain, setBrain] = useState<BrandBrain>(EMPTY_BRAND_BRAIN);
-  const save = (next: PautaIdea[]) => {
-    setIdeas(next);
-    void loadAdminWorkspaceDrawerBySlug(slug).then((result) => {
-      const saved = result.data as Partial<WorkspaceDrawerData> | null;
-      return saveAdminWorkspaceDrawerBySlug(slug, { ...EMPTY_DRAWER, ...saved, pautaIdeas: next });
-    }).catch(() => undefined);
+  const [editing, setEditing] = useState<PautaIdea | null>(null);
+  const [editingMediaFiles, setEditingMediaFiles] = useState<File[]>([]);
+  const [editingSaving, setEditingSaving] = useState(false);
+  const [editingError, setEditingError] = useState("");
+  const [brainOpen, setBrainOpen] = useState(false);
+  const [brain, setBrain] = useState<BrandBrain>(EMPTY_BRAND_BRAIN);
+  const saveIdeaPatch = async (ideaId: string, patch: Partial<PautaIdea>) => {
+    await updateAdminPautaIdeaBySlug(slug, ideaId, patch);
+    setIdeas((current) => current.map((item) => item.id === ideaId ? { ...item, ...patch } : item));
   };
-  useEffect(() => { loadAdminWorkspaceDrawerBySlug(slug).then((result) => { const data = result.data as Partial<WorkspaceDrawerData> | null; setIdeas(data?.pautaIdeas ?? []); }).catch(() => setIdeas([])); }, [slug]);
+  useEffect(() => {
+    let active = true;
+    const refreshIdeas = () => { void loadAdminWorkspaceDrawerBySlug(slug).then((result) => { if (!active) return; const data = result.data as Partial<WorkspaceDrawerData> | null; setIdeas(data?.pautaIdeas ?? []); }).catch(() => undefined); };
+    const handleIdeasUpdated = (event: Event) => { if ((event as CustomEvent<{ slug?: string }>).detail?.slug === slug) refreshIdeas(); };
+    refreshIdeas();
+    window.addEventListener(PAUTA_IDEAS_UPDATED_EVENT, handleIdeasUpdated);
+    return () => { active = false; window.removeEventListener(PAUTA_IDEAS_UPDATED_EVENT, handleIdeasUpdated); };
+  }, [slug]);
   useEffect(() => {
     let active = true;
     const refreshPautaCards = () => { void loadAdminWorkspaceBySlug(slug, { archived: false }).then((workspace) => { if (active) setPautaCards([...workspace.columns.flatMap((column) => column.cards), ...workspace.withoutColumn]); }).catch(() => undefined); };
@@ -7301,30 +9120,132 @@ function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: {
   }, [slug]);
   useEffect(() => {
     if (!pautaCards.length || !ideas.length) return;
-    let changed = false;
+    const repairs: Array<{ id: string; patch: Partial<PautaIdea> }> = [];
+    const claimedCardIds = new Set(ideas.map((idea) => idea.cardId).filter((cardId): cardId is string => Boolean(cardId)));
     const next = ideas.map((idea) => {
-      if ((idea.status ?? "draft") === "draft") return idea;
       const linkedCard = idea.cardId
         ? pautaCards.find((card) => card.id === idea.cardId)
-        : pautaCards.find((card) => card.title === idea.title && (card.isBriefApproval || /aprovad/i.test(`${card.clientLabel} ${card.statusBadges.join(" ")}`)));
+        : (idea.radarSuggestionId || idea.createdBy === "ai_brand_brain") ? undefined : pautaCards.find((card) => !claimedCardIds.has(card.id) && card.title.trim() === idea.title.trim() && (card.isBriefApproval || /aprovad/i.test(`${card.clientLabel} ${card.statusBadges.join(" ")}`)));
       if (!linkedCard) return idea;
+      claimedCardIds.add(linkedCard.id);
       const approved = /aprovad/i.test(`${linkedCard.clientLabel} ${linkedCard.statusBadges.join(" ")}`);
-      const status = approved ? "approved" as const : idea.status;
+      const status = approved ? "approved" as const : "sent" as const;
       if (idea.cardId === linkedCard.id && idea.status === status) return idea;
-      changed = true;
+      repairs.push({ id: idea.id, patch: { cardId: linkedCard.id, status } });
       return { ...idea, cardId: linkedCard.id, status };
     });
-    if (changed) save(next);
+    if (repairs.length) {
+      setIdeas(next);
+      void (async () => { for (const repair of repairs) await updateAdminPautaIdeaBySlug(slug, repair.id, repair.patch); })().catch(() => undefined);
+    }
   }, [pautaCards, ideas]);
   useEffect(() => { onCountChange?.(ideas.length); }, [ideas.length, onCountChange]);
   useEffect(() => { loadBrandBrainBySlug(slug).then((result) => setBrain({ ...EMPTY_BRAND_BRAIN, ...(result.data ?? {}) })).catch(() => setBrain(EMPTY_BRAND_BRAIN)); }, [slug]);
   const visible = ideas.filter((idea) => (filter === "all" || (idea.status ?? "draft") === filter) && idea.title.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
-  const send = async (idea: PautaIdea) => { const columnId = columns.find((column) => column.name.toLocaleLowerCase() === "pauta")?.id ?? columns[0]?.id ?? null; setSending(idea.id); try { const result = await createAdminCardBySlug(slug, { columnId, title: idea.title, caption: idea.caption || idea.description || null, primaryMediaUrl: null, externalLinkUrl: null, artType: "Post", status: ["Enviar para Cliente"], tags: [], clientLabel: "Pauta para aprovação", isBriefApproval: true }); save(ideas.map((item) => item.id === idea.id ? { ...item, status: "sent", cardId: result.card.id } : item)); onSent(); } finally { setSending(null); } };
-  const saveEdit = () => { if (!editing?.title.trim()) return; save(ideas.map((idea) => idea.id === editing.id ? editing : idea)); setEditing(null); };
-  const deleteIdea = (id: string) => { if (window.confirm("Excluir esta pauta?")) save(ideas.filter((idea) => idea.id !== id)); };
+  const send = async (idea: PautaIdea) => {
+    const columnId = columns.find((column) =>
+      column.name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLocaleLowerCase("pt-BR") === "pautas para aprovacao"
+    )?.id ?? null;
+    const mediaUrls = idea.mediaUrls ?? [];
+    if (sending) return;
+    setSending(idea.id);
+    try {
+      const otherLinkedCardIds = new Set(ideas.filter((item) => item.id !== idea.id).map((item) => item.cardId).filter((cardId): cardId is string => Boolean(cardId)));
+      const existingCard = pautaCards.find((card) => card.id === idea.cardId)
+        ?? ((idea.radarSuggestionId || idea.createdBy === "ai_brand_brain") ? undefined : pautaCards.find((card) => !otherLinkedCardIds.has(card.id) && card.title.trim() === idea.title.trim() && card.isBriefApproval));
+      if (existingCard) {
+        const approved = /aprovad/i.test(`${existingCard.clientLabel} ${existingCard.statusBadges.join(" ")}`);
+        await saveIdeaPatch(idea.id, { status: approved ? "approved" : "sent", cardId: existingCard.id });
+        onSent();
+        return;
+      }
+      const result = await createAdminCardBySlug(slug, {
+        columnId,
+        title: idea.title,
+        caption: idea.caption || idea.description || null,
+        primaryMediaUrl: mediaUrls[0] ?? null,
+        mediaUrls,
+        mediaType: "image",
+        externalLinkUrl: null,
+        artType: "Post",
+        status: ["Enviar para Cliente"],
+        tags: [],
+        clientLabel: "Pauta para aprovação",
+        isBriefApproval: true,
+      });
+      await saveIdeaPatch(idea.id, { status: "sent", cardId: result.card.id });
+      onSent();
+    } finally {
+      setSending(null);
+    }
+  };
+  const openEdit = (idea: PautaIdea) => {
+    setEditing({ ...idea, mediaUrls: [...(idea.mediaUrls ?? [])] });
+    setEditingMediaFiles([]);
+    setEditingError("");
+    setBrainOpen(false);
+  };
+  const closeEdit = () => {
+    if (editingSaving) return;
+    setEditing(null);
+    setEditingMediaFiles([]);
+    setEditingError("");
+  };
+  const saveEdit = async () => {
+    if (!editing?.title.trim() || editingSaving) return;
+    const oversized = editingMediaFiles.find((file) => file.size > MAX_MEDIA_FILE_SIZE);
+    if (oversized) {
+      setEditingError(`“${oversized.name}” tem ${formatFileSize(oversized.size)}. O limite por foto é 12 MB.`);
+      return;
+    }
+    setEditingSaving(true);
+    setEditingError("");
+    try {
+      const uploadedUrls: string[] = [];
+      for (const file of editingMediaFiles) uploadedUrls.push(await uploadAdminMedia(file));
+      const mediaUrls = [...(editing.mediaUrls ?? []), ...uploadedUrls];
+      const updatedIdea = { ...editing, mediaUrls, updatedAt: new Date().toISOString() };
+      await updateAdminPautaIdeaBySlug(slug, editing.id, updatedIdea);
+      setIdeas((current) => current.map((idea) => idea.id === editing.id ? updatedIdea : idea));
+      if (updatedIdea.cardId) {
+        await updateAdminCardBySlug(slug, updatedIdea.cardId, {
+          title: updatedIdea.title.trim(),
+          caption: updatedIdea.caption || updatedIdea.description || null,
+          primaryMediaUrl: mediaUrls[0] ?? null,
+          mediaUrls,
+          mediaType: "image",
+        });
+        onSent();
+      }
+      setEditing(null);
+      setEditingMediaFiles([]);
+    } catch (caught) {
+      setEditingError(caught instanceof Error ? caught.message : "Não foi possível salvar as fotos agora.");
+    } finally {
+      setEditingSaving(false);
+    }
+  };
+  const deleteIdea = async (id: string) => {
+    if (!window.confirm("Excluir esta pauta?")) return;
+    try {
+      await deleteAdminPautaIdeaBySlug(slug, id);
+      setIdeas((current) => current.filter((idea) => idea.id !== id));
+    } catch {
+      // Keep the pauta visible when the server could not remove it.
+    }
+  };
   const pautaTypeLabel = (value?: string) => ({ post: "Post", reels: "Reels", story: "Story", carousel: "Carrossel", article: "Artigo", video: "Vídeo", other: "Outro" }[value ?? "post"] ?? value ?? "Post");
-  const text = `${editing?.title ?? ""} ${editing?.description ?? ""} ${editing?.caption ?? ""}`.toLocaleLowerCase(); const avoidHits = brain.avoidWords.filter((word) => text.includes(word.toLocaleLowerCase()));
-  return <section className="pautas-workspace"><header><span>Banco interno</span><h2>Pautas de {clientName}</h2><p>Organize, revise e envie ideias para o quadro do cliente.</p></header><div className="pautas-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar pauta" /><select value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)}><option value="all">Todas</option><option value="draft">Rascunhos</option><option value="sent">Enviadas</option><option value="approved">Aprovadas</option></select></div><div className="pautas-table"><div className="pautas-row pautas-head"><span>Cliente</span><span>Título</span><span>Tipo</span><span>Data</span><span>Status</span><span>Ações</span></div>{visible.map((idea) => { const status = idea.status ?? "draft"; return <div className="pautas-row" key={idea.id}><span>{clientName}</span><strong>{idea.title}</strong><span>{pautaTypeLabel(idea.contentType)}</span><span>{new Date(idea.plannedDate || idea.createdAt).toLocaleDateString("pt-BR")}</span><span className={`pauta-status ${status}`}>{status === "approved" ? "Aprovada" : status === "sent" ? "Enviada" : "Rascunho"}</span><span className="pauta-actions"><button onClick={() => { setEditing({ ...idea }); setBrainOpen(false); }}>✎</button><button className="delete" onClick={() => deleteIdea(idea.id)}>⌫</button>{status === "draft" ? <button disabled={sending === idea.id} onClick={() => void send(idea)}>{sending === idea.id ? "..." : "Enviar"}</button> : status === "approved" ? <span className="pauta-approved-mark">✓ Aprovada</span> : "✓"}</span></div>; })}{visible.length === 0 ? <p className="pautas-empty">Nenhuma pauta encontrada. Use a lâmpada na lateral para criar uma.</p> : null}</div>{editing ? <div className="pauta-modal-backdrop" onMouseDown={() => setEditing(null)}><section className="pauta-modal" onMouseDown={(event) => event.stopPropagation()}><header><h3>Editar pauta</h3><button onClick={() => setEditing(null)}>×</button></header><label>Título<input value={editing.title} onChange={(event) => setEditing({ ...editing, title: event.target.value })} /></label><label>Descrição<textarea value={editing.description} onChange={(event) => setEditing({ ...editing, description: event.target.value })} /></label><label>Legenda sugerida<textarea value={editing.caption} onChange={(event) => setEditing({ ...editing, caption: event.target.value })} /></label>{editing.internalNotes ? <label>Notas internas<textarea value={editing.internalNotes} onChange={(event) => setEditing({ ...editing, internalNotes: event.target.value })} /></label> : null}<button className="brain-check" onClick={() => setBrainOpen((open) => !open)}>✧ Brand Brain</button>{brainOpen ? <div className="brain-feedback">{avoidHits.length ? <p>Evite: {avoidHits.join(", ")}.</p> : <p>Sem termos a evitar encontrados.</p>}{brain.expressions.slice(0, 3).length ? <p>Expressões da marca: {brain.expressions.slice(0, 3).join(" · ")}</p> : null}</div> : null}<footer><button className="drawer-secondary-action" onClick={() => setEditing(null)}>Cancelar</button><button className="gradient-button" onClick={saveEdit}>Salvar alterações</button></footer></section></div> : null}</section>;
+  const text = `${editing?.title ?? ""} ${editing?.description ?? ""} ${editing?.caption ?? ""}`.toLocaleLowerCase();
+  const avoidHits = brain.avoidWords.filter((word) => text.includes(word.toLocaleLowerCase()));
+  return <section className="pautas-workspace">
+    <header><span>Banco interno</span><h2>Pautas de {clientName}</h2><p>Organize, revise e envie ideias para o quadro do cliente.</p></header>
+    <div className="pautas-toolbar"><BrandBrainGenerateAction key={slug} slug={slug} onAdded={idea => setIdeas(current => [idea, ...current.filter(item => item.id !== idea.id)])} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar pauta" /><select value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)}><option value="all">Todas</option><option value="draft">Rascunhos</option><option value="sent">Enviadas</option><option value="approved">Aprovadas</option></select></div>
+    <div className="pautas-table"><div className="pautas-row pautas-head"><span>Cliente</span><span>Título</span><span>Tipo</span><span>Data</span><span>Status</span><span>Ações</span></div>{visible.map((idea) => {
+      const status = idea.status ?? "draft";
+      return <div className="pautas-row" key={idea.id}><span>{clientName}</span><strong className="pauta-title-cell">{idea.mediaUrls?.[0] ? <img src={idea.mediaUrls[0]} alt="" /> : null}<span>{idea.title}{idea.mediaUrls?.length ? <small>{idea.mediaUrls.length} {idea.mediaUrls.length === 1 ? "foto" : "fotos"}</small> : null}</span></strong><span>{pautaTypeLabel(idea.contentType)}</span><span>{new Date(idea.plannedDate || idea.createdAt).toLocaleDateString("pt-BR")}</span><span className={`pauta-status ${status}`}>{status === "approved" ? "Aprovada" : status === "sent" ? "Enviada" : "Rascunho"}</span><span className="pauta-actions"><button onClick={() => openEdit(idea)}>✎</button><button className="delete" onClick={() => deleteIdea(idea.id)}>⌫</button>{status === "draft" ? <button disabled={sending !== null} onClick={() => void send(idea)}>{sending === idea.id ? "..." : "Enviar"}</button> : status === "approved" ? <span className="pauta-approved-mark">✓ Aprovada</span> : "✓"}</span></div>;
+    })}{visible.length === 0 ? <p className="pautas-empty">Nenhuma pauta encontrada. Use a lâmpada na lateral para criar uma.</p> : null}</div>
+    {editing ? <div className="pauta-modal-backdrop" onMouseDown={closeEdit}><section className="pauta-modal" onMouseDown={(event) => event.stopPropagation()}><header><h3>Editar pauta</h3><button disabled={editingSaving} onClick={closeEdit}>×</button></header><label>Título<input value={editing.title} onChange={(event) => setEditing({ ...editing, title: event.target.value })} /></label><label>Descrição<textarea value={editing.description} onChange={(event) => setEditing({ ...editing, description: event.target.value })} /></label><label>Legenda sugerida<textarea value={editing.caption} onChange={(event) => setEditing({ ...editing, caption: event.target.value })} /></label>{editing.internalNotes ? <label>Notas internas<textarea value={editing.internalNotes} onChange={(event) => setEditing({ ...editing, internalNotes: event.target.value })} /></label> : null}<div className="pauta-media-editor"><div><strong>Fotos da pauta</strong><small>Estas imagens aparecerão para o cliente ao revisar a pauta.</small></div>{editing.mediaUrls?.length ? <div className="pauta-media-grid">{editing.mediaUrls.map((url, index) => <figure key={`${url}-${index}`}><img src={url} alt={`Foto ${index + 1} da pauta`} /><button type="button" onClick={() => setEditing({ ...editing, mediaUrls: editing.mediaUrls?.filter((_, itemIndex) => itemIndex !== index) })} aria-label={`Remover foto ${index + 1}`}>×</button></figure>)}</div> : null}<label className="pauta-photo-picker">+ Adicionar fotos <span>JPG, PNG ou WebP · até 12 MB cada</span><input type="file" accept="image/*" multiple onChange={(event) => setEditingMediaFiles((current) => [...current, ...Array.from(event.target.files ?? [])])} /></label>{editingMediaFiles.length ? <div className="pauta-file-list">{editingMediaFiles.map((file, index) => <span key={`${file.name}-${file.lastModified}-${index}`}><b>{file.name}</b><button type="button" onClick={() => setEditingMediaFiles((files) => files.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remover ${file.name}`}>×</button></span>)}</div> : null}</div><BrandBrainAnalyzePanel key={editing.id} slug={slug} pauta={{ title: editing.title, description: editing.description, caption: editing.caption, contentType: editing.contentType }} /><button className="brain-check" onClick={() => setBrainOpen((open) => !open)}>✧ Brand Brain</button>{brainOpen ? <div className="brain-feedback">{avoidHits.length ? <p>Evite: {avoidHits.join(", ")}.</p> : <p>Sem termos a evitar encontrados.</p>}{brain.expressions.slice(0, 3).length ? <p>Expressões da marca: {brain.expressions.slice(0, 3).join(" · ")}</p> : null}</div> : null}{editingError ? <p className="form-error">{editingError}</p> : null}<footer><button className="drawer-secondary-action" disabled={editingSaving} onClick={closeEdit}>Cancelar</button><button className="gradient-button" disabled={editingSaving || !editing.title.trim()} onClick={() => void saveEdit()}>{editingSaving ? "Enviando fotos..." : "Salvar alterações"}</button></footer></section></div> : null}
+  </section>;
 }
 function BrandBrainWorkspace({ slug, clientName }: { slug: string; clientName: string }) {
   const [brain, setBrain] = useState<BrandBrain>(EMPTY_BRAND_BRAIN);
@@ -7400,8 +9321,7 @@ function BrandBrainExperience({ slug, clientName, portal = false, allowEdit = tr
   }, [portal, recoveryKey, slug]);
   useEffect(() => { void load(); }, [load]);
 
-  const importantValues = [brain.mission, brain.vision, brain.positioning, brain.brandPromise, brain.audience, brain.voice, brain.visualNotes, brain.pillars.length, brain.approvedWords.length, brain.differentiators.length];
-  const completion = Math.round(importantValues.filter(Boolean).length / importantValues.length * 100);
+  const completion = brandBrainCompletion(brain);
   const pending = snapshot?.revisions.filter((item) => item.status === "pending") ?? [];
   const editable = !portal || allowEdit;
   const dateLabel = (value?: string | null) => value ? new Intl.DateTimeFormat(localeTag, { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : t("Ainda não publicado");
@@ -7500,77 +9420,7 @@ function BrandBrainExperience({ slug, clientName, portal = false, allowEdit = tr
 function BrandBrainWorkspaceV2({ slug, clientName }: { slug: string; clientName: string }) { return <BrandBrainExperience slug={slug} clientName={clientName} />; }
 function ClientBrandBrainView({ slug, clientName, allowEdit }: { slug: string; clientName: string; allowEdit: boolean }) { return <BrandBrainExperience slug={slug} clientName={clientName} portal allowEdit={allowEdit} />; }
 
-type ProposalStatus = ProposalRecord["status"];
 type LocalProposal = ProposalRecord;
-const proposalStatuses: Array<{ id: ProposalStatus; label: string; tone: string }> = [
-  { id: "accepted", label: "Aceitas", tone: "accepted" },
-  { id: "viewed", label: "Visualizadas", tone: "sent" },
-  { id: "sent", label: "Enviadas", tone: "sent" },
-  { id: "refused", label: "Recusadas", tone: "refused" },
-  { id: "expired", label: "Expiradas", tone: "refused" },
-  { id: "draft", label: "Rascunhos", tone: "draft" },
-];
-
-const proposalLocales = {
-  "Português": { code: "pt-BR", label: "Português", commercial: "Proposta comercial", prepared: "Preparada para", plan: "Plano", validity: "Validade", pieces: "Peças", deliveries: "entregas", scope: "Escopo do projeto", investment: "Investimento", services: "Serviços inclusos", total: "Investimento total", until: "Válida até", continueTogether: "Vamos seguir juntos?", emptyScope: "Descreva o escopo, objetivos e entregas desta proposta.", emptyInvestment: "Detalhe aqui as condições comerciais e observações.", emptyServices: "Os serviços aparecerão aqui.", accept: "Aceitar proposta", refuse: "Não aceitar", accepted: "Proposta aceita", refused: "Proposta recusada", answer: "Sua resposta foi registrada. Nossa equipe entrará em contato em breve." },
-  "English": { code: "en-US", label: "English", commercial: "Commercial proposal", prepared: "Prepared for", plan: "Plan", validity: "Validity", pieces: "Pieces", deliveries: "deliverables", scope: "Project scope", investment: "Investment", services: "Included services", total: "Total investment", until: "Valid until", continueTogether: "Shall we move forward together?", emptyScope: "Describe the scope, objectives and deliverables for this proposal.", emptyInvestment: "Add payment terms, notes and next steps here.", emptyServices: "Services will appear here.", accept: "Accept proposal", refuse: "Decline proposal", accepted: "Proposal accepted", refused: "Proposal declined", answer: "Your answer has been recorded. Our team will be in touch soon." },
-  "Español": { code: "es-ES", label: "Español", commercial: "Propuesta comercial", prepared: "Preparada para", plan: "Plan", validity: "Validez", pieces: "Piezas", deliveries: "entregables", scope: "Alcance del proyecto", investment: "Inversión", services: "Servicios incluidos", total: "Inversión total", until: "Válida hasta", continueTogether: "¿Seguimos juntos?", emptyScope: "Describa el alcance, los objetivos y las entregas de esta propuesta.", emptyInvestment: "Detalle las condiciones de pago, observaciones y próximos pasos.", emptyServices: "Los servicios aparecerán aquí.", accept: "Aceptar propuesta", refuse: "No aceptar", accepted: "Propuesta aceptada", refused: "Propuesta rechazada", answer: "Su respuesta fue registrada. Nuestro equipo se pondrá en contacto pronto." },
-  "Italiano": { code: "it-IT", label: "Italiano", commercial: "Proposta commerciale", prepared: "Preparata per", plan: "Piano", validity: "Validità", pieces: "Pezzi", deliveries: "consegne", scope: "Ambito del progetto", investment: "Investimento", services: "Servizi inclusi", total: "Investimento totale", until: "Valida fino al", continueTogether: "Andiamo avanti insieme?", emptyScope: "Descrivi l'ambito, gli obiettivi e le consegne di questa proposta.", emptyInvestment: "Inserisci le condizioni di pagamento, le note e i prossimi passi.", emptyServices: "I servizi appariranno qui.", accept: "Accetta proposta", refuse: "Rifiuta", accepted: "Proposta accettata", refused: "Proposta rifiutata", answer: "La tua risposta è stata registrata. Il nostro team ti contatterà presto." },
-  "Svenska": { code: "sv-SE", label: "Svenska", commercial: "Kommersiellt förslag", prepared: "Förberett för", plan: "Plan", validity: "Giltighet", pieces: "Delar", deliveries: "leveranser", scope: "Projektets omfattning", investment: "Investering", services: "Inkluderade tjänster", total: "Total investering", until: "Giltigt till", continueTogether: "Ska vi gå vidare tillsammans?", emptyScope: "Beskriv omfattning, mål och leveranser för detta förslag.", emptyInvestment: "Lägg till betalningsvillkor, anteckningar och nästa steg här.", emptyServices: "Tjänsterna visas här.", accept: "Acceptera förslag", refuse: "Avböj", accepted: "Förslag accepterat", refused: "Förslag avböjt", answer: "Ditt svar har registrerats. Vårt team kontaktar dig snart." },
-} as const;
-
-function getProposalLocale(locale: string) { return proposalLocales[locale as keyof typeof proposalLocales] ?? proposalLocales["Português"]; }
-
-function ProposalClientPreview({ proposal }: { proposal: LocalProposal }) {
-  const total = proposal.services.reduce((sum, service) => sum + Number(service.value || 0), 0);
-  const copy = getProposalLocale(proposal.locale);
-  return <article className="proposal-client-preview">
-    <div className="proposal-client-hero"><span>{copy.commercial}</span><h1>{proposal.proposalType || "Projeto criativo"}</h1><p className="proposal-client-name">{copy.prepared} {proposal.clientName || "..."}</p></div>
-    <div className="proposal-client-content"><div className="proposal-client-meta"><span><b>{copy.plan}</b>{proposal.plan || "Personalizado"}</span><span><b>{copy.validity}</b>{copy.until} {new Date(proposal.expiresAt).toLocaleDateString(copy.code)}</span><span><b>{copy.pieces}</b>{proposal.pieces || 0} {copy.deliveries}</span></div>
-    <section><small>{copy.scope}</small><div className="proposal-preview-text">{proposal.scope || copy.emptyScope}</div></section>
-    <section><small>{copy.services}</small><div className="proposal-service-list">{proposal.services.filter((service) => service.name).map((service, index) => <div key={`${service.name}-${index}`}><span><b>{service.name}</b><small>{service.description}</small></span><strong>{proposal.currency} {Number(service.value || 0).toLocaleString(copy.code, { minimumFractionDigits: 2 })}</strong></div>)}{!proposal.services.some((service) => service.name) ? <p>{copy.emptyServices}</p> : null}</div></section>
-    <section className="proposal-investment-card"><small>{copy.investment}</small><div className="proposal-investment-total"><span>{copy.total}</span><strong>{proposal.currency} {total.toLocaleString(copy.code, { minimumFractionDigits: 2 })}</strong></div><div className="proposal-preview-text">{proposal.investment || copy.emptyInvestment}</div></section></div>
-  </article>;
-}
-
-function ProposalsWorkspace({ newProposalSignal = 0 }: { newProposalSignal?: number }) {
-  const [proposals, setProposals] = useState<LocalProposal[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [view, setView] = useState<"editor" | "preview">("editor");
-  const [loading, setLoading] = useState(true);
-  const [message, setMessage] = useState("");
-  const saveTimerRef = useRef<number | null>(null);
-  const selected = proposals.find((proposal) => proposal.id === selectedId) ?? null;
-  useEffect(() => { void listAdminProposals().then((result) => { setProposals(result.items); setSelectedId((current) => current ?? result.items[0]?.id ?? null); }).catch((error) => setMessage(error instanceof Error ? error.message : "Não foi possível carregar as propostas.")).finally(() => setLoading(false)); }, []);
-  useEffect(() => () => { if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current); }, []);
-  const create = async () => {
-    setMessage("");
-    try {
-      const result = await createAdminProposal({ clientName: "", email: "", locale: "Português", proposalType: "Projeto", plan: "", pieces: 0, scope: "", investment: "", currency: "R$", expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(), status: "draft", services: [{ name: "", value: 0, description: "" }] });
-      setProposals((current) => [result.proposal, ...current]); setSelectedId(result.proposal.id); setView("editor");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "Não foi possível criar a proposta."); }
-  };
-  useEffect(() => { if (newProposalSignal > 0) void create(); }, [newProposalSignal]);
-  const update = (patch: Partial<LocalProposal>) => { if (!selected) return; const updated={...selected,...patch}; setProposals((current)=>current.map((proposal)=>proposal.id===selected.id?updated:proposal)); if(saveTimerRef.current) window.clearTimeout(saveTimerRef.current); saveTimerRef.current=window.setTimeout(()=>{const {id:_id,token:_token,acceptedAt:_acceptedAt,viewedAt:_viewedAt,createdAt:_createdAt,updatedAt:_updatedAt,...editable}=updated;void updateAdminProposal(selected.id,editable).catch((error)=>setMessage(error instanceof Error?error.message:"Não foi possível salvar a proposta."));},500); };
-  const remove = async () => { if (!selected || !window.confirm("Excluir esta proposta?")) return; try { await deleteAdminProposal(selected.id); setProposals((current)=>current.filter((proposal)=>proposal.id!==selected.id)); setSelectedId(null); } catch(error){setMessage(error instanceof Error?error.message:"Não foi possível excluir a proposta.");} };
-  const send = async () => { if (!selected) return; const patch={status:"sent" as const,expiresAt:new Date(Date.now()+7*86400000).toISOString()}; try { const result=await updateAdminProposal(selected.id,patch); setProposals((current)=>current.map((proposal)=>proposal.id===selected.id?result.proposal:proposal)); setView("preview"); } catch(error){setMessage(error instanceof Error?error.message:"Não foi possível enviar a proposta.");} };
-  const copyLink = async () => { if (!selected) return; await navigator.clipboard?.writeText(`${window.location.origin}/#/proposta/${selected.token}`); };
-  const editor = (field: "scope" | "investment", label: string, placeholder: string) => <label className="proposal-rich-field"><span>{label}</span><div className="proposal-rich-toolbar"><b>B</b><i>I</i><u>U</u><em>H2</em><em>Lista</em><em>Link</em></div><textarea value={selected?.[field] ?? ""} onChange={(event) => update({ [field]: event.target.value })} placeholder={placeholder} /></label>;
-  useEffect(() => {
-    if (view !== "preview") return;
-    const elements = Array.from(document.querySelectorAll(".proposal-preview-shell .proposal-client-content > section, .proposal-preview-shell .public-proposal-decision"));
-    const observer = new IntersectionObserver((entries) => entries.forEach((entry) => { if (entry.isIntersecting) { entry.target.classList.add("in-view"); observer.unobserve(entry.target); } }), { threshold: 0.18 });
-    elements.forEach((element) => observer.observe(element));
-    return () => observer.disconnect();
-  }, [view, selectedId]);
-  if (selected && view === "preview") return <section className="public-proposal-page proposal-preview-shell"><button className="proposal-preview-back" onClick={() => setView("editor")}>← Voltar ao editor</button><header className="public-proposal-brand"><img src={liegePaschoaliniLogo} alt="Liege Paschoalini Studio" /><div><b>LIEGE PASCHOALINI STUDIO</b></div></header><ProposalClientPreview proposal={selected} /><section className="public-proposal-decision"><p>{getProposalLocale(selected.locale).until} {new Date(selected.expiresAt).toLocaleDateString(getProposalLocale(selected.locale).code)}.</p><h2>{getProposalLocale(selected.locale).continueTogether}</h2><div><button className="gradient-button">{getProposalLocale(selected.locale).accept}</button><button className="public-proposal-refuse">{getProposalLocale(selected.locale).refuse}</button></div></section></section>;
-  if (loading) return <section className="proposals-workspace"><p className="proposal-empty">Carregando propostas...</p></section>;
-  return <section className="proposals-workspace">
-    <div className={proposals.length ? "proposals-layout" : "proposals-layout empty-library"}>{proposals.length ? <aside className="proposal-library"><div><b>Biblioteca</b><button onClick={create}>+</button></div>{proposalStatuses.map((status) => <section key={status.id}><p>{status.label}<span>{proposals.filter((proposal) => proposal.status === status.id).length}</span></p>{proposals.filter((proposal) => proposal.status === status.id).map((proposal) => <button key={proposal.id} onClick={() => { setSelectedId(proposal.id); setView("editor"); }} className={selectedId === proposal.id ? "active" : ""}><strong>{proposal.clientName || "Nova proposta"}</strong><span className="proposal-library-meta"><small>{proposal.proposalType} · {new Date(proposal.expiresAt).toLocaleDateString("pt-BR")}</small>{proposal.acceptedAt ? <span className="proposal-accepted-badge">Aceita</span> : null}</span></button>)}</section>)}</aside> : null}
-    <main className="proposal-stage">{!selected ? <div className="proposal-empty"><span>✦</span><h2>Comece por uma proposta</h2><p>Use o botão “Nova proposta” no banner para montar sua próxima proposta comercial.</p></div> : <><div className="proposal-stage-tabs"><button className="active">Editor</button><button onClick={() => setView("preview")}>Prévia do cliente</button><span>Válida por 7 dias</span></div><div className="proposal-editor"><div className="proposal-fields two"><label>Nome do cliente *<input value={selected.clientName} onChange={(event) => update({ clientName: event.target.value })} placeholder="Ex: Empresa ABC" /></label><label>E-mail<input type="email" value={selected.email} onChange={(event) => update({ email: event.target.value })} placeholder="email@cliente.com" /></label></div><div className="proposal-fields three"><label>Idioma<select value={selected.locale} onChange={(event) => update({ locale: event.target.value })}>{Object.values(proposalLocales).map((locale) => <option key={locale.label}>{locale.label}</option>)}</select></label><label>Tipo de proposta<select value={selected.proposalType} onChange={(event) => update({ proposalType: event.target.value })}><option>Projeto</option><option>Mensalidade</option><option>Consultoria</option></select></label><label>Plano<input value={selected.plan} onChange={(event) => update({ plan: event.target.value })} placeholder="Selecione..." /></label></div><label className="proposal-pieces">Qtd. de peças<input type="number" min="0" value={selected.pieces} onChange={(event) => update({ pieces: Number(event.target.value) })} /></label>{editor("scope", "Escopo do projeto", "Descreva o escopo dos serviços. Use títulos e listas para organizar.")}{editor("investment", "Descrição do investimento", "Condições de pagamento, observações e próximos passos...")}<div className="proposal-services"><header><div><span>Serviços</span><p>Monte os itens que fazem parte desta proposta.</p></div><button onClick={() => update({ services: [...selected.services, { name: "", value: 0, description: "" }] })}>+ Adicionar</button></header>{selected.services.map((service, index) => <div className="proposal-service-edit" key={index}><input value={service.name} onChange={(event) => update({ services: selected.services.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item) })} placeholder="Nome do serviço" /><input type="number" value={service.value} onChange={(event) => update({ services: selected.services.map((item, itemIndex) => itemIndex === index ? { ...item, value: Number(event.target.value) } : item) })} placeholder="Valor" /><input value={service.description} onChange={(event) => update({ services: selected.services.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item) })} placeholder="Descrição (opcional)" /><button onClick={() => update({ services: selected.services.filter((_, itemIndex) => itemIndex !== index) })}>×</button></div>)}</div></div></>}</main>
-    <aside className="proposal-actions">{selected ? <><span className={`proposal-status ${selected.status}`}>{proposalStatuses.find((status) => status.id === selected.status)?.label.slice(0, -1) ?? "Rascunho"}</span><h3>{selected.clientName || "Nova proposta"}</h3><p>O link temporário e a proposta expiram automaticamente em 7 dias.</p><button onClick={() => setView("preview")}>◫ Ver prévia</button><button onClick={copyLink}>⌁ Copiar link</button><button className="proposal-send" onClick={() => void send()}>➜ Enviar proposta</button><button className="proposal-delete" onClick={() => void remove()}>Excluir proposta</button></> : null}</aside></div>{message ? <p className="time-error" role="alert">{message}</p> : null}
-  </section>;
-}
 
 function PublicProposalPage() {
   const { token = "" } = useParams();
@@ -7594,261 +9444,238 @@ function PublicProposalPage() {
     try { const result=await decidePublicProposal(token,status); setProposal(result.proposal); setDecision(status); }
     catch { setLoadError(true); }
   };
-  return <main className="public-proposal-page"><div className="public-proposal-orb one" /><div className="public-proposal-orb two" /><header className="public-proposal-brand"><img src={liegePaschoaliniLogo} alt="Liege Paschoalini Studio" /><div><b>LIEGE PASCHOALINI STUDIO</b></div></header><ProposalClientPreview proposal={proposal} /><section className="public-proposal-decision">{decision || proposal.status === "accepted" || proposal.status === "refused" ? <><span className={decision ?? proposal.status}>✓</span><h2>{(decision ?? proposal.status) === "accepted" ? copy.accepted : copy.refused}</h2><p>{copy.answer}</p></> : <><p>{copy.until} {new Date(proposal.expiresAt).toLocaleDateString(copy.code)}.</p><h2>{copy.continueTogether}</h2><div><button className="gradient-button" onClick={() => void decide("accepted")}>{copy.accept}</button><button className="public-proposal-refuse" onClick={() => void decide("refused")}>{copy.refuse}</button></div></>}</section></main>;
+  return <main className="public-proposal-page proposal-premium-page"><ProposalClientPreview proposal={proposal} brandLogo={liegePaschoaliniLogo} /><section className="public-proposal-decision">{decision || proposal.status === "accepted" || proposal.status === "refused" ? <><span className={decision ?? proposal.status}>✓</span><h2>{(decision ?? proposal.status) === "accepted" ? copy.accepted : copy.refused}</h2><p>{copy.answer}</p></> : <><p>{copy.until} {new Date(proposal.expiresAt).toLocaleDateString(copy.code)}.</p><h2>{copy.continueTogether}</h2><div><button className="gradient-button" onClick={() => void decide("accepted")}>{copy.accept}</button><button className="public-proposal-refuse" onClick={() => void decide("refused")}>{copy.refuse}</button></div></>}</section></main>;
 }
 
-type ContractDraft = { title: string; client: string; bodyHtml: string; language: string; type: string; startDate: string; endDate: string; value: string; scope: string; notes: string };
-const emptyContractDraft = (): ContractDraft => ({ title: "", client: "", bodyHtml: "", language: "Português", type: "Prestação de serviços", startDate: "", endDate: "", value: "", scope: "", notes: "" });
-type ContractRecord = ApiContractRecord;
-type ContractTemplate = { id: string; name: string; bodyHtml?: string; language: string; description: string; draft: Partial<ContractDraft>; custom?: boolean };
-const CONTRACT_MODELS: ContractTemplate[] = [
-  { id: "services", name: "Prestação de serviços", language: "Português", description: "Modelo completo para projetos de conteúdo e design.", draft: { title: "Contrato de prestação de serviços", type: "Prestação de serviços", scope: "Objeto, escopo, prazos e entregas do projeto serão definidos entre as partes." } },
-  { id: "monthly", name: "Contrato mensal", language: "Português", description: "Ideal para contratos recorrentes e gestão contínua.", draft: { title: "Contrato de serviços mensais", type: "Mensalidade", scope: "A contratada prestará serviços recorrentes conforme o plano e o calendário acordados." } },
-  { id: "consulting", name: "Consultoria", language: "Português", description: "Base para projetos estratégicos e consultorias.", draft: { title: "Contrato de consultoria", type: "Consultoria", scope: "A consultoria será conduzida em encontros e entregas definidos no cronograma do projeto." } },
-];
-function contractRecordDraft(record: ContractRecord): ContractDraft { return { title: record.title, client: record.clientName, bodyHtml: record.bodyHtml, language: record.language, type: record.contractType, startDate: record.startDate ?? "", endDate: record.endDate ?? "", value: record.contractValue, scope: record.scope, notes: record.notes }; }
-function sanitizedContractHtml(source: string) {
-  const documentValue = new DOMParser().parseFromString(source, "text/html");
-  documentValue.querySelectorAll("script,style,iframe,object,embed,form,link,meta").forEach((node) => node.remove());
-  documentValue.querySelectorAll("*").forEach((node) => [...node.attributes].forEach((attribute) => {
-    if (attribute.name.toLowerCase().startsWith("on") || /^(javascript|data):/i.test(attribute.value.trim())) node.removeAttribute(attribute.name);
-  }));
-  return documentValue.body.innerHTML;
-}
-
-function ContractDocumentPreview({ contract, clientName }: { contract: ContractDraft; clientName?: string }) {
-  const legacyBody = useMemo(() => sanitizedContractHtml(contract.bodyHtml), [contract.bodyHtml]);
-  return <article className="contract-document-preview"><header><span>DESIGN HUB · CONTRATO · {contract.language || "Português"}</span><h1>{contract.title || "Novo contrato"}</h1><p>Documento preparado para {clientName || contract.client || "seu cliente"}</p></header>{contract.bodyHtml ? <section className="contract-rich-body" dangerouslySetInnerHTML={{ __html: legacyBody }} /> : <><div className="contract-preview-meta"><div><small>Tipo</small><strong>{contract.type || "—"}</strong></div><div><small>Vigência</small><strong>{contract.startDate || "—"} {contract.endDate ? `até ${contract.endDate}` : ""}</strong></div><div><small>Valor</small><strong>{contract.value || "A definir"}</strong></div></div><section><small>ESCOPO E CONDIÇÕES</small><p>{contract.scope || "O escopo do contrato será apresentado aqui."}</p></section>{contract.notes ? <section><small>OBSERVAÇÕES</small><p>{contract.notes}</p></section> : null}</>}<footer><span>Li e aceito os termos deste contrato.</span><b>Assinatura digital</b></footer></article>;
-}
-
-function ContractRichEditor({ value, onChange }: { value: string; onChange: (html: string) => void }) {
-  const editorRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const editor = editorRef.current;
-    if (editor && document.activeElement !== editor && editor.innerHTML !== value) editor.innerHTML = value;
-  }, [value]);
-  const format = (command: string, commandValue?: string) => {
-    editorRef.current?.focus();
-    document.execCommand(command, false, commandValue);
-    onChange(editorRef.current?.innerHTML ?? "");
-  };
-  return <label className="contract-rich-field"><span>Texto do contrato</span><div className="contract-rich-toolbar" role="toolbar" aria-label="Formatação do texto do contrato"><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("bold")} title="Negrito"><b>B</b></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("italic")} title="Itálico"><i>I</i></button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("underline")} title="Sublinhado"><u>U</u></button><i /><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("formatBlock", "h2")} title="Título">H2</button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("formatBlock", "h3")} title="Subtítulo">H3</button><i /><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("insertUnorderedList")} title="Lista com marcadores">☷</button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("insertOrderedList")} title="Lista numerada">☰</button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("formatBlock", "blockquote")} title="Citação">❞</button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("insertHorizontalRule")} title="Separador">―</button><span className="contract-rich-toolbar-spacer" /><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("undo")} title="Desfazer">↶</button><button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => format("redo")} title="Refazer">↷</button></div><div ref={editorRef} className="contract-rich-editor" contentEditable suppressContentEditableWarning data-placeholder="Escreva ou selecione um modelo para carregar o texto completo do contrato." onInput={(event) => onChange(event.currentTarget.innerHTML)} /></label>;
-}
-
-function ContractsWorkspace({ newContractSignal = 0 }: { newContractSignal?: number }) {
-  const recoveryKey = "designhub-v2-contract-current-draft";
-  const recoveredDraft = useMemo(() => readRecoveryDraft<{ draft: ContractDraft; clientSlug: string; selectedModel: string }>(recoveryKey), []);
-  const [clients, setClients] = useState<AdminClientOption[]>([]);
-  const [clientSlug, setClientSlug] = useState(recoveredDraft?.clientSlug ?? "");
-  const [draft, setDraft] = useState<ContractDraft>(recoveredDraft?.draft ?? emptyContractDraft);
-  const [records, setRecords] = useState<ContractRecord[]>([]);
-  const [customTemplates, setCustomTemplates] = useState<ContractTemplate[]>([]);
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [templateModalOpen, setTemplateModalOpen] = useState(false);
-  const [templateName, setTemplateName] = useState("");
-  const [templateLanguage, setTemplateLanguage] = useState("Português");
-  const [selectedModel, setSelectedModel] = useState(recoveredDraft?.selectedModel ?? "");
-  const [saved, setSaved] = useState(false);
-  const [draftState, setDraftState] = useState<AutosaveState>(recoveredDraft ? "recovered" : "idle");
-  const [draftSavedAt, setDraftSavedAt] = useState<Date | null>(null);
-  const committedDraftRef = useRef("");
-  useEffect(() => { void Promise.all([listAdminClients(), listAdminContracts(), listAdminContractTemplates()]).then(([clientResult, contractResult, templateResult]) => { setClients(clientResult.items); setClientSlug((current) => current || clientResult.items[0]?.slug || ""); setRecords(contractResult.items); setCustomTemplates(templateResult.items.map((template) => ({ id: template.id, name: template.name, bodyHtml: template.bodyHtml, language: template.language, description: template.description, draft: template.draft as Partial<ContractDraft>, custom: true }))); }).catch(() => { setClients([]); setRecords([]); setCustomTemplates([]); }); }, []);
-  useEffect(() => { if (newContractSignal > 0) { setDraft(emptyContractDraft()); setSelectedModel(""); setSaved(false); setPreviewOpen(false); committedDraftRef.current = ""; try { window.localStorage.removeItem(recoveryKey); } catch { /* Recovery remains optional. */ } setDraftState("idle"); } }, [newContractSignal]);
-  useEffect(() => {
-    const draftJson = JSON.stringify({ draft, clientSlug, selectedModel });
-    const isEmpty = !draft.title && !draft.scope && !draft.notes && !draft.value && !draft.startDate && !draft.endDate;
-    if (draftJson === committedDraftRef.current || isEmpty) return;
-    setDraftState((current) => current === "recovered" ? current : "pending");
-    const timeout = window.setTimeout(() => {
-      try { window.localStorage.setItem(recoveryKey, draftJson); setDraftSavedAt(new Date()); setDraftState("saved"); }
-      catch { setDraftState("error"); }
-    }, 600);
-    return () => window.clearTimeout(timeout);
-  }, [clientSlug, draft, recoveryKey, selectedModel]);
-  const selectedClient = clients.find((client) => client.slug === clientSlug);
-  const allTemplates = [...CONTRACT_MODELS, ...customTemplates];
-  const applyModel = (modelId: string) => { setSelectedModel(modelId); const model = allTemplates.find((item) => item.id === modelId); if (model) setDraft({ ...emptyContractDraft(), ...model.draft, title: model.draft.title || model.name, bodyHtml: sanitizedContractHtml(model.bodyHtml || model.draft.bodyHtml || ""), language: model.language || model.draft.language || "Português" }); };
-  const saveTemplate = async () => { if (!templateName.trim()) return; try { const response=await createAdminContractTemplate({name:templateName.trim(),bodyHtml:draft.bodyHtml,language:templateLanguage,description:"Modelo criado por você.",draft:{...draft,language:templateLanguage}}); const template:ContractTemplate={id:response.template.id,name:response.template.name,bodyHtml:response.template.bodyHtml,language:response.template.language,description:response.template.description,draft:response.template.draft as Partial<ContractDraft>,custom:true}; setCustomTemplates((current)=>[template,...current]); setSelectedModel(template.id); setTemplateName(""); setTemplateModalOpen(false); } catch { setSaved(false); } };
-  const save = async () => { if (!draft.title.trim() || !selectedClient) return; try { const response=await createAdminContract({clientAccountId:selectedClient.id,title:draft.title.trim(),bodyHtml:draft.bodyHtml,language:draft.language,contractType:draft.type,startDate:draft.startDate||null,endDate:draft.endDate||null,contractValue:draft.value,scope:draft.scope,notes:draft.notes,status:"pending"}); setRecords((current)=>[response.contract,...current]); committedDraftRef.current=JSON.stringify({draft,clientSlug,selectedModel}); try{window.localStorage.removeItem(recoveryKey);}catch{/* Recovery remains optional. */} setDraftSavedAt(new Date());setDraftState("saved");setSaved(true); } catch { setDraftState("error"); setSaved(false); } };
-  return <section className="contracts-workspace">
-    <div className="contracts-workspace-grid">
-      <aside className="contracts-sent"><header><div><span>ENVIADOS</span><h3>Contratos recentes</h3></div><b>{records.length}</b></header>{records.length ? records.map((record) => <div className="contracts-library-record" key={record.id}><strong>{record.title}</strong><div className="contracts-library-record-meta"><span>{record.clientName}</span><span className={`contract-record-status ${record.status}`}>{record.status === "accepted" ? "Aceito" : record.status === "cancelled" ? "Cancelado" : "Aguardando aceite"}</span></div></div>) : <p className="contracts-sent-empty">Nenhum contrato enviado ainda.</p>}</aside>
-      <div className="contracts-form-card">
-      <header><div><span>CONTRATO</span><h2>Novo contrato</h2><p>Preencha os dados abaixo para registrar um novo contrato na operação.</p></div><div className="contracts-form-mark">✦</div></header>
-      <div className="contracts-form-grid two"><label>Título do contrato<input autoFocus value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Ex.: Contrato de gestão de conteúdo" /></label><label>Enviar para o cliente<select value={clientSlug} onChange={(event) => setClientSlug(event.target.value)}><option value="">Selecione um cliente</option>{clients.map((client) => <option key={client.id} value={client.slug}>{client.name}</option>)}</select></label></div>
-      <label className="contracts-model-picker">Usar um modelo pronto<select value={selectedModel} onChange={(event) => applyModel(event.target.value)}><option value="">Começar em branco</option>{allTemplates.map((model) => <option key={model.id} value={model.id}>{model.name} · {model.language}</option>)}</select></label>
-      <div className="contracts-form-grid three"><label>Idioma<select value={draft.language} onChange={(event) => setDraft({ ...draft, language: event.target.value })}><option>Português</option><option>English</option><option>Español</option><option>Français</option><option>Italiano</option><option>Deutsch</option><option>Svenska</option></select></label><label>Tipo<select value={draft.type} onChange={(event) => setDraft({ ...draft, type: event.target.value })}><option>Prestação de serviços</option><option>Mensalidade</option><option>Consultoria</option><option>Parceria</option></select></label><label>Início<input type="date" value={draft.startDate} onChange={(event) => setDraft({ ...draft, startDate: event.target.value })} /></label></div><div className="contracts-form-grid two"><label>Vencimento<input type="date" value={draft.endDate} onChange={(event) => setDraft({ ...draft, endDate: event.target.value })} /></label><label>Valor contratado<input value={draft.value} onChange={(event) => setDraft({ ...draft, value: event.target.value })} placeholder="R$ 0,00" /></label></div>
-      <div className="contracts-form-grid two"><label className="wide">Escopo resumido<textarea value={draft.scope} onChange={(event) => setDraft({ ...draft, scope: event.target.value })} placeholder="Descreva os serviços e entregas incluídos." /></label></div>
-      <label className="contracts-notes">Observações internas<textarea value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} placeholder="Condições, responsáveis e observações importantes." /></label>
-      <ContractRichEditor value={draft.bodyHtml} onChange={(bodyHtml) => setDraft((current) => ({ ...current, bodyHtml }))} />
-      <footer><AutosaveIndicator state={draftState} savedAt={draftSavedAt} savedLabel="Rascunho protegido" /><div><button className="ghost-button" onClick={() => setPreviewOpen(true)}>Visualizar prévia</button><button className="gradient-button" onClick={save} disabled={!draft.title.trim() || !clientSlug}>Salvar contrato</button></div></footer>
-      {saved ? <p className="contracts-saved" role="status">✓ Contrato salvo como rascunho.</p> : null}
-    </div><aside className="contracts-library"><header><div><span>BIBLIOTECA</span><h3>Modelos prontos</h3></div><b>{allTemplates.length}</b></header>{allTemplates.map((model) => <button key={model.id} className={selectedModel === model.id ? "selected" : ""} onClick={() => applyModel(model.id)}><strong>{model.name}</strong><small>{model.language} · {model.description}</small></button>)}<button className="contracts-create-template" onClick={() => setTemplateModalOpen(true)}>＋ Salvar formulário como modelo</button></aside></div>
-    {previewOpen ? <div className="modal-backdrop" onClick={() => setPreviewOpen(false)}><section className="contract-preview-modal" onClick={(event) => event.stopPropagation()}><header><div><span>PRÉVIA PARA O CLIENTE</span><h2>Como o contrato será exibido</h2></div><button className="icon-close" onClick={() => setPreviewOpen(false)}>×</button></header><ContractDocumentPreview contract={draft} clientName={selectedClient?.name || draft.client} /><footer><button className="ghost-button" onClick={() => setPreviewOpen(false)}>Voltar para edição</button></footer></section></div> : null}
-    {templateModalOpen ? <div className="modal-backdrop" onClick={() => setTemplateModalOpen(false)}><section className="contract-template-modal" onClick={(event) => event.stopPropagation()}><header><div><span>NOVO MODELO</span><h2>Salvar na biblioteca</h2><p>O formulário atual ficará disponível para reutilização.</p></div><button className="icon-close" onClick={() => setTemplateModalOpen(false)}>×</button></header><label>Nome do modelo<input autoFocus value={templateName} onChange={(event) => setTemplateName(event.target.value)} placeholder="Ex.: Contrato mensal em inglês" /></label><label>Idioma<select value={templateLanguage} onChange={(event) => setTemplateLanguage(event.target.value)}><option>Português</option><option>English</option><option>Español</option><option>Français</option><option>Italiano</option><option>Deutsch</option><option>Svenska</option></select></label><footer><button className="ghost-button" onClick={() => setTemplateModalOpen(false)}>Cancelar</button><button className="gradient-button" disabled={!templateName.trim()} onClick={saveTemplate}>Salvar modelo</button></footer></section></div> : null}
-  </section>;
-}
-
-function ClientContractAcceptance({ slug, accountName, canAccept = true }: { slug: string; accountName: string; canAccept?: boolean }) {
+function ClientContractAcceptance({ slug, accountName, canAccept = true, onExit }: { slug: string; accountName: string; canAccept?: boolean; onExit: () => void }) {
   const { t } = usePortalTranslation();
-  const [contract, setContract] = useState<ContractRecord | null>(null);
-  const [accepted, setAccepted] = useState(false);
-  useEffect(() => {
-    void loadPendingPortalContractBySlug(slug).then((response) => { setContract(response.contract); setAccepted(!response.contract); }).catch(() => setContract(null));
-  }, [slug]);
-  if (!canAccept || !contract || accepted) return null;
-  const accept = () => {
-    void acceptPortalContractBySlug(slug,contract.id).then(()=>setAccepted(true));
+  return <ContractAcceptanceGate key={slug} accountName={accountName} canAccept={canAccept} onExit={onExit} t={t} load={async () => (await loadPendingPortalContractBySlug(slug)).contract} accept={(id) => acceptPortalContractBySlug(slug,id)} />;
+}
+
+type MetaPublicationGroup = {
+  key: string;
+  destinationId: string | null;
+  destinationName: string | null;
+  cardId: string | null;
+  cardTitle: string;
+  clientAccountId: string;
+  clientName: string;
+  clientSlug: string;
+  scheduledAt: string;
+  timezone: string;
+  mediaType: GlobalMetaScheduledPublication["mediaType"];
+  preview: MetaPublicationPreview | null;
+  mediaCount: number;
+  caption: string | null;
+  locationName: string | null;
+  publications: GlobalMetaScheduledPublication[];
+};
+
+function groupMetaPublications(publications: GlobalMetaScheduledPublication[]) {
+  const groups = new Map<string, MetaPublicationGroup>();
+  publications.forEach((publication) => {
+    const key = publication.cardId ? `${publication.cardId}:${publication.destinationId ?? "legacy"}:${publication.scheduledAt}` : publication.id;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.publications.push(publication);
+      if (!existing.preview) existing.preview = metaPublicationPreviewSource(publication);
+      return;
+    }
+    groups.set(key, {
+      key,
+      destinationId: publication.destinationId,
+      destinationName: publication.destinationName,
+      cardId: publication.cardId,
+      cardTitle: publication.cardTitle,
+      clientAccountId: publication.clientAccountId,
+      clientName: publication.clientName,
+      clientSlug: publication.clientSlug,
+      scheduledAt: publication.scheduledAt,
+      timezone: publication.timezone,
+      mediaType: publication.mediaType,
+      preview: metaPublicationPreviewSource(publication),
+      mediaCount: Math.max(publication.mediaUrls.length, publication.mediaUrl ? 1 : 0),
+      caption: publication.caption,
+      locationName: publication.locationName,
+      publications: [publication],
+    });
+  });
+  return [...groups.values()].sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
+}
+
+function metaPublicationStatusLabel(status: MetaScheduledPublication["status"]) {
+  return status === "scheduled" ? "Agendado" : status === "publishing" ? "Publicando" : status === "published" ? "Publicado" : status === "failed" ? "Falhou" : "Cancelado";
+}
+
+function metaPublicationTypeLabel(type: MetaScheduledPublication["mediaType"]) {
+  return type === "carousel" ? "Carrossel" : type === "reel" ? "Reel" : type === "story" ? "Story" : "Post";
+}
+
+function metaCenterDateKey(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function MetaPublicationsWorkspace() {
+  const navigate = useNavigate();
+  const [anchor, setAnchor] = useState(() => new Date());
+  const [view, setView] = useState<"calendar" | "list">("calendar");
+  const [clients, setClients] = useState<AdminClientOption[]>([]);
+  const [publications, setPublications] = useState<GlobalMetaScheduledPublication[]>([]);
+  const [summary, setSummary] = useState({ scheduled: 0, publishing: 0, publishedToday: 0, failed: 0 });
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
+  const [clientAccountId, setClientAccountId] = useState("");
+  const [platform, setPlatform] = useState("");
+  const [mediaType, setMediaType] = useState("");
+  const [status, setStatus] = useState("");
+  const [periodFrom, setPeriodFrom] = useState(() => metaCenterDateKey(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
+  const [periodTo, setPeriodTo] = useState(() => metaCenterDateKey(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0)));
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [rescheduleOpen, setRescheduleOpen] = useState(false);
+  const [rescheduleAt, setRescheduleAt] = useState("");
+  const [actionPending, setActionPending] = useState(false);
+  const rescheduleTriggerRef = useRef<HTMLButtonElement>(null);
+  const limit = view === "calendar" ? 200 : 100;
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError("");
+    try {
+      let from = new Date(`${periodFrom}T00:00:00`);
+      let until = new Date(`${periodTo}T00:00:00`);
+      until.setDate(until.getDate() + 1);
+
+      if (view === "calendar") {
+        const visibleFrom = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+        visibleFrom.setDate(visibleFrom.getDate() - visibleFrom.getDay());
+        const visibleUntil = new Date(visibleFrom);
+        visibleUntil.setDate(visibleUntil.getDate() + 42);
+        if (visibleFrom < from) from = visibleFrom;
+        if (visibleUntil > until) until = visibleUntil;
+      }
+
+      const result = await loadGlobalMetaPublications({
+        clientAccountId: clientAccountId || undefined,
+        platform: platform || undefined,
+        mediaType: mediaType || undefined,
+        status: status || undefined,
+        from: from.toISOString(),
+        to: until.toISOString(),
+        limit,
+        offset: view === "calendar" ? 0 : offset,
+      });
+      setPublications(result.publications);
+      setSummary(result.summary);
+      setTotal(result.total);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível carregar as publicações Meta.");
+    } finally {
+      setLoading(false);
+    }
+  }, [anchor, clientAccountId, limit, mediaType, offset, periodFrom, periodTo, platform, status, view]);
+
+  useEffect(() => { void listAdminClients().then((result) => setClients(result.items)).catch(() => setClients([])); }, []);
+  useEffect(() => { void refresh(); const timer = window.setInterval(() => { if (document.visibilityState === "visible") void refresh(); }, 60_000); return () => window.clearInterval(timer); }, [refresh]);
+  useEffect(() => { setOffset(0); }, [clientAccountId, mediaType, periodFrom, periodTo, platform, status, view]);
+
+  const groups = useMemo(() => groupMetaPublications(publications), [publications]);
+  const selected = selectedKey ? groups.find((group) => group.key === selectedKey) ?? null : null;
+  const selectedCardRoute = selected ? adminCardRoute(selected.clientSlug, selected.cardId) : null;
+  const calendarStart = useMemo(() => {
+    const first = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
+    first.setDate(first.getDate() - first.getDay());
+    return first;
+  }, [anchor]);
+  const calendarDays = useMemo(() => Array.from({ length: 42 }, (_, index) => {
+    const day = new Date(calendarStart);
+    day.setDate(day.getDate() + index);
+    return day;
+  }), [calendarStart]);
+  const groupsByDay = useMemo(() => groups.reduce((map, group) => {
+    const key = metaCenterDateKey(group.scheduledAt);
+    map.set(key, [...(map.get(key) ?? []), group]);
+    return map;
+  }, new Map<string, MetaPublicationGroup[]>()), [groups]);
+
+  const moveMonth = (direction: -1 | 1) => {
+    const next = new Date(anchor.getFullYear(), anchor.getMonth() + direction, 1);
+    setAnchor(next);
+    setPeriodFrom(metaCenterDateKey(new Date(next.getFullYear(), next.getMonth(), 1)));
+    setPeriodTo(metaCenterDateKey(new Date(next.getFullYear(), next.getMonth() + 1, 0)));
   };
-  return <div className="contract-acceptance-backdrop"><section className="contract-acceptance-modal"><header><span>{t("PRIMEIRO ACESSO")}</span><h1>{t("Antes de começar, leia seu contrato")}</h1><p>{accountName}, {t("este documento foi disponibilizado para sua conta. Revise os termos com calma.")}</p></header><div className="contract-acceptance-paper"><ContractDocumentPreview contract={contractRecordDraft(contract)} clientName={accountName} /></div><footer><small>{t("Ao clicar, você confirma que leu e está de acordo com os termos apresentados.")}</small><button className="gradient-button" onClick={accept}>{t("Li e aceito o contrato")}</button></footer></section></div>;
+  const performCancel = async (ids: string[]) => {
+    if (!ids.length || !window.confirm(ids.length > 1 ? "Cancelar estes agendamentos?" : "Cancelar este agendamento?")) return;
+    setActionPending(true);
+    try { await cancelMetaPublications(ids); setSelectedKey(null); await refresh(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível cancelar."); }
+    finally { setActionPending(false); }
+  };
+  const performReschedule = async () => {
+    if (!selected || !rescheduleAt) return;
+    const ids = selected.publications.filter((item) => item.status === "scheduled").map((item) => item.id);
+    setActionPending(true);
+    try {
+      await rescheduleMetaPublications(ids, new Date(rescheduleAt).toISOString(), Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC");
+      setSelectedKey(null); setRescheduleOpen(false); await refresh();
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível reagendar."); }
+    finally { setActionPending(false); }
+  };
+  const closeReschedule = () => {
+    setRescheduleOpen(false);
+    window.requestAnimationFrame(() => rescheduleTriggerRef.current?.focus());
+  };
+  const keepRescheduleFocus = (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key !== "Tab") return;
+    const focusable = Array.from(event.currentTarget.querySelectorAll<HTMLElement>("button:not(:disabled), input:not(:disabled)"));
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  };
+  const openReschedule = () => {
+    if (!selected) return;
+    const date = new Date(selected.scheduledAt);
+    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
+    setRescheduleAt(local);
+    setRescheduleOpen(true);
+  };
+
+  const openGroup = (group: MetaPublicationGroup) => setSelectedKey(group.key);
+
+  const platformChips = (group: MetaPublicationGroup) => <div className="meta-center-platforms">{group.publications.map((item) => <span key={item.id} className={`${item.platform} ${item.status}`} title={`${item.platform === "instagram" ? "Instagram" : "Facebook"}: ${metaPublicationStatusLabel(item.status)}`}>{item.platform === "instagram" ? "IG" : "FB"}<i /></span>)}</div>;
+  const thumbnail = (group: MetaPublicationGroup) => <div className="meta-center-thumb">{group.preview ? group.preview.kind === "video" ? <video src={group.preview.url} muted playsInline preload="metadata" /> : <img src={group.preview.url} alt="" /> : <span>{group.publications[0]?.platform === "instagram" ? "◎" : "f"}</span>}{group.mediaType === "carousel" && group.mediaCount > 1 ? <b>+{group.mediaCount - 1}</b> : null}</div>;
+
+  return <section className="meta-center">
+    <div className="meta-center-summary"><article className="scheduled"><span>Agendados</span><strong>{summary.scheduled}</strong></article><article className="publishing"><span>Publicando</span><strong>{summary.publishing}</strong></article><article className="published"><span>Publicados hoje</span><strong>{summary.publishedToday}</strong></article><article className="failed"><span>Com erro</span><strong>{summary.failed}</strong></article></div>
+    <div className="meta-center-toolbar"><div className="meta-center-view"><button className={view === "calendar" ? "active" : ""} onClick={() => setView("calendar")}><UiIcon name="calendar" />Calendário</button><button className={view === "list" ? "active" : ""} onClick={() => setView("list")}><UiIcon name="layers" />Lista</button></div><div className="meta-center-filters"><select value={clientAccountId} onChange={(event) => setClientAccountId(event.target.value)}><option value="">Todos os clientes</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select><select value={platform} onChange={(event) => setPlatform(event.target.value)}><option value="">Todas as plataformas</option><option value="instagram">Instagram</option><option value="facebook">Facebook</option></select><select value={mediaType} onChange={(event) => setMediaType(event.target.value)}><option value="">Todos os tipos</option><option value="image">Post</option><option value="carousel">Carrossel</option><option value="reel">Reel</option><option value="story">Story</option></select><select value={status} onChange={(event) => setStatus(event.target.value)}><option value="">Todos os status</option><option value="scheduled">Agendado</option><option value="publishing">Publicando</option><option value="published">Publicado</option><option value="failed">Falhou</option><option value="cancelled">Cancelado</option></select><input type="date" value={periodFrom} onChange={(event) => setPeriodFrom(event.target.value)} /><input type="date" value={periodTo} onChange={(event) => setPeriodTo(event.target.value)} /></div></div>
+    {error ? <p className="meta-center-error">{error}</p> : null}
+    {view === "calendar" ? <div className="meta-center-calendar"><header><button onClick={() => moveMonth(-1)} aria-label="Mês anterior">‹</button><h3>{anchor.toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}</h3><button onClick={() => moveMonth(1)} aria-label="Próximo mês">›</button></header><div className="meta-center-weekdays">{["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"].map((day) => <span key={day}>{day}</span>)}</div><div className="meta-center-month">{calendarDays.map((day) => { const dayGroups = groupsByDay.get(metaCenterDateKey(day)) ?? []; return <div key={day.toISOString()} className={day.getMonth() === anchor.getMonth() ? "" : "outside"}><b>{day.getDate()}</b>{dayGroups.map((group) => <button key={group.key} onClick={() => openGroup(group)}><time>{new Date(group.scheduledAt).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</time><strong>{group.cardTitle}</strong>{platformChips(group)}</button>)}</div>; })}</div></div> : <div className="meta-center-list"><div className="meta-center-list-head"><span>Conteúdo</span><span>Cliente</span><span>Data / hora</span><span>Tipo</span><span>Plataformas</span><span>Status</span></div>{groups.map((group) => <button key={group.key} className="meta-center-row" onClick={() => openGroup(group)}>{thumbnail(group)}<div><strong>{group.cardTitle}</strong><small>{group.caption || "Sem legenda"}</small></div><span>{group.clientName}</span><time>{new Date(group.scheduledAt).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</time><span>{metaPublicationTypeLabel(group.mediaType)}</span>{platformChips(group)}<span>{group.publications.map((item) => metaPublicationStatusLabel(item.status)).join(" · ")}</span></button>)}{!loading && groups.length === 0 ? <p className="meta-center-empty">Nenhuma publicação encontrada neste período.</p> : null}<footer><button disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>Anterior</button><span>{total ? `${offset + 1}–${Math.min(offset + limit, total)} de ${total}` : "0 resultados"}</span><button disabled={offset + limit >= total} onClick={() => setOffset(offset + limit)}>Próxima</button></footer></div>}
+    {loading ? <div className="meta-center-loading">Carregando publicações…</div> : null}
+    {selected ? createPortal(<div className="meta-center-backdrop" onMouseDown={() => setSelectedKey(null)}><aside className="meta-center-detail" onMouseDown={(event) => event.stopPropagation()}><header><div><span>PUBLICAÇÃO META</span><h2>{selected.cardTitle}</h2><p>{selected.clientName}</p></div><button onClick={() => setSelectedKey(null)}>×</button></header>{thumbnail(selected)}<dl><div><dt>Data e hora</dt><dd>{new Date(selected.scheduledAt).toLocaleString("pt-BR")} · {selected.timezone}</dd></div>{selected.destinationName && selected.destinationName !== selected.clientName ? <div><dt>Destino</dt><dd>{selected.destinationName}</dd></div> : null}<div><dt>Tipo</dt><dd>{metaPublicationTypeLabel(selected.mediaType)}</dd></div>{selected.locationName ? <div><dt>Localização</dt><dd>⌖ {selected.locationName}</dd></div> : null}{selected.caption ? <div><dt>Legenda</dt><dd>{selected.caption}</dd></div> : null}</dl><section className="meta-center-platform-detail">{selected.publications.map((item) => <article key={item.id} className={item.status}><div><strong>{item.platform === "instagram" ? "Instagram" : "Facebook"}</strong><span>{metaPublicationStatusLabel(item.status)}</span></div>{item.lastError ? <p>{item.lastError}</p> : null}<footer>{item.publishedPermalink ? <a href={item.publishedPermalink} target="_blank" rel="noreferrer">Abrir publicação</a> : null}{["scheduled", "failed"].includes(item.status) ? <button disabled={actionPending} onClick={() => void performCancel([item.id])}>Cancelar {item.platform === "instagram" ? "Instagram" : "Facebook"}</button> : null}</footer></article>)}</section><footer className="meta-center-detail-actions">{selectedCardRoute ? <button className="ghost-button" onClick={() => navigate(selectedCardRoute)}>Abrir card</button> : null}{selected.publications.some((item) => item.status === "scheduled") ? <button ref={rescheduleTriggerRef} className="ghost-button" disabled={actionPending} onClick={openReschedule}>Reagendar</button> : null}{selected.publications.filter((item) => ["scheduled", "failed"].includes(item.status)).length > 1 ? <button className="danger-button" disabled={actionPending} onClick={() => void performCancel(selected.publications.filter((item) => ["scheduled", "failed"].includes(item.status)).map((item) => item.id))}>Cancelar ambos</button> : null}</footer></aside></div>, document.body) : null}
+    {selected && rescheduleOpen ? createPortal(<div className="modal-backdrop meta-reschedule-backdrop" onMouseDown={closeReschedule}><section className="meta-reschedule-modal" role="dialog" aria-modal="true" aria-labelledby="meta-reschedule-title" onKeyDown={keepRescheduleFocus} onMouseDown={(event) => event.stopPropagation()}><header><div><span>REAGENDAR</span><h3 id="meta-reschedule-title">{selected.cardTitle}</h3></div><button aria-label="Fechar reagendamento" onClick={closeReschedule}>×</button></header><label>Nova data e hora<input autoFocus type="datetime-local" value={rescheduleAt} onChange={(event) => setRescheduleAt(event.target.value)} /></label><small>As plataformas ainda agendadas serão movidas juntas.</small><footer><button className="ghost-button" onClick={closeReschedule}>Cancelar</button><button className="gradient-button" disabled={!rescheduleAt || actionPending} onClick={() => void performReschedule()}>{actionPending ? "Salvando…" : "Confirmar"}</button></footer></section></div>, document.body) : null}
+  </section>;
 }
 
 function InternalAreaPage({ session, onLogout }: { session: SessionUser | null; onLogout: () => void }) {
   const { area = "" } = useParams();
   const [reportCreationVersion, setReportCreationVersion] = useState(1);
   const [invoiceCreationVersion, setInvoiceCreationVersion] = useState(0);
-  const [proposalCreationVersion, setProposalCreationVersion] = useState(1);
+  const [proposalCreationVersion, setProposalCreationVersion] = useState(0);
   const [contractCreationVersion, setContractCreationVersion] = useState(1);
   const [memberCreationVersion, setMemberCreationVersion] = useState(0);
   const page = INTERNAL_AREAS[area];
   if (!session || session.role === "client") return <Navigate to={getDefaultRoute(session)} replace />;
+  if (area === "publicacoes-meta" && session.role !== "super_admin") return <Navigate to="/dashboard" replace />;
   if (!page || (page.restricted && session.role === "collaborator")) return <Navigate to="/dashboard" replace />;
-  const metrics = area === "equipe" ? [{ label: "Papéis", value: "4", note: "Níveis de acesso", icon: <UiIcon name="users" />, tone: "clients" }, { label: "Clientes", value: "—", note: "Atribuições ativas", icon: <UiIcon name="link" />, tone: "posts" }] : area === "relatorios" ? [{ label: "Relatórios", value: "—", note: "Períodos disponíveis", icon: <UiIcon name="file" />, tone: "posts" }, { label: "Indicadores", value: "—", note: "Acompanhe resultados", icon: <UiIcon name="check" />, tone: "approved" }] : area === "faturamento" ? [{ label: "Faturas", value: "—", note: "Lançamentos da operação", icon: <UiIcon name="receipt" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Cobranças centralizadas", icon: <UiIcon name="check" />, tone: "approved" }] : area === "controle-de-tempo" ? [{ label: "Cronômetro", value: "◷", note: "Continua após sair", icon: <UiIcon name="clock" />, tone: "posts" }, { label: "Relatórios", value: "✓", note: "Separados por cliente", icon: <UiIcon name="file" />, tone: "approved" }] : [{ label: "Em andamento", value: "—", note: "Dados desta área", icon: <UiIcon name="clock" />, tone: "pending" }, { label: "Organização", value: "✓", note: "Operação centralizada", icon: <UiIcon name="check" />, tone: "approved" }];
-  const content = area === "relatorios" ? <ReportsWorkspace newReportSignal={reportCreationVersion} /> : area === "faturamento" ? <BillingWorkspace session={session} newInvoiceSignal={invoiceCreationVersion} /> : area === "controle-de-tempo" ? <TimeTrackingWorkspace /> : area === "propostas" ? <ProposalsWorkspace newProposalSignal={proposalCreationVersion} /> : area === "contratos" ? <ContractsWorkspace newContractSignal={contractCreationVersion} /> : area === "equipe" ? <TeamManagementWorkspace session={session} newMemberSignal={memberCreationVersion} /> : area === "datas-comemorativas" ? <SeasonalWorkspace session={session} /> : area === "calendario-social" ? <SocialCalendarWorkspace session={session} /> : area === "briefs-design" ? <DesignBriefsWorkspace /> : <section className="internal-area-card glass"><div className="internal-area-empty"><UiIcon name="spark" /><strong>Esta página é privada para o seu nível de acesso.</strong><span>O conteúdo desta área será organizado aqui.</span></div></section>;
-  const action = area === "relatorios" ? <button className="gradient-button page-context-action" onClick={() => setReportCreationVersion((current) => current + 1)}>+ Novo relatório</button> : area === "faturamento" ? <button className="gradient-button page-context-action" onClick={() => setInvoiceCreationVersion((current) => current + 1)}>+ Nova fatura</button> : area === "propostas" ? <button className="gradient-button page-context-action" onClick={() => setProposalCreationVersion((current) => current + 1)}>+ Nova proposta</button> : area === "contratos" ? <button className="gradient-button page-context-action" onClick={() => setContractCreationVersion((current) => current + 1)}>+ Novo contrato</button> : area === "equipe" && session.role === "super_admin" ? <button className="gradient-button page-context-action" onClick={() => setMemberCreationVersion((current) => current + 1)}>+ Novo membro</button> : null;
-  const titleIcon = area === "equipe" ? <UiIcon name="users" /> : area === "briefs-design" ? <UiIcon name="brush" /> : area === "relatorios" ? <UiIcon name="file" /> : area === "faturamento" ? <UiIcon name="receipt" /> : area === "controle-de-tempo" ? <UiIcon name="clock" /> : area === "propostas" ? <UiIcon name="send" /> : area === "contratos" ? <UiIcon name="check" /> : area === "calendario-social" ? <UiIcon name="calendar" /> : area === "datas-comemorativas" ? <UiIcon name="spark" /> : undefined;
-  return <div className="page-grid admin-layout internal-area-layout"><AdminRail session={session} /><main className="main-column"><WorkspaceNavbar session={session} onLogout={onLogout} />{area !== "controle-de-tempo" ? <PageContextBanner eyebrow="Área da operação" title={page.title} description={page.description} metrics={metrics} action={action} titleClassName={["relatorios", "faturamento", "propostas", "equipe", "calendario-social", "briefs-design", "datas-comemorativas", "contratos"].includes(area) ? "billing-banner-title" : undefined} titleIcon={titleIcon} /> : null}{content}</main></div>;
-}
-
-type SocialCalendarView = "day" | "week" | "month" | "year";
-type SocialCalendarContentFilter = "all" | "posts" | "appointments";
-
-function socialCalendarRange(anchor: Date, view: SocialCalendarView) {
-  if (view !== "year") return agendaViewRange(anchor, view);
-  const start = new Date(anchor.getFullYear(), 0, 1);
-  const end = new Date(anchor.getFullYear() + 1, 0, 1);
-  const count = Math.round((end.getTime() - start.getTime()) / 86_400_000);
-  const days = Array.from({ length: count }, (_, index) => {
-    const day = new Date(start);
-    day.setDate(start.getDate() + index);
-    return day;
-  });
-  return { from: start.toISOString(), to: end.toISOString(), days };
-}
-
-function moveSocialCalendarDate(date: Date, view: SocialCalendarView, direction: -1 | 1) {
-  const next = new Date(date);
-  if (view === "year") next.setFullYear(next.getFullYear() + direction);
-  else if (view === "month") next.setMonth(next.getMonth() + direction);
-  else next.setDate(next.getDate() + (view === "week" ? 7 : 1) * direction);
-  return next;
-}
-
-function formatSocialCalendarTitle(anchor: Date, view: SocialCalendarView) {
-  if (view === "year") return String(anchor.getFullYear());
-  return formatAgendaRangeTitle(anchor, view);
-}
-
-function SocialCalendarWorkspace({ session }: { session: SessionUser }) {
-  const [month, setMonth] = useState(() => new Date());
-  const [calendarView, setCalendarView] = useState<SocialCalendarView>(() => window.matchMedia("(max-width: 820px)").matches ? "week" : "month");
-  const [events, setEvents] = useState<CalendarEvent[]>([]);
-  const [appointments, setAppointments] = useState<AgendaEvent[]>([]);
-  const [clients, setClients] = useState<AdminClientOption[]>([]);
-  const [labels, setLabels] = useState<AgendaLabel[]>([]);
-  const [selectedClient, setSelectedClient] = useState("all");
-  const [contentFilter, setContentFilter] = useState<SocialCalendarContentFilter>("all");
-  const [selectedPost, setSelectedPost] = useState<CalendarEvent | null>(null);
-  const [selectedAppointment, setSelectedAppointment] = useState<AgendaEvent | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [startsAt, setStartsAt] = useState("");
-  const [clientAccountId, setClientAccountId] = useState("");
-  const [labelId, setLabelId] = useState("");
-  const [color, setColor] = useState("#c9f7df");
-  const [saving, setSaving] = useState(false);
-  const [refresh, setRefresh] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const artworkHover = useCalendarArtworkHover();
-  const range = useMemo(() => socialCalendarRange(month, calendarView), [month, calendarView]);
-
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setError("");
-    Promise.all([
-      loadCalendarOverview(range.from.slice(0, 10), range.to.slice(0, 10)),
-      loadAgendaEvents(range.from, range.to),
-      listAdminClients().catch(() => ({ items: [] })),
-      loadAgendaLabels().catch(() => ({ items: [] })),
-    ])
-      .then(([calendar, agenda, clientResult, labelResult]) => {
-        if (!active) return;
-        setEvents(calendar.events);
-        setAppointments(expandAgendaEvents(agenda.items, range.from, range.to));
-        setClients(clientResult.items);
-        setLabels(labelResult.items);
-      })
-      .catch(() => {
-        if (!active) return;
-        setEvents([]);
-        setAppointments([]);
-        setError("Não foi possível carregar os itens agora. Tente novamente em instantes.");
-      })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
-  }, [range.from, range.to, refresh]);
-
-  const selectedClientRecord = clients.find((client) => client.slug === selectedClient);
-  const visibleEvents = events.filter((event) => (selectedClient === "all" || event.clientSlug === selectedClient) && contentFilter !== "appointments");
-  const visibleAppointments = appointments.filter((event) => (selectedClient === "all" || event.clientAccountId === selectedClientRecord?.id) && contentFilter !== "posts");
-  const eventsByDay = new Map<string, CalendarEvent[]>();
-  const appointmentsByDay = new Map<string, AgendaEvent[]>();
-  visibleEvents.forEach((event) => { const key = event.publishDate.slice(0, 10); eventsByDay.set(key, [...(eventsByDay.get(key) ?? []), event]); });
-  visibleAppointments.forEach((event) => { const key = localDateKey(new Date(event.startsAt)); appointmentsByDay.set(key, [...(appointmentsByDay.get(key) ?? []), event]); });
-  const mobileDays = calendarView === "year"
-    ? range.days.filter((day) => (eventsByDay.get(localDateKey(day))?.length ?? 0) + (appointmentsByDay.get(localDateKey(day))?.length ?? 0) > 0)
-    : calendarView === "month"
-      ? range.days.filter((day) => day.getMonth() === month.getMonth() && day.getFullYear() === month.getFullYear())
-      : range.days;
-
-  function openCreateForDay(day = new Date()) {
-    const date = new Date(day);
-    date.setHours(9, 0, 0, 0);
-    setTitle(""); setDescription(""); setStartsAt(toDateTimeLocal(date.toISOString())); setClientAccountId(selectedClientRecord?.id ?? ""); setLabelId(""); setColor("#c9f7df"); setError(""); setCreateOpen(true);
-  }
-
-  async function submitAppointment(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (session.source !== "api") { setError("Entre com sua conta para salvar este compromisso no calendário."); return; }
-    if (!title.trim() || !startsAt) { setError("Informe o nome e a data do compromisso."); return; }
-    setSaving(true); setError("");
-    try {
-      await createAgendaEvent({ title: title.trim(), taskDescription: description.trim() || null, startsAt, color, clientAccountId: clientAccountId || null, labelId: labelId || null, recurrenceType: "none" });
-      setCreateOpen(false); setRefresh((value) => value + 1);
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "Não foi possível criar o compromisso."); }
-    finally { setSaving(false); }
-  }
-
-  const totalVisible = visibleEvents.length + visibleAppointments.length;
-  return <section className="social-calendar-workspace glass">
-    <header className="social-calendar-toolbar">
-      <div className="social-calendar-month-nav"><button onClick={() => setMonth((value) => moveSocialCalendarDate(value, calendarView, -1))} aria-label="Período anterior">‹</button><h2>{formatSocialCalendarTitle(month, calendarView)}</h2><button onClick={() => setMonth((value) => moveSocialCalendarDate(value, calendarView, 1))} aria-label="Próximo período">›</button></div>
-      <div className="social-calendar-filters"><label>Cliente<select value={selectedClient} onChange={(event) => setSelectedClient(event.target.value)}><option value="all">Todos os clientes</option>{clients.map((client) => <option key={client.id} value={client.slug}>{client.name}</option>)}</select></label><button className="ghost-button" onClick={() => setMonth(new Date())}>Hoje</button></div>
-    </header>
-    <nav className="social-calendar-view-switch" aria-label="Visualização do calendário">{(["day", "week", "month", "year"] as SocialCalendarView[]).map((view) => <button key={view} className={calendarView === view ? "active" : ""} onClick={() => setCalendarView(view)}>{view === "day" ? "Dia" : view === "week" ? "Semana" : view === "month" ? "Mês" : "Ano"}</button>)}</nav>
-    <div className="social-calendar-summary"><span><i className="scheduled" /> Post agendado</span><span><i className="pending" /> Compromisso</span><strong>{loading ? "Carregando..." : `${totalVisible} ${totalVisible === 1 ? "item no período" : "itens no período"}`}</strong></div>
-    <div className="social-calendar-mobile-filters"><label>Mostrar<select value={contentFilter} onChange={(event) => setContentFilter(event.target.value as SocialCalendarContentFilter)}><option value="all">Tudo</option><option value="posts">Posts</option><option value="appointments">Compromissos</option></select></label><button className="gradient-button" onClick={() => openCreateForDay()}>＋ Compromisso</button></div>
-    {error && !createOpen ? <p className="form-feedback error-text">{error}</p> : null}
-    <div className="social-calendar-desktop"><div className="social-calendar-weekdays">{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((day) => <span key={day}>{day}</span>)}</div><div className="social-calendar-grid">{range.days.map((day) => { const key = localDateKey(day); const dayEvents = eventsByDay.get(key) ?? []; const inMonth = day.getMonth() === month.getMonth(); return <article key={key} className={inMonth ? "social-calendar-day" : "social-calendar-day muted"}><time>{day.getDate()}</time>{dayEvents.slice(0, 4).map((event) => <button key={event.id} type="button" className="social-calendar-event" style={{ "--calendar-event-color": event.color ?? "#6861e8" } as CSSProperties} onMouseEnter={(mouseEvent) => event.mediaUrls?.[0] ? artworkHover.show(mouseEvent, event.mediaUrls[0], event.title) : undefined} onMouseMove={(mouseEvent) => event.mediaUrls?.[0] ? artworkHover.move(mouseEvent, event.mediaUrls[0], event.title) : undefined} onMouseLeave={artworkHover.hide} onClick={() => setSelectedPost(event)}><span>{event.title}</span><small>{event.clientName ?? "Cliente"}</small></button>)}{dayEvents.length > 4 ? <b className="social-calendar-more">+{dayEvents.length - 4} mais</b> : null}</article>; })}</div></div>
-    <div className="social-calendar-mobile">{mobileDays.length ? mobileDays.map((day) => { const key = localDateKey(day); const dayPosts = eventsByDay.get(key) ?? []; const dayAppointments = appointmentsByDay.get(key) ?? []; const isToday = key === localDateKey(new Date()); return <article className={`social-agenda-day${isToday ? " today" : ""}`} key={key}><header><div><time>{day.getDate()}</time><span><strong>{new Intl.DateTimeFormat("pt-BR", { weekday: "long" }).format(day)}</strong><small>{new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric" }).format(day)}</small></span></div><button onClick={() => openCreateForDay(day)} aria-label={`Adicionar compromisso em ${new Intl.DateTimeFormat("pt-BR").format(day)}`}>＋</button></header><div className="social-agenda-items">{dayPosts.map((post) => <button key={post.id} className="social-agenda-item post" onClick={() => setSelectedPost(post)}><span className="social-agenda-time">{post.publishTime?.slice(0, 5) || "Post"}</span>{post.mediaUrls?.[0] ? <img src={post.mediaUrls[0]} alt="" /> : <i><UiIcon name="send" /></i>}<span><strong>{post.title}</strong><small>{post.clientName ?? "Cliente"} · Post agendado</small></span><b>›</b></button>)}{dayAppointments.map((appointment) => <button key={appointment.id} className="social-agenda-item appointment" style={{ "--calendar-event-color": appointment.color } as CSSProperties} onClick={() => setSelectedAppointment(appointment)}><span className="social-agenda-time">{formatAgendaTime(appointment.startsAt)}</span><i><UiIcon name="clock" /></i><span><strong>{appointment.title}</strong><small>{appointment.clientName || appointment.labelName || "Compromisso"}</small></span><b>›</b></button>)}{dayPosts.length + dayAppointments.length === 0 ? <button className="social-agenda-empty" onClick={() => openCreateForDay(day)}>＋ Adicionar compromisso</button> : null}</div></article>; }) : <div className="social-agenda-year-empty"><UiIcon name="calendar" /><strong>Nenhum item neste ano</strong><button className="gradient-button" onClick={() => openCreateForDay()}>Adicionar compromisso</button></div>}</div>
-    {createOpen ? createPortal(<div className="modal-backdrop agenda-modal-backdrop" onMouseDown={() => { if (!saving) setCreateOpen(false); }}><form className="agenda-create-modal social-agenda-create-modal" onMouseDown={(event) => event.stopPropagation()} onSubmit={submitAppointment}><div className="column-editor-head"><div><p className="eyebrow">Agenda social</p><h3>Novo compromisso</h3></div><button type="button" className="icon-close" onClick={() => setCreateOpen(false)} aria-label="Fechar">×</button></div><label className="field-stack">Nome<input autoFocus value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Ex.: Revisar pauta do cliente" /></label><label className="field-stack">Descrição<textarea rows={4} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Detalhes do compromisso" /></label><label className="field-stack">Data e horário<input type="datetime-local" value={startsAt} onChange={(event) => setStartsAt(event.target.value)} /></label><label className="field-stack">Cliente<select value={clientAccountId} onChange={(event) => setClientAccountId(event.target.value)}><option value="">Sem cliente específico</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label><label className="field-stack">Etiqueta<select value={labelId} onChange={(event) => { const next = event.target.value; setLabelId(next); const label = labels.find((item) => item.id === next); if (label) setColor(label.color); }}><option value="">Sem etiqueta</option>{labels.map((label) => <option key={label.id} value={label.id}>{label.name}</option>)}</select></label>{error ? <p className="form-feedback error-text">{error}</p> : null}<button className="gradient-button" type="submit" disabled={saving}>{saving ? "Salvando..." : "Adicionar compromisso"}</button></form></div>, document.body) : null}
-    {selectedPost ? createPortal(<div className="modal-backdrop" onMouseDown={() => setSelectedPost(null)}><section className="agenda-detail-modal social-agenda-detail-modal" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Post agendado</p><h3>{selectedPost.title}</h3></div><button className="icon-close" onClick={() => setSelectedPost(null)} aria-label="Fechar">×</button></header>{selectedPost.mediaUrls?.[0] ? <img className="social-agenda-detail-image" src={selectedPost.mediaUrls[0]} alt={selectedPost.title} /> : null}<dl><div><dt>Quando</dt><dd>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full" }).format(new Date(`${selectedPost.publishDate.slice(0, 10)}T12:00:00`))}{selectedPost.publishTime ? ` às ${selectedPost.publishTime.slice(0, 5)}` : ""}</dd></div><div><dt>Cliente</dt><dd>{selectedPost.clientName ?? "Cliente"}</dd></div><div><dt>Status</dt><dd>{selectedPost.status}</dd></div></dl></section></div>, document.body) : null}
-    {selectedAppointment ? createPortal(<div className="modal-backdrop" onMouseDown={() => setSelectedAppointment(null)}><section className="agenda-detail-modal social-agenda-detail-modal" onMouseDown={(event) => event.stopPropagation()}><header><div><p className="eyebrow">Compromisso</p><h3>{selectedAppointment.title}</h3></div><button className="icon-close" onClick={() => setSelectedAppointment(null)} aria-label="Fechar">×</button></header><p>{selectedAppointment.taskDescription || "Sem descrição."}</p><dl><div><dt>Quando</dt><dd>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "full", timeStyle: "short" }).format(new Date(selectedAppointment.startsAt))}</dd></div><div><dt>Cliente</dt><dd>{selectedAppointment.clientName || "Sem cliente específico"}</dd></div><div><dt>Etiqueta</dt><dd>{selectedAppointment.labelName || "Sem etiqueta"}</dd></div></dl></section></div>, document.body) : null}
-    {artworkHover.preview}
-  </section>;
+  const metrics: PageMetric[] = [];
+  const content = area === "relatorios" ? <ReportsWorkspace newReportSignal={reportCreationVersion} /> : area === "faturamento" ? <BillingWorkspace session={session} newInvoiceSignal={invoiceCreationVersion} /> : area === "controle-de-tempo" ? <TimeTrackingWorkspace /> : area === "propostas" ? <ProposalsWorkspace newProposalSignal={proposalCreationVersion} brandLogo={liegePaschoaliniLogo} /> : area === "contratos" ? <ContractsWorkspace newContractSignal={contractCreationVersion} /> : area === "equipe" ? <TeamManagementWorkspace session={session} newMemberSignal={memberCreationVersion} /> : area === "datas-comemorativas" ? <SeasonalWorkspace session={session} /> : area === "calendario-social" ? <SocialCalendarWorkspace session={session} /> : area === "publicacoes-meta" ? <MetaPublicationsWorkspace /> : area === "briefs-design" ? <BriefsFoundationWorkspace viewerId={session.id} /> : <section className="internal-area-card glass"><div className="internal-area-empty"><UiIcon name="spark" /><strong>Esta página é privada para o seu nível de acesso.</strong><span>O conteúdo desta área será organizado aqui.</span></div></section>;
+  const action = area === "publicacoes-meta" ? <MetaConnectionHeaderCards /> : area === "relatorios" ? <button className="gradient-button page-context-action" onClick={() => setReportCreationVersion((current) => current + 1)}>+ Novo relatório</button> : area === "faturamento" ? <button className="gradient-button page-context-action" onClick={() => setInvoiceCreationVersion((current) => current + 1)}>+ Nova fatura</button> : area === "propostas" ? <button className="gradient-button page-context-action" onClick={() => setProposalCreationVersion((current) => current + 1)}>+ Nova proposta</button> : area === "contratos" ? <button className="gradient-button page-context-action" onClick={() => setContractCreationVersion((current) => current + 1)}>+ Novo contrato</button> : area === "equipe" && session.role === "super_admin" ? <button className="gradient-button page-context-action" onClick={() => setMemberCreationVersion((current) => current + 1)}>+ Novo membro</button> : null;
+  const titleIcon = area === "equipe" ? <UiIcon name="users" /> : area === "briefs-design" ? <UiIcon name="brush" /> : area === "relatorios" ? <UiIcon name="file" /> : area === "faturamento" ? <UiIcon name="receipt" /> : area === "controle-de-tempo" ? <UiIcon name="clock" /> : area === "propostas" ? <UiIcon name="send" /> : area === "contratos" ? <UiIcon name="check" /> : area === "calendario-social" ? <UiIcon name="calendar" /> : area === "publicacoes-meta" ? <UiIcon name="layers" /> : area === "datas-comemorativas" ? <UiIcon name="spark" /> : undefined;
+  return <div className="page-grid admin-layout internal-area-layout"><AdminRail session={session} /><main className="main-column"><WorkspaceNavbar session={session} onLogout={onLogout} />{area !== "controle-de-tempo" && area !== "faturamento" && area !== "datas-comemorativas" && area !== "briefs-design" ? <PageContextBanner eyebrow="Área da operação" title={page.title} description={page.description} metrics={metrics} action={action} titleClassName={["relatorios", "faturamento", "propostas", "equipe", "calendario-social", "publicacoes-meta", "briefs-design", "datas-comemorativas", "contratos"].includes(area) ? "billing-banner-title" : undefined} titleIcon={titleIcon} /> : null}{content}</main></div>;
 }
 
 type TeamRole = ManagedUser["globalRole"];

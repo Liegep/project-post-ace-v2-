@@ -1,10 +1,11 @@
+import { setReceiptSignature } from "../invoices/billing-settings.repository.js";
 import crypto from "node:crypto";
 import { mkdir, open, readFile, rename, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { FastifyPluginAsync, FastifyRequest } from "fastify";
 import multipart from "@fastify/multipart";
 import sharp from "sharp";
-import { assertClientAccess, assertInternalAccess, assertPortalAccessLevel } from "../auth/auth.access.js";
+import { assertClientAccess, assertInternalAccess, assertPortalAccessLevel, assertSuperAdmin } from "../auth/auth.access.js";
 import { findClientPermissionsByAccountId } from "../clients/clients.repository.js";
 import { getUploadDirectory } from "./uploads.storage.js";
 
@@ -37,12 +38,15 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
     },
   });
 
-  const storeUpload = async (request: FastifyRequest) => {
+  const storeUpload = async (request: FastifyRequest, signature = false) => {
     const file = await request.file();
     if (!file) {
       throw app.httpErrors.badRequest("Escolha um arquivo para enviar.");
     }
 
+    if (signature && !["image/png", "image/jpeg", "image/webp"].includes(file.mimetype)) {
+      throw app.httpErrors.badRequest("Envie a assinatura em PNG, JPG ou WEBP.");
+    }
     const format = allowedTypes.get(file.mimetype);
     if (!format) {
       throw app.httpErrors.badRequest("Envie uma imagem, vídeo ou documento PDF válido.");
@@ -69,8 +73,14 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
     let output = buffer;
     if (format.kind === "image") {
       try {
+        if (signature) {
+          const metadata = await sharp(buffer).metadata();
+          if (!metadata.format || !["png", "jpeg", "webp"].includes(metadata.format)) {
+            throw new Error("Formato de assinatura inválido.");
+          }
+        }
         output = await sharp(buffer, { animated: file.mimetype === "image/gif" })
-          .webp({ quality: 84, effort: 4 })
+          .webp({ quality: 84, effort: 4, lossless: signature })
           .toBuffer();
       } catch {
         throw app.httpErrors.badRequest(
@@ -86,6 +96,13 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
       fileName,
     };
   };
+
+  app.post("/uploads/receipt-signature", async (request) => {
+    assertSuperAdmin(request);
+    const upload = await storeUpload(request, true);
+    await setReceiptSignature(app.db, upload.url);
+    return { signatureUrl: upload.url };
+  });
 
   app.post("/uploads", async (request) => {
     assertInternalAccess(request);
@@ -169,7 +186,17 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
 
     try {
       const file = await readFile(path.join(getUploadDirectory(app.appEnv.UPLOAD_DIR), params.fileName));
-      const query = request.query as { download?: string };
+      const query = request.query as { download?: string; format?: string };
+      if (query.format === "jpeg") {
+        if (!contentType.startsWith("image/") || contentType === "image/svg+xml") {
+          throw app.httpErrors.badRequest("Apenas imagens podem ser convertidas em JPEG.");
+        }
+        const jpeg = await sharp(file).flatten({ background: "#ffffff" }).jpeg({ quality: 92 }).toBuffer();
+        return reply
+          .header("Cache-Control", "public, max-age=86400")
+          .type("image/jpeg")
+          .send(jpeg);
+      }
       if (query.download === "png") {
         if (!contentType.startsWith("image/") || contentType === "image/svg+xml") {
           throw app.httpErrors.badRequest("Apenas imagens podem ser baixadas em PNG.");

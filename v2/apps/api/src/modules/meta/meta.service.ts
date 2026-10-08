@@ -1,17 +1,222 @@
+import { validateMetaSchedulingRouting } from "./meta-routing.js";
+import type { PreflightAssetRead } from "./meta-preflight.js";
+import { followerGrowth, metricNumber, metricStatus, parseInsightNumber, parseInstagramFollowerGrowth, summarizeMetricPayload, type MetricMetadata } from "./meta-insight-metrics.js";
 import crypto from "node:crypto";
+import net from "node:net";
 import type { FastifyInstance } from "fastify";
-import { findMetaConnection, saveMetaOAuthState, upsertMetaConnection } from "./meta.repository.js";
+import { archiveKanbanCard, moveKanbanCardToScheduledColumn } from "../cards/cards.service.js";
+import { instagramOnlineFollowersDateRange, META_ONLINE_FOLLOWERS_SOURCE_TIME_ZONE, parseInstagramBestPublishingTimes, summarizeInstagramOnlineFollowersPayload } from "./meta-best-times.js";
+import {
+  canArchiveScheduledPublicationCard,
+  createScheduledPublications,
+  findMetaConnection,
+  listDueScheduledPublications,
+  markPublicationFailed,
+  markPublicationPublished,
+  markPublicationPublishing,
+  markStalePublishingFailed,
+  saveMetaOAuthState,
+  upsertMetaConnection,
+} from "./meta.repository.js";
+import { planMetaCardPublications } from "./meta.publication.js";
+import { completeMetaScheduling } from "./meta-schedule-completion.js";
+import type { MetaInsightsPeriod } from "./meta.schemas.js";
+import { hasUsableOAuthExpiry, resolveMetaDataAccessExpiry, resolveMetaTokenExpiry, type MetaDebugExpiryMetadata } from "./meta-expiry.js";
 
 const GRAPH_VERSION = "v26.0";
-const META_SCOPES = ["pages_show_list", "pages_read_engagement", "instagram_basic", "business_management"];
+const META_SCOPES = [
+  "pages_show_list",
+  "pages_read_engagement",
+  "read_insights",
+  "pages_read_user_content",
+  "pages_manage_posts",
+  "pages_manage_engagement",
+  "instagram_basic",
+  "instagram_manage_insights",
+  "business_management",
+  "ads_read",
+  "instagram_content_publish",
+];
 
 type MetaTokenResponse = { access_token?: string; token_type?: string; expires_in?: number; error?: { message?: string } };
+type MetaDebugTokenResponse = {
+  data?: { expires_at?: number; data_access_expires_at?: number; is_valid?: boolean };
+  error?: { message?: string };
+};
 type MetaProfileResponse = { id?: string; name?: string; error?: { message?: string } };
 type MetaAccountsResponse = {
   data?: Array<{ id?: string; name?: string; instagram_business_account?: { id?: string; username?: string } | null }>;
   paging?: { next?: string };
   error?: { message?: string };
 };
+
+type MetaAdAccount = {
+  id?: string;
+  account_id?: string;
+  name?: string;
+  account_status?: number;
+  currency?: string;
+  timezone_name?: string;
+  business?: { id?: string; name?: string } | null;
+};
+
+type MetaAdAccountsResponse = MetaApiError & {
+  data?: MetaAdAccount[];
+  paging?: { next?: string };
+};
+
+type MetaAdsActionValue = { action_type?: string; value?: string | number };
+type MetaAdsInsightsRow = {
+  spend?: string | number;
+  reach?: string | number;
+  impressions?: string | number;
+  frequency?: string | number;
+  clicks?: string | number;
+  inline_link_clicks?: string | number;
+  ctr?: string | number;
+  cpc?: string | number;
+  cpm?: string | number;
+  cpp?: string | number;
+  unique_clicks?: string | number;
+  unique_ctr?: string | number;
+  actions?: MetaAdsActionValue[];
+  action_values?: MetaAdsActionValue[];
+  cost_per_action_type?: MetaAdsActionValue[];
+  campaign_id?: string;
+  campaign_name?: string;
+  objective?: string;
+  ad_id?: string;
+  ad_name?: string;
+  adset_id?: string;
+  adset_name?: string;
+};
+
+type MetaAdsInsightsPayload = MetaApiError & {
+  data?: MetaAdsInsightsRow[];
+  paging?: { next?: string };
+};
+
+type MetaInsightsAssets = {
+  facebookPageId: string | null;
+  facebookPageName: string | null;
+  instagramAccountId: string | null;
+  instagramUsername: string | null;
+};
+
+type MetaInsightsWarning = {
+  endpoint: string;
+  code: number | null;
+  message: string;
+  metricOrOperation: string;
+  kind: "api_error" | "network_error" | "timeout" | "unavailable";
+  httpStatus?: number;
+  durationMs?: number;
+};
+
+type MetaApiError = { error?: { code?: number; message?: string } };
+type MetaInsight = {
+  name?: string;
+  values?: Array<{ value?: number }>;
+  total_value?: { value?: number };
+};
+
+type MetaInsightsPayload = MetaApiError & { data?: MetaInsight[] };
+
+type InstagramOnlineFollowersPayload = MetaApiError & { data?: unknown[] };
+
+type InstagramProfilePayload = MetaApiError & {
+  id?: string;
+  username?: string;
+  followers_count?: number;
+};
+
+type InstagramMedia = {
+  id?: string;
+  caption?: string;
+  media_type?: string;
+  timestamp?: string;
+  permalink?: string;
+  thumbnail_url?: string;
+  media_url?: string;
+  like_count?: number;
+  comments_count?: number;
+};
+
+type InstagramMediaPayload = MetaApiError & {
+  data?: InstagramMedia[];
+  paging?: { next?: string };
+};
+
+type FacebookPagePayload = MetaApiError & {
+  id?: string;
+  name?: string;
+  access_token?: string;
+  followers_count?: number;
+  fan_count?: number;
+};
+
+type FacebookPost = {
+  id?: string;
+  message?: string;
+  created_time?: string;
+  permalink_url?: string;
+  full_picture?: string;
+  reactions?: { summary?: { total_count?: number } };
+  comments?: { summary?: { total_count?: number } };
+  shares?: { count?: number };
+};
+
+type FacebookPostsPayload = MetaApiError & { data?: FacebookPost[]; paging?: { next?: string } };
+
+type MetaPlaceSearchPayload = MetaApiError & {
+  data?: Array<{
+    id?: string;
+    name?: string;
+    location?: { city?: string; state?: string; country?: string; street?: string; zip?: string | number };
+  }>;
+};
+
+type FacebookVideoStatusPayload = MetaApiError & {
+  status?: {
+    video_status?: string;
+    uploading_phase?: { status?: string; errors?: Array<{ error_code?: number; error_message?: string }> };
+    processing_phase?: { status?: string; errors?: Array<{ error_code?: number; error_message?: string }> };
+    publishing_phase?: { status?: string; publish_status?: string; publish_time?: number; errors?: Array<{ error_code?: number; error_message?: string }> };
+  };
+};
+
+const META_INSIGHTS_REQUEST_TIMEOUT_MS = 7_000;
+const META_FACEBOOK_PAGE_ACCESS_TIMEOUT_MS = 15_000;
+const META_FACEBOOK_PUBLISH_TIMEOUT_MS = 45_000;
+export const META_FACEBOOK_CAROUSEL_PHOTO_UPLOAD_TIMEOUT_MS = 45_000;
+export const META_FACEBOOK_CAROUSEL_PUBLISH_TIMEOUT_MS = 45_000;
+export const META_FACEBOOK_CAROUSEL_PERMALINK_TIMEOUT_MS = 15_000;
+export const META_FACEBOOK_REEL_START_TIMEOUT_MS = 30_000;
+export const META_FACEBOOK_REEL_UPLOAD_TIMEOUT_MS = 60_000;
+export const META_FACEBOOK_REEL_DOWNLOAD_TIMEOUT_MS = 60_000;
+export const META_FACEBOOK_REEL_BINARY_UPLOAD_TIMEOUT_MS = 120_000;
+export const META_FACEBOOK_REEL_STATUS_TIMEOUT_MS = 15_000;
+export const META_FACEBOOK_REEL_FINISH_TIMEOUT_MS = 45_000;
+export const META_FACEBOOK_REEL_PERMALINK_TIMEOUT_MS = 15_000;
+export const META_FACEBOOK_REEL_COVER_FETCH_TIMEOUT_MS = 30_000;
+export const META_FACEBOOK_REEL_COVER_UPLOAD_TIMEOUT_MS = 45_000;
+export const META_FACEBOOK_REEL_MAX_DOWNLOAD_BYTES = 250 * 1024 * 1024;
+export const META_FACEBOOK_STORY_PHOTO_UPLOAD_TIMEOUT_MS = 45_000;
+export const META_FACEBOOK_STORY_PUBLISH_TIMEOUT_MS = 45_000;
+const META_FACEBOOK_STORY_MEDIA_CHECK_TIMEOUT_MS = 15_000;
+export const META_FACEBOOK_STORY_VIDEO_START_TIMEOUT_MS = 30_000;
+export const META_FACEBOOK_STORY_VIDEO_STATUS_TIMEOUT_MS = 15_000;
+export const META_FACEBOOK_STORY_VIDEO_FINISH_TIMEOUT_MS = 45_000;
+export const META_FACEBOOK_STORY_PERMALINK_TIMEOUT_MS = 15_000;
+export const META_INSTAGRAM_CREATE_TIMEOUT_MS = 30_000;
+export const META_INSTAGRAM_REEL_CREATE_TIMEOUT_MS = 45_000;
+export const META_INSTAGRAM_STORY_CREATE_TIMEOUT_MS = 45_000;
+const META_INSTAGRAM_STORY_MEDIA_CHECK_TIMEOUT_MS = 15_000;
+export const META_INSTAGRAM_STATUS_TIMEOUT_MS = 15_000;
+export const META_INSTAGRAM_PUBLISH_TIMEOUT_MS = 45_000;
+export const META_INSTAGRAM_PERMALINK_TIMEOUT_MS = 15_000;
+export const META_PUBLISHING_STALE_MS = 10 * 60_000;
+const META_STALE_PUBLISHING_ERROR = "A publicação ficou sem confirmação da Meta por tempo excessivo. Verifique a plataforma antes de tentar novamente.";
 
 function requireMetaConfig(app: FastifyInstance) {
   const { META_APP_ID, META_APP_SECRET, META_REDIRECT_URI, META_TOKEN_ENCRYPTION_KEY } = app.appEnv;
@@ -47,11 +252,179 @@ function appSecretProof(accessToken: string, appSecret: string) {
   return crypto.createHmac("sha256", appSecret).update(accessToken).digest("hex");
 }
 
-async function getMetaJson<T>(url: URL): Promise<T> {
-  const response = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(15_000) });
+async function getMetaJson<T>(url: URL, timeoutMs = 15_000): Promise<T> {
+  const response = await fetch(url, { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(timeoutMs) });
   const payload = await response.json().catch(() => ({})) as T & { error?: { message?: string } };
   if (!response.ok || payload.error) throw new Error(payload.error?.message || `Meta Graph API respondeu com HTTP ${response.status}`);
   return payload;
+}
+
+async function debugMetaTokenExpiry(input: { accessToken: string; appId: string; appSecret: string }): Promise<MetaDebugExpiryMetadata> {
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/debug_token`);
+  url.searchParams.set("input_token", input.accessToken);
+  url.searchParams.set("access_token", `${input.appId}|${input.appSecret}`);
+  try {
+    const payload = await getMetaJson<MetaDebugTokenResponse>(url, 5_000);
+    return {
+      lookupStatus: "succeeded",
+      isValid: typeof payload.data?.is_valid === "boolean" ? payload.data.is_valid : null,
+      expiresAt: typeof payload.data?.expires_at === "number" ? payload.data.expires_at : null,
+      dataAccessExpiresAt: typeof payload.data?.data_access_expires_at === "number" ? payload.data.data_access_expires_at : null,
+    };
+  } catch {
+    // Best-effort fallback: never expose the URL, error, or either credential.
+    return { lookupStatus: "failed", isValid: null, expiresAt: null, dataAccessExpiresAt: null };
+  }
+}
+
+function redactMetaSecrets(message: string, accessToken: string, appSecret: string) {
+  const proof = appSecretProof(accessToken, appSecret);
+  return message
+    .split(accessToken).join("[REDACTED]")
+    .split(appSecret).join("[REDACTED]")
+    .split(proof).join("[REDACTED]")
+    .replace(/(access_token|appsecret_proof)=([^&\s]+)/gi, "$1=[REDACTED]");
+}
+
+async function fetchMetaResult<T extends MetaApiError>(input: {
+  app: FastifyInstance;
+  path: string;
+  token: string;
+  appSecret: string;
+  params?: Record<string, string>;
+  metricOrOperation: string;
+  nextUrl?: string;
+  method?: "GET" | "POST";
+  timeoutMs?: number;
+}): Promise<{ payload: T | null; warning: MetaInsightsWarning | null }> {
+  const url = input.nextUrl ? new URL(input.nextUrl) : new URL(`https://graph.facebook.com/${GRAPH_VERSION}${input.path}`);
+  for (const [key, value] of Object.entries(input.params ?? {})) url.searchParams.set(key, value);
+  url.searchParams.set("access_token", input.token);
+  url.searchParams.set("appsecret_proof", appSecretProof(input.token, input.appSecret));
+
+  const startedAt = Date.now();
+  try {
+    const response = await fetch(url, {
+      method: input.method ?? "GET",
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(input.timeoutMs ?? META_INSIGHTS_REQUEST_TIMEOUT_MS),
+    });
+    const payload = await response.json().catch(() => ({})) as T;
+    const durationMs = Date.now() - startedAt;
+    if (!response.ok || payload.error) {
+      const code = typeof payload.error?.code === "number" && Number.isFinite(payload.error.code) ? payload.error.code : null;
+      const message = redactMetaSecrets(
+        typeof payload.error?.message === "string" ? payload.error.message : `Meta Graph API respondeu com HTTP ${response.status}`,
+        input.token,
+        input.appSecret,
+      );
+      input.app.log.warn({ endpoint: input.path, operation: input.metricOrOperation, durationMs, httpStatus: response.status, metaCode: code }, "Meta Graph request failed");
+      return {
+        payload: null,
+        warning: {
+          endpoint: input.path,
+          code,
+          message,
+          metricOrOperation: input.metricOrOperation,
+          kind: "api_error",
+          httpStatus: response.status,
+          durationMs,
+        },
+      };
+    }
+    input.app.log.info({ endpoint: input.path, operation: input.metricOrOperation, durationMs, httpStatus: response.status }, "Meta Graph request completed");
+    return { payload, warning: null };
+  } catch (error) {
+    const durationMs = Date.now() - startedAt;
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    input.app.log.warn({ endpoint: input.path, operation: input.metricOrOperation, durationMs, timedOut }, "Meta Graph request did not complete");
+    return {
+      payload: null,
+      warning: {
+        endpoint: input.path,
+        code: null,
+        message: timedOut ? "A consulta à Meta Graph API excedeu o tempo limite." : "Falha de rede ao consultar a Meta Graph API.",
+        metricOrOperation: input.metricOrOperation,
+        kind: timedOut ? "timeout" : "network_error",
+        durationMs,
+      },
+    };
+  }
+}
+
+async function getFacebookPageAccessContext(input: {
+  app: FastifyInstance;
+  pageId: string;
+  userToken: string;
+  appSecret: string;
+  timeoutMs?: number;
+}) {
+  const path = `/${input.pageId}`;
+  const result = await fetchMetaResult<FacebookPagePayload>({
+    app: input.app,
+    path,
+    token: input.userToken,
+    appSecret: input.appSecret,
+    params: { fields: "id,name,access_token" },
+    metricOrOperation: "facebook.page",
+    timeoutMs: input.timeoutMs,
+  });
+  return {
+    path,
+    page: result.payload,
+    pageToken: result.payload?.access_token ?? input.userToken,
+    tokenSource: result.payload?.access_token ? "page" as const : "user_fallback" as const,
+    warning: result.warning,
+  };
+}
+
+async function fetchInsightMetric(input: {
+  app: FastifyInstance;
+  objectId: string;
+  metric: string;
+  token: string;
+  appSecret: string;
+  period: MetaInsightsPeriod;
+  totalValue?: boolean;
+  metadata?: Record<string, MetricMetadata>;
+  warnings: MetaInsightsWarning[];
+  operationPrefix: string;
+}) {
+  const path = `/${input.objectId}/insights`;
+  const result = await fetchMetaResult<MetaInsightsPayload>({
+    app: input.app,
+    path,
+    token: input.token,
+    appSecret: input.appSecret,
+    params: {
+      metric: input.metric,
+      period: "day",
+      since: input.period.since,
+      until: input.period.until,
+      ...(input.totalValue ? { metric_type: "total_value" } : {}),
+    },
+    metricOrOperation: `${input.operationPrefix}.${input.metric}`,
+  });
+  if (result.warning) input.warnings.push(result.warning);
+  const value = parseInsightNumber(result.payload, input.metric, input.metric === "page_follows" ? "last" : "sum");
+  if (input.metadata) input.metadata[input.metric] = {
+    status: metricStatus(result.warning, value), value, source: input.metric,
+    aggregation: input.metric === "page_follows" ? "latest_available_snapshot" : input.totalValue ? "period_total" : "daily_sum",
+    code: result.warning?.code ?? null, structure: summarizeMetricPayload(result.payload, input.metric),
+  };
+  return value;
+}
+
+async function fetchContentInsightMetrics<T extends string>(input: {
+  app: FastifyInstance; objectId: string; metrics: readonly T[]; token: string; appSecret: string;
+  warnings: MetaInsightsWarning[]; operationPrefix: string; lifetime?: boolean;
+}) {
+  return Object.fromEntries(await Promise.all(input.metrics.map(async (metric) => {
+    const result = await fetchMetaResult<MetaInsightsPayload>({ app: input.app, path: `/${input.objectId}/insights`, token: input.token, appSecret: input.appSecret,
+      params: { metric, ...(input.lifetime ? { period: "lifetime" } : {}) }, metricOrOperation: `${input.operationPrefix}.${metric}` });
+    if (result.warning) input.warnings.push(result.warning);
+    return [metric, parseInsightNumber(result.payload, metric)] as const;
+  }))) as Record<T, number | null>;
 }
 
 export async function createMetaAuthorizationUrl(app: FastifyInstance, userId: string, returnPath: string) {
@@ -85,6 +458,9 @@ export async function completeMetaAuthorization(app: FastifyInstance, input: { c
   const longToken = await getMetaJson<MetaTokenResponse>(longUrl).catch(() => shortToken);
   const accessToken = longToken.access_token ?? shortToken.access_token;
   const expiresIn = longToken.expires_in ?? shortToken.expires_in;
+  const debugMetadata: MetaDebugExpiryMetadata = hasUsableOAuthExpiry(expiresIn)
+    ? { lookupStatus: "not_needed", isValid: null, expiresAt: null, dataAccessExpiresAt: null }
+    : await debugMetaTokenExpiry({ accessToken, appId: config.appId, appSecret: config.appSecret });
 
   const profileUrl = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/me`);
   profileUrl.searchParams.set("fields", "id,name");
@@ -93,24 +469,48 @@ export async function completeMetaAuthorization(app: FastifyInstance, input: { c
   const profile = await getMetaJson<MetaProfileResponse>(profileUrl);
   if (!profile.id) throw new Error("A Meta não retornou a identificação da conta.");
 
+  const existingConnection = await findMetaConnection(app.db, input.userId);
+  const expiryResolution = resolveMetaTokenExpiry({
+    oauthExpiresIn: expiresIn,
+    debug: debugMetadata,
+    persistedExpiresAt: existingConnection?.expiresAt,
+  });
+  const dataAccessExpiresAt = resolveMetaDataAccessExpiry({
+    debug: debugMetadata,
+    persistedDataAccessExpiresAt: existingConnection?.dataAccessExpiresAt,
+  });
   await upsertMetaConnection(app.db, {
     userId: input.userId,
     encryptedToken: encryptToken(accessToken, config.encryptionKey),
-    expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000) : null,
+    // Prefer OAuth, then the official debugger, then the last known value.
+    // A successful connection remains usable even when all three are absent.
+    expiresAt: expiryResolution.expiresAt,
+    dataAccessExpiresAt,
     metaUserId: profile.id,
     accountName: profile.name ?? null,
+    expiryDiagnostics: expiryResolution.diagnostics,
   });
+  app.log.info(expiryResolution.diagnostics, "Meta token expiry resolution completed");
 }
 
 export async function getMetaStatus(app: FastifyInstance, userId: string) {
   const connection = await findMetaConnection(app.db, userId);
-  if (!connection) return { connected: false, expiresAt: null, accountName: null, metaUserId: null };
+  if (!connection) return { connected: false, expiresAt: null, dataAccessExpiresAt: null, accountName: null, metaUserId: null };
+  const tokenExpiresAt = connection.expiresAt ? new Date(connection.expiresAt) : null;
+  const dataAccessExpiresAt = connection.dataAccessExpiresAt ? new Date(connection.dataAccessExpiresAt) : null;
+  const operationalExpiresAt = tokenExpiresAt ?? dataAccessExpiresAt;
   return {
-    connected: !connection.expiresAt || new Date(connection.expiresAt).getTime() > Date.now(),
-    expiresAt: connection.expiresAt ? new Date(connection.expiresAt).toISOString() : null,
+    connected: connection.expiryDiagnostics?.debugIsValid !== false && (!operationalExpiresAt || operationalExpiresAt.getTime() > Date.now()),
+    expiresAt: tokenExpiresAt?.toISOString() ?? null,
+    dataAccessExpiresAt: dataAccessExpiresAt?.toISOString() ?? null,
     accountName: connection.accountName,
     metaUserId: connection.metaUserId,
   };
+}
+
+export async function getMetaExpiryDiagnostics(app: FastifyInstance, userId: string) {
+  const connection = await findMetaConnection(app.db, userId);
+  return { expiryDiagnostics: connection?.expiryDiagnostics ?? null };
 }
 
 export async function listMetaAssets(app: FastifyInstance, userId: string) {
@@ -144,4 +544,2172 @@ export async function listMetaAssets(app: FastifyInstance, userId: string) {
     next = response.paging?.next;
   } while (next);
   return { pages };
+}
+
+export async function listMetaAdAccounts(app: FastifyInstance, userId: string) {
+  const config = requireMetaConfig(app);
+  const connection = await findMetaConnection(app.db, userId);
+  if (!connection) throw app.httpErrors.badRequest("Conecte uma conta Meta antes de listar as contas de anúncios.");
+  if (connection.expiresAt && new Date(connection.expiresAt).getTime() <= Date.now()) {
+    throw app.httpErrors.badRequest("A conexão Meta expirou. Atualize a conexão.");
+  }
+
+  const token = decryptToken(connection.encryptedToken, config.encryptionKey);
+  const adAccounts: Array<{
+    id: string;
+    account_id: string | null;
+    name: string | null;
+    account_status: number | null;
+    currency: string | null;
+    timezone_name: string | null;
+    business: { id: string | null; name: string | null } | null;
+  }> = [];
+  let next: string | undefined;
+  let pagesFetched = 0;
+
+  do {
+    const path = "/me/adaccounts";
+    const url = next ? new URL(next) : new URL(`https://graph.facebook.com/${GRAPH_VERSION}${path}`);
+    if (!next) {
+      url.searchParams.set("fields", "id,account_id,name,account_status,currency,timezone_name,business{id,name}");
+      url.searchParams.set("limit", "100");
+      url.searchParams.set("access_token", token);
+    }
+    url.searchParams.set("appsecret_proof", appSecretProof(token, config.appSecret));
+
+    try {
+      const response = await fetch(url, {
+        headers: { Accept: "application/json" },
+        signal: AbortSignal.timeout(15_000),
+      });
+      const payload = await response.json().catch(() => ({})) as MetaAdAccountsResponse;
+      if (!response.ok || payload.error) {
+        return {
+          adAccounts,
+          totalCount: adAccounts.length,
+          pagesFetched,
+          error: {
+            endpoint: path,
+            code: payload.error?.code ?? null,
+            message: redactMetaSecrets(
+              payload.error?.message ?? `Meta Graph API respondeu com HTTP ${response.status}`,
+              token,
+              config.appSecret,
+            ),
+            requiredPermission: "ads_read",
+          },
+        };
+      }
+
+      pagesFetched += 1;
+      for (const account of payload.data ?? []) {
+        if (!account.id) continue;
+        adAccounts.push({
+          id: account.id,
+          account_id: account.account_id ?? null,
+          name: account.name ?? null,
+          account_status: account.account_status ?? null,
+          currency: account.currency ?? null,
+          timezone_name: account.timezone_name ?? null,
+          business: account.business ? {
+            id: account.business.id ?? null,
+            name: account.business.name ?? null,
+          } : null,
+        });
+      }
+      next = payload.paging?.next;
+    } catch {
+      return {
+        adAccounts,
+        totalCount: adAccounts.length,
+        pagesFetched,
+        error: {
+          endpoint: path,
+          code: null,
+          message: "Falha de rede ao consultar as contas de anúncios na Meta Graph API.",
+          requiredPermission: "ads_read",
+        },
+      };
+    }
+  } while (next);
+
+  return { adAccounts, totalCount: adAccounts.length, pagesFetched, error: null };
+}
+
+function metaAdsNumber(value: unknown) {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value !== "string" || !value.trim()) return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeMetaAdsActions(values: MetaAdsActionValue[] | undefined) {
+  return (values ?? []).flatMap((item) => {
+    const value = metaAdsNumber(item.value);
+    return item.action_type && value !== null ? [{ actionType: item.action_type, value }] : [];
+  });
+}
+
+function normalizeMetaAdsMetrics(row: MetaAdsInsightsRow | undefined) {
+  return {
+    spend: metaAdsNumber(row?.spend),
+    reach: metaAdsNumber(row?.reach),
+    impressions: metaAdsNumber(row?.impressions),
+    frequency: metaAdsNumber(row?.frequency),
+    clicks: metaAdsNumber(row?.clicks),
+    inlineLinkClicks: metaAdsNumber(row?.inline_link_clicks),
+    ctr: metaAdsNumber(row?.ctr),
+    cpc: metaAdsNumber(row?.cpc),
+    cpm: metaAdsNumber(row?.cpm),
+  };
+}
+
+function normalizeMetaAdsSummary(row: MetaAdsInsightsRow | undefined) {
+  return {
+    ...normalizeMetaAdsMetrics(row),
+    cpp: metaAdsNumber(row?.cpp),
+    uniqueClicks: metaAdsNumber(row?.unique_clicks),
+    uniqueCtr: metaAdsNumber(row?.unique_ctr),
+  };
+}
+
+async function fetchMetaAdsInsightRows(input: {
+  app: FastifyInstance;
+  adAccountId: string;
+  token: string;
+  appSecret: string;
+  period: MetaInsightsPeriod;
+  level: "account" | "campaign" | "ad";
+  fields: readonly string[];
+  operation: string;
+  warnings: MetaInsightsWarning[];
+}) {
+  const path = `/${input.adAccountId}/insights`;
+  const rows: MetaAdsInsightsRow[] = [];
+  let nextUrl: string | undefined;
+  do {
+    const result = await fetchMetaResult<MetaAdsInsightsPayload>({
+      app: input.app,
+      path,
+      token: input.token,
+      appSecret: input.appSecret,
+      params: nextUrl ? undefined : {
+        fields: input.fields.join(","),
+        level: input.level,
+        time_range: JSON.stringify(input.period),
+        limit: "100",
+      },
+      metricOrOperation: input.operation,
+      nextUrl,
+    });
+    if (result.warning) {
+      input.warnings.push(result.warning);
+      break;
+    }
+    rows.push(...(result.payload?.data ?? []));
+    nextUrl = result.payload?.paging?.next;
+  } while (nextUrl);
+  return rows;
+}
+
+export async function getMetaAdsInsights(
+  app: FastifyInstance,
+  userId: string,
+  asset: { metaAdAccountId: string; metaAdAccountName: string | null },
+  period: MetaInsightsPeriod,
+) {
+  const config = requireMetaConfig(app);
+  const connection = await findMetaConnection(app.db, userId);
+  if (!connection) throw app.httpErrors.badRequest("Conecte uma conta Meta antes de consultar os anúncios.");
+  if (connection.expiresAt && new Date(connection.expiresAt).getTime() <= Date.now()) {
+    throw app.httpErrors.badRequest("A conexão Meta expirou. Atualize a conexão antes de consultar os anúncios.");
+  }
+
+  const token = decryptToken(connection.encryptedToken, config.encryptionKey);
+  const adAccountId = `act_${asset.metaAdAccountId.replace(/^act_/i, "")}`;
+  const warnings: MetaInsightsWarning[] = [];
+  const commonFields = ["spend", "reach", "impressions", "frequency", "clicks", "inline_link_clicks", "ctr", "cpc", "cpm", "actions", "action_values", "cost_per_action_type"] as const;
+  const accountPath = `/${adAccountId}`;
+
+  const [accountResult, summaryRows, campaignRows, adRows] = await Promise.all([
+    fetchMetaResult<MetaApiError & MetaAdAccount>({
+      app,
+      path: accountPath,
+      token,
+      appSecret: config.appSecret,
+      params: { fields: "id,name,currency,timezone_name" },
+      metricOrOperation: "ads.account",
+    }),
+    fetchMetaAdsInsightRows({
+      app,
+      adAccountId,
+      token,
+      appSecret: config.appSecret,
+      period,
+      level: "account",
+      fields: [...commonFields, "cpp", "unique_clicks", "unique_ctr"],
+      operation: "ads.insights.summary",
+      warnings,
+    }),
+    fetchMetaAdsInsightRows({
+      app,
+      adAccountId,
+      token,
+      appSecret: config.appSecret,
+      period,
+      level: "campaign",
+      fields: ["campaign_id", "campaign_name", "objective", ...commonFields],
+      operation: "ads.insights.campaigns",
+      warnings,
+    }),
+    fetchMetaAdsInsightRows({
+      app,
+      adAccountId,
+      token,
+      appSecret: config.appSecret,
+      period,
+      level: "ad",
+      fields: ["ad_id", "ad_name", "adset_id", "adset_name", "campaign_id", "campaign_name", ...commonFields],
+      operation: "ads.insights.ads",
+      warnings,
+    }),
+  ]);
+  if (accountResult.warning) warnings.push(accountResult.warning);
+
+  const summaryRow = summaryRows[0];
+  const campaigns = campaignRows
+    .filter((row) => (metaAdsNumber(row.spend) ?? 0) > 0 || (metaAdsNumber(row.impressions) ?? 0) > 0)
+    .map((row) => ({
+      campaignId: row.campaign_id ?? null,
+      campaignName: row.campaign_name ?? null,
+      objective: row.objective ?? null,
+      ...normalizeMetaAdsMetrics(row),
+      actions: normalizeMetaAdsActions(row.actions),
+      costPerAction: normalizeMetaAdsActions(row.cost_per_action_type),
+      actionValues: normalizeMetaAdsActions(row.action_values),
+    }))
+    .sort((left, right) => (right.spend ?? -1) - (left.spend ?? -1));
+
+  const topAds = adRows
+    .filter((row) => (metaAdsNumber(row.spend) ?? 0) > 0 || (metaAdsNumber(row.impressions) ?? 0) > 0)
+    .map((row) => ({
+      adId: row.ad_id ?? null,
+      adName: row.ad_name ?? null,
+      adsetId: row.adset_id ?? null,
+      adsetName: row.adset_name ?? null,
+      campaignId: row.campaign_id ?? null,
+      campaignName: row.campaign_name ?? null,
+      ...normalizeMetaAdsMetrics(row),
+      actions: normalizeMetaAdsActions(row.actions),
+      costPerAction: normalizeMetaAdsActions(row.cost_per_action_type),
+    }))
+    .sort((left, right) => (right.spend ?? -1) - (left.spend ?? -1))
+    .slice(0, 10);
+
+  return {
+    period,
+    adAccount: {
+      id: accountResult.payload?.id ?? adAccountId,
+      name: accountResult.payload?.name ?? asset.metaAdAccountName,
+      currency: accountResult.payload?.currency ?? null,
+      timezoneName: accountResult.payload?.timezone_name ?? null,
+    },
+    summary: normalizeMetaAdsSummary(summaryRow),
+    actions: normalizeMetaAdsActions(summaryRow?.actions),
+    costPerAction: normalizeMetaAdsActions(summaryRow?.cost_per_action_type),
+    actionValues: normalizeMetaAdsActions(summaryRow?.action_values),
+    campaigns,
+    topAds,
+    warnings: warnings.map((warning) => ({
+      operation: warning.metricOrOperation,
+      code: warning.code,
+      message: warning.message,
+    })),
+  };
+}
+
+function fieldMetadata(source: string, value: number | null, warning?: MetaInsightsWarning | null): MetricMetadata {
+  return { status: metricStatus(warning, value), source, aggregation: "current_snapshot", code: warning?.code ?? null, structure: { entries: 0, dailyValues: 0, totalValue: false, breakdowns: 0 } };
+}
+function growthMetadata(growth: ReturnType<typeof followerGrowth>, source: MetricMetadata) {
+  return Object.fromEntries(Object.entries(growth).map(([key, value]) => [key, { ...source, status: source.status === "available" || source.status === "empty" ? metricStatus(null, value) : source.status }])) as Record<keyof ReturnType<typeof followerGrowth>, MetricMetadata>;
+}
+
+async function getInstagramInsights(input: {
+  app: FastifyInstance;
+  accountId: string;
+  savedUsername: string | null;
+  token: string;
+  appSecret: string;
+  period: MetaInsightsPeriod;
+  warnings: MetaInsightsWarning[];
+}) {
+  const metadata: Record<string, MetricMetadata> = {};
+  const profilePath = `/${input.accountId}`;
+  const metricNames = ["reach", "views", "profile_views", "profile_links_taps", "total_interactions", "accounts_engaged"] as const;
+  const mediaPath = `/${input.accountId}/media`;
+  const [profile, metricValues, mediaResult, growthResult] = await Promise.all([
+    fetchMetaResult<InstagramProfilePayload>({ app: input.app, path: profilePath, token: input.token, appSecret: input.appSecret, params: { fields: "id,username,followers_count" }, metricOrOperation: "instagram.account" }),
+    Promise.all(metricNames.map(async (metric) => [metric, await fetchInsightMetric({ app: input.app, objectId: input.accountId, metric, token: input.token, appSecret: input.appSecret, period: input.period, totalValue: true, metadata, warnings: input.warnings, operationPrefix: "instagram.account" })] as const)),
+    fetchMetaResult<InstagramMediaPayload>({ app: input.app, path: mediaPath, token: input.token, appSecret: input.appSecret, params: { fields: "id,caption,media_type,timestamp,permalink,thumbnail_url,media_url,like_count,comments_count", since: input.period.since, until: input.period.until, limit: "100" }, metricOrOperation: "instagram.media.list" }),
+    fetchMetaResult<MetaInsightsPayload>({ app: input.app, path: `/${input.accountId}/insights`, token: input.token, appSecret: input.appSecret, params: { metric: "follows_and_unfollows", period: "day", metric_type: "total_value", breakdown: "follow_type", since: input.period.since, until: input.period.until }, metricOrOperation: "instagram.account.follows_and_unfollows" }),
+  ]);
+  if (growthResult.warning) input.warnings.push(growthResult.warning);
+  const growth = parseInstagramFollowerGrowth(growthResult.payload);
+  metadata.follows_and_unfollows = { status: metricStatus(growthResult.warning, growth.followersGained ?? growth.followersLost), source: "follows_and_unfollows", aggregation: "period_total_by_follow_type", code: growthResult.warning?.code ?? null, structure: summarizeMetricPayload(growthResult.payload, "follows_and_unfollows") };
+  if (profile.warning) input.warnings.push(profile.warning);
+  const metrics = Object.fromEntries(metricValues) as Record<typeof metricNames[number], number | null>;
+  if (mediaResult.warning) input.warnings.push(mediaResult.warning);
+  if (mediaResult.payload?.paging?.next) {
+    input.warnings.push({
+      endpoint: mediaPath,
+      code: null,
+      message: "O período possui mais de 100 mídias; o ranking considera as 100 primeiras retornadas pela Meta.",
+      metricOrOperation: "instagram.media.pagination",
+      kind: "unavailable",
+    });
+  }
+
+  const candidates = (mediaResult.payload?.data ?? [])
+    .filter((media) => media.id)
+    .sort((left, right) => ((right.like_count ?? 0) + (right.comments_count ?? 0)) - ((left.like_count ?? 0) + (left.comments_count ?? 0)))
+    .slice(0, 10);
+  const topContent = await Promise.all(candidates.map(async (media) => {
+    const mediaMetrics = ["reach", "views", "saved", "shares", "total_interactions"] as const;
+    const mediaInsight = await fetchContentInsightMetrics({ app: input.app, objectId: media.id!, metrics: mediaMetrics, token: input.token, appSecret: input.appSecret, warnings: input.warnings, operationPrefix: `instagram.media.${media.id}.insights` });
+    return {
+      id: media.id,
+      caption: media.caption ?? null,
+      mediaType: media.media_type ?? null,
+      timestamp: media.timestamp ?? null,
+      permalink: media.permalink ?? null,
+      thumbnailUrl: media.thumbnail_url ?? media.media_url ?? null,
+      reach: mediaInsight.reach,
+      views: mediaInsight.views,
+      likes: media.like_count ?? null,
+      comments: media.comments_count ?? null,
+      saved: mediaInsight.saved,
+      shares: mediaInsight.shares,
+      totalInteractions: mediaInsight.total_interactions,
+    };
+  }));
+  topContent.sort((left, right) => (
+    (right.totalInteractions ?? ((right.likes ?? 0) + (right.comments ?? 0))) -
+    (left.totalInteractions ?? ((left.likes ?? 0) + (left.comments ?? 0)))
+  ));
+
+  return {
+    accountId: input.accountId,
+    username: profile.payload?.username ?? input.savedUsername,
+    metricMetadata: { reach: metadata.reach, views: metadata.views, profileViews: metadata.profile_views, interactions: metadata.total_interactions, linkClicks: metadata.profile_links_taps, accountsEngaged: metadata.accounts_engaged, followers: fieldMetadata("followers_count", metricNumber(profile.payload?.followers_count), profile.warning), ...growthMetadata(growth, metadata.follows_and_unfollows) },
+    metricDiagnostics: metadata,
+    metrics: {
+      reach: metrics.reach,
+      views: metrics.views,
+      followers: metricNumber(profile.payload?.followers_count),
+      ...growth,
+      profileViews: metrics.profile_views,
+      interactions: metrics.total_interactions,
+      linkClicks: metrics.profile_links_taps,
+      accountsEngaged: metrics.accounts_engaged,
+    },
+    topContent,
+  };
+}
+
+async function getFacebookInsights(input: {
+  app: FastifyInstance;
+  pageId: string;
+  savedPageName: string | null;
+  userToken: string;
+  appSecret: string;
+  period: MetaInsightsPeriod;
+  warnings: MetaInsightsWarning[];
+}) {
+  const pageAccess = await getFacebookPageAccessContext({
+    app: input.app,
+    pageId: input.pageId,
+    userToken: input.userToken,
+    appSecret: input.appSecret,
+  });
+  if (pageAccess.warning) input.warnings.push(pageAccess.warning);
+  const page = pageAccess.page;
+  const pageToken = pageAccess.pageToken;
+  if (page && pageAccess.tokenSource === "user_fallback") {
+    input.warnings.push({
+      endpoint: pageAccess.path,
+      code: null,
+      message: "A Meta não retornou um Page Access Token; as leituras da Página serão tentadas com o token atual.",
+      metricOrOperation: "facebook.pageAccessToken",
+      kind: "unavailable",
+    });
+  }
+
+  const metadata: Record<string, MetricMetadata> = {};
+  // Total followers is a current snapshot even when the report covers an older period.
+  const currentUntil = new Date(); currentUntil.setUTCDate(currentUntil.getUTCDate() + 1);
+  const currentSince = new Date(); currentSince.setUTCDate(currentSince.getUTCDate() - 3);
+  const currentFollowerPeriod = { since: currentSince.toISOString().slice(0, 10), until: currentUntil.toISOString().slice(0, 10) };
+  const metricNames = ["page_total_media_view_unique", "page_media_view", "page_post_engagements", "page_views_total", "page_daily_follows_unique", "page_daily_unfollows_unique", "page_follows"] as const;
+  const postsPath = `/${input.pageId}/posts`;
+  const [metricValues, posts, followerField, fanField] = await Promise.all([
+    Promise.all(metricNames.map(async (metric) => [metric, await fetchInsightMetric({ app: input.app, objectId: input.pageId, metric, token: pageToken, appSecret: input.appSecret, period: metric === "page_follows" ? currentFollowerPeriod : input.period, metadata, warnings: input.warnings, operationPrefix: "facebook.page" })] as const)),
+    fetchMetaResult<FacebookPostsPayload>({ app: input.app, path: postsPath, token: pageToken, appSecret: input.appSecret, params: { fields: "id,message,created_time,permalink_url,full_picture,reactions.limit(0).summary(true),comments.limit(0).summary(true),shares", since: input.period.since, until: input.period.until, limit: "100" }, metricOrOperation: "facebook.posts.list" }),
+    fetchMetaResult<FacebookPagePayload>({ app: input.app, path: `/${input.pageId}`, token: pageToken, appSecret: input.appSecret, params: { fields: "followers_count" }, metricOrOperation: "facebook.page.followers_count" }),
+    fetchMetaResult<FacebookPagePayload>({ app: input.app, path: `/${input.pageId}`, token: pageToken, appSecret: input.appSecret, params: { fields: "fan_count" }, metricOrOperation: "facebook.page.fan_count" }),
+  ]);
+  const metrics = Object.fromEntries(metricValues) as Record<typeof metricNames[number], number | null>;
+  for (const result of [followerField, fanField]) if (result.warning) input.warnings.push(result.warning);
+  const growth = followerGrowth(metrics.page_daily_follows_unique, metrics.page_daily_unfollows_unique);
+  const followerCount = metricNumber(followerField.payload?.followers_count);
+  const followers = followerCount ?? metrics.page_follows;
+  const followersMetadata = followerCount !== null ? fieldMetadata("followers_count", followerCount) : metrics.page_follows !== null ? metadata.page_follows : fieldMetadata("followers_count", null, followerField.warning);
+  const unverifiedLinkClicks = { ...fieldMetadata("no_verified_period_link_click_metric", null), aggregation: "not_queried" };
+  input.warnings.push({ endpoint: `/${input.pageId}/insights`, code: null, message: "page_impressions não é uma métrica válida na Graph API v26 e não possui equivalente direto. page_media_view é retornada separadamente como views.", metricOrOperation: "facebook.page.impressions", kind: "unavailable" });
+  for (const metric of metricNames) { const operation = `facebook.page.${metric}`; if (metrics[metric] === null && !input.warnings.some((warning) => warning.metricOrOperation === operation)) input.warnings.push({ endpoint: `/${input.pageId}/insights`, code: null, message: "A Meta não retornou valor numérico para esta métrica no período informado.", metricOrOperation: operation, kind: "unavailable" }); }
+  if (posts.warning) input.warnings.push(posts.warning);
+  if (posts.payload?.paging?.next) input.warnings.push({ endpoint: postsPath, code: null, message: "O período possui mais de 100 publicações; o ranking considera as 100 primeiras retornadas pela Meta.", metricOrOperation: "facebook.posts.pagination", kind: "unavailable" });
+  const postCandidates = (posts.payload?.data ?? []).filter((post) => post.id).map((post) => {
+    const reactions = post.reactions?.summary?.total_count ?? null;
+    const comments = post.comments?.summary?.total_count ?? null;
+    const shares = post.shares?.count ?? null;
+    return {
+      id: post.id,
+      message: post.message ?? null,
+      timestamp: post.created_time ?? null,
+      permalink: post.permalink_url ?? null,
+      thumbnailUrl: post.full_picture ?? null,
+      reactions,
+      comments,
+      shares,
+      interactions: (reactions ?? 0) + (comments ?? 0) + (shares ?? 0),
+    };
+  }).sort((left, right) => right.interactions - left.interactions).slice(0, 10);
+  const topContent = await Promise.all(postCandidates.map(async (post) => {
+    const postMetrics = ["post_total_media_view_unique", "post_media_view", "post_clicks"] as const;
+    const postInsight = await fetchContentInsightMetrics({ app: input.app, objectId: post.id!, metrics: postMetrics, token: pageToken, appSecret: input.appSecret, lifetime: true, warnings: input.warnings, operationPrefix: `facebook.post.${post.id}.insights` });
+    return {
+      ...post,
+      reach: postInsight.post_total_media_view_unique,
+      views: postInsight.post_media_view,
+      clicks: postInsight.post_clicks,
+    };
+  }));
+  topContent.sort((left, right) => (
+    (right.interactions + (right.clicks ?? 0)) - (left.interactions + (left.clicks ?? 0))
+  ));
+
+  return {
+    pageId: input.pageId,
+    pageName: page?.name ?? input.savedPageName,
+    metricMetadata: {
+      reach: { ...metadata.page_total_media_view_unique, aggregation: "sum_of_daily_unique_viewers" }, views: metadata.page_media_view,
+      interactions: metadata.page_post_engagements, engagement: metadata.page_post_engagements, pageViews: metadata.page_views_total,
+      followers: followersMetadata, followersGained: metadata.page_daily_follows_unique, followersLost: metadata.page_daily_unfollows_unique,
+      followersNet: { ...metadata.page_daily_follows_unique, source: "page_daily_follows_unique - page_daily_unfollows_unique", status: growth.followersNet !== null ? "available" : [metadata.page_daily_follows_unique, metadata.page_daily_unfollows_unique].find((item) => item.status !== "available")?.status ?? "empty", aggregation: "difference" },
+      linkClicks: unverifiedLinkClicks, impressions: { ...unverifiedLinkClicks, status: "invalid_metric" as const, source: "page_impressions", aggregation: "unsupported" },
+      fans: fieldMetadata("fan_count", metricNumber(fanField.payload?.fan_count), fanField.warning),
+    },
+    metricDiagnostics: metadata,
+    metrics: {
+      reach: metrics.page_total_media_view_unique,
+      views: metrics.page_media_view,
+      impressions: null,
+      engagement: metrics.page_post_engagements,
+      followers,
+      ...growth,
+      interactions: metrics.page_post_engagements,
+      linkClicks: null,
+      fans: metricNumber(fanField.payload?.fan_count),
+      pageViews: metrics.page_views_total,
+    },
+    topContent,
+  };
+}
+
+export async function getInstagramBestPublishingTimes(
+  app: FastifyInstance,
+  userId: string,
+  accountId: string,
+  timeZone: string,
+) {
+  const config = requireMetaConfig(app);
+  const connection = await findMetaConnection(app.db, userId);
+  if (!connection) throw app.httpErrors.badRequest("Conecte uma conta Meta antes de consultar horários.");
+  if (connection.expiresAt && new Date(connection.expiresAt).getTime() <= Date.now()) {
+    throw app.httpErrors.badRequest("A conexão Meta expirou. Atualize a conexão antes de consultar horários.");
+  }
+  const token = decryptToken(connection.encryptedToken, config.encryptionKey);
+  const path = `/${accountId}/insights`;
+  const range = instagramOnlineFollowersDateRange();
+  const result = await fetchMetaResult<InstagramOnlineFollowersPayload>({
+    app,
+    path,
+    token,
+    appSecret: config.appSecret,
+    params: { metric: "online_followers", period: "lifetime", since: range.since, until: range.until },
+    metricOrOperation: "instagram.account.online_followers",
+    timeoutMs: META_INSIGHTS_REQUEST_TIMEOUT_MS,
+  });
+
+  if (result.payload) {
+    app.log.debug({ responseStructure: summarizeInstagramOnlineFollowersPayload(result.payload, { ...range, targetTimeZone: timeZone }) }, "Meta online followers response structure");
+  }
+
+  if (!result.payload?.data?.length) {
+    return {
+      available: false as const,
+      source: "instagram_online_followers" as const,
+      sourceTimeZone: META_ONLINE_FOLLOWERS_SOURCE_TIME_ZONE,
+      timeZone,
+      recommendations: [],
+      message: result.warning?.message ?? "A Meta não retornou dados de atividade dos seguidores para esta conta.",
+    };
+  }
+
+  const recommendations = parseInstagramBestPublishingTimes(result.payload, timeZone);
+
+  return {
+    available: recommendations.length > 0,
+    source: "instagram_online_followers" as const,
+    sourceTimeZone: META_ONLINE_FOLLOWERS_SOURCE_TIME_ZONE,
+    timeZone,
+    recommendations,
+    message: recommendations.length ? null : "A Meta não disponibilizou dados suficientes de atividade dos seguidores.",
+  };
+}
+
+export async function getMetaInsights(
+  app: FastifyInstance,
+  userId: string,
+  assets: MetaInsightsAssets,
+  period: MetaInsightsPeriod,
+) {
+  const config = requireMetaConfig(app);
+  const connection = await findMetaConnection(app.db, userId);
+  if (!connection) throw app.httpErrors.badRequest("Conecte uma conta Meta antes de consultar Insights.");
+  if (connection.expiresAt && new Date(connection.expiresAt).getTime() <= Date.now()) {
+    throw app.httpErrors.badRequest("A conexão Meta expirou. Atualize a conexão antes de consultar Insights.");
+  }
+  const token = decryptToken(connection.encryptedToken, config.encryptionKey);
+  const warnings: MetaInsightsWarning[] = [];
+  const runSource = async <T>(source: "instagram" | "facebook", operation: () => Promise<T>) => {
+    try { return await operation(); }
+    catch (error) {
+      app.log.error({ source }, "Meta Insights source failed unexpectedly");
+      warnings.push({ endpoint: source, code: null, message: `Falha inesperada ao consultar ${source === "instagram" ? "o Instagram" : "o Facebook"}.`, metricOrOperation: `${source}.source`, kind: "api_error" });
+      return null;
+    }
+  };
+  const [instagram, facebook] = await Promise.all([
+    assets.instagramAccountId ? runSource("instagram", () => getInstagramInsights({ app, accountId: assets.instagramAccountId!, savedUsername: assets.instagramUsername, token, appSecret: config.appSecret, period, warnings })) : Promise.resolve(null),
+    assets.facebookPageId ? runSource("facebook", () => getFacebookInsights({ app, pageId: assets.facebookPageId!, savedPageName: assets.facebookPageName, userToken: token, appSecret: config.appSecret, period, warnings })) : Promise.resolve(null),
+  ]);
+
+  const errorKinds = new Set<MetaInsightsWarning["kind"]>(["api_error", "network_error", "timeout"]);
+  const statusFor = (source: "instagram" | "facebook", linked: boolean, data: typeof instagram | typeof facebook) => {
+    if (!linked) return "not_linked" as const;
+    if (!data) return "failed" as const;
+    const sourceWarnings = warnings.filter((warning) => warning.metricOrOperation.startsWith(`${source}.`) && errorKinds.has(warning.kind));
+    const hasValues = Object.values(data.metrics).some((value) => typeof value === "number") || data.topContent.length > 0;
+    if (sourceWarnings.length) return hasValues ? "partial" as const : "failed" as const;
+    return hasValues ? "complete" as const : "empty" as const;
+  };
+  const sources = {
+    instagram: statusFor("instagram", Boolean(assets.instagramAccountId), instagram),
+    facebook: statusFor("facebook", Boolean(assets.facebookPageId), facebook),
+  };
+  const linkedStatuses = Object.values(sources).filter((status) => status !== "not_linked");
+  const status = linkedStatuses.every((source) => source === "failed") ? "failed"
+    : linkedStatuses.some((source) => source === "failed" || source === "partial") ? "partial"
+      : linkedStatuses.every((source) => source === "empty") ? "empty"
+        : "complete";
+  return { period, status, sources, instagram, facebook, warnings };
+}
+
+type SchedulableCard = {
+  id: string;
+  clientAccountId: string;
+  caption: string | null;
+  mediaType: string | null;
+  primaryMediaUrl: string | null;
+  mediaUrls: string[];
+  artType: string | null;
+};
+
+function isPrivateHostname(hostname: string) {
+  const normalized = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (normalized === "localhost" || normalized.endsWith(".localhost") || normalized === "::1") return true;
+  if (net.isIP(normalized) === 4) {
+    const [a, b] = normalized.split(".").map(Number);
+    return a === 10 || a === 127 || a === 0 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
+  }
+  return net.isIP(normalized) === 6 && (normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe80:"));
+}
+
+function isVideoMediaUrl(rawUrl: string) {
+  try {
+    return /\.(mp4|mov)$/i.test(new URL(rawUrl, "https://local.invalid").pathname);
+  } catch {
+    return false;
+  }
+}
+
+function assertPublicHttpUrl(app: FastifyInstance, rawUrl: string, mediaType: "image" | "carousel" | "reel" | "story", storyPlatforms: Array<"instagram" | "facebook"> = []) {
+  let url: URL;
+  try {
+    url = rawUrl.startsWith("/api/uploads/") ? new URL(rawUrl, app.appEnv.API_URL) : new URL(rawUrl);
+  } catch {
+    throw app.httpErrors.badRequest("A mídia precisa ter uma URL pública HTTP/HTTPS para que a Meta consiga acessá-la.");
+  }
+  if (!["http:", "https:"].includes(url.protocol) || isPrivateHostname(url.hostname)) {
+    throw app.httpErrors.badRequest("A mídia precisa estar disponível em uma URL pública HTTP/HTTPS; URLs locais, blob e data não são aceitas.");
+  }
+  const isVideo = mediaType === "reel" || (mediaType === "story" && isVideoMediaUrl(rawUrl));
+  if (rawUrl.startsWith("/api/uploads/")) {
+    if (mediaType === "story" && !/\.(mp4|mov|webp|png|jpe?g|bmp|gif|tiff?)$/i.test(url.pathname)) {
+      throw app.httpErrors.badRequest("Stories aceita somente uma imagem compatível ou um vídeo MP4/MOV.");
+    }
+    if (!isVideo) {
+      // Image uploads are converted because Instagram Content Publishing accepts JPEG, not WebP.
+      url.searchParams.set("format", "jpeg");
+    }
+    if (mediaType === "story" && isVideo && storyPlatforms.includes("facebook") && !/\.mp4$/i.test(url.pathname)) {
+      throw app.httpErrors.badRequest("Stories de vídeo no Facebook precisam usar um arquivo MP4.");
+    }
+  } else if (mediaType === "story") {
+    if (isVideo) {
+      if (storyPlatforms.includes("facebook") && !/\.mp4$/i.test(url.pathname)) {
+        throw app.httpErrors.badRequest("Stories de vídeo no Facebook precisam usar um arquivo MP4 acessível por URL pública.");
+      }
+    } else {
+      const supportedImage = storyPlatforms.includes("instagram") ? /\.jpe?g$/i : /\.(jpe?g|bmp|png|gif|tiff?)$/i;
+      if (!supportedImage.test(url.pathname)) {
+        throw app.httpErrors.badRequest(storyPlatforms.includes("instagram")
+          ? "Stories no Instagram aceitam imagem JPEG acessível por URL pública."
+          : "Stories de imagem no Facebook aceitam JPEG, BMP, PNG, GIF ou TIFF acessível por URL pública.");
+      }
+    }
+  } else if (isVideo ? !/\.(mp4|mov)$/i.test(url.pathname) : !/\.jpe?g$/i.test(url.pathname)) {
+    throw app.httpErrors.badRequest(isVideo
+      ? "Esta primeira versão de Reels aceita somente vídeo MP4 ou MOV acessível por URL pública."
+      : "Esta primeira versão publica somente uma imagem JPEG acessível por URL pública.");
+  }
+  return url.toString();
+}
+
+function assertPublicReelCoverUrl(app: FastifyInstance, rawUrl: string) {
+  let url: URL;
+  try {
+    url = rawUrl.startsWith("/api/uploads/") ? new URL(rawUrl, app.appEnv.API_URL) : new URL(rawUrl);
+  } catch {
+    throw app.httpErrors.badRequest("A capa do Reel precisa ser uma imagem válida enviada pelo Design Hub.");
+  }
+  if (url.protocol !== "https:" || isPrivateHostname(url.hostname)) {
+    throw app.httpErrors.badRequest("A capa do Reel precisa estar disponível em uma URL pública HTTPS.");
+  }
+  if (rawUrl.startsWith("/api/uploads/")) {
+    if (!/\.(webp|png|jpe?g)$/i.test(url.pathname)) {
+      throw app.httpErrors.badRequest("A capa do Reel precisa ser uma imagem JPG, JPEG ou PNG válida.");
+    }
+    url.searchParams.set("format", "jpeg");
+  } else if (!/\.jpe?g$/i.test(url.pathname)) {
+    throw app.httpErrors.badRequest("A Meta aceita capa personalizada de Reel em JPEG. Envie a imagem pelo Design Hub para conversão segura.");
+  }
+  return url.toString();
+}
+
+async function getPublishingContext(app: FastifyInstance, userId: string) {
+  const config = requireMetaConfig(app);
+  const connection = await findMetaConnection(app.db, userId);
+  if (!connection) throw app.httpErrors.badRequest("Conecte novamente a conta Meta antes de agendar uma publicação.");
+  if (connection.expiresAt && new Date(connection.expiresAt).getTime() <= Date.now()) {
+    throw app.httpErrors.badRequest("A conexão Meta expirou. Reconecte a conta antes de publicar.");
+  }
+  return { token: decryptToken(connection.encryptedToken, config.encryptionKey), appSecret: config.appSecret };
+}
+
+/** Only GET requests; no raw Meta error, token or sensitive URL leaves this reader. */
+export async function readMetaPreflightAssets(app: FastifyInstance, userId: string, assets: {
+  facebookPageId: string | null; instagramAccountId: string | null;
+}): Promise<PreflightAssetRead> {
+  const result: PreflightAssetRead = { facebook: null, instagram: null, accessiblePages: [], accessListComplete: false, issues: [] };
+  let context: Awaited<ReturnType<typeof getPublishingContext>>;
+  try { context = await getPublishingContext(app, userId); }
+  catch { result.issues.push({ platform: "connection", code: "connection_unavailable" }); return result; }
+  const signal = AbortSignal.timeout(15_000);
+  const text = (value: unknown) => typeof value === "string" ? redactMetaSecrets(value, context.token, context.appSecret).slice(0, 255) : null;
+  type ReadPayload = { id?: unknown; name?: unknown; username?: unknown; instagram_business_account?: { id?: unknown }; data?: ReadPayload[]; paging?: { next?: unknown; cursors?: { after?: unknown } }; error?: { code?: unknown } };
+  const read = async (path: string, fields: string, platform: "facebook" | "instagram" | "connection", after?: string): Promise<ReadPayload | null> => {
+    const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${path}`);
+    url.searchParams.set("fields", fields);
+    url.searchParams.set("access_token", context.token);
+    url.searchParams.set("appsecret_proof", appSecretProof(context.token, context.appSecret));
+    if (path === "me/accounts") url.searchParams.set("limit", "200");
+    if (after) url.searchParams.set("after", after);
+    try {
+      const response = await fetch(url, { method: "GET", headers: { Accept: "application/json" }, signal });
+      const payload = await response.json() as ReadPayload;
+      if (!payload || typeof payload !== "object" || !response.ok || payload.error) {
+        const denied = response.status === 401 || response.status === 403 || [10, 102, 190, 200].includes(Number(payload?.error?.code));
+        result.issues.push({ platform, code: denied ? "access_denied" : "asset_unavailable" });
+        return null;
+      }
+      return payload;
+    } catch { result.issues.push({ platform, code: "meta_read_failed" }); return null; }
+  };
+  const asset = async (id: string | null, platform: "facebook" | "instagram") => {
+    if (!id) return null;
+    if (!/^\d+$/.test(id)) { result.issues.push({ platform, code: "invalid_asset_id" }); return null; }
+    return read(id, platform === "facebook" ? (assets.instagramAccountId ? "id,name,instagram_business_account{id}" : "id,name") : "id,username", platform);
+  };
+  const listAccess = async () => {
+    let after: string | undefined;
+    const seen = new Set<string>();
+    for (let page = 0; page < 20; page++) {
+      const payload = await read("me/accounts", assets.instagramAccountId ? "id,instagram_business_account{id}" : "id", "connection", after);
+      if (!payload || !Array.isArray(payload.data)) break;
+      for (const item of payload.data) {
+        if (item && typeof item.id === "string" && /^\d+$/.test(item.id)) result.accessiblePages.push({ id: item.id, instagramAccountId: typeof item.instagram_business_account?.id === "string" && /^\d+$/.test(item.instagram_business_account.id) ? item.instagram_business_account.id : null });
+      }
+      if (!payload.paging?.next) { result.accessListComplete = true; return; }
+      const cursor = payload.paging.cursors?.after;
+      if (typeof cursor !== "string" || !cursor || seen.has(cursor)) break;
+      seen.add(cursor); after = cursor;
+    }
+    result.issues.push({ platform: "connection", code: "access_list_incomplete" });
+  };
+  const [facebook, instagram] = await Promise.all([asset(assets.facebookPageId, "facebook"), asset(assets.instagramAccountId, "instagram"), listAccess()]);
+  if (typeof facebook?.id === "string" && /^\d+$/.test(facebook.id) && text(facebook.name)) result.facebook = { id: facebook.id, name: text(facebook.name)!, instagramAccountId: typeof facebook.instagram_business_account?.id === "string" ? facebook.instagram_business_account.id : null };
+  if (typeof instagram?.id === "string" && /^\d+$/.test(instagram.id) && typeof instagram.username === "string" && /^[a-zA-Z0-9._]+$/.test(instagram.username)) result.instagram = { id: instagram.id, username: text(instagram.username)! };
+  return result;
+}
+
+export async function scheduleMetaCardPublications(app: FastifyInstance, input: {
+  userId: string;
+  actor: { id: string; fullName: string; globalRole: string };
+  clientAccountId: string;
+  destinationId: string | null;
+  destinationName: string | null;
+  platforms: { platform: "instagram" | "facebook"; metaAssetId: string }[];
+  card: SchedulableCard;
+  scheduledAt: string;
+  timezone: string;
+  publicationFormat?: "story" | null;
+  reelCoverUrl?: string | null;
+  locationId?: string | null;
+  locationName?: string | null;
+  instagramUserTags?: Array<{ username: string; x: number; y: number }>;
+}) {
+  const routing = await validateMetaSchedulingRouting(app, input);
+  await getPublishingContext(app, input.userId);
+  const planned = planMetaCardPublications({
+    platforms: input.platforms.map(({ platform }) => platform),
+    mediaUrls: input.card.mediaUrls.length ? input.card.mediaUrls : input.card.primaryMediaUrl ? [input.card.primaryMediaUrl] : [],
+    mediaType: input.card.mediaType,
+    artType: input.card.artType,
+    publicationFormat: input.publicationFormat ?? null,
+    reelCoverUrl: input.reelCoverUrl ?? null,
+    locationId: input.locationId ?? null,
+    instagramUserTags: input.instagramUserTags ?? [],
+  });
+  if (!planned.plans) throw app.httpErrors.badRequest(planned.error);
+  const mediaType = planned.plans[0]?.mediaType ?? "image";
+  const storyPlatforms = mediaType === "story" ? planned.plans.map((plan) => plan.platform) : [];
+  const validatedUrls = new Map(planned.plans[0]?.mediaUrls.map((url) => [url, assertPublicHttpUrl(app, url, mediaType, storyPlatforms)]) ?? []);
+  const scheduledAt = new Date(input.scheduledAt).toISOString();
+  return completeMetaScheduling(() => createScheduledPublications(app.db, planned.plans.map((plan) => ({
+    clientAccountId: input.clientAccountId,
+    cardId: input.card.id,
+    destinationId: input.destinationId,
+    destinationName: routing.destinationName,
+    platform: plan.platform,
+    metaAssetId: input.platforms.find(({ platform }) => platform === plan.platform)!.metaAssetId,
+    scheduledAt,
+    timezone: input.timezone,
+    caption: input.card.caption?.trim() || null,
+    mediaUrl: validatedUrls.get(plan.mediaUrl)!,
+    mediaUrls: plan.mediaUrls.map((url) => validatedUrls.get(url)!),
+    mediaType: plan.mediaType,
+    reelCoverUrl: plan.reelCoverUrl ? assertPublicReelCoverUrl(app, plan.reelCoverUrl) : null,
+    locationId: plan.locationId,
+    locationName: plan.locationId ? input.locationName?.trim() || null : null,
+    instagramUserTags: plan.instagramUserTags,
+    createdByUserId: input.userId,
+    idempotencyKey: crypto.createHash("sha256")
+      .update([input.clientAccountId, input.destinationId ?? "legacy", input.card.id, plan.platform, scheduledAt].join(":"))
+      .digest("hex"),
+  }))), () => moveKanbanCardToScheduledColumn(app, input.clientAccountId, input.card.id, input.actor));
+}
+
+export async function searchMetaPlaces(app: FastifyInstance, userId: string, query: string) {
+  const q = query.trim();
+  if (q.length < 3) return [];
+  const context = await getPublishingContext(app, userId);
+  const result = await fetchMetaResult<MetaPlaceSearchPayload>({
+    app,
+    path: "/pages/search",
+    token: context.token,
+    appSecret: context.appSecret,
+    params: { q, fields: "id,name,location", limit: "8" },
+    metricOrOperation: "meta.places.search",
+    timeoutMs: 15_000,
+  });
+  if (!result.payload) {
+    app.log.warn({
+      query: q,
+      endpoint: result.warning?.endpoint ?? "/pages/search",
+      metaCode: result.warning?.code ?? null,
+      kind: result.warning?.kind ?? "unavailable",
+      httpStatus: result.warning?.httpStatus ?? null,
+      message: result.warning?.message ?? "Sem detalhes retornados pela Meta.",
+    }, "Meta place search failed");
+    throw app.httpErrors.badRequest(
+      result.warning?.message
+        ? `Meta recusou a busca de locais: ${result.warning.message}`
+        : "Não foi possível buscar locais agora.",
+    );
+  }
+  return (result.payload.data ?? []).flatMap((place) => place.id && place.name ? [{
+    id: place.id,
+    name: place.name,
+    location: {
+      city: place.location?.city ?? null,
+      state: place.location?.state ?? null,
+      country: place.location?.country ?? null,
+      street: place.location?.street ?? null,
+      zip: place.location?.zip === undefined ? null : String(place.location.zip),
+    },
+  }] : []);
+}
+
+export async function archiveMetaCardIfPublicationGroupComplete(app: FastifyInstance, publication: {
+  clientAccountId: string;
+  cardId: string | null;
+  scheduledAt: string;
+}) {
+  if (!publication.cardId || !await canArchiveScheduledPublicationCard(app.db, {
+    clientAccountId: publication.clientAccountId,
+    cardId: publication.cardId,
+    scheduledAt: publication.scheduledAt,
+  })) return false;
+  await archiveKanbanCard(app, publication.clientAccountId, publication.cardId, true);
+  return true;
+}
+
+const INSTAGRAM_CONTAINER_POLL_ATTEMPTS = 10;
+const INSTAGRAM_CONTAINER_POLL_INTERVAL_MS = 2_000;
+
+function wait(milliseconds: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function waitForInstagramContainer(app: FastifyInstance, input: {
+  publicationId: string;
+  containerId: string;
+  token: string;
+  appSecret: string;
+  pollIntervalMs?: number;
+  maxWaitMs?: number;
+}) {
+  const pollIntervalMs = input.pollIntervalMs ?? INSTAGRAM_CONTAINER_POLL_INTERVAL_MS;
+  const maxWaitMs = input.maxWaitMs ?? INSTAGRAM_CONTAINER_POLL_ATTEMPTS * INSTAGRAM_CONTAINER_POLL_INTERVAL_MS;
+  const deadline = Date.now() + maxWaitMs;
+  for (let attempt = 1; Date.now() < deadline; attempt += 1) {
+    await wait(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
+    const result = await fetchMetaResult<MetaApiError & { status_code?: string; error_message?: string }>({
+      app,
+      path: `/${input.containerId}`,
+      token: input.token,
+      appSecret: input.appSecret,
+      params: { fields: "status_code" },
+      metricOrOperation: "instagram.publish.containerStatus",
+      timeoutMs: META_INSTAGRAM_STATUS_TIMEOUT_MS,
+    });
+    if (!result.payload) {
+      throw new Error(result.warning?.kind === "timeout"
+        ? "A Meta demorou demais para responder ao consultar o processamento da mídia. Verifique o Instagram antes de tentar novamente."
+        : result.warning?.message || "Não foi possível consultar o processamento da mídia na Meta.");
+    }
+    const statusCode = result.payload.status_code?.trim().toUpperCase() || "UNKNOWN";
+    app.log.info({
+      publicationId: input.publicationId,
+      containerId: input.containerId,
+      attempt,
+      status_code: statusCode,
+    }, "Instagram media container status checked");
+    if (statusCode === "FINISHED") return;
+    if (statusCode === "ERROR" || result.payload.error_message) {
+      throw new Error(result.payload.error_message || "A Meta encontrou um erro ao processar a mídia.");
+    }
+    if (statusCode === "EXPIRED") {
+      throw new Error("O container da mídia expirou antes da publicação.");
+    }
+    if (statusCode === "PUBLISHED") {
+      throw new Error("A Meta informou que este container já foi publicado.");
+    }
+    if (statusCode !== "IN_PROGRESS") {
+      throw new Error(`A Meta retornou um status inesperado ao processar a mídia: ${statusCode}.`);
+    }
+  }
+  throw new Error("A Meta ainda não concluiu o processamento da mídia. Tente publicar novamente.");
+}
+
+async function publishInstagramContainer(app: FastifyInstance, input: {
+  instagramAccountId: string;
+  creationId: string;
+  token: string;
+  appSecret: string;
+  fetchPermalink?: boolean;
+}) {
+  const publish = await fetchMetaResult<MetaApiError & { id?: string }>({
+    app,
+    path: `/${input.instagramAccountId}/media_publish`,
+    token: input.token,
+    appSecret: input.appSecret,
+    params: { creation_id: input.creationId },
+    metricOrOperation: "instagram.publish.media",
+    method: "POST",
+    timeoutMs: META_INSTAGRAM_PUBLISH_TIMEOUT_MS,
+  });
+  if (!publish.payload?.id) throw new Error(publish.warning?.kind === "timeout"
+    ? "A Meta demorou demais para confirmar a publicação final. Verifique o Instagram antes de tentar novamente."
+    : publish.warning?.message || "A Meta não confirmou a publicação no Instagram.");
+  if (input.fetchPermalink === false) {
+    return { publishedMetaId: publish.payload.id, publishedPermalink: null };
+  }
+  const permalink = await fetchMetaResult<MetaApiError & { permalink?: string }>({
+    app,
+    path: `/${publish.payload.id}`,
+    token: input.token,
+    appSecret: input.appSecret,
+    params: { fields: "permalink" },
+    metricOrOperation: "instagram.publish.permalink",
+    timeoutMs: META_INSTAGRAM_PERMALINK_TIMEOUT_MS,
+  });
+  return { publishedMetaId: publish.payload.id, publishedPermalink: permalink.payload?.permalink ?? null };
+}
+
+async function publishInstagramImage(app: FastifyInstance, input: {
+  publicationId: string;
+  userId: string;
+  instagramAccountId: string;
+  imageUrl: string;
+  caption: string | null;
+  locationId: string | null;
+  instagramUserTags: Array<{ username: string; x: number; y: number }>;
+}) {
+  const context = await getPublishingContext(app, input.userId);
+  const create = await fetchMetaResult<MetaApiError & { id?: string }>({
+    app,
+    path: `/${input.instagramAccountId}/media`,
+    token: context.token,
+    appSecret: context.appSecret,
+    params: {
+      image_url: input.imageUrl,
+      ...(input.caption ? { caption: input.caption } : {}),
+      ...(input.locationId ? { location_id: input.locationId } : {}),
+      ...(input.instagramUserTags.length ? { user_tags: JSON.stringify(input.instagramUserTags) } : {}),
+    },
+    metricOrOperation: "instagram.publish.createContainer",
+    method: "POST",
+    timeoutMs: META_INSTAGRAM_CREATE_TIMEOUT_MS,
+  });
+  if (!create.payload?.id) throw new Error(create.warning?.kind === "timeout"
+    ? "A Meta demorou demais para criar o container da publicação. Verifique o Instagram antes de tentar novamente."
+    : create.warning?.message || "A Meta não criou o container da publicação.");
+  await waitForInstagramContainer(app, {
+    publicationId: input.publicationId,
+    containerId: create.payload.id,
+    token: context.token,
+    appSecret: context.appSecret,
+  });
+  return publishInstagramContainer(app, {
+    instagramAccountId: input.instagramAccountId,
+    creationId: create.payload.id,
+    token: context.token,
+    appSecret: context.appSecret,
+  });
+}
+
+async function publishInstagramCarousel(app: FastifyInstance, input: {
+  publicationId: string;
+  userId: string;
+  instagramAccountId: string;
+  imageUrls: string[];
+  caption: string | null;
+  locationId: string | null;
+}) {
+  if (input.imageUrls.length < 2) throw new Error("O carrossel do Instagram precisa ter pelo menos 2 imagens.");
+  if (input.imageUrls.length > 10) throw new Error("O carrossel do Instagram aceita no máximo 10 imagens.");
+  const context = await getPublishingContext(app, input.userId);
+  const children: string[] = [];
+  for (const [index, imageUrl] of input.imageUrls.entries()) {
+    const child = await fetchMetaResult<MetaApiError & { id?: string }>({
+      app,
+      path: `/${input.instagramAccountId}/media`,
+      token: context.token,
+      appSecret: context.appSecret,
+      params: { image_url: imageUrl, is_carousel_item: "true" },
+      metricOrOperation: `instagram.publish.carouselItem.${index + 1}.createContainer`,
+      method: "POST",
+      timeoutMs: META_INSTAGRAM_CREATE_TIMEOUT_MS,
+    });
+    if (!child.payload?.id) {
+      const detail = child.warning?.kind === "timeout"
+        ? " A Meta demorou demais para criar o container. Verifique o Instagram antes de tentar novamente."
+        : child.warning?.message ? ` ${child.warning.message}` : "";
+      throw new Error(`A Meta não criou o container da imagem ${index + 1} do carrossel.${detail}`);
+    }
+    try {
+      await waitForInstagramContainer(app, {
+        publicationId: input.publicationId,
+        containerId: child.payload.id,
+        token: context.token,
+        appSecret: context.appSecret,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Erro desconhecido.";
+      throw new Error(`A Meta não concluiu o processamento da imagem ${index + 1} do carrossel: ${message}`);
+    }
+    children.push(child.payload.id);
+  }
+  const carousel = await fetchMetaResult<MetaApiError & { id?: string }>({
+    app,
+    path: `/${input.instagramAccountId}/media`,
+    token: context.token,
+    appSecret: context.appSecret,
+    params: {
+      media_type: "CAROUSEL",
+      children: children.join(","),
+      ...(input.caption ? { caption: input.caption } : {}),
+      ...(input.locationId ? { location_id: input.locationId } : {}),
+    },
+    metricOrOperation: "instagram.publish.carousel.createContainer",
+    method: "POST",
+    timeoutMs: META_INSTAGRAM_CREATE_TIMEOUT_MS,
+  });
+  if (!carousel.payload?.id) {
+    const detail = carousel.warning?.kind === "timeout"
+      ? " A Meta demorou demais para criar o container principal. Verifique o Instagram antes de tentar novamente."
+      : carousel.warning?.message ? ` ${carousel.warning.message}` : "";
+    throw new Error(`A Meta não criou o container principal do carrossel.${detail}`);
+  }
+  try {
+    await waitForInstagramContainer(app, {
+      publicationId: input.publicationId,
+      containerId: carousel.payload.id,
+      token: context.token,
+      appSecret: context.appSecret,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Erro desconhecido.";
+    throw new Error(`A Meta não concluiu o processamento do carrossel: ${message}`);
+  }
+  return publishInstagramContainer(app, {
+    instagramAccountId: input.instagramAccountId,
+    creationId: carousel.payload.id,
+    token: context.token,
+    appSecret: context.appSecret,
+  });
+}
+
+async function publishInstagramReel(app: FastifyInstance, input: {
+  publicationId: string;
+  userId: string;
+  instagramAccountId: string;
+  videoUrl: string;
+  reelCoverUrl: string | null;
+  caption: string | null;
+  pollIntervalMs?: number;
+  maxWaitMs?: number;
+}) {
+  const context = await getPublishingContext(app, input.userId);
+  const create = await fetchMetaResult<MetaApiError & { id?: string }>({
+    app,
+    path: `/${input.instagramAccountId}/media`,
+    token: context.token,
+    appSecret: context.appSecret,
+    params: {
+      media_type: "REELS",
+      video_url: input.videoUrl,
+      ...(input.reelCoverUrl ? { cover_url: input.reelCoverUrl } : {}),
+      ...(input.caption ? { caption: input.caption } : {}),
+    },
+    metricOrOperation: "instagram.publish.reel.createContainer",
+    method: "POST",
+    timeoutMs: META_INSTAGRAM_REEL_CREATE_TIMEOUT_MS,
+  });
+  if (!create.payload?.id) throw new Error(create.warning?.kind === "timeout"
+    ? "A Meta demorou demais para criar o container do Reel. Verifique o Instagram antes de tentar novamente."
+    : create.warning?.message || "A Meta não criou o container do Reel.");
+  try {
+    await waitForInstagramContainer(app, {
+      publicationId: input.publicationId,
+      containerId: create.payload.id,
+      token: context.token,
+      appSecret: context.appSecret,
+      pollIntervalMs: input.pollIntervalMs ?? 5_000,
+      maxWaitMs: input.maxWaitMs ?? 5 * 60_000,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Erro desconhecido.";
+    throw new Error(`A Meta não concluiu o processamento do Reel: ${message}`);
+  }
+  return publishInstagramContainer(app, {
+    instagramAccountId: input.instagramAccountId,
+    creationId: create.payload.id,
+    token: context.token,
+    appSecret: context.appSecret,
+  });
+}
+
+async function publishInstagramStory(app: FastifyInstance, input: {
+  publicationId: string;
+  userId: string;
+  instagramAccountId: string;
+  mediaUrl: string;
+  pollIntervalMs?: number;
+  maxWaitMs?: number;
+}) {
+  const context = await getPublishingContext(app, input.userId);
+  const isVideo = isVideoMediaUrl(input.mediaUrl);
+  const maxBytes = isVideo ? 100 * 1024 * 1024 : 8 * 1024 * 1024;
+  try {
+    const mediaResponse = await fetch(input.mediaUrl, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(META_INSTAGRAM_STORY_MEDIA_CHECK_TIMEOUT_MS),
+    });
+    if (mediaResponse.ok) {
+      const contentType = mediaResponse.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() || null;
+      const contentLength = Number(mediaResponse.headers.get("content-length"));
+      if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+        throw new Error(isVideo
+          ? "O vídeo da Story excede o limite oficial de 100 MB do Instagram."
+          : "A imagem da Story excede o limite oficial de 8 MB do Instagram.");
+      }
+      if (contentType && (isVideo ? !["video/mp4", "video/quicktime"].includes(contentType) : contentType !== "image/jpeg")) {
+        throw new Error(isVideo
+          ? "O vídeo da Story precisa estar em formato MP4 ou MOV."
+          : "A imagem da Story precisa estar em formato JPEG.");
+      }
+      app.log.info({ publicationId: input.publicationId, operation: "instagram.publish.story.validateMedia", contentType, contentLength: Number.isFinite(contentLength) ? contentLength : null, httpStatus: mediaResponse.status }, "Instagram Story media metadata checked");
+    }
+  } catch (error) {
+    if (error instanceof Error && /(limite oficial|formato MP4|formato JPEG)/.test(error.message)) throw error;
+    app.log.warn({ publicationId: input.publicationId, operation: "instagram.publish.story.validateMedia" }, "Instagram Story media metadata could not be checked before Meta processing");
+  }
+  const create = await fetchMetaResult<MetaApiError & { id?: string }>({
+    app,
+    path: `/${input.instagramAccountId}/media`,
+    token: context.token,
+    appSecret: context.appSecret,
+    params: {
+      media_type: "STORIES",
+      ...(isVideo ? { video_url: input.mediaUrl } : { image_url: input.mediaUrl }),
+    },
+    metricOrOperation: `instagram.publish.story.${isVideo ? "video" : "image"}.createContainer`,
+    method: "POST",
+    timeoutMs: META_INSTAGRAM_STORY_CREATE_TIMEOUT_MS,
+  });
+  if (!create.payload?.id) throw new Error(create.warning?.kind === "timeout"
+    ? "A Meta demorou demais para criar o container da Story. Verifique o Instagram antes de tentar novamente."
+    : create.warning?.message || "A Meta não criou o container da Story.");
+  try {
+    await waitForInstagramContainer(app, {
+      publicationId: input.publicationId,
+      containerId: create.payload.id,
+      token: context.token,
+      appSecret: context.appSecret,
+      pollIntervalMs: input.pollIntervalMs ?? (isVideo ? 5_000 : undefined),
+      maxWaitMs: input.maxWaitMs ?? (isVideo ? 5 * 60_000 : undefined),
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Erro desconhecido.";
+    throw new Error(`A Meta não concluiu o processamento da Story: ${message}`);
+  }
+  return publishInstagramContainer(app, {
+    instagramAccountId: input.instagramAccountId,
+    creationId: create.payload.id,
+    token: context.token,
+    appSecret: context.appSecret,
+    fetchPermalink: false,
+  });
+}
+
+function facebookVideoStatusError(payload: FacebookVideoStatusPayload) {
+  const phases = [payload.status?.uploading_phase, payload.status?.processing_phase, payload.status?.publishing_phase];
+  return phases.flatMap((phase) => phase?.errors ?? []).find((error) => error.error_message)?.error_message ?? null;
+}
+
+function parseFacebookVideoUploadResponse(responseText: string, pageToken: string, appSecret: string) {
+  let payload: MetaApiError & { success?: boolean } = {};
+  try {
+    const parsed = JSON.parse(responseText) as unknown;
+    if (parsed && typeof parsed === "object") payload = parsed as MetaApiError & { success?: boolean };
+  } catch {
+    // The rupload endpoint sometimes returns a plain-text error body.
+  }
+  const rawDetail = payload.error?.message || responseText.trim() || null;
+  const detail = rawDetail
+    ? redactMetaSecrets(rawDetail, pageToken, appSecret).replace(/\s+/g, " ").slice(0, 700)
+    : null;
+  return { payload, detail };
+}
+
+async function readResponseBodyWithLimit(response: Response, maxBytes: number) {
+  if (!response.body) return new ArrayBuffer(0);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > maxBytes) {
+      await reader.cancel().catch(() => undefined);
+      throw new Error("O vídeo excede o limite de segurança de 250 MB para envio direto.");
+    }
+    chunks.push(value);
+  }
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return bytes.buffer;
+}
+
+async function uploadFacebookVideoBinaryFallback(app: FastifyInstance, input: {
+  publicationId: string;
+  videoId: string;
+  uploadUrl: URL;
+  videoUrl: string;
+  pageToken: string;
+  appSecret: string;
+  mediaKind: "reel" | "story";
+}) {
+  const downloadStartedAt = Date.now();
+  let videoResponse: Response;
+  try {
+    videoResponse = await fetch(input.videoUrl, {
+      headers: { Accept: "video/*" },
+      signal: AbortSignal.timeout(META_FACEBOOK_REEL_DOWNLOAD_TIMEOUT_MS),
+    });
+  } catch (error) {
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    throw new Error(timedOut ? "O download do vídeo excedeu o tempo limite." : "O backend não conseguiu baixar o vídeo para o envio direto.");
+  }
+  if (!videoResponse.ok) throw new Error(`O backend não conseguiu baixar o vídeo (HTTP ${videoResponse.status}).`);
+  const contentType = videoResponse.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() || "";
+  if (!contentType.startsWith("video/")) throw new Error(`O arquivo remoto não foi identificado como vídeo (${contentType || "content-type ausente"}).`);
+  const declaredLength = Number(videoResponse.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > META_FACEBOOK_REEL_MAX_DOWNLOAD_BYTES) {
+    throw new Error("O vídeo excede o limite de segurança de 250 MB para envio direto.");
+  }
+  let bytes: ArrayBuffer;
+  try {
+    bytes = await readResponseBodyWithLimit(videoResponse, META_FACEBOOK_REEL_MAX_DOWNLOAD_BYTES);
+  } catch (error) {
+    if (error instanceof Error && /limite de segurança/.test(error.message)) throw error;
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    throw new Error(timedOut ? "O download do vídeo excedeu o tempo limite." : "Não foi possível ler o vídeo baixado.");
+  }
+  if (bytes.byteLength === 0) throw new Error("O vídeo baixado está vazio.");
+  if (bytes.byteLength > META_FACEBOOK_REEL_MAX_DOWNLOAD_BYTES) throw new Error("O vídeo excede o limite de segurança de 250 MB para envio direto.");
+  app.log.info({
+    publicationId: input.publicationId,
+    videoId: input.videoId,
+    operation: `facebook.publish.${input.mediaKind}.binaryDownload`,
+    sizeBytes: bytes.byteLength,
+    contentType,
+    durationMs: Date.now() - downloadStartedAt,
+    httpStatus: videoResponse.status,
+  }, `Facebook ${input.mediaKind} video downloaded for binary fallback`);
+
+  const uploadStartedAt = Date.now();
+  let response: Response;
+  try {
+    response = await fetch(input.uploadUrl, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `OAuth ${input.pageToken}`,
+        offset: "0",
+        file_size: String(bytes.byteLength),
+        "Content-Type": "application/octet-stream",
+      },
+      body: bytes,
+      signal: AbortSignal.timeout(META_FACEBOOK_REEL_BINARY_UPLOAD_TIMEOUT_MS),
+    });
+  } catch (error) {
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    throw new Error(timedOut ? "O upload direto do vídeo para a Meta excedeu o tempo limite." : "Falha de rede no upload direto do vídeo para a Meta.");
+  }
+  const responseText = await response.text().catch(() => "");
+  const { payload, detail } = parseFacebookVideoUploadResponse(responseText, input.pageToken, input.appSecret);
+  const durationMs = Date.now() - uploadStartedAt;
+  if (!response.ok || payload.error || payload.success !== true) {
+    app.log.warn({
+      publicationId: input.publicationId,
+      videoId: input.videoId,
+      operation: `facebook.publish.${input.mediaKind}.binaryUpload`,
+      sizeBytes: bytes.byteLength,
+      contentType,
+      durationMs,
+      httpStatus: response.status,
+      metaCode: payload.error?.code ?? null,
+      detail,
+    }, `Facebook ${input.mediaKind} binary upload failed`);
+    throw new Error(detail || `Upload direto da ${input.mediaKind === "story" ? "Story" : "Reel"} respondeu com HTTP ${response.status}.`);
+  }
+  app.log.info({
+    publicationId: input.publicationId,
+    videoId: input.videoId,
+    operation: `facebook.publish.${input.mediaKind}.binaryUpload`,
+    sizeBytes: bytes.byteLength,
+    contentType,
+    durationMs,
+    httpStatus: response.status,
+  }, `Facebook ${input.mediaKind} binary upload completed`);
+}
+
+async function uploadFacebookVideoFromUrl(app: FastifyInstance, input: {
+  publicationId: string;
+  videoId: string;
+  uploadUrl: string;
+  videoUrl: string;
+  pageToken: string;
+  appSecret: string;
+  mediaKind: "reel" | "story";
+}) {
+  const mediaLabel = input.mediaKind === "story" ? "Story" : "Reel";
+  let uploadUrl: URL;
+  try {
+    uploadUrl = new URL(input.uploadUrl);
+  } catch {
+    throw new Error(`A Meta retornou um endereço inválido para o envio da ${mediaLabel}.`);
+  }
+  if (uploadUrl.protocol !== "https:" || uploadUrl.hostname !== "rupload.facebook.com") {
+    throw new Error(`A Meta retornou um endereço de upload inesperado para a ${mediaLabel}.`);
+  }
+  const startedAt = Date.now();
+  let response: Response;
+  try {
+    response = await fetch(uploadUrl, {
+      method: "POST",
+      headers: {
+        Accept: "application/json",
+        Authorization: `OAuth ${input.pageToken}`,
+        file_url: input.videoUrl,
+      },
+      signal: AbortSignal.timeout(META_FACEBOOK_REEL_UPLOAD_TIMEOUT_MS),
+    });
+  } catch (error) {
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    if (timedOut) {
+      app.log.warn({ publicationId: input.publicationId, videoId: input.videoId, operation: `facebook.publish.${input.mediaKind}.upload`, durationMs: Date.now() - startedAt, timedOut: true }, `Facebook ${input.mediaKind} upload did not complete`);
+      throw new Error(`A Meta demorou mais que o esperado para receber o vídeo da ${mediaLabel}. Verifique a Página antes de tentar novamente.`);
+    }
+    throw error;
+  }
+  const responseText = await response.text().catch(() => "");
+  const { payload, detail } = parseFacebookVideoUploadResponse(responseText, input.pageToken, input.appSecret);
+  const durationMs = Date.now() - startedAt;
+  if (response.ok && !payload.error && payload.success === true) {
+    app.log.info({ publicationId: input.publicationId, videoId: input.videoId, operation: `facebook.publish.${input.mediaKind}.hostedUpload`, durationMs, httpStatus: response.status }, `Facebook ${input.mediaKind} hosted upload completed`);
+    return;
+  }
+  app.log.warn({
+    publicationId: input.publicationId,
+    videoId: input.videoId,
+    operation: `facebook.publish.${input.mediaKind}.hostedUpload`,
+    durationMs,
+    httpStatus: response.status,
+    metaCode: payload.error?.code ?? null,
+    detail,
+  }, `Facebook ${input.mediaKind} hosted upload failed`);
+  if (response.status >= 400 && response.status < 500) {
+    app.log.warn({
+      publicationId: input.publicationId,
+      videoId: input.videoId,
+      operation: `facebook.publish.${input.mediaKind}.binaryFallback`,
+      httpStatus: response.status,
+    }, `Upload hospedado da ${mediaLabel} foi rejeitado pela Meta (HTTP ${response.status}). Tentando envio direto do arquivo.`);
+    try {
+      await uploadFacebookVideoBinaryFallback(app, { ...input, uploadUrl });
+      return;
+    } catch (error) {
+      const fallbackMessage = redactMetaSecrets(error instanceof Error ? error.message : "Falha inesperada no envio direto.", input.pageToken, input.appSecret);
+      throw new Error(`A Meta recusou o envio do vídeo tanto por URL quanto por upload direto. ${fallbackMessage}`);
+    }
+  }
+  throw new Error(detail || `Upload da ${mediaLabel} respondeu com HTTP ${response.status}.`);
+}
+
+async function waitForFacebookReel(app: FastifyInstance, input: {
+  publicationId: string;
+  videoId: string;
+  pageToken: string;
+  appSecret: string;
+  pollIntervalMs?: number;
+  maxWaitMs?: number;
+}) {
+  const pollIntervalMs = input.pollIntervalMs ?? 5_000;
+  const maxWaitMs = input.maxWaitMs ?? 5 * 60_000;
+  const deadline = Date.now() + maxWaitMs;
+  for (let attempt = 1; Date.now() < deadline; attempt += 1) {
+    await wait(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
+    const result = await fetchMetaResult<FacebookVideoStatusPayload>({
+      app,
+      path: `/${input.videoId}`,
+      token: input.pageToken,
+      appSecret: input.appSecret,
+      params: { fields: "status" },
+      metricOrOperation: "facebook.publish.reel.status",
+      timeoutMs: META_FACEBOOK_REEL_STATUS_TIMEOUT_MS,
+    });
+    if (!result.payload) {
+      throw new Error(result.warning?.kind === "timeout"
+        ? "A Meta demorou demais para responder ao consultar o processamento do Reel do Facebook."
+        : result.warning?.message || "Não foi possível consultar o processamento do Reel do Facebook.");
+    }
+    const status = result.payload.status;
+    const videoStatus = status?.video_status?.trim().toLowerCase() || "unknown";
+    const phaseStatuses = {
+      uploading: status?.uploading_phase?.status?.trim().toLowerCase() || null,
+      processing: status?.processing_phase?.status?.trim().toLowerCase() || null,
+      publishing: status?.publishing_phase?.status?.trim().toLowerCase() || null,
+    };
+    app.log.info({ publicationId: input.publicationId, videoId: input.videoId, attempt, video_status: videoStatus, phases: phaseStatuses }, "Facebook Reel status checked");
+    if (videoStatus === "ready" || phaseStatuses.publishing === "complete" || phaseStatuses.publishing === "completed") return;
+    const phaseError = Object.values(phaseStatuses).some((phase) => phase === "error");
+    if (["error", "expired", "upload_failed"].includes(videoStatus) || phaseError) {
+      throw new Error(facebookVideoStatusError(result.payload) || `A Meta não conseguiu processar o Reel do Facebook (${videoStatus}).`);
+    }
+    if (!["uploading", "upload_complete", "processing"].includes(videoStatus)) {
+      throw new Error(`A Meta retornou um status inesperado para o Reel do Facebook: ${videoStatus}.`);
+    }
+  }
+  throw new Error("A Meta ainda não concluiu o processamento do Reel do Facebook. Verifique a Página antes de tentar novamente.");
+}
+
+async function uploadFacebookReelCover(app: FastifyInstance, input: {
+  publicationId: string;
+  videoId: string;
+  coverUrl: string;
+  pageToken: string;
+  appSecret: string;
+}) {
+  const coverResponse = await fetch(input.coverUrl, {
+    headers: { Accept: "image/jpeg,image/png" },
+    signal: AbortSignal.timeout(META_FACEBOOK_REEL_COVER_FETCH_TIMEOUT_MS),
+  }).catch((error: unknown) => {
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    throw new Error(timedOut ? "A capa do Reel demorou demais para ser carregada." : "Não foi possível carregar a capa do Reel para publicação.");
+  });
+  if (!coverResponse.ok) throw new Error(`Não foi possível carregar a capa do Reel (HTTP ${coverResponse.status}).`);
+  const contentType = coverResponse.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() || "";
+  if (!["image/jpeg", "image/png"].includes(contentType)) throw new Error("A capa do Reel precisa ser uma imagem JPG, JPEG ou PNG válida.");
+  const bytes = await coverResponse.arrayBuffer();
+  if (bytes.byteLength === 0 || bytes.byteLength > 10 * 1024 * 1024) throw new Error("A capa do Reel precisa ter até 10 MB.");
+
+  const url = new URL(`https://graph.facebook.com/${GRAPH_VERSION}/${input.videoId}/thumbnails`);
+  url.searchParams.set("access_token", input.pageToken);
+  url.searchParams.set("appsecret_proof", appSecretProof(input.pageToken, input.appSecret));
+  const form = new FormData();
+  form.set("source", new Blob([bytes], { type: contentType }), contentType === "image/png" ? "cover.png" : "cover.jpg");
+  form.set("is_preferred", "true");
+  const startedAt = Date.now();
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { Accept: "application/json" },
+      body: form,
+      signal: AbortSignal.timeout(META_FACEBOOK_REEL_COVER_UPLOAD_TIMEOUT_MS),
+    });
+    const payload = await response.json().catch(() => ({})) as MetaApiError & { success?: boolean };
+    const durationMs = Date.now() - startedAt;
+    if (!response.ok || payload.error || payload.success !== true) {
+      const message = redactMetaSecrets(payload.error?.message || `Meta Reel thumbnail respondeu com HTTP ${response.status}`, input.pageToken, input.appSecret);
+      app.log.warn({ publicationId: input.publicationId, videoId: input.videoId, operation: "facebook.publish.reel.cover", durationMs, httpStatus: response.status, metaCode: payload.error?.code ?? null }, "Facebook Reel cover upload failed");
+      throw new Error(message);
+    }
+    app.log.info({ publicationId: input.publicationId, videoId: input.videoId, operation: "facebook.publish.reel.cover", durationMs, httpStatus: response.status }, "Facebook Reel cover uploaded");
+  } catch (error) {
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    if (timedOut) throw new Error("A Meta demorou demais para receber a capa personalizada do Reel.");
+    throw error;
+  }
+}
+
+async function publishFacebookReel(app: FastifyInstance, input: {
+  publicationId: string;
+  userId: string;
+  pageId: string;
+  videoUrl: string;
+  reelCoverUrl: string | null;
+  caption: string | null;
+  locationId: string | null;
+  pollIntervalMs?: number;
+  maxWaitMs?: number;
+}) {
+  const context = await getPublishingContext(app, input.userId);
+  const pageAccess = await getFacebookPageAccessContext({
+    app,
+    pageId: input.pageId,
+    userToken: context.token,
+    appSecret: context.appSecret,
+    timeoutMs: META_FACEBOOK_PAGE_ACCESS_TIMEOUT_MS,
+  });
+  if (!pageAccess.page || pageAccess.page.id !== input.pageId) {
+    throw new Error(pageAccess.warning?.message || "A Página do Facebook vinculada não está disponível na conexão Meta.");
+  }
+  if (pageAccess.tokenSource !== "page") {
+    throw new Error("A Meta não forneceu um Page Access Token para a Página do Facebook vinculada.");
+  }
+  const start = await fetchMetaResult<MetaApiError & { video_id?: string; upload_url?: string }>({
+    app,
+    path: `/${input.pageId}/video_reels`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: { upload_phase: "start" },
+    metricOrOperation: "facebook.publish.reel.start",
+    method: "POST",
+    timeoutMs: META_FACEBOOK_REEL_START_TIMEOUT_MS,
+  });
+  if (!start.payload?.video_id || !start.payload.upload_url) throw new Error(start.warning?.kind === "timeout"
+    ? "A Meta demorou demais para iniciar o envio do Reel do Facebook."
+    : start.warning?.message || "A Meta não iniciou o envio do Reel do Facebook.");
+  const videoId = start.payload.video_id;
+  await uploadFacebookVideoFromUrl(app, {
+    publicationId: input.publicationId,
+    videoId,
+    uploadUrl: start.payload.upload_url,
+    videoUrl: input.videoUrl,
+    pageToken: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    mediaKind: "reel",
+  });
+  if (input.reelCoverUrl) {
+    await uploadFacebookReelCover(app, {
+      publicationId: input.publicationId,
+      videoId,
+      coverUrl: input.reelCoverUrl,
+      pageToken: pageAccess.pageToken,
+      appSecret: context.appSecret,
+    });
+  }
+  const finish = await fetchMetaResult<MetaApiError & { success?: boolean; post_id?: string }>({
+    app,
+    path: `/${input.pageId}/video_reels`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: {
+      video_id: videoId,
+      upload_phase: "finish",
+      video_state: "PUBLISHED",
+      ...(input.caption ? { description: input.caption } : {}),
+      ...(input.locationId ? { place: input.locationId } : {}),
+    },
+    metricOrOperation: "facebook.publish.reel.finish",
+    method: "POST",
+    timeoutMs: META_FACEBOOK_REEL_FINISH_TIMEOUT_MS,
+  });
+  if (finish.warning?.kind === "timeout") {
+    throw new Error("A Meta demorou mais que o esperado para confirmar o Reel. Verifique a Página antes de tentar novamente.");
+  }
+  if (!finish.payload || finish.payload.success !== true) {
+    throw new Error(finish.warning?.message || "A Meta não confirmou a publicação do Reel na Página do Facebook.");
+  }
+  await waitForFacebookReel(app, {
+    publicationId: input.publicationId,
+    videoId,
+    pageToken: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    pollIntervalMs: input.pollIntervalMs,
+    maxWaitMs: input.maxWaitMs,
+  });
+  const permalink = await fetchMetaResult<MetaApiError & { permalink_url?: string }>({
+    app,
+    path: `/${videoId}`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: { fields: "permalink_url" },
+    metricOrOperation: "facebook.publish.reel.permalink",
+    timeoutMs: META_FACEBOOK_REEL_PERMALINK_TIMEOUT_MS,
+  });
+  return { publishedMetaId: finish.payload.post_id ?? videoId, publishedPermalink: permalink.payload?.permalink_url ?? null };
+}
+
+async function findFacebookStoryPermalink(app: FastifyInstance, input: {
+  pageId: string;
+  postId: string;
+  mediaId: string;
+  pageToken: string;
+  appSecret: string;
+}) {
+  const stories = await fetchMetaResult<MetaApiError & { data?: Array<{ post_id?: string; media_id?: string; url?: string; status?: string }> }>({
+    app,
+    path: `/${input.pageId}/stories`,
+    token: input.pageToken,
+    appSecret: input.appSecret,
+    params: { fields: "post_id,media_id,url,status", limit: "25" },
+    metricOrOperation: "facebook.publish.story.permalink",
+    timeoutMs: META_FACEBOOK_STORY_PERMALINK_TIMEOUT_MS,
+  });
+  return stories.payload?.data?.find((story) => story.post_id === input.postId || story.media_id === input.mediaId)?.url ?? null;
+}
+
+async function publishFacebookStoryImage(app: FastifyInstance, input: {
+  publicationId: string;
+  userId: string;
+  pageId: string;
+  imageUrl: string;
+}) {
+  try {
+    const mediaResponse = await fetch(input.imageUrl, {
+      method: "HEAD",
+      signal: AbortSignal.timeout(META_FACEBOOK_STORY_MEDIA_CHECK_TIMEOUT_MS),
+    });
+    if (mediaResponse.ok) {
+      const contentType = mediaResponse.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() || null;
+      const contentLength = Number(mediaResponse.headers.get("content-length"));
+      if (Number.isFinite(contentLength) && contentLength > 10 * 1024 * 1024) {
+        throw new Error("A imagem da Story excede o limite oficial de 10 MB do Facebook.");
+      }
+      if (contentType && !["image/jpeg", "image/bmp", "image/png", "image/gif", "image/tiff"].includes(contentType)) {
+        throw new Error("A imagem da Story do Facebook precisa estar em formato JPEG, BMP, PNG, GIF ou TIFF.");
+      }
+      app.log.info({ publicationId: input.publicationId, operation: "facebook.publish.story.photo.validateMedia", contentType, contentLength: Number.isFinite(contentLength) ? contentLength : null, httpStatus: mediaResponse.status }, "Facebook Story photo metadata checked");
+    }
+  } catch (error) {
+    if (error instanceof Error && /(limite oficial|formato JPEG)/.test(error.message)) throw error;
+    app.log.warn({ publicationId: input.publicationId, operation: "facebook.publish.story.photo.validateMedia" }, "Facebook Story photo metadata could not be checked before Meta processing");
+  }
+  const context = await getPublishingContext(app, input.userId);
+  const pageAccess = await getFacebookPageAccessContext({
+    app,
+    pageId: input.pageId,
+    userToken: context.token,
+    appSecret: context.appSecret,
+    timeoutMs: META_FACEBOOK_PAGE_ACCESS_TIMEOUT_MS,
+  });
+  if (!pageAccess.page || pageAccess.page.id !== input.pageId) {
+    throw new Error(pageAccess.warning?.message || "A Página do Facebook vinculada não está disponível na conexão Meta.");
+  }
+  if (pageAccess.tokenSource !== "page") {
+    throw new Error("A Meta não forneceu um Page Access Token para a Página do Facebook vinculada.");
+  }
+  const upload = await fetchMetaResult<MetaApiError & { id?: string }>({
+    app,
+    path: `/${input.pageId}/photos`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: { url: input.imageUrl, published: "false" },
+    metricOrOperation: "facebook.publish.story.photo.upload",
+    method: "POST",
+    timeoutMs: META_FACEBOOK_STORY_PHOTO_UPLOAD_TIMEOUT_MS,
+  });
+  if (!upload.payload?.id) throw new Error(upload.warning?.kind === "timeout"
+    ? "A Meta demorou demais para carregar a imagem da Story do Facebook."
+    : upload.warning?.message || "A Meta não carregou a imagem da Story do Facebook.");
+  const photoId = upload.payload.id;
+  const publish = await fetchMetaResult<MetaApiError & { success?: boolean; post_id?: string }>({
+    app,
+    path: `/${input.pageId}/photo_stories`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: { photo_id: photoId },
+    metricOrOperation: "facebook.publish.story.photo.finish",
+    method: "POST",
+    timeoutMs: META_FACEBOOK_STORY_PUBLISH_TIMEOUT_MS,
+  });
+  if (publish.warning?.kind === "timeout") {
+    throw new Error("A Meta demorou mais que o esperado para confirmar a Story. Verifique a Página antes de tentar novamente.");
+  }
+  if (!publish.payload || publish.payload.success !== true || !publish.payload.post_id) {
+    throw new Error(publish.warning?.message || "A Meta não confirmou a publicação da Story de imagem na Página do Facebook.");
+  }
+  const postId = String(publish.payload.post_id);
+  const publishedPermalink = await findFacebookStoryPermalink(app, {
+    pageId: input.pageId,
+    postId,
+    mediaId: photoId,
+    pageToken: pageAccess.pageToken,
+    appSecret: context.appSecret,
+  });
+  return { publishedMetaId: postId, publishedPermalink };
+}
+
+async function readFacebookStoryVideoStatus(app: FastifyInstance, input: {
+  publicationId: string;
+  videoId: string;
+  pageToken: string;
+  appSecret: string;
+  stage: "after_upload" | "after_finish";
+  attempt: number;
+}) {
+  const startedAt = Date.now();
+  const result = await fetchMetaResult<FacebookVideoStatusPayload>({
+    app,
+    path: `/${input.videoId}`,
+    token: input.pageToken,
+    appSecret: input.appSecret,
+    params: { fields: "status" },
+    metricOrOperation: `facebook.publish.story.video.status.${input.stage}`,
+    timeoutMs: META_FACEBOOK_STORY_VIDEO_STATUS_TIMEOUT_MS,
+  });
+  const durationMs = Date.now() - startedAt;
+  if (!result.payload) {
+    app.log.warn({
+      publicationId: input.publicationId,
+      videoId: input.videoId,
+      stage: input.stage,
+      attempt: input.attempt,
+      durationMs,
+      warningKind: result.warning?.kind ?? null,
+    }, `Facebook Story video status ${input.stage} unavailable`);
+    return null;
+  }
+  const status = result.payload.status;
+  const snapshot = {
+    payload: result.payload,
+    videoStatus: status?.video_status?.trim().toLowerCase() || "unknown",
+    uploadingStatus: status?.uploading_phase?.status?.trim().toLowerCase() || null,
+    processingStatus: status?.processing_phase?.status?.trim().toLowerCase() || null,
+    publishingStatus: status?.publishing_phase?.status?.trim().toLowerCase() || null,
+    publishStatus: status?.publishing_phase?.publish_status?.trim().toLowerCase() || null,
+  };
+  app.log.info({
+    publicationId: input.publicationId,
+    videoId: input.videoId,
+    stage: input.stage,
+    attempt: input.attempt,
+    durationMs,
+    video_status: snapshot.videoStatus,
+    uploading_phase_status: snapshot.uploadingStatus,
+    processing_phase_status: snapshot.processingStatus,
+    publishing_phase_status: snapshot.publishingStatus,
+    publish_status: snapshot.publishStatus,
+  }, `Facebook Story video status ${input.stage}`);
+  return snapshot;
+}
+
+function assertFacebookStoryStatusHasNoError(snapshot: NonNullable<Awaited<ReturnType<typeof readFacebookStoryVideoStatus>>>) {
+  const phaseStatuses = [snapshot.uploadingStatus, snapshot.processingStatus, snapshot.publishingStatus];
+  if (["error", "expired", "failed", "upload_failed"].includes(snapshot.videoStatus) || phaseStatuses.includes("error")) {
+    throw new Error(facebookVideoStatusError(snapshot.payload) || `A Meta não conseguiu processar a Story do Facebook (${snapshot.videoStatus}).`);
+  }
+}
+
+async function waitForFacebookStoryPublication(app: FastifyInstance, input: {
+  publicationId: string;
+  videoId: string;
+  pageToken: string;
+  appSecret: string;
+  pollIntervalMs?: number;
+  maxWaitMs?: number;
+}) {
+  const pollIntervalMs = input.pollIntervalMs ?? 5_000;
+  const maxWaitMs = input.maxWaitMs ?? 5 * 60_000;
+  const deadline = Date.now() + maxWaitMs;
+  for (let attempt = 1; Date.now() < deadline; attempt += 1) {
+    if (attempt > 1) await wait(Math.min(pollIntervalMs, Math.max(0, deadline - Date.now())));
+    const snapshot = await readFacebookStoryVideoStatus(app, {
+      ...input,
+      stage: "after_finish",
+      attempt,
+    });
+    if (!snapshot) return;
+    assertFacebookStoryStatusHasNoError(snapshot);
+    if (snapshot.publishStatus === "published"
+      || ["complete", "completed"].includes(snapshot.publishingStatus ?? "")
+      || snapshot.videoStatus === "ready") return;
+  }
+  throw new Error("A Meta ainda não confirmou a publicação da Story do Facebook. Verifique a Página antes de tentar novamente.");
+}
+
+async function publishFacebookStoryVideo(app: FastifyInstance, input: {
+  publicationId: string;
+  userId: string;
+  pageId: string;
+  videoUrl: string;
+  pollIntervalMs?: number;
+  maxWaitMs?: number;
+}) {
+  const context = await getPublishingContext(app, input.userId);
+  const pageAccess = await getFacebookPageAccessContext({
+    app,
+    pageId: input.pageId,
+    userToken: context.token,
+    appSecret: context.appSecret,
+    timeoutMs: META_FACEBOOK_PAGE_ACCESS_TIMEOUT_MS,
+  });
+  if (!pageAccess.page || pageAccess.page.id !== input.pageId) {
+    throw new Error(pageAccess.warning?.message || "A Página do Facebook vinculada não está disponível na conexão Meta.");
+  }
+  if (pageAccess.tokenSource !== "page") {
+    throw new Error("A Meta não forneceu um Page Access Token para a Página do Facebook vinculada.");
+  }
+  const startStartedAt = Date.now();
+  const start = await fetchMetaResult<MetaApiError & { video_id?: string; upload_url?: string }>({
+    app,
+    path: `/${input.pageId}/video_stories`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: { upload_phase: "start" },
+    metricOrOperation: "facebook.publish.story.video.start",
+    method: "POST",
+    timeoutMs: META_FACEBOOK_STORY_VIDEO_START_TIMEOUT_MS,
+  });
+  if (!start.payload?.video_id || !start.payload.upload_url) throw new Error(start.warning?.kind === "timeout"
+    ? "A Meta demorou demais para iniciar o envio da Story de vídeo do Facebook."
+    : start.warning?.message || "A Meta não iniciou o envio da Story de vídeo do Facebook.");
+  const videoId = start.payload.video_id;
+  app.log.info({ publicationId: input.publicationId, videoId, operation: "facebook.publish.story.video.start", durationMs: Date.now() - startStartedAt }, "Facebook Story video start completed");
+  const uploadStartedAt = Date.now();
+  await uploadFacebookVideoFromUrl(app, {
+    publicationId: input.publicationId,
+    videoId,
+    uploadUrl: start.payload.upload_url,
+    videoUrl: input.videoUrl,
+    pageToken: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    mediaKind: "story",
+  });
+  app.log.info({ publicationId: input.publicationId, videoId, operation: "facebook.publish.story.video.upload", durationMs: Date.now() - uploadStartedAt }, "Facebook Story video upload completed");
+  const statusAfterUpload = await readFacebookStoryVideoStatus(app, {
+    publicationId: input.publicationId,
+    videoId,
+    pageToken: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    stage: "after_upload",
+    attempt: 1,
+  });
+  if (statusAfterUpload) assertFacebookStoryStatusHasNoError(statusAfterUpload);
+  const finishStartedAt = Date.now();
+  app.log.info({ publicationId: input.publicationId, videoId, operation: "facebook.publish.story.video.finish" }, "Facebook Story video finish started");
+  const finish = await fetchMetaResult<MetaApiError & { success?: boolean; post_id?: string }>({
+    app,
+    path: `/${input.pageId}/video_stories`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: { video_id: videoId, upload_phase: "finish" },
+    metricOrOperation: "facebook.publish.story.video.finish",
+    method: "POST",
+    timeoutMs: META_FACEBOOK_STORY_VIDEO_FINISH_TIMEOUT_MS,
+  });
+  if (finish.warning?.kind === "timeout") {
+    throw new Error("A Meta demorou mais que o esperado para confirmar a Story. Verifique a Página antes de tentar novamente.");
+  }
+  if (!finish.payload || finish.payload.success !== true || !finish.payload.post_id) {
+    throw new Error(finish.warning?.message || "A Meta não confirmou a publicação da Story de vídeo na Página do Facebook.");
+  }
+  const postId = String(finish.payload.post_id);
+  app.log.info({ publicationId: input.publicationId, videoId, postId, operation: "facebook.publish.story.video.finish", durationMs: Date.now() - finishStartedAt }, "Facebook Story video finish completed");
+  await waitForFacebookStoryPublication(app, {
+    publicationId: input.publicationId,
+    videoId,
+    pageToken: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    pollIntervalMs: input.pollIntervalMs,
+    maxWaitMs: input.maxWaitMs,
+  });
+  const publishedPermalink = await findFacebookStoryPermalink(app, {
+    pageId: input.pageId,
+    postId,
+    mediaId: videoId,
+    pageToken: pageAccess.pageToken,
+    appSecret: context.appSecret,
+  });
+  return { publishedMetaId: postId, publishedPermalink };
+}
+
+async function publishFacebookImage(app: FastifyInstance, input: {
+  userId: string;
+  pageId: string;
+  imageUrl: string;
+  caption: string | null;
+  locationId: string | null;
+}) {
+  const context = await getPublishingContext(app, input.userId);
+  const pageAccess = await getFacebookPageAccessContext({
+    app,
+    pageId: input.pageId,
+    userToken: context.token,
+    appSecret: context.appSecret,
+    timeoutMs: META_FACEBOOK_PAGE_ACCESS_TIMEOUT_MS,
+  });
+  if (!pageAccess.page || pageAccess.page.id !== input.pageId) {
+    throw new Error(pageAccess.warning?.message || "A Página do Facebook vinculada não está disponível na conexão Meta.");
+  }
+  if (pageAccess.tokenSource !== "page") {
+    throw new Error("A Meta não forneceu um Page Access Token para a Página do Facebook vinculada.");
+  }
+  const published = await fetchMetaResult<MetaApiError & { id?: string; post_id?: string }>({
+    app,
+    path: `/${input.pageId}/photos`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: {
+      url: input.imageUrl,
+      published: "true",
+      ...(input.caption ? { caption: input.caption } : {}),
+      ...(input.locationId ? { place: input.locationId } : {}),
+    },
+    metricOrOperation: "facebook.publish.photo",
+    method: "POST",
+    timeoutMs: META_FACEBOOK_PUBLISH_TIMEOUT_MS,
+  });
+  const publishedMetaId = published.payload?.post_id ?? published.payload?.id;
+  if (!publishedMetaId) {
+    if (published.warning?.kind === "timeout") {
+      throw new Error("A Meta demorou mais que o esperado para confirmar a publicação. Verifique a Página antes de tentar novamente.");
+    }
+    throw new Error(published.warning?.message || "A Meta não confirmou a publicação na Página do Facebook.");
+  }
+  const permalink = await fetchMetaResult<MetaApiError & { permalink_url?: string }>({
+    app,
+    path: `/${publishedMetaId}`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: { fields: "permalink_url" },
+    metricOrOperation: "facebook.publish.permalink",
+  });
+  return { publishedMetaId, publishedPermalink: permalink.payload?.permalink_url ?? null };
+}
+
+async function publishFacebookCarousel(app: FastifyInstance, input: {
+  publicationId: string;
+  userId: string;
+  pageId: string;
+  imageUrls: string[];
+  caption: string | null;
+  locationId: string | null;
+}) {
+  if (input.imageUrls.length < 2 || input.imageUrls.length > 10) {
+    throw new Error("O carrossel do Facebook precisa ter entre 2 e 10 imagens.");
+  }
+  const context = await getPublishingContext(app, input.userId);
+  const pageAccess = await getFacebookPageAccessContext({
+    app,
+    pageId: input.pageId,
+    userToken: context.token,
+    appSecret: context.appSecret,
+    timeoutMs: META_FACEBOOK_PAGE_ACCESS_TIMEOUT_MS,
+  });
+  if (!pageAccess.page || pageAccess.page.id !== input.pageId) {
+    throw new Error(pageAccess.warning?.message || "A Página do Facebook vinculada não está disponível na conexão Meta.");
+  }
+  if (pageAccess.tokenSource !== "page") {
+    throw new Error("A Meta não forneceu um Page Access Token para a Página do Facebook vinculada.");
+  }
+
+  const photoIds: string[] = [];
+  for (const [index, imageUrl] of input.imageUrls.entries()) {
+    const startedAt = Date.now();
+    const upload = await fetchMetaResult<MetaApiError & { id?: string }>({
+      app,
+      path: `/${input.pageId}/photos`,
+      token: pageAccess.pageToken,
+      appSecret: context.appSecret,
+      params: { url: imageUrl, published: "false" },
+      metricOrOperation: "facebook.publish.carousel.uploadPhoto",
+      method: "POST",
+      timeoutMs: META_FACEBOOK_CAROUSEL_PHOTO_UPLOAD_TIMEOUT_MS,
+    });
+    if (!upload.payload?.id) {
+      const detail = upload.warning?.kind === "timeout"
+        ? "A Meta demorou demais para processar uma das imagens."
+        : upload.warning?.message || "A Meta não aceitou uma das imagens.";
+      throw new Error(`${detail} O carrossel final não foi publicado (${photoIds.length} de ${input.imageUrls.length} imagens preparadas).`);
+    }
+    photoIds.push(upload.payload.id);
+    app.log.info({
+      publicationId: input.publicationId,
+      photoId: upload.payload.id,
+      imageIndex: index + 1,
+      imageCount: input.imageUrls.length,
+      durationMs: Date.now() - startedAt,
+    }, "Facebook carousel photo uploaded as unpublished media");
+  }
+
+  const publishStartedAt = Date.now();
+  app.log.info({ publicationId: input.publicationId, imageCount: photoIds.length }, "Facebook carousel final publish started");
+  const attachedMedia = Object.fromEntries(photoIds.map((photoId, index) => [
+    `attached_media[${index}]`,
+    JSON.stringify({ media_fbid: photoId }),
+  ]));
+  const published = await fetchMetaResult<MetaApiError & { id?: string; post_id?: string }>({
+    app,
+    path: `/${input.pageId}/feed`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: {
+      ...attachedMedia,
+      ...(input.caption ? { message: input.caption } : {}),
+      ...(input.locationId ? { place: input.locationId } : {}),
+    },
+    metricOrOperation: "facebook.publish.carousel.publishPost",
+    method: "POST",
+    timeoutMs: META_FACEBOOK_CAROUSEL_PUBLISH_TIMEOUT_MS,
+  });
+  const publishedMetaId = published.payload?.post_id ?? published.payload?.id;
+  if (!publishedMetaId) {
+    if (published.warning?.kind === "timeout") {
+      throw new Error("A Meta demorou mais que o esperado para confirmar o carrossel. Verifique a Página antes de tentar novamente.");
+    }
+    throw new Error(published.warning?.message || "A Meta não confirmou a publicação do carrossel na Página do Facebook.");
+  }
+  app.log.info({
+    publicationId: input.publicationId,
+    publishedMetaId,
+    imageCount: photoIds.length,
+    durationMs: Date.now() - publishStartedAt,
+  }, "Facebook carousel final publish completed");
+
+  const permalink = await fetchMetaResult<MetaApiError & { permalink_url?: string }>({
+    app,
+    path: `/${publishedMetaId}`,
+    token: pageAccess.pageToken,
+    appSecret: context.appSecret,
+    params: { fields: "permalink_url" },
+    metricOrOperation: "facebook.publish.carousel.permalink",
+    timeoutMs: META_FACEBOOK_CAROUSEL_PERMALINK_TIMEOUT_MS,
+  });
+  return { publishedMetaId, publishedPermalink: permalink.payload?.permalink_url ?? null };
+}
+
+function safePublicationError(error: unknown) {
+  const message = error instanceof Error ? error.message : "Falha inesperada ao publicar na Meta.";
+  return message
+    .replace(/(access_token|appsecret_proof)=([^&\s]+)/gi, "$1=[REDACTED]")
+    .replace(/EA[A-Za-z0-9_-]{20,}/g, "[REDACTED]")
+    .slice(0, 4000);
+}
+
+export async function processDueMetaPublications(app: FastifyInstance, limit = 10, options?: {
+  reelPollIntervalMs?: number;
+  reelMaxWaitMs?: number;
+  storyPollIntervalMs?: number;
+  storyMaxWaitMs?: number;
+  facebookStoryPollIntervalMs?: number;
+  facebookStoryMaxWaitMs?: number;
+  facebookReelPollIntervalMs?: number;
+  facebookReelMaxWaitMs?: number;
+}) {
+  const recoveredStalePublishing = await markStalePublishingFailed(app.db, {
+    updatedBefore: new Date(Date.now() - META_PUBLISHING_STALE_MS).toISOString(),
+    lastError: META_STALE_PUBLISHING_ERROR,
+  });
+  if (recoveredStalePublishing > 0) {
+    app.log.warn({ recoveredStalePublishing }, "Stale Meta publishing jobs marked as failed");
+  }
+  const due = await listDueScheduledPublications(app.db, limit);
+  let published = 0;
+  let failed = 0;
+  for (const publication of due) {
+    if (!await markPublicationPublishing(app.db, publication.id)) continue;
+    try {
+      if (!publication.mediaUrl || !publication.createdByUserId) {
+        throw new Error("O agendamento não possui todos os dados necessários para publicação.");
+      }
+      // `metaAssetId` is an immutable scheduling snapshot. Never resolve the
+      // current default destination here: changing a default or editing a
+      // destination must not redirect an already scheduled publication.
+      const commonInput = {
+        userId: publication.createdByUserId,
+        imageUrl: publication.mediaUrl,
+        caption: publication.caption,
+        locationId: publication.locationId,
+      };
+      const result = publication.platform === "instagram" && publication.mediaType === "story"
+        ? await publishInstagramStory(app, {
+          publicationId: publication.id,
+          userId: publication.createdByUserId,
+          instagramAccountId: publication.metaAssetId,
+          mediaUrl: publication.mediaUrl,
+          pollIntervalMs: options?.storyPollIntervalMs,
+          maxWaitMs: options?.storyMaxWaitMs,
+        })
+        : publication.platform === "facebook" && publication.mediaType === "story"
+          ? isVideoMediaUrl(publication.mediaUrl)
+            ? await publishFacebookStoryVideo(app, {
+              publicationId: publication.id,
+              userId: publication.createdByUserId,
+              pageId: publication.metaAssetId,
+              videoUrl: publication.mediaUrl,
+              pollIntervalMs: options?.facebookStoryPollIntervalMs,
+              maxWaitMs: options?.facebookStoryMaxWaitMs,
+            })
+            : await publishFacebookStoryImage(app, {
+              publicationId: publication.id,
+              userId: publication.createdByUserId,
+              pageId: publication.metaAssetId,
+              imageUrl: publication.mediaUrl,
+            })
+        : publication.platform === "instagram" && publication.mediaType === "reel"
+        ? await publishInstagramReel(app, {
+          publicationId: publication.id,
+          userId: publication.createdByUserId,
+          instagramAccountId: publication.metaAssetId,
+          videoUrl: publication.mediaUrl,
+          reelCoverUrl: publication.reelCoverUrl,
+          caption: publication.caption,
+          pollIntervalMs: options?.reelPollIntervalMs,
+          maxWaitMs: options?.reelMaxWaitMs,
+        })
+        : publication.platform === "instagram" && publication.mediaType === "carousel"
+        ? await publishInstagramCarousel(app, {
+          publicationId: publication.id,
+          userId: publication.createdByUserId,
+          instagramAccountId: publication.metaAssetId,
+          imageUrls: publication.mediaUrls,
+          caption: publication.caption,
+          locationId: publication.locationId,
+        })
+        : publication.platform === "facebook" && publication.mediaType === "carousel"
+        ? await publishFacebookCarousel(app, {
+          publicationId: publication.id,
+          userId: publication.createdByUserId,
+          pageId: publication.metaAssetId,
+          imageUrls: publication.mediaUrls,
+          caption: publication.caption,
+          locationId: publication.locationId,
+        })
+        : publication.platform === "instagram"
+          ? await publishInstagramImage(app, { ...commonInput, instagramUserTags: publication.instagramUserTags, publicationId: publication.id, instagramAccountId: publication.metaAssetId })
+          : publication.mediaType === "reel"
+            ? await publishFacebookReel(app, {
+              publicationId: publication.id,
+              userId: publication.createdByUserId,
+              pageId: publication.metaAssetId,
+              videoUrl: publication.mediaUrl,
+              reelCoverUrl: publication.reelCoverUrl,
+              caption: publication.caption,
+              locationId: publication.locationId,
+              pollIntervalMs: options?.facebookReelPollIntervalMs,
+              maxWaitMs: options?.facebookReelMaxWaitMs,
+            })
+            : await publishFacebookImage(app, { ...commonInput, pageId: publication.metaAssetId });
+      const markedPublished = await markPublicationPublished(app.db, publication.id, result);
+      if (!markedPublished) throw new Error("O status do agendamento mudou antes da confirmação da publicação.");
+      if (publication.cardId) {
+        try {
+          await archiveMetaCardIfPublicationGroupComplete(app, publication);
+        } catch (error) {
+          app.log.error({ err: error, publicationId: publication.id, cardId: publication.cardId }, "Published Meta card could not be archived");
+        }
+      }
+      published += 1;
+    } catch (error) {
+      const message = safePublicationError(error);
+      await markPublicationFailed(app.db, publication.id, message);
+      app.log.error({ publicationId: publication.id, clientAccountId: publication.clientAccountId, platform: publication.platform, message }, "Meta scheduled publication failed");
+      failed += 1;
+    }
+  }
+  return { examined: due.length, published, failed, recoveredStalePublishing };
 }

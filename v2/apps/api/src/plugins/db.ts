@@ -12,8 +12,8 @@ async function dbPlugin(app: FastifyInstance) {
     database: app.appEnv.DB_NAME,
     // Hostinger limits how many new database connections this user may open
     // per hour. Keep a small, persistent pool and reuse it across requests.
-    connectionLimit: 1,
-    maxIdle: 1,
+    connectionLimit: 5,
+    maxIdle: 5,
     idleTimeout: 3_600_000,
     connectTimeout: 5_000,
     enableKeepAlive: true,
@@ -23,9 +23,8 @@ async function dbPlugin(app: FastifyInstance) {
     queueLimit: 50
   });
 
-  // Hostinger's global wait_timeout is only 20 seconds. Raise it for this
-  // session so the single pooled connection is reused instead of reopened for
-  // every interaction after a brief pause.
+  // Hostinger's global wait_timeout is only 20 seconds. Raise it for each
+  // pooled session so connections are reused instead of reopened after a brief pause.
   pool.on("connection", (connection) => {
     (connection as unknown as CallbackPoolConnection).query("SET SESSION wait_timeout = 3600", (error) => {
       if (error) app.log.warn(error, "Unable to extend database session timeout");

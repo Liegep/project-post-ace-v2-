@@ -15,7 +15,7 @@ export type ReportAnalysisResult = { analysis: ReportAnalysis; contextHash: stri
 export const findingLabels = { fact: 'FATO', interpretation: 'INTERPRETAÇÃO', hypothesis: 'HIPÓTESE' };
 export const priorityLabels = { high: 'Alta', medium: 'Média', low: 'Baixa' };
 export function analysisSnapshot(report: ClientReport) {
-  return { title: report.title, periodStart: report.periodStart.slice(0, 10), periodEnd: report.periodEnd.slice(0, 10), metrics: report.metrics, highlights: report.highlights, evidenceUrls: report.evidenceUrls, notes: report.notes };
+  return { title: report.title, periodStart: report.periodStart.slice(0, 10), periodEnd: report.periodEnd.slice(0, 10), metrics: report.metrics, highlights: report.highlights, evidenceUrls: report.evidenceUrls, metaDestinationId: report.metaDestinationId ?? null, notes: report.notes };
 }
 export const analysisEditorKey = (report: ClientReport) => JSON.stringify([report.clientAccountId, report.id, analysisSnapshot(report)]);
 export function analysisToEditorial(a: ReportAnalysis) {
@@ -34,7 +34,12 @@ export function analysisToEditorial(a: ReportAnalysis) {
   return 'Análise estratégica da IA\n\n' + sections.filter(([, values]) => values.length).map(([title, values]) => `${title}\n${values.join('\n\n')}`).join('\n\n');
 }
 export function appendReportAnalysis(notes: string | null, a: ReportAnalysis) {
-  const appended = `${notes ?? ''}${notes ? '\n\n---\n\n' : ''}${analysisToEditorial(a)}`;
+  const editorial = analysisToEditorial(a);
+  const escape = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const rich = notes && /<\/?[a-z][\s\S]*>/i.test(notes);
+  const appended = rich
+    ? notes + '<p>—</p>' + editorial.split(/\n{2,}/).map(part => '<p>' + escape(part).replace(/\n/g, '<br>') + '</p>').join('')
+    : `${notes ?? ''}${notes ? '\n\n---\n\n' : ''}${editorial}`;
   if (appended.length > 10000) throw new Error('As observações excederiam 10.000 caracteres. Reduza o texto antes de inserir.');
   return appended;
 }

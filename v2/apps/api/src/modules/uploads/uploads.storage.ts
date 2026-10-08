@@ -3,15 +3,10 @@ import { copyFile, mkdir, readdir, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const uploadFilePattern = /^[a-f0-9-]+\.(webp|mp4|webm|mov)$/;
+const uploadFilePattern = /^[a-f0-9-]+\.(webp|png|jpg|jpeg|mp4|webm|mov|pdf|svg)$/;
 
 export function getApiDirectory() {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-}
-
-export function getUploadDirectory(uploadDir: string) {
-  if (path.isAbsolute(uploadDir)) return uploadDir;
-  return path.resolve(getApiDirectory(), uploadDir);
 }
 
 function findHostingerVersionsDirectory(apiDirectory: string) {
@@ -22,6 +17,30 @@ function findHostingerVersionsDirectory(apiDirectory: string) {
     if (parent === current) return null;
     current = parent;
   }
+}
+
+function resolveUploadStorage(uploadDir: string) {
+  if (path.isAbsolute(uploadDir)) {
+    return { directory: uploadDir, persistent: true };
+  }
+
+  const apiDirectory = getApiDirectory();
+  const versionsDirectory = findHostingerVersionsDirectory(apiDirectory);
+  if (versionsDirectory) {
+    return {
+      directory: path.resolve(path.dirname(versionsDirectory), uploadDir),
+      persistent: true,
+    };
+  }
+
+  return {
+    directory: path.resolve(apiDirectory, uploadDir),
+    persistent: false,
+  };
+}
+
+export function getUploadDirectory(uploadDir: string) {
+  return resolveUploadStorage(uploadDir).directory;
 }
 
 async function legacyUploadDirectories(targetDirectory: string) {
@@ -61,14 +80,13 @@ async function migrateLegacyUploads(targetDirectory: string) {
 }
 
 export async function prepareUploadStorage(uploadDir: string) {
-  const directory = getUploadDirectory(uploadDir);
-  await mkdir(directory, { recursive: true });
+  const storage = resolveUploadStorage(uploadDir);
+  await mkdir(storage.directory, { recursive: true });
 
-  const probe = path.join(directory, `.design-hub-write-test-${process.pid}`);
+  const probe = path.join(storage.directory, `.design-hub-write-test-${process.pid}`);
   await writeFile(probe, "ok", { flag: "wx" });
   await rm(probe, { force: true });
 
-  const persistent = path.isAbsolute(uploadDir);
-  const migrated = persistent ? await migrateLegacyUploads(directory) : 0;
-  return { persistent, migrated };
+  const migrated = storage.persistent ? await migrateLegacyUploads(storage.directory) : 0;
+  return { persistent: storage.persistent, migrated };
 }

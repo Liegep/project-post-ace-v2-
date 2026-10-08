@@ -2,7 +2,6 @@ import type { FastifyPluginAsync } from "fastify";
 import {
   canAccessInternalArea,
   canCreateClients,
-  hasGlobalRole,
   getClientScope,
 } from "./auth.access.js";
 import { changeMyPasswordSchema, completePasswordResetSchema, createUserSchema, loginSchema, requestPasswordResetSchema, resetManagedUserPasswordSchema, updateManagedUserSchema, updateMyProfileSchema } from "./auth.schemas.js";
@@ -70,45 +69,29 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.get("/auth/users", async (request) => {
-    if (!request.auth) {
-      throw app.httpErrors.unauthorized("Sessão obrigatória.");
+    if (!request.auth) throw app.httpErrors.unauthorized("Sessão obrigatória.");
+    if (request.auth.user.globalRole !== "super_admin" && request.auth.user.globalRole !== "admin") {
+      throw app.httpErrors.forbidden("Seu perfil não pode listar acessos.");
     }
-    if (!hasGlobalRole(request.auth.user.globalRole, "super_admin")) {
-      throw app.httpErrors.forbidden(
-        "Apenas o super admin pode listar acessos.",
-      );
-    }
-
+    const items = await listUsers(app.db);
     return {
-      items: await listUsers(app.db),
+      items: request.auth.user.globalRole === "super_admin"
+        ? items
+        : items.filter((item) => item.globalRole === "admin" || item.globalRole === "colaborador"),
     };
   });
 
   app.post("/auth/users", async (request) => {
-    if (!request.auth) {
-      throw app.httpErrors.unauthorized("Sessão obrigatória.");
-    }
-    if (!hasGlobalRole(request.auth.user.globalRole, "super_admin")) {
-      throw app.httpErrors.forbidden(
-        "Apenas o super admin pode criar acessos.",
-      );
-    }
-
+    if (!request.auth) throw app.httpErrors.unauthorized("Sessão obrigatória.");
+    if (request.auth.user.globalRole !== "super_admin") throw app.httpErrors.forbidden("Apenas o super admin pode criar acessos.");
     const input = createUserSchema.parse(request.body);
     const created = await createManagedUser(app, input, request.auth.user.id);
-
-    return {
-      ok: true,
-      user: created.user,
-      memberships: created.memberships,
-    };
+    return { ok: true, user: created.user, memberships: created.memberships };
   });
 
   app.post("/auth/users/:userId/reset-password", async (request) => {
     if (!request.auth) throw app.httpErrors.unauthorized("Sessão obrigatória.");
-    if (!hasGlobalRole(request.auth.user.globalRole, "super_admin")) {
-      throw app.httpErrors.forbidden("Apenas o super admin pode redefinir senhas.");
-    }
+    if (request.auth.user.globalRole !== "super_admin") throw app.httpErrors.forbidden("Apenas o super admin pode redefinir senhas.");
     const { userId } = request.params as { userId: string };
     const input = resetManagedUserPasswordSchema.parse(request.body);
     await resetManagedUserPassword(app, userId, input.newPassword);
@@ -117,7 +100,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
   app.patch("/auth/users/:userId", async (request) => {
     if (!request.auth) throw app.httpErrors.unauthorized("Sessão obrigatória.");
-    if (!hasGlobalRole(request.auth.user.globalRole, "super_admin")) throw app.httpErrors.forbidden("Apenas o super admin pode alterar acessos.");
+    if (request.auth.user.globalRole !== "super_admin") throw app.httpErrors.forbidden("Apenas o super admin pode alterar acessos.");
     const { userId } = request.params as { userId: string };
     if (userId === request.auth.user.id) throw app.httpErrors.badRequest("Altere o seu próprio perfil pelas configurações da conta.");
     const input = updateManagedUserSchema.parse(request.body);
@@ -128,7 +111,7 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
 
   app.delete("/auth/users/:userId", async (request) => {
     if (!request.auth) throw app.httpErrors.unauthorized("Sessão obrigatória.");
-    if (!hasGlobalRole(request.auth.user.globalRole, "super_admin")) throw app.httpErrors.forbidden("Apenas o super admin pode remover acessos.");
+    if (request.auth.user.globalRole !== "super_admin") throw app.httpErrors.forbidden("Apenas o super admin pode remover acessos.");
     const { userId } = request.params as { userId: string };
     if (userId === request.auth.user.id) throw app.httpErrors.badRequest("Você não pode remover o próprio acesso.");
     await deactivateManagedUser(app.db, userId);

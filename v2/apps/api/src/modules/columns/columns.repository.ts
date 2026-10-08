@@ -18,7 +18,7 @@ type ColumnRow = RowDataPacket & {
 };
 
 export async function listColumnsByClientAccountId(
-  db: Pool,
+  db: Pick<Pool, "query">,
   clientAccountId: string,
 ) {
   const [rows] = await db.query<ColumnRow[]>(
@@ -34,7 +34,7 @@ export async function listColumnsByClientAccountId(
   return rows.map(mapColumnRow);
 }
 
-export async function findColumnById(db: Pool, columnId: string) {
+export async function findColumnById(db: Pick<Pool, "query">, columnId: string) {
   const [rows] = await db.query<ColumnRow[]>(
     [
       "SELECT id, client_account_id, name, color, position, visible_to_client, auto_created, created_at, updated_at",
@@ -50,7 +50,7 @@ export async function findColumnById(db: Pool, columnId: string) {
 }
 
 export async function createColumn(
-  db: Pool,
+  db: Pick<Pool, "query">,
   clientAccountId: string,
   input: CreateColumnInput,
 ) {
@@ -87,7 +87,7 @@ export async function createColumn(
 }
 
 export async function findColumnByClientAndName(
-  db: Pool,
+  db: Pick<Pool, "query">,
   clientAccountId: string,
   name: string,
 ) {
@@ -106,7 +106,7 @@ export async function findColumnByClientAndName(
 }
 
 export async function updateColumn(
-  db: Pool,
+  db: Pick<Pool, "query">,
   columnId: string,
   input: UpdateColumnInput,
 ) {
@@ -142,7 +142,7 @@ export async function updateColumn(
   return findColumnById(db, columnId);
 }
 
-export async function deleteColumn(db: Pool, columnId: string) {
+export async function deleteColumn(db: Pick<Pool, "query">, columnId: string) {
   await db.query("DELETE FROM kanban_columns WHERE id = ?", [columnId]);
 }
 

@@ -1,11 +1,19 @@
+import { BillingPageHeader } from "./BillingPageHeader";
+import { BillingSettingsDrawer } from "./BillingSettingsDrawer";
+import { calculateBillingStatistics } from "./billingStatistics";
+import { RecurringSourceReview } from "./RecurringSourceReview";
+import { invoiceRecurrenceLabel } from "./invoiceRecurrence";
+import { BillingSettings } from "./BillingSettings";
+import { printWhenImagesReady } from "./printDocument";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { SessionUser } from "./types";
 import "./BillingWorkspace.css";
+import "./BillingLayout.css";
 import "./BillingWorkspaceLogo.css";
 import "./BillingWorkspaceInvoiceFooter.css";
 import "./BillingWorkspaceClientThumb.css";
 import liegePaschoaliniLogo from "./assets/liege-paschoalini-logo.png";
-import { createAdminInvoice, deleteAdminInvoice, listAdminClients, listAdminInvoices, updateAdminInvoice, uploadAdminMedia, type BillingCurrency, type BillingInvoice as ApiBillingInvoice, type BillingInvoiceStatus } from "./api";
+import { generateCurrentRecurringInvoices, createAdminInvoice, deleteAdminInvoice, generateAdminInvoiceReceipt, listAdminClients, listAdminInvoices, updateAdminInvoice, uploadAdminMedia, type BillingCurrency, type BillingInvoice as ApiBillingInvoice, type BillingInvoiceStatus } from "./api";
 
 type Currency = BillingCurrency;
 type InvoiceStatus = BillingInvoiceStatus;
@@ -20,14 +28,6 @@ const currencies: Array<{ value: Currency; label: string }> = [
   { value: "USD", label: "Dólar americano (US$)" },
   { value: "SEK", label: "Coroa sueca (kr)" },
 ];
-const summaryCurrencies = ["BRL", "USD", "EUR"] as const;
-type SummaryCurrency = typeof summaryCurrencies[number];
-type CurrencyTotals = Record<SummaryCurrency, number>;
-
-function emptyCurrencyTotals(): CurrencyTotals {
-  return { BRL: 0, USD: 0, EUR: 0 };
-}
-
 const labels: Record<BillingInvoice["locale"], { invoice: string; from: string; to: string; issued: string; due: string; period: string; description: string; quantity: string; price: string; total: string; payment: string; account: string }> = {
   pt: { invoice: "FATURA", from: "DE", to: "PARA", issued: "EMISSÃO", due: "VENCIMENTO", period: "PERÍODO", description: "DESCRIÇÃO", quantity: "QTD.", price: "VALOR", total: "TOTAL", payment: "PAGAMENTO", account: "Número da conta" },
   en: { invoice: "INVOICE", from: "FROM", to: "TO", issued: "ISSUED", due: "DUE DATE", period: "PERIOD", description: "DESCRIPTION", quantity: "QTY.", price: "PRICE", total: "TOTAL", payment: "PAYMENT", account: "Account number" },
@@ -52,12 +52,56 @@ export function BillingInvoiceDocument({ invoice }: { invoice: BillingInvoice })
   return <article className="invoice-paper"><div className="invoice-paper-head"><img className="issuer-logo" src={liegePaschoaliniLogo} alt="Liege Paschoalini Studio" /><div><p>{text.invoice}</p><h1>#{invoice.number}</h1><span className={`invoice-status ${invoice.status}`}>{statusLabel[invoice.status]}</span></div></div><hr /><div className="invoice-addresses"><div><small>{text.from}</small><strong>LIEGE PASCHOALINI STUDIO</strong><p>Temperaturgatan, 67<br />Suécia<br />hello@liegepaschoalini.design</p></div><div><small>{text.to}</small><strong>{invoice.clientName || "Nome do cliente"}</strong><p>{invoice.clientAddress || "Endereço do cliente"}<br />{invoice.clientCountry || "País"}<br />{invoice.clientEmail || "E-mail do cliente"}<br />{invoice.clientTaxId}</p></div></div><div className="invoice-dates"><span><small>{text.issued}</small><b>{date(invoice.issueDate)}</b></span><span><small>{text.due}</small><b>{date(invoice.dueDate)}</b></span><span><small>{text.period}</small><b>{invoice.period || "-"}</b></span></div><div className="invoice-lines"><div className="invoice-lines-head"><span>{text.description}</span><span>{text.quantity}</span><span>{text.price}</span><span>{text.total}</span></div>{invoice.lines.map((line) => <div key={line.id}><span>{line.description}</span><span>{line.quantity}</span><span>{money(line.unitPrice, invoice.currency)}</span><strong>{money(line.quantity * line.unitPrice, invoice.currency)}</strong></div>)}</div><div className="invoice-total"><span>Subtotal</span><span>{money(invoiceTotal(invoice), invoice.currency)}</span><strong>{text.total}</strong><b>{money(invoiceTotal(invoice), invoice.currency)}</b></div>{invoice.notes ? <p className="invoice-notes">{invoice.notes}</p> : null}{invoice.attachments.length ? <div className="invoice-notes"><strong>Documentos anexos</strong>{invoice.attachments.map((attachment) => <p key={attachment.id}><a href={attachment.fileUrl} target="_blank" rel="noreferrer">{attachment.fileName}</a></p>)}</div> : null}<footer className="invoice-footer"><div className="invoice-payment"><small>{text.payment}</small><p>IBAN: SE51 5000 0000 0538 3021 2593<br />BIC: ESSESESSXXX<br />{text.account}: 53830212593 - SEB Bank<br />PayPal: slmariew@gmail.com<br />Pix: pix@liegepaschoalini.design</p></div><span>liegestudio.com</span></footer></article>;
 }
 
+const receiptLocaleTag: Record<BillingInvoice["locale"], string> = { pt: "pt-BR", en: "en-US", it: "it-IT", es: "es-ES", sv: "sv-SE" };
+const receiptPaymentMethods: Record<BillingInvoice["locale"], Record<string, string>> = {
+  pt: { "Transferência bancária": "Transferência bancária", Pix: "Pix", PayPal: "PayPal", Cartão: "Cartão", Dinheiro: "Dinheiro", Outro: "Outro" },
+  en: { "Transferência bancária": "Bank transfer", Pix: "Pix", PayPal: "PayPal", Cartão: "Card", Dinheiro: "Cash", Outro: "Other" },
+  it: { "Transferência bancária": "Bonifico bancario", Pix: "Pix", PayPal: "PayPal", Cartão: "Carta", Dinheiro: "Contanti", Outro: "Altro" },
+  es: { "Transferência bancária": "Transferencia bancaria", Pix: "Pix", PayPal: "PayPal", Cartão: "Tarjeta", Dinheiro: "Efectivo", Outro: "Otro" },
+  sv: { "Transferência bancária": "Banköverföring", Pix: "Pix", PayPal: "PayPal", Cartão: "Kort", Dinheiro: "Kontant", Outro: "Annat" },
+};
+const receiptLabels: Record<BillingInvoice["locale"], {
+  receipt: string; paid: string; receivedFrom: string; clientFallback: string; amountPrefix: string; referencePrefix: string;
+  invoice: string; paymentDate: string; paymentMethod: string; notProvided: string; amountReceived: string; period: string; digitalDocument: string;
+}> = {
+  pt: { receipt: "RECIBO", paid: "PAGO", receivedFrom: "RECEBEMOS DE", clientFallback: "Cliente", amountPrefix: "o valor de", referencePrefix: "referente a", invoice: "FATURA", paymentDate: "DATA DO PAGAMENTO", paymentMethod: "FORMA DE PAGAMENTO", notProvided: "Não informada", amountReceived: "VALOR RECEBIDO", period: "Período", digitalDocument: "Documento emitido digitalmente pelo Design Hub." },
+  en: { receipt: "RECEIPT", paid: "PAID", receivedFrom: "RECEIVED FROM", clientFallback: "Client", amountPrefix: "the amount of", referencePrefix: "for", invoice: "INVOICE", paymentDate: "PAYMENT DATE", paymentMethod: "PAYMENT METHOD", notProvided: "Not provided", amountReceived: "AMOUNT RECEIVED", period: "Period", digitalDocument: "Document issued digitally by Design Hub." },
+  it: { receipt: "RICEVUTA", paid: "PAGATO", receivedFrom: "RICEVUTO DA", clientFallback: "Cliente", amountPrefix: "l'importo di", referencePrefix: "relativo a", invoice: "FATTURA", paymentDate: "DATA DI PAGAMENTO", paymentMethod: "METODO DI PAGAMENTO", notProvided: "Non indicato", amountReceived: "IMPORTO RICEVUTO", period: "Periodo", digitalDocument: "Documento emesso digitalmente tramite Design Hub." },
+  es: { receipt: "RECIBO", paid: "PAGADO", receivedFrom: "RECIBIDO DE", clientFallback: "Cliente", amountPrefix: "el importe de", referencePrefix: "correspondiente a", invoice: "FACTURA", paymentDate: "FECHA DE PAGO", paymentMethod: "FORMA DE PAGO", notProvided: "No informada", amountReceived: "IMPORTE RECIBIDO", period: "Período", digitalDocument: "Documento emitido digitalmente por Design Hub." },
+  sv: { receipt: "KVITTO", paid: "BETALD", receivedFrom: "MOTTAGET FRÅN", clientFallback: "Kund", amountPrefix: "beloppet", referencePrefix: "avseende", invoice: "FAKTURA", paymentDate: "BETALNINGSDATUM", paymentMethod: "BETALNINGSSÄTT", notProvided: "Ej angivet", amountReceived: "MOTTAGET BELOPP", period: "Period", digitalDocument: "Dokumentet har utfärdats digitalt via Design Hub." },
+};
+
+export function BillingReceiptDocument({ invoice }: { invoice: BillingInvoice }) {
+  const snapshot = invoice.receiptSnapshot;
+  if (!snapshot) return null;
+  const copy = receiptLabels[invoice.locale];
+  const locale = receiptLocaleTag[invoice.locale];
+  const receiptMoney = (value: number) => new Intl.NumberFormat(locale, { style: "currency", currency: snapshot.currency }).format(value);
+  const receiptDate = (value: string) => value ? new Intl.DateTimeFormat(locale).format(new Date(`${value}T12:00:00`)) : "-";
+  const invoiceLabel = snapshot.title || `${copy.invoice} #${snapshot.invoiceNumber}`;
+  const paymentMethod = snapshot.paymentMethod ? (receiptPaymentMethods[invoice.locale][snapshot.paymentMethod] ?? snapshot.paymentMethod) : copy.notProvided;
+  return <article className="receipt-paper">
+    <header><img className="issuer-logo" src={liegePaschoaliniLogo} alt="Liege Paschoalini Studio" /><div><p>{copy.receipt}</p><h1>{snapshot.receiptNumber}</h1><span className="receipt-paid-badge">{copy.paid}</span></div></header>
+    <div className="receipt-rule" />
+    <section className="receipt-lead"><small>{copy.receivedFrom}</small><h2>{snapshot.clientName || copy.clientFallback}</h2><p>{copy.amountPrefix} <strong>{receiptMoney(snapshot.total)}</strong>, {copy.referencePrefix} <strong>{invoiceLabel}</strong>.</p></section>
+    <div className="receipt-meta"><span><small>{copy.invoice}</small><b>#{snapshot.invoiceNumber}</b></span><span><small>{copy.paymentDate}</small><b>{receiptDate(snapshot.paidAt)}</b></span><span><small>{copy.paymentMethod}</small><b>{paymentMethod}</b></span></div>
+    <div className="receipt-lines">{snapshot.lines.map((line, index) => <div key={line.id ?? index}><span>{line.description}</span><span>{line.quantity} × {receiptMoney(line.unitPrice)}</span><strong>{receiptMoney(line.quantity * line.unitPrice)}</strong></div>)}</div>
+    <div className="receipt-total"><span>{copy.amountReceived}</span><strong>{receiptMoney(snapshot.total)}</strong></div>
+    {snapshot.period ? <p className="receipt-period">{copy.period}: {snapshot.period}</p> : null}
+    <footer><div>{snapshot.signatureUrl ? <img className="receipt-signature" src={snapshot.signatureUrl} alt="Assinatura da emissora" /> : null}<strong>LIEGE PASCHOALINI STUDIO</strong><span>hello@liegepaschoalini.design · liegestudio.com</span></div><span>{copy.digitalDocument}</span></footer>
+  </article>;
+}
+
 function money(value: number, currency: Currency) { return new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(value); }
 function date(value: string) { return value ? new Intl.DateTimeFormat("pt-BR").format(new Date(`${value}T12:00:00`)) : "-"; }
 
 const statusLabel: Record<InvoiceStatus, string> = { open: "Aberta", paid: "Paga", overdue: "Atrasada", cancelled: "Cancelada" };
 
 export function BillingWorkspace({ session, newInvoiceSignal = 0 }: { session: SessionUser; newInvoiceSignal?: number }) {
+  const [generatingRecurring, setGeneratingRecurring] = useState(false);
+  const [recurringNotice, setRecurringNotice] = useState("");
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
   const [invoices, setInvoices] = useState<BillingInvoice[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [loadError, setLoadError] = useState("");
@@ -106,40 +150,57 @@ export function BillingWorkspace({ session, newInvoiceSignal = 0 }: { session: S
     return searchable.includes(query.toLowerCase()) && (statusFilter === "all" || invoice.status === statusFilter);
   }), [invoices, query, statusFilter]);
   const selected = invoices.find((invoice) => invoice.id === selectedId) ?? null;
-  const totals = invoices.reduce((result, invoice) => {
-    const total = invoiceTotal(invoice);
-    if (!summaryCurrencies.includes(invoice.currency as SummaryCurrency)) return result;
-    const currency = invoice.currency as SummaryCurrency;
-    if (invoice.status === "paid") result.paid[currency] += total;
-    else if (invoice.status === "overdue") result.overdue[currency] += total;
-    else if (invoice.status === "open") result.open[currency] += total;
-    result.all[currency] += total;
-    return result;
-  }, { all: emptyCurrencyTotals(), paid: emptyCurrencyTotals(), open: emptyCurrencyTotals(), overdue: emptyCurrencyTotals() });
+  const totals = calculateBillingStatistics(invoices);
 
   const create = useCallback(async () => { const draft = emptyInvoice(0); const { id: _id, number: _number, ...input } = draft; try { const response = await createAdminInvoice(input); setInvoices((current) => [response.invoice, ...current]); setSelectedId(response.invoice.id); } catch (error) { setLoadError(error instanceof Error ? error.message : "Não foi possível criar a fatura."); } }, []);
   useEffect(() => { if (newInvoiceSignal > 0 && loaded) void create(); }, [newInvoiceSignal, loaded, create]);
-  const save = useCallback((next: BillingInvoice) => { setInvoices((current) => current.map((invoice) => invoice.id === next.id ? next : invoice)); const previous = saveTimers.current.get(next.id); if (previous) window.clearTimeout(previous); saveTimers.current.set(next.id, window.setTimeout(() => { const { id, number: _number, createdAt: _createdAt, updatedAt: _updatedAt, ...input } = next; void updateAdminInvoice(id, input).catch((error) => setLoadError(error instanceof Error ? error.message : "Não foi possível salvar a fatura.")); }, 500)); }, []);
+  const save = useCallback((next: BillingInvoice) => {
+    setInvoices((current) => current.map((invoice) => invoice.id === next.id ? next : invoice));
+    const previous = saveTimers.current.get(next.id);
+    if (previous) window.clearTimeout(previous);
+    saveTimers.current.set(next.id, window.setTimeout(() => {
+      const { id, number: _number, createdAt: _createdAt, updatedAt: _updatedAt, ...input } = next;
+      void updateAdminInvoice(id, input).then((response) => {
+        setInvoices((current) => current.map((item) => {
+          if (item.id !== id) return item;
+          if (item === next) return response.invoice;
+          // Preserve newer edits while accepting the server's immutable receipt.
+          return { ...item, receiptNumber: response.invoice.receiptNumber,
+            receiptGeneratedAt: response.invoice.receiptGeneratedAt, receiptSnapshot: response.invoice.receiptSnapshot };
+        }));
+      }).catch((error) => setLoadError(error instanceof Error ? error.message : "Não foi possível salvar a fatura."));
+    }, 500));
+  }, []);
+  const generateRecurring = async () => {
+    setGeneratingRecurring(true); setRecurringNotice("");
+    try {
+      const result = await generateCurrentRecurringInvoices();
+      const items = (await listAdminInvoices()).items;
+      setInvoices(items);
+      const hasSources = items.some((invoice) => invoice.recurring && invoice.recurrence?.sourceConfirmed);
+      setRecurringNotice(result.busy ? "A geração já está em andamento. Atualize em instantes." : `${result.created} fatura(s) gerada(s) para ${result.period}. ${result.skipped} já coberta(s) ou não elegível(is).${!hasSources ? ' Defina as faturas-base em “Revisar fontes de recorrência”.' : ""}${result.failedSourceIds.length ? ` ${result.failedSourceIds.length} recorrência(s) aguardam nova tentativa.` : ""}`);
+    } catch (error) { setLoadError(error instanceof Error ? error.message : "Não foi possível gerar as faturas recorrentes."); }
+    finally { setGeneratingRecurring(false); }
+  };
+
   const remove = async (id: string) => { if (!window.confirm("Excluir esta fatura?")) return; try { await deleteAdminInvoice(id); setInvoices((current) => current.filter((invoice) => invoice.id !== id)); setSelectedId(null); } catch (error) { setLoadError(error instanceof Error ? error.message : "Não foi possível excluir a fatura."); } };
 
   if (selected) return <InvoiceEditor invoice={selected} clients={clients} session={session} onBack={() => setSelectedId(null)} onChange={save} onDelete={() => remove(selected.id)} />;
 
   if (!loaded) return <section className="billing-workspace"><div className="billing-empty">Carregando faturas...</div></section>;
   return <section className="billing-workspace">
-    {loadError ? <div className="billing-empty">{loadError}</div> : null}
-    <section className="billing-metrics">
-      <Metric label="Total faturado" values={totals.all} tone="violet" />
-      <Metric label="Total recebido" values={totals.paid} tone="green" />
-      <Metric label="Pendente" values={totals.open} tone="orange" />
-      <Metric label="Atrasado" values={totals.overdue} tone="red" />
-    </section>
-    <div className="billing-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar fatura ou cliente" /><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | InvoiceStatus)}><option value="all">Todos os status</option><option value="open">Abertas</option><option value="paid">Pagas</option><option value="overdue">Atrasadas</option><option value="cancelled">Canceladas</option></select><span>{invoices.filter((invoice) => invoice.recurring).length} recorrencias ativas: geracao prevista para todo dia 1.</span></div>
-    <div className="billing-list">{filtered.map((invoice) => <button key={invoice.id} className="billing-row" onClick={() => setSelectedId(invoice.id)}><span className="billing-row-mark">#{invoice.number}</span><ClientThumb name={invoice.clientName} logoUrl={logosByClient[invoice.clientName.trim().toLocaleLowerCase()]} /><span className="billing-row-main"><strong>{invoice.title}</strong><small>{invoice.clientName || "Cliente sem nome"} · Venc. {date(invoice.dueDate)}</small></span><span className="billing-row-repeat">{invoice.recurring ? "Recorrente" : "Avulsa"}</span><span className="billing-row-value"><strong>{money(invoiceTotal(invoice), invoice.currency)}</strong><em className={`invoice-status ${invoice.status}`}>{statusLabel[invoice.status]}</em></span></button>)}{filtered.length === 0 && <div className="billing-empty">Nenhuma fatura encontrada.</div>}</div>
+    <BillingPageHeader totals={totals} onCreate={() => void create()} onSettings={() => setSettingsOpen(true)} settingsOpen={settingsOpen} />
+    <BillingSettingsDrawer open={settingsOpen} onClose={closeSettings}>
+      <details className="billing-settings-panel" open><summary>Dados de cobrança</summary><BillingSettings /></details>
+      <RecurringSourceReview title="Recorrências" onConfigured={async () => setInvoices((await listAdminInvoices()).items)}>
+        <button className="ghost-button" disabled={generatingRecurring} onClick={() => void generateRecurring()}>{generatingRecurring ? "Gerando..." : "Gerar recorrentes deste mês"}</button>
+        {recurringNotice ? <p role="status">{recurringNotice}</p> : null}
+      </RecurringSourceReview>
+    </BillingSettingsDrawer>
+    {loadError ? <div className="billing-empty" role="alert">{loadError}</div> : null}
+    <div className="billing-toolbar"><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar fatura ou cliente" aria-label="Buscar fatura ou cliente" /><select aria-label="Filtrar faturas por status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | InvoiceStatus)}><option value="all">Todos os status</option><option value="open">Abertas</option><option value="paid">Pagas</option><option value="overdue">Atrasadas</option><option value="cancelled">Canceladas</option></select><span>{invoices.filter((invoice) => invoice.recurring && invoice.recurrence?.sourceConfirmed).length} recorrências ativas · verificação automática do mês atual</span></div>
+    <div className="billing-list">{filtered.map((invoice) => <button key={invoice.id} className="billing-row" onClick={() => setSelectedId(invoice.id)}><span className="billing-row-mark">#{invoice.number}</span><ClientThumb name={invoice.clientName} logoUrl={logosByClient[invoice.clientName.trim().toLocaleLowerCase()]} /><span className="billing-row-main"><strong>{invoice.title}</strong><small>{invoice.clientName || "Cliente sem nome"} · Venc. {date(invoice.dueDate)}</small></span><span className="billing-row-repeat">{invoice.recurringSourceInvoiceId ? "Gerada" : invoice.recurring ? (invoice.recurrence?.sourceConfirmed ? "Fonte" : "Revisar fonte") : "Avulsa"}</span><span className="billing-row-value"><strong>{money(invoiceTotal(invoice), invoice.currency)}</strong><em className={`invoice-status ${invoice.status}`}>{statusLabel[invoice.status]}</em></span></button>)}{filtered.length === 0 && <div className="billing-empty">Nenhuma fatura encontrada.</div>}</div>
   </section>;
-}
-
-function Metric({ label, values, tone }: { label: string; values: CurrencyTotals; tone: string }) {
-  return <article className={`billing-metric ${tone}`}><span>{label}</span><div className="billing-metric-values">{summaryCurrencies.map((currency) => <strong key={currency}>{money(values[currency], currency)}</strong>)}</div></article>;
 }
 
 function ClientThumb({ name, logoUrl }: { name: string; logoUrl?: string }) {
@@ -152,6 +213,9 @@ function InvoiceEditor({ invoice, clients, session, onBack, onChange, onDelete }
   const [sent, setSent] = useState(invoice.sentToClient === true);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState("");
+  const [receiptMode, setReceiptMode] = useState(false);
+  const [generatingReceipt, setGeneratingReceipt] = useState(false);
+  const invoiceCanvasRef = useRef<HTMLElement>(null);
   const update = <K extends keyof BillingInvoice>(key: K, value: BillingInvoice[K]) => onChange({ ...invoice, [key]: value });
   useEffect(() => {
     if (!sent || !invoice.visibleToClient || invoice.sentToClient === true) return;
@@ -169,11 +233,50 @@ function InvoiceEditor({ invoice, clients, session, onBack, onChange, onDelete }
     catch (error) { setUploadError(error instanceof Error ? error.message : "Não foi possível anexar o documento."); }
     finally { setUploading(false); }
   };
+  const uploadPaymentProof = async (file?: File) => {
+    if (!file) return;
+    setUploading(true); setUploadError("");
+    try {
+      const fileUrl = await uploadAdminMedia(file);
+      onChange({ ...invoice, paymentProofName: file.name, paymentProofUrl: fileUrl });
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Não foi possível enviar o comprovante.");
+    } finally { setUploading(false); }
+  };
+  const markPaid = () => {
+    if (invoice.status === "paid") { onChange({ ...invoice, status: "open", paidAt: null }); setReceiptMode(false); return; }
+    onChange({ ...invoice, status: "paid", paidAt: invoice.paidAt ?? new Date().toISOString().slice(0, 10) });
+  };
+  const generateReceipt = async () => {
+    setGeneratingReceipt(true); setUploadError("");
+    try {
+      // Let the debounced invoice save settle before freezing the receipt snapshot.
+      await new Promise((resolve) => window.setTimeout(resolve, 650));
+      const response = await generateAdminInvoiceReceipt(invoice.id);
+      onChange(response.invoice);
+      setReceiptMode(true);
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "Não foi possível gerar o recibo.");
+    } finally { setGeneratingReceipt(false); }
+  };
   const text = labels[invoice.locale];
+  const printDocument = (selector: ".invoice-paper" | ".receipt-paper", title: string) => {
+    const paper = invoiceCanvasRef.current?.querySelector(selector);
+    if (!paper) return;
+    const headMarkup = Array.from(document.querySelectorAll('style, link[rel="stylesheet"]')).map((el) => el.outerHTML).join("");
+    const printWindow = window.open("", "_blank", "width=880,height=1120");
+    if (!printWindow) return;
+    printWindow.document.open();
+    printWindow.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8" /><title>${title}</title>${headMarkup}<style>html,body{margin:0;background:#fbfaf8;}body{display:flex;justify-content:center;padding:24px;}.invoice-paper,.receipt-paper{box-sizing:border-box;width:100%;max-width:720px;min-height:0;margin:0;box-shadow:none;}@media print{@page{size:A4;margin:14mm;}html,body{width:auto;min-height:0;margin:0;padding:0;background:#fff;}body{display:block;}.invoice-paper,.receipt-paper{width:100%;max-width:none;min-height:0;margin:0;box-shadow:none;break-inside:avoid-page;}}</style></head><body>${paper.outerHTML}</body></html>`);
+    printWindow.document.close();
+    void printWhenImagesReady(printWindow);
+  };
+  const printInvoice = () => printDocument(".invoice-paper", `${text.invoice} #${invoice.number}`);
+  const printReceipt = () => printDocument(".receipt-paper", invoice.receiptNumber ?? `Recibo #${invoice.number}`);
   return <section className="invoice-editor">
-    <aside className="invoice-editor-side invoice-editor-nav"><button className="back-button" onClick={onBack}>← Faturamento</button><p className="eyebrow">Fatura #{invoice.number}</p><h2>{invoice.title}</h2><button className={tab === "details" ? "active" : ""} onClick={() => setTab("details")}>Detalhes e itens</button><button className={tab === "client" ? "active" : ""} onClick={() => setTab("client")}>Dados do cliente</button><button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>Configurações</button><div className="invoice-editor-side-note"><strong>Recorrência</strong><p>{invoice.recurring ? "A próxima fatura será criada no dia 1." : "Fatura avulsa."}</p></div></aside>
-    <main className="invoice-canvas"><div className="invoice-canvas-actions"><button onClick={() => update("status", invoice.status === "paid" ? "open" : "paid")}>{invoice.status === "paid" ? "Marcar como aberta" : "Marcar como paga"}</button><button onClick={() => window.print()}>Baixar PDF</button><button className="send" onClick={() => { setSent(true); update("visibleToClient", true); }}>{sent ? "Enviada para o cliente" : "Enviar ao cliente"}</button></div><article className="invoice-paper"><div className="invoice-paper-head"><img className="issuer-logo" src={liegePaschoaliniLogo} alt="Liege Paschoalini Studio" /><div><p>{text.invoice}</p><h1>#{invoice.number}</h1><span className={`invoice-status ${invoice.status}`}>{statusLabel[invoice.status]}</span></div></div><hr /><div className="invoice-addresses"><div><small>{text.from}</small><strong>LIEGE PASCHOALINI STUDIO</strong><p>Temperaturgatan, 67<br />Suecia<br />hello@liegepaschoalini.design</p></div><div><small>{text.to}</small><strong>{invoice.clientName || "Nome do cliente"}</strong><p>{invoice.clientAddress || "Endereço do cliente"}<br />{invoice.clientCountry || "País"}<br />{invoice.clientEmail || "E-mail do cliente"}<br />{invoice.clientTaxId}</p></div></div><div className="invoice-dates"><span><small>{text.issued}</small><b>{date(invoice.issueDate)}</b></span><span><small>{text.due}</small><b>{date(invoice.dueDate)}</b></span><span><small>{text.period}</small><b>{invoice.period || "-"}</b></span></div><div className="invoice-lines"><div className="invoice-lines-head"><span>{text.description}</span><span>{text.quantity}</span><span>{text.price}</span><span>{text.total}</span></div>{invoice.lines.map((line) => <div key={line.id}><span>{line.description}</span><span>{line.quantity}</span><span>{money(line.unitPrice, invoice.currency)}</span><strong>{money(line.quantity * line.unitPrice, invoice.currency)}</strong></div>)}</div><div className="invoice-total"><span>Subtotal</span><span>{money(invoiceTotal(invoice), invoice.currency)}</span><strong>{text.total}</strong><b>{money(invoiceTotal(invoice), invoice.currency)}</b></div>{invoice.notes ? <p className="invoice-notes">{invoice.notes}</p> : null}<footer className="invoice-footer"><div className="invoice-payment"><small>{text.payment}</small><p>IBAN: SE51 5000 0000 0538 3021 2593<br />BIC: ESSESESSXXX<br />{text.account}: 53830212593 - SEB Bank<br />PayPal: slmariew@gmail.com<br />Pix: pix@liegepaschoalini.design</p></div><span>liegestudio.com</span></footer></article></main>
-    <aside className="invoice-editor-side invoice-editor-controls">{tab === "details" ? <><label>Título<input value={invoice.title} onChange={(event) => update("title", event.target.value)} /></label><div className="field-row"><label>Emissão<input type="date" value={invoice.issueDate} onChange={(event) => update("issueDate", event.target.value)} /></label><label>Vencimento<input type="date" value={invoice.dueDate} onChange={(event) => update("dueDate", event.target.value)} /></label></div><label>Período<input value={invoice.period} onChange={(event) => update("period", event.target.value)} placeholder="01/08/2026 - 31/08/2026" /></label><div className="editor-section-title"><strong>Itens</strong><button onClick={() => update("lines", [...invoice.lines, { id: crypto.randomUUID(), description: "Novo serviço", quantity: 1, unitPrice: 0 }])}>+ Item</button></div>{invoice.lines.map((line) => <div className="invoice-line-edit" key={line.id}><input value={line.description} onChange={(event) => updateLine(line.id, "description", event.target.value)} /><input type="number" min="1" value={line.quantity} onChange={(event) => updateLine(line.id, "quantity", Number(event.target.value))} /><input type="number" min="0" value={line.unitPrice} onChange={(event) => updateLine(line.id, "unitPrice", Number(event.target.value))} /><button onClick={() => update("lines", invoice.lines.filter((item) => item.id !== line.id))}>×</button></div>)}<label>Observações<textarea value={invoice.notes} onChange={(event) => update("notes", event.target.value)} placeholder="Informações de pagamento ou observações" /></label></> : null}{tab === "client" ? <><label>Cliente<select value={invoice.clientAccountId ?? ""} onChange={(event) => { const client = clients.find((item) => item.id === event.target.value); onChange({ ...invoice, clientAccountId: client?.id ?? null, clientName: client?.name ?? "" }); }}><option value="">Selecione um cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label><label>E-mail<input type="email" value={invoice.clientEmail} onChange={(event) => update("clientEmail", event.target.value)} /></label><label>Endereço<textarea value={invoice.clientAddress} onChange={(event) => update("clientAddress", event.target.value)} /></label><label>País<input value={invoice.clientCountry} onChange={(event) => update("clientCountry", event.target.value)} /></label><label>Documento fiscal<input value={invoice.clientTaxId} onChange={(event) => update("clientTaxId", event.target.value)} /></label></> : null}{tab === "settings" ? <><label>Moeda<select value={invoice.currency} onChange={(event) => update("currency", event.target.value as Currency)}>{currencies.map((currency) => <option key={currency.value} value={currency.value}>{currency.label}</option>)}</select></label><label>Idioma do cliente<select value={invoice.locale} onChange={(event) => update("locale", event.target.value as BillingInvoice["locale"])}><option value="pt">Português</option><option value="en">English</option><option value="it">Italiano</option><option value="es">Español</option><option value="sv">Svenska</option></select></label><Toggle label="Fatura recorrente" checked={invoice.recurring} onChange={(value) => update("recurring", value)} /><Toggle label="Valor fixo" checked={invoice.fixedAmount} onChange={(value) => update("fixedAmount", value)} />{invoice.recurring && invoice.fixedAmount ? <label className="fixed-amount-field">Valor mensal fixo<input type="number" min="0" step="0.01" value={invoice.lines[0]?.unitPrice ?? 0} onChange={(event) => setFixedAmount(Number(event.target.value))} /><small>Este valor será usado na próxima fatura automática.</small></label> : null}<Toggle label="Visível na área do cliente" checked={invoice.visibleToClient} onChange={(value) => update("visibleToClient", value)} /><label className="attachment-field">Anexar PDF ou nota fiscal<input type="file" accept="application/pdf" disabled={uploading} onChange={(event) => void uploadAttachment(event.target.files?.[0])} /><span>{uploading ? "Enviando documento..." : invoice.attachments.length ? `${invoice.attachments.length} documento(s) anexado(s)` : "Nenhum documento anexado"}</span></label>{invoice.attachments.map((attachment) => <div key={attachment.id}><a href={attachment.fileUrl} target="_blank" rel="noreferrer">{attachment.fileName}</a><button className="secondary-full" onClick={() => update("attachments", invoice.attachments.filter((item) => item.id !== attachment.id))}>Remover anexo</button></div>)}{uploadError ? <small>{uploadError}</small> : null}<button className="secondary-full" onClick={() => { copy(); setSent(true); }}>Copiar link da área do cliente</button></> : null}<button className="delete-invoice" onClick={onDelete}>Excluir fatura</button><small className="invoice-editor-user">Editando como {session.name}</small></aside>
+    <aside className="invoice-editor-side invoice-editor-nav"><button className="back-button" onClick={onBack}>← Faturamento</button><p className="eyebrow">Fatura #{invoice.number}</p><h2>{invoice.title}</h2><button className={tab === "details" ? "active" : ""} onClick={() => setTab("details")}>Detalhes e itens</button><button className={tab === "client" ? "active" : ""} onClick={() => setTab("client")}>Dados do cliente</button><button className={tab === "settings" ? "active" : ""} onClick={() => setTab("settings")}>Configurações</button><div className="invoice-editor-side-note"><strong>Recorrência</strong><p>{invoiceRecurrenceLabel(invoice)}</p></div></aside>
+    <main className="invoice-canvas" ref={invoiceCanvasRef}><div className="invoice-canvas-actions"><button onClick={markPaid}>{invoice.status === "paid" ? "Marcar como aberta" : "Marcar como paga"}</button>{receiptMode && invoice.receiptSnapshot ? <><button onClick={() => setReceiptMode(false)}>Voltar à fatura</button><button onClick={printReceipt}>Baixar recibo PDF</button></> : <button onClick={printInvoice}>Baixar PDF</button>}<button className="send" onClick={() => { setSent(true); update("visibleToClient", true); }}>{sent ? "Enviada para o cliente" : "Enviar ao cliente"}</button></div>{receiptMode && invoice.receiptSnapshot ? <BillingReceiptDocument invoice={invoice} /> : <BillingInvoiceDocument invoice={invoice} />}{invoice.receiptSnapshot && !receiptMode ? <div className="receipt-print-source"><BillingReceiptDocument invoice={invoice} /></div> : null}</main>
+    <aside className="invoice-editor-side invoice-editor-controls">{tab === "details" ? <><label>Título<input value={invoice.title} onChange={(event) => update("title", event.target.value)} /></label><div className="field-row"><label>Emissão<input type="date" value={invoice.issueDate} onChange={(event) => update("issueDate", event.target.value)} /></label><label>Vencimento<input type="date" value={invoice.dueDate} onChange={(event) => update("dueDate", event.target.value)} /></label></div><label>Período<input value={invoice.period} onChange={(event) => update("period", event.target.value)} placeholder="01/08/2026 - 31/08/2026" /></label><div className="editor-section-title"><strong>Itens</strong><button onClick={() => update("lines", [...invoice.lines, { id: crypto.randomUUID(), description: "Novo serviço", quantity: 1, unitPrice: 0 }])}>+ Item</button></div>{invoice.lines.map((line) => <div className="invoice-line-edit" key={line.id}><input value={line.description} onChange={(event) => updateLine(line.id, "description", event.target.value)} /><input type="number" min="1" value={line.quantity} onChange={(event) => updateLine(line.id, "quantity", Number(event.target.value))} /><input type="number" min="0" value={line.unitPrice} onChange={(event) => updateLine(line.id, "unitPrice", Number(event.target.value))} /><button onClick={() => update("lines", invoice.lines.filter((item) => item.id !== line.id))}>×</button></div>)}<label>Observações<textarea value={invoice.notes} onChange={(event) => update("notes", event.target.value)} placeholder="Informações de pagamento ou observações" /></label>{invoice.status === "paid" ? <section className="payment-receipt-panel"><div className="editor-section-title"><strong>Pagamento e recibo</strong>{invoice.receiptNumber ? <span className="receipt-number">{invoice.receiptNumber}</span> : null}</div><div className="field-row"><label>Data do pagamento<input type="date" value={invoice.paidAt ?? ""} onChange={(event) => update("paidAt", event.target.value || null)} /></label><label>Forma de pagamento<select value={invoice.paymentMethod ?? ""} onChange={(event) => update("paymentMethod", event.target.value || null)}><option value="">Não informada</option><option value="Transferência bancária">Transferência bancária</option><option value="Pix">Pix</option><option value="PayPal">PayPal</option><option value="Cartão">Cartão</option><option value="Dinheiro">Dinheiro</option><option value="Outro">Outro</option></select></label></div><label className="attachment-field">Comprovante de pagamento<input type="file" accept="image/*,application/pdf" disabled={uploading} onChange={(event) => void uploadPaymentProof(event.target.files?.[0])} /><span>{uploading ? "Enviando comprovante..." : invoice.paymentProofName ?? "Adicionar foto ou PDF do comprovante"}</span></label>{invoice.paymentProofUrl ? <a className="payment-proof-link" href={invoice.paymentProofUrl} target="_blank" rel="noreferrer">Ver comprovante ↗</a> : null}{invoice.receiptSnapshot ? <div className="receipt-actions"><button className="secondary-full" onClick={() => setReceiptMode(true)}>Ver recibo</button><button className="secondary-full" onClick={printReceipt}>Baixar recibo PDF</button></div> : <button className="receipt-generate-button" disabled={generatingReceipt} onClick={() => void generateReceipt()}>{generatingReceipt ? "Gerando recibo..." : "Gerar recibo"}</button>}<small>O comprovante é opcional. O recibo mantém um snapshot dos dados no momento da emissão.</small></section> : null}</> : null}{tab === "client" ? <><label>Cliente<select value={invoice.clientAccountId ?? ""} onChange={(event) => { const client = clients.find((item) => item.id === event.target.value); onChange({ ...invoice, clientAccountId: client?.id ?? null, clientName: client?.name ?? "" }); }}><option value="">Selecione um cliente</option>{clients.map((client) => <option key={client.id} value={client.id}>{client.name}</option>)}</select></label><label>E-mail<input type="email" value={invoice.clientEmail} onChange={(event) => update("clientEmail", event.target.value)} /></label><label>Endereço<textarea value={invoice.clientAddress} onChange={(event) => update("clientAddress", event.target.value)} /></label><label>País<input value={invoice.clientCountry} onChange={(event) => update("clientCountry", event.target.value)} /></label><label>Documento fiscal<input value={invoice.clientTaxId} onChange={(event) => update("clientTaxId", event.target.value)} /></label></> : null}{tab === "settings" ? <><label>Moeda<select value={invoice.currency} onChange={(event) => update("currency", event.target.value as Currency)}>{currencies.map((currency) => <option key={currency.value} value={currency.value}>{currency.label}</option>)}</select></label><label>Idioma do cliente<select value={invoice.locale} onChange={(event) => update("locale", event.target.value as BillingInvoice["locale"])}><option value="pt">Português</option><option value="en">English</option><option value="it">Italiano</option><option value="es">Español</option><option value="sv">Svenska</option></select></label>{invoice.recurringSourceInvoiceId ? <small>Para alterar ou desativar esta recorrência, edite a fatura-base.</small> : <Toggle label="Fatura recorrente" checked={invoice.recurring} onChange={(value) => update("recurring", value)} />}<Toggle label="Valor fixo" checked={invoice.fixedAmount} onChange={(value) => update("fixedAmount", value)} />{invoice.recurring && invoice.fixedAmount ? <label className="fixed-amount-field">Valor mensal fixo<input type="number" min="0" step="0.01" value={invoice.lines[0]?.unitPrice ?? 0} onChange={(event) => setFixedAmount(Number(event.target.value))} /><small>Este valor será usado na próxima fatura automática.</small></label> : null}<Toggle label="Visível na área do cliente" checked={invoice.visibleToClient} onChange={(value) => update("visibleToClient", value)} /><label className="attachment-field">Anexar PDF ou nota fiscal<input type="file" accept="application/pdf" disabled={uploading} onChange={(event) => void uploadAttachment(event.target.files?.[0])} /><span>{uploading ? "Enviando documento..." : invoice.attachments.length ? `${invoice.attachments.length} documento(s) anexado(s)` : "Nenhum documento anexado"}</span></label>{invoice.attachments.map((attachment) => <div key={attachment.id}><a href={attachment.fileUrl} target="_blank" rel="noreferrer">{attachment.fileName}</a><button className="secondary-full" onClick={() => update("attachments", invoice.attachments.filter((item) => item.id !== attachment.id))}>Remover anexo</button></div>)}{uploadError ? <small>{uploadError}</small> : null}<button className="secondary-full" onClick={() => { copy(); setSent(true); }}>Copiar link da área do cliente</button></> : null}<button className="delete-invoice" onClick={onDelete}>Excluir fatura</button><small className="invoice-editor-user">Editando como {session.name}</small></aside>
   </section>;
 }
 

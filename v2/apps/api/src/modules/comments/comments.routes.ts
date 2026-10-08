@@ -25,7 +25,12 @@ export const commentRoutes: FastifyPluginAsync = async (app) => {
 
     return {
       ok: true,
-      comment: await addCardComment(app, params.clientAccountId, params.cardId, input, {
+      comment: await addCardComment(app, params.clientAccountId, params.cardId, {
+        ...input,
+        // Comments created from the administrative workspace are always internal.
+        // They must never be exposed in the client portal.
+        isInternal: true,
+      }, {
         userId: actor.id,
         authorName: actor.fullName,
         authorRole: actor.globalRole,
@@ -49,14 +54,20 @@ export const commentRoutes: FastifyPluginAsync = async (app) => {
     assertPortalAccessLevel(request, params.clientAccountId, ["admin", "approver"]);
     const input = createCommentSchema.parse(request.body);
     const actor = request.auth!.user;
+    const isAdministrativeAuthor = actor.globalRole !== "cliente";
 
     return {
       ok: true,
-      comment: await addCardComment(app, params.clientAccountId, params.cardId, input, {
+      comment: await addCardComment(app, params.clientAccountId, params.cardId, {
+        ...input,
+        // Even when an administrator opens the portal view, their comment remains
+        // internal. Only client-authored portal comments are client-visible.
+        isInternal: isAdministrativeAuthor ? true : false,
+      }, {
         userId: actor.id,
         authorName: actor.fullName,
         authorRole: actor.globalRole,
-        canCreateInternal: actor.globalRole !== "cliente",
+        canCreateInternal: isAdministrativeAuthor,
       }),
     };
   });

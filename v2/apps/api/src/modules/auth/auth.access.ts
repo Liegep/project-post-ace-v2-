@@ -14,7 +14,7 @@ export function hasGlobalRole(userRole: AppRole, minimumRole: AppRole) {
 }
 
 export function canCreateClients(userRole: AppRole) {
-  return userRole === "super_admin";
+  return userRole === "super_admin" || userRole === "admin";
 }
 
 export function canAccessInternalArea(userRole: AppRole) {
@@ -68,6 +68,18 @@ export function assertInternalAccess(request: FastifyRequest) {
   if (!canAccessInternalArea(auth.user.globalRole)) {
     throw request.server.httpErrors.forbidden(
       "Clientes não podem acessar a área interna.",
+    );
+  }
+}
+
+export function assertSuperAdmin(request: FastifyRequest) {
+  const auth = request.auth;
+  if (!auth) {
+    throw request.server.httpErrors.unauthorized("Sessão obrigatória.");
+  }
+  if (auth.user.globalRole !== "super_admin") {
+    throw request.server.httpErrors.forbidden(
+      "Esta área é exclusiva do super admin.",
     );
   }
 }

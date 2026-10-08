@@ -2,12 +2,17 @@ import type { FastifyPluginAsync } from "fastify";
 import { assertClientAccess, assertInternalAccess } from "../auth/auth.access.js";
 import { calendarQuerySchema } from "./calendar.schemas.js";
 import {
+  calendarToday,
   getInternalClientCalendar,
   getPortalCalendar,
   getScopedInternalCalendarOverview,
 } from "./calendar.service.js";
 
 export const calendarRoutes: FastifyPluginAsync = async (app) => {
+  app.get("/calendar/context", async (request) => {
+    assertInternalAccess(request);
+    return { timeZone: app.appEnv.APP_TIMEZONE, today: calendarToday(app.appEnv.APP_TIMEZONE) };
+  });
   app.get("/calendar/overview", async (request) => {
     assertInternalAccess(request);
     const query = calendarQuerySchema.parse(request.query);
