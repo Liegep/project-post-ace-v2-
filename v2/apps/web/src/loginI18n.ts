@@ -2,9 +2,7 @@ import { useEffect, useState } from "react";
 
 export const LOGIN_LOCALES = ["pt", "en", "it", "es", "sv"] as const;
 export type LoginLocale = typeof LOGIN_LOCALES[number];
-export const LOGIN_LOCALE_KEY = "designhub-login-language";
 export const LOGIN_INTRO_KEY = "designhub-login-intro-played";
-export const LOGIN_LANGUAGE_NAMES: Record<LoginLocale, string> = { pt: "Português", en: "English", it: "Italiano", es: "Español", sv: "Svenska" };
 
 const portuguese = {
   "kicker": "DESIGN HUB · SEU ESPAÇO CRIATIVO",
@@ -302,10 +300,6 @@ export function normalizeLoginLocale(value: string | null | undefined): LoginLoc
 }
 
 export function detectLoginLocale(): LoginLocale {
-  try {
-    const manual = normalizeLoginLocale(window.localStorage.getItem(LOGIN_LOCALE_KEY));
-    if (manual) return manual;
-  } catch { /* Storage may be blocked; browser detection still works. */ }
   if (typeof navigator !== "undefined") {
     for (const language of [...(navigator.languages ?? []), navigator.language]) {
       const locale = normalizeLoginLocale(language);
@@ -316,16 +310,15 @@ export function detectLoginLocale(): LoginLocale {
 }
 
 export function useLoginLocale() {
-  const [locale, setLocale] = useState<LoginLocale>(detectLoginLocale);
-  function chooseLocale(next: LoginLocale) {
-    setLocale(next);
-    try { window.localStorage.setItem(LOGIN_LOCALE_KEY, next); } catch { /* Keep the choice in memory. */ }
-  }
-  return { locale, chooseLocale, copy: loginCopy[locale] };
+  const [locale] = useState<LoginLocale>(detectLoginLocale);
+  useEffect(() => {
+    try { window.localStorage.removeItem("designhub-login-language"); } catch { /* Legacy preference is never read. */ }
+  }, []);
+  return { locale, copy: loginCopy[locale] };
 }
 
 export function useLoginIntro(enabled: boolean) {
-  const [playIntro] = useState(() => {
+  const [playIntro, setPlayIntro] = useState(() => {
     if (!enabled || typeof window === "undefined") return false;
     if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return false;
     try { return window.sessionStorage.getItem(LOGIN_INTRO_KEY) !== "1"; } catch { return false; }
@@ -335,7 +328,17 @@ export function useLoginIntro(enabled: boolean) {
       try { window.sessionStorage.setItem(LOGIN_INTRO_KEY, "1"); } catch { /* Login never depends on storage. */ }
     }
   }, [enabled]);
-  return playIntro;
+  useEffect(() => {
+    if (!playIntro) return;
+    const motion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    const finish = () => setPlayIntro(false);
+    const onMotionChange = () => { if (motion?.matches) finish(); };
+    motion?.addEventListener?.("change", onMotionChange);
+    // Also release hidden/inert panels if animation events are unavailable.
+    const timeout = window.setTimeout(finish, 1900);
+    return () => { window.clearTimeout(timeout); motion?.removeEventListener?.("change", onMotionChange); };
+  }, [playIntro]);
+  return { playIntro, finishIntro: () => setPlayIntro(false) };
 }
 
 // Translate the existing public API messages without changing the API or its behavior.

@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { LoginPage, PasswordResetPage } from '../src/LoginPage';
-import { LOGIN_INTRO_KEY, LOGIN_LOCALE_KEY, loginCopy, normalizeLoginLocale } from '../src/loginI18n';
+import { LOGIN_INTRO_KEY, loginCopy, normalizeLoginLocale } from '../src/loginI18n';
 import { completePasswordResetWithApi, requestPasswordResetWithApi } from '../src/authApi';
 
 vi.mock('../src/authApi', () => ({ requestPasswordResetWithApi: vi.fn(), completePasswordResetWithApi: vi.fn() }));
@@ -20,7 +20,7 @@ beforeEach(() => {
   vi.mocked(requestPasswordResetWithApi).mockResolvedValue({ ok: true, message: loginCopy.pt.recoverySuccess });
   vi.mocked(completePasswordResetWithApi).mockResolvedValue(undefined);
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.clearAllMocks(); vi.useRealTimers(); });
 
 describe('public login language and intro', () => {
   it.each([['it-IT','it'],['en-US','en'],['es-MX','es'],['sv-SE','sv'],['pt-PT','pt'],['de-DE','pt']] as const)('detects %s as %s', (tag, locale) => {
@@ -32,22 +32,30 @@ describe('public login language and intro', () => {
     browserLanguage('de-DE','sv-SE','en-US'); mount(); expect(screen.getByRole('heading', { name: loginCopy.sv.welcome })).toBeTruthy();
     expect(normalizeLoginLocale('en-GB')).toBe('en'); expect(normalizeLoginLocale('pt-BR')).toBe('pt');
   });
-  it('saved manual preference wins and changing language updates all text immediately after remount', () => {
-    browserLanguage('it-IT'); localStorage.setItem(LOGIN_LOCALE_KEY,'en');
-    const view=mount(); expect(screen.getByRole('heading', { name: loginCopy.en.welcome })).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Email'),{ target:{value:'person@example.test'} });
-    fireEvent.change(screen.getByLabelText('Password'),{ target:{value:'untouched-password'} });
-    fireEvent.click(screen.getByRole('button',{name:'Español'}));
-    expect(screen.getByRole('heading',{name:loginCopy.es.welcome})).toBeTruthy();
-    expect((screen.getByLabelText(loginCopy.es.email) as HTMLInputElement).value).toBe('person@example.test');
-    expect((screen.getByLabelText(loginCopy.es.password) as HTMLInputElement).value).toBe('untouched-password');
-    expect(localStorage.getItem(LOGIN_LOCALE_KEY)).toBe('es');
-    expect(screen.getByRole('group',{name:'Idioma'})).toBeTruthy();
-    view.unmount(); mount(); expect(screen.getByRole('heading',{name:loginCopy.es.welcome})).toBeTruthy();
+  it('renders no selector and ignores the old manual preference on every public mount', () => {
+    browserLanguage('it-IT'); localStorage.setItem('designhub-login-language','en');
+    const view=mount(); expect(screen.getByRole('heading',{name:loginCopy.it.welcome})).toBeTruthy();
+    expect(document.querySelector('.login-language-switcher')).toBeNull();
+    expect(screen.queryByRole('button',{name:'English'})).toBeNull();
+    view.unmount(); browserLanguage('sv-SE'); mount();
+    expect(screen.getByRole('heading',{name:loginCopy.sv.welcome})).toBeTruthy();
+    expect(localStorage.getItem('designhub-login-language')).toBeNull();
   });
-  it('ignores invalid saved preferences', () => {
-    localStorage.setItem(LOGIN_LOCALE_KEY,'unsupported'); browserLanguage('it-IT'); mount();
-    expect(screen.getByRole('heading',{name:loginCopy.it.welcome})).toBeTruthy();
+  it('falls back to navigator.language when the list has no supported language', () => {
+    browserLanguage('de-DE'); vi.spyOn(navigator,'language','get').mockReturnValue('es-ES'); mount();
+    expect(screen.getByRole('heading',{name:loginCopy.es.welcome})).toBeTruthy();
+  });
+  it('keeps intro panels inert until the entrance ends, with a bounded fallback', async () => {
+    vi.useFakeTimers(); mount(); expect(document.querySelectorAll('[inert]').length).toBe(2);
+    await act(async()=>vi.advanceTimersByTime(1100)); expect(document.querySelectorAll('[inert]').length).toBe(2);
+    await act(async()=>vi.advanceTimersByTime(800)); expect(document.querySelectorAll('[inert]').length).toBe(0);
+    expect(document.querySelector('.login-intro-logo')).toBeNull();
+  });
+  it('releases the intro if reduced motion is enabled while it is playing', async () => {
+    let listener!:()=>void; const motion={ matches:false, addEventListener:vi.fn((_event,cb)=>{listener=cb;}), removeEventListener:vi.fn() };
+    vi.stubGlobal('matchMedia',vi.fn(()=>motion)); mount(); expect(document.querySelectorAll('[inert]').length).toBe(2);
+    await act(async()=>{motion.matches=true;listener();}); expect(document.querySelectorAll('[inert]').length).toBe(0);
+    expect(document.querySelector('.login-intro-logo')).toBeNull();
   });
   it('marks the intro once per session, including StrictMode, and skips remounts', () => {
     const view=mount(); expect(sessionStorage.getItem(LOGIN_INTRO_KEY)).toBe('1'); expect(document.querySelector('.login-intro')).toBeTruthy();
@@ -61,10 +69,10 @@ describe('public login language and intro', () => {
     await act(async()=>fireEvent.submit(document.querySelector('#designhub-login')!));
     expect(onLogin).toHaveBeenCalledWith('reduced@example.test','safe-password');
   });
-  it('storage restrictions do not prevent rendering, changing language, or submitting', async () => {
+  it('storage restrictions do not prevent browser language detection or submitting', async () => {
     vi.spyOn(Storage.prototype,'getItem').mockImplementation(()=>{throw new Error('blocked');});
     vi.spyOn(Storage.prototype,'setItem').mockImplementation(()=>{throw new Error('blocked');});
-    mount(); fireEvent.click(screen.getByRole('button',{name:'English'}));
+    browserLanguage('en-US'); mount();
     expect(screen.getByRole('heading',{name:loginCopy.en.welcome})).toBeTruthy();
     fireEvent.change(screen.getByLabelText('Email'),{target:{value:'person@example.test'}});
     fireEvent.change(screen.getByLabelText('Password'),{target:{value:'safe-password'}});
@@ -82,9 +90,8 @@ describe('public login language and intro', () => {
     expect(screen.getByRole('button',{name:loginCopy.it.signingIn}).hasAttribute('disabled')).toBe(true);
     expect(onLogin).toHaveBeenCalledTimes(1); expect(onLogin).toHaveBeenCalledWith('person@example.test',' P@ss unchanged ');
     await act(async()=>finish(false)); expect(screen.getByText(loginCopy.it.loginError)).toBeTruthy();
-    fireEvent.click(screen.getByRole('button',{name:'English'})); expect(screen.getByText(loginCopy.en.loginError)).toBeTruthy();
   });
-  it('recovery keeps the same API flow and translates its success message, with no calls on mount/switch', async () => {
+  it('recovery keeps the same API flow and translates its success message, with no calls on mount', async () => {
     browserLanguage('sv-SE'); mount(); expect(requestPasswordResetWithApi).not.toHaveBeenCalled(); expect(onLogin).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText(loginCopy.sv.email),{target:{value:'person@example.test'}});
     fireEvent.click(screen.getByRole('button',{name:loginCopy.sv.forgot}));
@@ -103,6 +110,7 @@ describe('public login language and intro', () => {
   });
   it('completes password reset with unchanged token/password and existing login destination', async () => {
     browserLanguage('en-US'); render(<MemoryRouter initialEntries={['/reset-password?token=test-token']}><Routes><Route path="/reset-password" element={<PasswordResetPage/>}/><Route path="/login" element={<p>Login destination</p>}/></Routes></MemoryRouter>);
+    expect(document.querySelector('.login-language-switcher')).toBeNull(); expect(document.querySelector('.login-intro')).toBeNull();
     fireEvent.change(screen.getByLabelText('New password'),{target:{value:'new-password'}}); fireEvent.change(screen.getByLabelText('Confirm new password'),{target:{value:'new-password'}});
     await act(async()=>fireEvent.submit(document.querySelector('form')!)); expect(completePasswordResetWithApi).toHaveBeenCalledWith('test-token','new-password');
     expect(screen.getByRole('heading',{name:loginCopy.en.resetSuccess})).toBeTruthy();

@@ -11549,84 +11549,69 @@ button.agenda-more { border:0;background:transparent;cursor:pointer;padding:5px;
 @media(max-width:760px) { .agenda-page { padding-bottom:calc(100px + env(safe-area-inset-bottom)); } .agenda-foundation-controls label { flex:1 1 120px; } }
 .agenda-foundation-modal .agenda-event-pill { border:0;font-family:var(--v1-font);cursor:pointer; }
 
-/* Public authentication: subtle opening, independent of authentication state. */
-.login-language-switcher {
-  position: absolute;
-  top: 14px;
-  right: 16px;
-  z-index: 3;
-  display: flex;
-  gap: 2px;
-  padding: 4px;
-  border: 1px solid rgba(255, 255, 255, .85);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, .58);
-  backdrop-filter: blur(12px);
-}
-.login-language-switcher button {
-  min-width: 36px;
-  min-height: 36px;
-  padding: 6px;
-  border: 0;
-  border-radius: 10px;
-  color: #64708c;
-  background: transparent;
-  font: inherit;
-  font-size: .66rem;
-  font-weight: 650;
-  cursor: pointer;
-}
-.login-language-switcher button[aria-pressed="true"] {
-  color: #5646bd;
-  background: rgba(229, 225, 255, .82);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .9);
-}
-.login-language-switcher button:focus-visible { outline: 2px solid #7568dc; outline-offset: 2px; }
-.login-shell .login-primary, .login-shell .login-showcase-panel { padding-top: 70px; }
-.password-reset-card { padding-top: 76px; }
-.login-shell .login-brand-mark, .password-reset-card .login-brand-mark { perspective: none; transform-style: flat; }
-.login-shell .login-brand-mark img, .password-reset-card .login-brand-mark img {
-  animation: none;
-  transform: none;
-  will-change: auto;
-  filter: drop-shadow(0 5px 10px rgba(65, 70, 130, .12));
-}
-.login-shell .login-brand-mark::before, .password-reset-card .login-brand-mark::before { animation: none; }
-.login-shell .login-brand-mark::after, .password-reset-card .login-brand-mark::after { display: none; }
-.login-shell .login-product-preview, .login-shell .login-product-preview::after, .login-shell .login-showcase-status i { animation: none; }
-.login-shell .login-product-preview::after { display: none; }
+/* Public login opening; ambient movement continues after the sequence. */
+.login-shell .login-brand-mark img { animation: login-card-logo-float 10s ease-in-out infinite; }
+.login-shell .login-product-preview { animation-duration: 10s; }
+.login-shell .login-product-preview::after { animation-duration: 12s; opacity: .35; }
+.login-shell .login-showcase-status i { animation-duration: 3.6s; }
 .login-shell .login-showcase-panel > .login-orb { animation-duration: 18s; }
 .login-shell .login-experience::before { animation: login-background-drift 20s ease-in-out infinite alternate; }
 .login-shell .login-experience::after { animation: login-background-drift 16s ease-in-out infinite alternate-reverse; }
 .login-intro-logo {
-  position: absolute;
-  z-index: 2;
+  position: fixed;
+  z-index: 3;
   left: 50%;
   top: 50%;
-  width: 126px;
-  height: 126px;
-  margin: -63px 0 0 -63px;
+  width: 144px;
+  height: 144px;
+  margin: -72px 0 0 -72px;
   pointer-events: none;
-  animation: login-intro-logo 1.3s ease both;
+  animation: login-intro-logo 1.8s ease both;
+}
+.login-intro-logo::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  inset: -70px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(114, 129, 230, .2), rgba(145, 184, 244, .12) 35%, transparent 70%);
+  filter: blur(28px);
+  animation: login-intro-halo 1.8s ease both;
 }
 .login-intro-logo img { width: 100%; height: 100%; object-fit: contain; }
-.login-intro .login-primary, .login-intro .login-showcase-panel { animation: login-card-arrive .75s cubic-bezier(.2, .8, .2, 1) .55s both; }
+.login-intro .login-primary, .login-intro .login-showcase-panel {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  animation: login-card-arrive .5s cubic-bezier(.2, .8, .2, 1) 1.25s both;
+}
+.login-intro .login-showcase-panel { animation-duration: .45s; animation-delay: 1.35s; }
 @keyframes login-intro-logo {
-  0% { opacity: 0; transform: translateY(12px) scale(1.03); filter: blur(3px); }
-  30%, 48% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0) drop-shadow(0 8px 18px rgba(115, 99, 210, .16)); }
-  100% { opacity: 0; transform: translateY(-24px) scale(.82); filter: blur(0); visibility: hidden; }
+  0%, 8.33% { opacity: 0; transform: translateY(0) scale(.88); filter: blur(5px); }
+  41.67%, 61.11% { opacity: 1; transform: translateY(0) scale(1); filter: blur(0) drop-shadow(0 8px 24px rgba(115, 99, 210, .16)); }
+  69.44% { opacity: 1; transform: translateY(-42px) scale(.84); filter: blur(0); }
+  88.89%, 100% { opacity: 0; transform: translateY(-48px) scale(.8); filter: blur(0); visibility: hidden; }
 }
-@keyframes login-card-arrive { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes login-intro-halo {
+  0% { opacity: 0; transform: scale(.88); }
+  42%, 61% { opacity: 1; transform: scale(1.06); }
+  100% { opacity: 0; transform: scale(1.14); }
+}
+@keyframes login-card-arrive {
+  0% { opacity: 0; visibility: hidden; pointer-events: none; transform: translateY(16px); }
+  1% { visibility: visible; }
+  99% { pointer-events: none; }
+  100% { opacity: 1; visibility: visible; pointer-events: auto; transform: translateY(0); }
+}
+@keyframes login-card-logo-float {
+  0%, 100% { transform: translateY(0) rotateY(-3deg); }
+  50% { transform: translateY(-4px) rotateY(3deg); }
+}
 @keyframes login-background-drift { from { transform: translate(0, 0) scale(1); } to { transform: translate(14px, -10px) scale(1.04); } }
-@media (max-width: 520px) {
-  .login-shell .login-primary { padding-top: 76px; }
-  .login-shell .login-showcase-panel { padding-top: 32px; min-height: 410px; }
-  .login-language-switcher { right: 12px; top: 12px; }
-  .login-intro-logo { top: 270px; }
-}
 @media (prefers-reduced-motion: reduce) {
   .login-shell *, .login-shell *::before, .login-shell *::after,
   .password-reset-shell *, .password-reset-shell *::before, .password-reset-shell *::after { animation: none !important; transition: none !important; }
   .login-intro-logo { display: none; }
-  .login-intro .login-primary, .login-intro .login-showcase-panel { opacity: 1; transform: none; }
+  .login-shell .login-product-preview::after { display: none; }
+  .login-intro .login-primary, .login-intro .login-showcase-panel { opacity: 1; visibility: visible; pointer-events: auto; transform: none; }
 }
