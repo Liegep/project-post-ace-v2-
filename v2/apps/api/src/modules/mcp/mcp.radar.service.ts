@@ -7,13 +7,14 @@ import { AiProviderError } from "../../lib/openai-responses.js";
 import { radarSourceKey } from "../radar-suggestions/radar-suggestions.service.js";
 import { radarSuggestionInputSchema } from "../radar-suggestions/radar-suggestions.schemas.js";
 import type { McpRadarStore } from "./mcp.radar.repository.js";
-import { MCP_RADAR_SUGGEST_SCOPE } from "./mcp.security.js";
+import { MCP_PAUTA_CREATE_SCOPE } from "./mcp.security.js";
 export const mcpRadarInput = radarInput.extend({ clientId: z.string().uuid() }).strict();
 export type McpRadarOutcome = { outcome: "created" | "existing" | "no_op" | "processing"; suggestionId: string | null; status: string; sourceHash: string; suggestion?: Awaited<ReturnType<McpRadarStore["summary"]>> };
 export class McpRadarService {
   constructor(private store: McpRadarStore, private ai: BrandBrainAiService, private model: string) {}
-  async create(auth: AuthContext, scopes: string[], raw: unknown): Promise<McpRadarOutcome> {
-    if (!scopes.includes(MCP_RADAR_SUGGEST_SCOPE)) throw new BrandBrainAiError(403, "missing_scope", "Consentimento radar:suggest obrigatório.");
+  async create(auth: AuthContext, scopes: string[], raw: unknown, radarAiAuthorized = false): Promise<McpRadarOutcome> {
+    if (!scopes.includes(MCP_PAUTA_CREATE_SCOPE)) throw new BrandBrainAiError(403, "missing_scope", "Permissão pauta:create obrigatória.");
+    if (radarAiAuthorized !== true) throw new BrandBrainAiError(403, "missing_radar_consent", "Consentimento interno do Radar obrigatório.");
     const parsed = mcpRadarInput.safeParse(raw);
     if (!parsed.success) throw new BrandBrainAiError(400, "invalid_input", "Verifique os dados da fonte.");
     const input = parsed.data;

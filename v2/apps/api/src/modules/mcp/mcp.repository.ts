@@ -14,6 +14,7 @@ type CodeRow = RowDataPacket & {
   redirect_uri: string;
   code_challenge: string;
   scope: string;
+  radar_ai_authorized: number;
   resource: string;
   expires_at_ms: number | string;
   used_at_ms: number | string | null;
@@ -23,6 +24,7 @@ type RefreshRow = RowDataPacket & {
   client_id: string;
   user_id: string;
   scope: string;
+  radar_ai_authorized: number;
   resource: string;
   expires_at_ms: number | string;
   revoked_at_ms: number | string | null;
@@ -48,7 +50,7 @@ export async function ensureMcpStorage(db: Pool) {
   await db.query([
     "CREATE TABLE IF NOT EXISTS mcp_oauth_codes (",
     "code_hash CHAR(64) NOT NULL PRIMARY KEY, client_id VARCHAR(190) NOT NULL, user_id CHAR(36) NOT NULL, redirect_uri VARCHAR(1000) NOT NULL,",
-    "code_challenge VARCHAR(128) NOT NULL, scope VARCHAR(255) NOT NULL, resource VARCHAR(1000) NOT NULL, expires_at_ms BIGINT UNSIGNED NOT NULL, used_at_ms BIGINT UNSIGNED NULL,",
+    "code_challenge VARCHAR(128) NOT NULL, scope VARCHAR(255) NOT NULL, radar_ai_authorized TINYINT(1) NOT NULL DEFAULT 0, resource VARCHAR(1000) NOT NULL, expires_at_ms BIGINT UNSIGNED NOT NULL, used_at_ms BIGINT UNSIGNED NULL,",
     "created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP, KEY idx_mcp_codes_expiry (expires_at_ms),",
     "CONSTRAINT fk_mcp_codes_client FOREIGN KEY (client_id) REFERENCES mcp_oauth_clients (client_id) ON DELETE CASCADE ON UPDATE CASCADE,",
     "CONSTRAINT fk_mcp_codes_user FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE ON UPDATE CASCADE",
@@ -56,7 +58,7 @@ export async function ensureMcpStorage(db: Pool) {
   ].join(" "));
   await db.query([
     "CREATE TABLE IF NOT EXISTS mcp_oauth_refresh_tokens (",
-    "token_hash CHAR(64) NOT NULL PRIMARY KEY, client_id VARCHAR(190) NOT NULL, user_id CHAR(36) NOT NULL, scope VARCHAR(255) NOT NULL, resource VARCHAR(1000) NOT NULL,",
+    "token_hash CHAR(64) NOT NULL PRIMARY KEY, client_id VARCHAR(190) NOT NULL, user_id CHAR(36) NOT NULL, scope VARCHAR(255) NOT NULL, radar_ai_authorized TINYINT(1) NOT NULL DEFAULT 0, resource VARCHAR(1000) NOT NULL,",
     "expires_at_ms BIGINT UNSIGNED NOT NULL, revoked_at_ms BIGINT UNSIGNED NULL, created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,",
     "KEY idx_mcp_refresh_expiry (expires_at_ms),",
     "CONSTRAINT fk_mcp_refresh_client FOREIGN KEY (client_id) REFERENCES mcp_oauth_clients (client_id) ON DELETE CASCADE ON UPDATE CASCADE,",
@@ -93,10 +95,10 @@ export async function findMcpClient(db: Pool, clientId: string) {
   return row ? { clientId: row.client_id, clientName: row.client_name, redirectUris: parseStringArray(row.redirect_uris_json) } : null;
 }
 
-export async function saveAuthorizationCode(db: Pool, input: { code: string; clientId: string; userId: string; redirectUri: string; codeChallenge: string; scope: string; resource: string }) {
+export async function saveAuthorizationCode(db: Pool, input: { code: string; clientId: string; userId: string; redirectUri: string; codeChallenge: string; scope: string; resource: string; radarAiAuthorized?: boolean }) {
   await db.query(
-    "INSERT INTO mcp_oauth_codes (code_hash, client_id, user_id, redirect_uri, code_challenge, scope, resource, expires_at_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-    [tokenHash(input.code), input.clientId, input.userId, input.redirectUri, input.codeChallenge, input.scope, input.resource, Date.now() + 5 * 60 * 1000],
+    "INSERT INTO mcp_oauth_codes (code_hash, client_id, user_id, redirect_uri, code_challenge, scope, resource, expires_at_ms, radar_ai_authorized) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+    [tokenHash(input.code), input.clientId, input.userId, input.redirectUri, input.codeChallenge, input.scope, input.resource, Date.now() + 5 * 60 * 1000, input.radarAiAuthorized === true ? 1 : 0],
   );
 }
 
@@ -106,7 +108,7 @@ export async function consumeAuthorizationCode(db: Pool, code: string) {
   try {
     await connection.beginTransaction();
     const [rows] = await connection.query<CodeRow[]>(
-      "SELECT client_id, user_id, redirect_uri, code_challenge, scope, resource, expires_at_ms, used_at_ms FROM mcp_oauth_codes WHERE code_hash = ? FOR UPDATE",
+      "SELECT client_id, user_id, redirect_uri, code_challenge, scope, radar_ai_authorized, resource, expires_at_ms, used_at_ms FROM mcp_oauth_codes WHERE code_hash = ? FOR UPDATE",
       [hash],
     );
     const row = rows[0];
@@ -116,7 +118,7 @@ export async function consumeAuthorizationCode(db: Pool, code: string) {
     }
     await connection.query("UPDATE mcp_oauth_codes SET used_at_ms = ? WHERE code_hash = ?", [Date.now(), hash]);
     await connection.commit();
-    return { clientId: row.client_id, userId: row.user_id, redirectUri: row.redirect_uri, codeChallenge: row.code_challenge, scope: row.scope, resource: row.resource };
+    return { clientId: row.client_id, userId: row.user_id, redirectUri: row.redirect_uri, codeChallenge: row.code_challenge, scope: row.scope, resource: row.resource, radarAiAuthorized: row.radar_ai_authorized === 1 };
   } catch (error) {
     await connection.rollback();
     throw error;
@@ -125,10 +127,10 @@ export async function consumeAuthorizationCode(db: Pool, code: string) {
   }
 }
 
-export async function saveRefreshToken(db: Pool, input: { token: string; clientId: string; userId: string; scope: string; resource: string; expiresAtMs: number }) {
+export async function saveRefreshToken(db: Pool, input: { token: string; clientId: string; userId: string; scope: string; resource: string; expiresAtMs: number; radarAiAuthorized?: boolean }) {
   await db.query(
-    "INSERT INTO mcp_oauth_refresh_tokens (token_hash, client_id, user_id, scope, resource, expires_at_ms) VALUES (?, ?, ?, ?, ?, ?)",
-    [tokenHash(input.token), input.clientId, input.userId, input.scope, input.resource, input.expiresAtMs],
+    "INSERT INTO mcp_oauth_refresh_tokens (token_hash, client_id, user_id, scope, resource, expires_at_ms, radar_ai_authorized) VALUES (?, ?, ?, ?, ?, ?, ?)",
+    [tokenHash(input.token), input.clientId, input.userId, input.scope, input.resource, input.expiresAtMs, input.radarAiAuthorized === true ? 1 : 0],
   );
 }
 
@@ -138,7 +140,7 @@ export async function rotateRefreshToken(db: Pool, token: string, request?: { cl
   try {
     await connection.beginTransaction();
     const [rows] = await connection.query<RefreshRow[]>(
-      "SELECT client_id, user_id, scope, resource, expires_at_ms, revoked_at_ms FROM mcp_oauth_refresh_tokens WHERE token_hash = ? FOR UPDATE",
+      "SELECT client_id, user_id, scope, radar_ai_authorized, resource, expires_at_ms, revoked_at_ms FROM mcp_oauth_refresh_tokens WHERE token_hash = ? FOR UPDATE",
       [hash],
     );
     const row = rows[0];
@@ -153,7 +155,7 @@ export async function rotateRefreshToken(db: Pool, token: string, request?: { cl
     }
     await connection.query("UPDATE mcp_oauth_refresh_tokens SET revoked_at_ms = ? WHERE token_hash = ?", [Date.now(), hash]);
     await connection.commit();
-    return { clientId: row.client_id, userId: row.user_id, scope, resource: row.resource };
+    return { clientId: row.client_id, userId: row.user_id, scope, resource: row.resource, radarAiAuthorized: row.radar_ai_authorized === 1 };
   } catch (error) {
     await connection.rollback();
     throw error;
