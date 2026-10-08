@@ -155,7 +155,9 @@ export const mcpOAuthRoutes: FastifyPluginAsync = async (app) => {
     try {
       const query = request.query as FormBody;
       const validated = await validatedAuthorization(app, query);
-      return reply.type("text/html; charset=utf-8").header("Cache-Control", "no-store").header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'").send(consentPage({ clientName: validated.client.clientName, clientId: validated.client.clientId, redirectUri: validated.redirectUri, state: query.state ?? "", codeChallenge: query.code_challenge ?? "", resource: validated.resource, scope: validated.scope }));
+      const urls = mcpPublicUrls(app);
+      const formActionOrigins = [...new Set([new URL(urls.authorizationEndpoint).origin, new URL(validated.redirectUri).origin])].join(" ");
+      return reply.type("text/html; charset=utf-8").header("Cache-Control", "no-store").header("Content-Security-Policy", `default-src 'none'; style-src 'unsafe-inline'; form-action 'self' ${formActionOrigins}; base-uri 'none'; frame-ancestors 'none'`).send(consentPage({ clientName: validated.client.clientName, clientId: validated.client.clientId, redirectUri: validated.redirectUri, state: query.state ?? "", codeChallenge: query.code_challenge ?? "", resource: validated.resource, scope: validated.scope }));
     } catch (error) {
       return reply.code(400).type("text/plain; charset=utf-8").send(error instanceof Error ? error.message : "Solicitação inválida.");
     }
