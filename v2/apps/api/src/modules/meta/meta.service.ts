@@ -1,6 +1,6 @@
 import { validateMetaSchedulingRouting } from "./meta-routing.js";
 import type { PreflightAssetRead } from "./meta-preflight.js";
-import { followerGrowth, metricNumber, metricStatus, parseInsightNumber, parseInstagramFollowerGrowth, summarizeMetricPayload, type MetricMetadata } from "./meta-insight-metrics.js";
+import { followerGrowth, metricNumber, metricStatus, metricFailureDetails, parseInsightNumber, parseInstagramFollowerGrowth, summarizeMetricPayload, type MetricMetadata } from "./meta-insight-metrics.js";
 import crypto from "node:crypto";
 import net from "node:net";
 import type { FastifyInstance } from "fastify";
@@ -21,6 +21,7 @@ import {
 import { planMetaCardPublications } from "./meta.publication.js";
 import { completeMetaScheduling } from "./meta-schedule-completion.js";
 import type { MetaInsightsPeriod } from "./meta.schemas.js";
+import { assertInstagramInsightsPeriod } from "./meta-insights-period.js";
 import { hasUsableOAuthExpiry, resolveMetaDataAccessExpiry, resolveMetaTokenExpiry, type MetaDebugExpiryMetadata } from "./meta-expiry.js";
 
 const GRAPH_VERSION = "v26.0";
@@ -408,7 +409,7 @@ async function fetchInsightMetric(input: {
   if (result.warning) input.warnings.push(result.warning);
   const value = parseInsightNumber(result.payload, input.metric, input.metric === "page_follows" ? "last" : "sum");
   if (input.metadata) input.metadata[input.metric] = {
-    status: metricStatus(result.warning, value), value, source: input.metric,
+    status: metricStatus(result.warning, value), ...metricFailureDetails(result.warning), value, source: input.metric,
     aggregation: input.metric === "page_follows" ? "latest_available_snapshot" : input.totalValue ? "period_total" : "daily_sum",
     code: result.warning?.code ?? null, structure: summarizeMetricPayload(result.payload, input.metric),
   };
@@ -856,7 +857,7 @@ async function getInstagramInsights(input: {
   ]);
   if (growthResult.warning) input.warnings.push(growthResult.warning);
   const growth = parseInstagramFollowerGrowth(growthResult.payload);
-  metadata.follows_and_unfollows = { status: metricStatus(growthResult.warning, growth.followersGained ?? growth.followersLost), source: "follows_and_unfollows", aggregation: "period_total_by_follow_type", code: growthResult.warning?.code ?? null, structure: summarizeMetricPayload(growthResult.payload, "follows_and_unfollows") };
+  metadata.follows_and_unfollows = { status: metricStatus(growthResult.warning, growth.followersGained ?? growth.followersLost), ...metricFailureDetails(growthResult.warning), source: "follows_and_unfollows", aggregation: "period_total_by_follow_type", code: growthResult.warning?.code ?? null, structure: summarizeMetricPayload(growthResult.payload, "follows_and_unfollows") };
   if (profile.warning) input.warnings.push(profile.warning);
   const metrics = Object.fromEntries(metricValues) as Record<typeof metricNames[number], number | null>;
   if (mediaResult.warning) input.warnings.push(mediaResult.warning);
@@ -1085,6 +1086,7 @@ export async function getMetaInsights(
   assets: MetaInsightsAssets,
   period: MetaInsightsPeriod,
 ) {
+  assertInstagramInsightsPeriod(Boolean(assets.instagramAccountId), period);
   const config = requireMetaConfig(app);
   const connection = await findMetaConnection(app.db, userId);
   if (!connection) throw app.httpErrors.badRequest("Conecte uma conta Meta antes de consultar Insights.");

@@ -1,6 +1,6 @@
 /** Pure parsers: never interpret missing observations as zero. */
 export type MetricStatus = "available" | "empty" | "invalid_metric" | "permission_error" | "api_error";
-export type MetricMetadata = { status: MetricStatus; value?: number | null; source: string; aggregation: string; code: number | null; structure: { entries: number; dailyValues: number; totalValue: boolean; breakdowns: number } };
+export type MetricMetadata = { status: MetricStatus; reason?: "period_too_long"; value?: number | null; source: string; aggregation: string; code: number | null; structure: { entries: number; dailyValues: number; totalValue: boolean; breakdowns: number } };
 const record = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 const array = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 export const metricNumber = (value: unknown): number | null => typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
@@ -63,6 +63,13 @@ export function metricStatus(warning: { code?: number | null; message?: string }
   }
   return value === null ? "empty" : "available";
 }
+export function metricFailureDetails(warning: { code?: number | null; message?: string } | null | undefined): { reason?: "period_too_long" } {
+  const message = warning?.message ?? "";
+  return warning?.code === 100 && /30\s*days?|2592000\s*seconds?/i.test(message)
+    && /exceed|longer|greater|more than|at most|maximum|less than|no more than/i.test(message)
+    && /since|until|period|range|interval|window/i.test(message)
+    ? { reason: "period_too_long" } : {};
+}
 export function summarizeMetricPayload(payload: unknown, metric: string): MetricMetadata["structure"] {
   const rows = entries(payload, metric);
   return { entries: rows.length, dailyValues: rows.reduce((sum, row) => sum + array(row.values).length, 0), totalValue: rows.some((row) => row.total_value !== undefined), breakdowns: rows.reduce((sum, row) => sum + array(record(row.total_value).breakdowns).length + array(row.values).reduce<number>((count, value) => count + array(record(record(value).value).breakdowns).length, 0), 0) };
@@ -76,7 +83,7 @@ export function safeInsightsDiagnostics(result: { instagram: { metricMetadata: R
     for (const [key, metadata] of Object.entries(channel.metricMetadata)) {
       if (metadata.aggregation !== "not_queried" && metadata.aggregation !== "unsupported" && !probes[metadata.source]) probes[metadata.source] = { ...metadata, value: channel.metrics[key] ?? null };
     }
-    return Object.entries(probes).map(([metric, metadata]) => ({ platform, metric, status: metadata.status, value: metadata.value ?? null,
+    return Object.entries(probes).map(([metric, metadata]) => ({ platform, metric, status: metadata.status, ...(metadata.reason ? { reason: metadata.reason } : {}), value: metadata.value ?? null,
       aggregation: metadata.aggregation, code: metadata.code, ...(metric === "follows_and_unfollows" ? { values: { follows: channel.metrics.followersGained ?? null, unfollows: channel.metrics.followersLost ?? null } } : {}), structure: { entries: metadata.structure.entries, dailyValues: metadata.structure.dailyValues, totalValue: metadata.structure.totalValue, breakdowns: metadata.structure.breakdowns } }));
   });
 }

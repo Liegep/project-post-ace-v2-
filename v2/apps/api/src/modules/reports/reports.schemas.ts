@@ -11,6 +11,7 @@ const channelMetricsSchema = z.object({
   followersNet: z.number().nullable().optional(),
   metricMetadata: z.record(z.string(), z.object({
     status: z.enum(["available", "empty", "invalid_metric", "permission_error", "api_error"]),
+    reason: z.literal("period_too_long").optional(),
     source: z.string().max(120), aggregation: z.string().max(80), code: z.number().nullable(),
     structure: z.object({ entries: z.number(), dailyValues: z.number(), totalValue: z.boolean(), breakdowns: z.number() }),
   })).optional(),
