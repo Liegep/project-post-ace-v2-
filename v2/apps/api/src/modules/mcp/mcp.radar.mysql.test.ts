@@ -15,15 +15,16 @@ import { ensureBrandBrainTables } from "../clients/brand-brain.service.js";
 import { RadarSuggestionsRepository } from "../radar-suggestions/radar-suggestions.repository.js";
 import { McpRadarRepository } from "./mcp.radar.repository.js";
 import { McpRadarService } from "./mcp.radar.service.js";
-import { ensureMcpStorage, createMcpClient } from "./mcp.repository.js";
+import { ensureMcpStorage, createMcpClient, saveAuthorizationCode, saveRefreshToken } from "./mcp.repository.js";
 import { mcpOAuthRoutes } from "./mcp.oauth.routes.js";
-import { pkceChallenge, verifyMcpAccessToken } from "./mcp.security.js";
+import { pkceChallenge, tokenHash, verifyMcpAccessToken } from "./mcp.security.js";
 import { hashPassword } from "../auth/auth.crypto.js";
 import type { AuthContext } from "../auth/auth.types.js";
 const socketPath = process.env.RADAR_TEST_SOCKET;
 if (!socketPath || !/^\/(?:private\/)?tmp\/radar-mariadb-[^/]+\/server\.sock$/.test(socketPath)) throw Error("Use apenas o socket temporário /tmp/radar-mariadb-*/server.sock.");
 const schema = readFileSync(new URL("../../../db/schema.sql", import.meta.url), "utf8").split("-- Additive foundation only.")[0];
-const migrations = ["20261007_radar_suggestions_foundation.sql","20261007_brand_brain_ai_runs.sql","20261007_radar_source_runs.sql"].map(name=>readFileSync(new URL(`../../../../../database/migrations/${name}`,import.meta.url),"utf8"));
+const migrations = ["20261007_radar_suggestions_foundation.sql","20261007_brand_brain_ai_runs.sql","20261007_radar_source_runs.sql","20261008_mcp_radar_internal_consent.sql"].map(name=>readFileSync(new URL(`../../../../../database/migrations/${name}`,import.meta.url),"utf8"));
+const consentMigration=readFileSync(new URL("../../../../../database/migrations/20261008_mcp_radar_internal_consent.sql",import.meta.url),"utf8");
 let server: mysql.Connection;
 before(async()=>{server=await mysql.createConnection({socketPath,user:"root",multipleStatements:true});});after(async()=>{await server?.end();});
 const config: AiConfig={OPENAI_API_KEY:"mock",BRAND_BRAIN_AI_ENABLED:true,BRAND_BRAIN_AI_MODEL:"gpt-4.1-mini",BRAND_BRAIN_AI_TIMEOUT_MS:1000,BRAND_BRAIN_AI_MAX_OUTPUT_TOKENS:6000};
@@ -65,6 +66,105 @@ test("MariaDB OAuth: explicit new consent, new defaults, downscope, denied upgra
  const legacy=await app.inject(`/oauth/authorize?${new URLSearchParams({...body,scope:"planning:read pauta:create"})}`);assert.match(legacy.body,/name="radar_consent"/);const noScope={...body} as Record<string,string>;delete noScope.scope;const defaultPage=await app.inject(`/oauth/authorize?${new URLSearchParams(noScope)}`);assert.match(defaultPage.body,/name="radar_consent" value="yes"/);assert.doesNotMatch(defaultPage.body,/radar_consent[^>]*checked/);const page=await app.inject(`/oauth/authorize?${new URLSearchParams(body)}`);assert.match(page.body,/name="radar_consent" value="yes"/);assert.doesNotMatch(page.body,/radar_consent[^>]*checked/);assert.equal((await app.inject({method:"POST",url:"/oauth/authorize",payload:body})).statusCode,302);
  const authorization=await app.inject({method:"POST",url:"/oauth/authorize",payload:{...body,radar_consent:"yes"}});assert.equal(authorization.statusCode,302);const code=new URL(authorization.headers.location!).searchParams.get("code")!;const token=await app.inject({method:"POST",url:"/oauth/token",payload:{grant_type:"authorization_code",client_id:client.clientId,redirect_uri:body.redirect_uri,code,code_verifier:verifier}});assert.equal(token.statusCode,200);assert.equal(token.json().scope,body.scope);assert.equal(verifyMcpAccessToken(app,token.json().access_token).scope,body.scope);assert.equal(verifyMcpAccessToken(app,token.json().access_token).radar_ai_authorized,true);
  const down=await app.inject({method:"POST",url:"/oauth/token",payload:{grant_type:"refresh_token",client_id:client.clientId,refresh_token:token.json().refresh_token,scope:"planning:read"}});assert.equal(down.statusCode,200);assert.equal(down.json().scope,"planning:read");const denied=await app.inject({method:"POST",url:"/oauth/token",payload:{grant_type:"refresh_token",client_id:client.clientId,refresh_token:down.json().refresh_token,scope:"planning:read radar:suggest"}});assert.equal(denied.statusCode,400);assert.equal(denied.json().error,"invalid_scope");const next=await app.inject({method:"POST",url:"/oauth/token",payload:{grant_type:"refresh_token",client_id:client.clientId,refresh_token:down.json().refresh_token}});assert.equal(next.statusCode,200);assert.equal(next.json().scope,"planning:read");
+ }finally{await app.close();await f.close();}
+});
+
+test("MariaDB consent migration: old rows denied; repeat application preserves grants",async()=>{
+ const f=await fixture();const app=Fastify();
+ try {
+  // Reconstruct the pre-migration schema only inside this disposable test database.
+  await f.pool.query("ALTER TABLE mcp_oauth_codes DROP COLUMN radar_ai_authorized");
+  await f.pool.query("ALTER TABLE mcp_oauth_refresh_tokens DROP COLUMN radar_ai_authorized");
+  const client=await createMcpClient(f.pool,{name:"Legacy",redirectUris:["https://example.org/callback"]});
+  const scope="planning:read pauta:create radar:suggest",resource="https://app.example.com/mcp";
+  const verifier="v".repeat(50),code="legacy-code",refresh="legacy-refresh";
+  await f.pool.query("INSERT INTO mcp_oauth_codes (code_hash,client_id,user_id,redirect_uri,code_challenge,scope,resource,expires_at_ms) VALUES (?,?,?,?,?,?,?,?)",
+   [tokenHash(code),client.clientId,f.userId,"https://example.org/callback",pkceChallenge(verifier),scope,resource,Date.now()+60_000]);
+  await f.pool.query("INSERT INTO mcp_oauth_refresh_tokens (token_hash,client_id,user_id,scope,resource,expires_at_ms) VALUES (?,?,?,?,?,?)",
+   [tokenHash(refresh),client.clientId,f.userId,scope,resource,Date.now()+60_000]);
+  const oldCode=(await f.query("SELECT * FROM mcp_oauth_codes"))[0];
+  const oldRefresh=(await f.query("SELECT * FROM mcp_oauth_refresh_tokens"))[0];
+  await f.pool.query(consentMigration);
+  for(const table of ["mcp_oauth_codes","mcp_oauth_refresh_tokens"]) {
+   const [column]=await f.query("SELECT COLUMN_TYPE,IS_NULLABLE,COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=? AND TABLE_NAME=? AND COLUMN_NAME='radar_ai_authorized'",[f.database,table]);
+   assert.equal(column.COLUMN_TYPE,"tinyint(1)");assert.equal(column.IS_NULLABLE,"NO");assert.equal(String(column.COLUMN_DEFAULT),"0");
+   const [row]=await f.query("SELECT * FROM "+table);
+   const {radar_ai_authorized,...unchanged}=row;
+   assert.equal(radar_ai_authorized,0);assert.deepEqual(unchanged,table==="mcp_oauth_codes"?oldCode:oldRefresh);
+   await assert.rejects(f.pool.query("UPDATE "+table+" SET radar_ai_authorized=NULL"));
+  }
+  await saveAuthorizationCode(f.pool,{code:"new-consented-code",clientId:client.clientId,userId:f.userId,redirectUri:"https://example.org/callback",codeChallenge:pkceChallenge(verifier),scope,resource,radarAiAuthorized:true});
+  await saveRefreshToken(f.pool,{token:"new-consented-refresh",clientId:client.clientId,userId:f.userId,scope,resource,expiresAtMs:Date.now()+60_000,radarAiAuthorized:true});
+  await f.pool.query(consentMigration);
+  assert.equal((await f.query("SELECT radar_ai_authorized FROM mcp_oauth_codes WHERE code_hash=?",[tokenHash("new-consented-code")]))[0].radar_ai_authorized,1);
+  assert.equal((await f.query("SELECT radar_ai_authorized FROM mcp_oauth_refresh_tokens WHERE token_hash=?",[tokenHash("new-consented-refresh")]))[0].radar_ai_authorized,1);
+  app.decorate("db",f.pool);app.decorate("appEnv",{API_URL:"https://app.example.com",NODE_ENV:"test",JWT_SECRET:"isolated-test-secret-only"} as never);
+  await app.register(mcpOAuthRoutes);
+  const fromCode=await app.inject({method:"POST",url:"/oauth/token",payload:{grant_type:"authorization_code",client_id:client.clientId,redirect_uri:"https://example.org/callback",code,code_verifier:verifier}});
+  assert.equal(fromCode.statusCode,200);assert.equal(verifyMcpAccessToken(app,fromCode.json().access_token).radar_ai_authorized,false);
+  const fromRefresh=await app.inject({method:"POST",url:"/oauth/token",payload:{grant_type:"refresh_token",client_id:client.clientId,refresh_token:refresh}});
+  assert.equal(fromRefresh.statusCode,200);assert.equal(verifyMcpAccessToken(app,fromRefresh.json().access_token).radar_ai_authorized,false);
+  assert.equal(fromRefresh.json().scope,scope);
+ }finally{await app.close();await f.close();}
+});
+
+test("MariaDB OAuth → code → token → tools/list → pending Radar: persisted consent, refresh, revocation",async()=>{
+ const f=await fixture();const app=Fastify();
+ try {
+  app.decorate("db",f.pool);app.decorate("appEnv",{...config,API_URL:"https://app.example.com",NODE_ENV:"test",JWT_SECRET:"isolated-test-secret-only"} as never);
+  await app.register(mcpOAuthRoutes);
+  const oauth=await createMcpClient(f.pool,{name:"ChatGPT-compatible",redirectUris:["https://example.org/callback"]});
+  const verifier="v".repeat(50),scope="planning:read pauta:create";
+  const authorization={client_id:oauth.clientId,redirect_uri:"https://example.org/callback",response_type:"code",code_challenge_method:"S256",code_challenge:pkceChallenge(verifier),scope};
+  const page=await app.inject("/oauth/authorize?"+new URLSearchParams(authorization));
+  assert.equal(page.statusCode,200);assert.match(page.body,/name="radar_consent" value="yes"/);
+  assert.doesNotMatch(page.body,/radar_consent[^>]*(checked|required)/);
+  for(const consent of [false,true]) {
+   const authorized=await app.inject({method:"POST",url:"/oauth/authorize",payload:{...authorization,email:"test@invalid.test",password:"mock-password-long",...(consent?{radar_consent:"yes"}:{})}});
+   assert.equal(authorized.statusCode,302);
+   const code=new URL(authorized.headers.location!).searchParams.get("code")!;
+   const [storedCode]=await f.query("SELECT scope,radar_ai_authorized FROM mcp_oauth_codes WHERE code_hash=?",[tokenHash(code)]);
+   assert.equal(storedCode.scope,scope);assert.equal(storedCode.radar_ai_authorized,Number(consent));
+   const exchanged=await app.inject({method:"POST",url:"/oauth/token",payload:{grant_type:"authorization_code",client_id:oauth.clientId,redirect_uri:authorization.redirect_uri,code,code_verifier:verifier}});
+   assert.equal(exchanged.statusCode,200);
+   const token=exchanged.json(),claims=verifyMcpAccessToken(app,token.access_token);
+   assert.equal(token.scope,scope);assert.equal(claims.scope,scope);assert.equal(claims.radar_ai_authorized,consent);
+   const [storedRefresh]=await f.query("SELECT scope,radar_ai_authorized FROM mcp_oauth_refresh_tokens WHERE token_hash=?",[tokenHash(token.refresh_token)]);
+   assert.equal(storedRefresh.scope,scope);assert.equal(storedRefresh.radar_ai_authorized,Number(consent));
+   const mcp=createPlanningMcpServer(app,f.auth,claims.client_id,claims.scope.split(/\s+/),{radar:f.createService(),radarAiAuthorized:claims.radar_ai_authorized===true});
+   const client=new Client({name:"consent-review-test",version:"1"});const [ct,st]=InMemoryTransport.createLinkedPair();
+   try {
+    await mcp.connect(st);await client.connect(ct);
+    const tools=(await client.listTools()).tools.map(t=>t.name);
+    assert.equal(tools.includes("create_radar_suggestion"),consent);assert.ok(tools.includes("create_pauta_draft"));
+    assert.ok(!(await client.callTool({name:"list_clients",arguments:{}})).isError);
+    const called=await client.callTool({name:"create_radar_suggestion",arguments:f.input});
+    if(consent) {
+     assert.ok(!called.isError);const result=JSON.parse((called.content as {text:string}[])[0].text);
+     assert.equal(result.status,"pending");assert.equal(result.outcome,"created");assert.equal(f.calls(),1);
+    } else {assert.equal(called.isError,true);assert.equal(f.calls(),0);}
+   }finally{await client.close();await mcp.close();}
+   const refreshed=await app.inject({method:"POST",url:"/oauth/token",payload:{grant_type:"refresh_token",client_id:oauth.clientId,refresh_token:token.refresh_token,radar_consent:consent?"no":"yes",radar_ai_authorized:!consent}});
+   assert.equal(refreshed.statusCode,200);
+   const next=refreshed.json();assert.equal(next.scope,scope);assert.equal(verifyMcpAccessToken(app,next.access_token).radar_ai_authorized,consent);
+   const [rotated]=await f.query("SELECT radar_ai_authorized FROM mcp_oauth_refresh_tokens WHERE token_hash=?",[tokenHash(next.refresh_token)]);
+   assert.equal(rotated.radar_ai_authorized,Number(consent));
+   const reused=await app.inject({method:"POST",url:"/oauth/token",payload:{grant_type:"refresh_token",client_id:oauth.clientId,refresh_token:token.refresh_token}});
+   assert.equal(reused.statusCode,400);assert.equal(reused.json().error,"invalid_grant");
+   const wrongClient=await app.inject({method:"POST",url:"/oauth/revoke",payload:{client_id:"other-client",token:next.refresh_token}});
+   assert.equal(wrongClient.statusCode,200);
+   assert.equal((await f.query("SELECT revoked_at_ms FROM mcp_oauth_refresh_tokens WHERE token_hash=?",[tokenHash(next.refresh_token)]))[0].revoked_at_ms,null);
+   const revoked=await app.inject({method:"POST",url:"/oauth/revoke",payload:{client_id:oauth.clientId,token:next.refresh_token}});
+   assert.equal(revoked.statusCode,200);
+   const denied=await app.inject({method:"POST",url:"/oauth/token",payload:{grant_type:"refresh_token",client_id:oauth.clientId,refresh_token:next.refresh_token}});
+   assert.equal(denied.statusCode,400);assert.equal(denied.json().error,"invalid_grant");
+   // Revocation preserves existing behavior: stateless access tokens expire at their original TTL.
+   assert.equal(verifyMcpAccessToken(app,next.access_token).radar_ai_authorized,consent);
+  }
+  assert.equal((await f.query("SELECT COUNT(*) AS total FROM radar_suggestions"))[0].total,1);
+  assert.equal((await f.query("SELECT COUNT(*) AS total FROM kanban_cards"))[0].total,0);
+  const [row]=await f.query("SELECT workspace_drawer_json FROM client_accounts WHERE id=?",[f.clientId]);
+  assert.deepEqual(typeof row.workspace_drawer_json==="string"?JSON.parse(row.workspace_drawer_json):row.workspace_drawer_json,f.drawer);
  }finally{await app.close();await f.close();}
 });
 
