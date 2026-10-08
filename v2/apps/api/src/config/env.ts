@@ -34,6 +34,10 @@ const envSchema = z.object({
   APP_TIMEZONE: z.string().default("America/Sao_Paulo"),
   UPLOAD_DIR: z.string().min(1).default("uploads"),
   OPENAI_API_KEY: z.preprocess((value) => value || undefined, z.string().min(20).optional()),
+  REPORT_AI_ENABLED: z.preprocess(value => value === true || value === "true" || value === "1", z.boolean()).default(false),
+  REPORT_AI_MODEL: z.string().min(1).default("gpt-4.1-mini"),
+  REPORT_AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(8000).default(4000),
+  REPORT_AI_TIMEOUT_MS: z.coerce.number().int().min(100).max(120000).default(45000),
   SMTP_HOST: z.string().min(1).default("smtp.hostinger.com"),
   SMTP_PORT: z.coerce.number().int().positive().default(465),
   SMTP_SECURE: z.preprocess(

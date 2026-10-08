@@ -1487,3 +1487,7 @@ export function createSeasonalOpportunity(input: {
   title: string; description: string; categoryCode: string; origin: string; scope: "global" | "countries"; countryCodes: string[];
   occurrences: Array<{ date: string; countryCodes?: string[] }>;
 }) { return sendJson<{ id: string }>("/api/seasonal/opportunities", { method: "POST", body: JSON.stringify(input) }); }
+
+export async function analyzeAdminReport(clientAccountId: string, reportId: string, snapshot: Omit<ClientReport, "id" | "clientAccountId" | "status" | "publishedAt" | "createdAt" | "updatedAt">) {
+  return sendJson<import("./reportAnalysis").ReportAnalysisResult>(`/api/clients/${encodeURIComponent(clientAccountId)}/reports/${encodeURIComponent(reportId)}/ai-analysis`, { method: "POST", body: JSON.stringify({ snapshot }) });
+}

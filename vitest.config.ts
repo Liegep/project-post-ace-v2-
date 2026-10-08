@@ -8,9 +8,9 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
-    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    include: ["src/**/*.{test,spec}.{ts,tsx}", "v2/apps/web/tests/**/*.test.tsx"],
   },
   resolve: {
-    alias: { "@": path.resolve(__dirname, "./src") },
+    alias: { "@": path.resolve(__dirname, "./src"), react: path.resolve(__dirname, "node_modules/react"), "react-dom": path.resolve(__dirname, "node_modules/react-dom") },
   },
 });
