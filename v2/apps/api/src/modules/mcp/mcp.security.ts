@@ -5,8 +5,9 @@ import type { FastifyInstance } from "fastify";
 export const MCP_READ_SCOPE = "planning:read";
 export const MCP_PAUTA_CREATE_SCOPE = "pauta:create";
 export const MCP_RADAR_SUGGEST_SCOPE = "radar:suggest";
-export const MCP_DEFAULT_SCOPES = [MCP_READ_SCOPE, MCP_PAUTA_CREATE_SCOPE] as const;
-export const MCP_SUPPORTED_SCOPES = [...MCP_DEFAULT_SCOPES, MCP_RADAR_SUGGEST_SCOPE] as const;
+// Requested for new authorizations only; radar:suggest still requires explicit consent.
+export const MCP_DEFAULT_SCOPES = [MCP_READ_SCOPE, MCP_PAUTA_CREATE_SCOPE, MCP_RADAR_SUGGEST_SCOPE] as const;
+export const MCP_SUPPORTED_SCOPES = [...MCP_DEFAULT_SCOPES] as const;
 export function requestedMcpScopes(value?: string) {
   const scopes = [...new Set((value ?? MCP_DEFAULT_SCOPES.join(" ")).split(/\s+/).filter(Boolean))];
   if (!scopes.includes(MCP_READ_SCOPE) || scopes.some(scope => !(MCP_SUPPORTED_SCOPES as readonly string[]).includes(scope))) throw Error("A conexão solicitou uma permissão não permitida.");

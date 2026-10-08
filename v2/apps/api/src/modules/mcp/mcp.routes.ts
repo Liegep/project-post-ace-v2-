@@ -2,7 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { findAuthContextByUserId } from "../auth/auth.repository.js";
 import { createPlanningMcpServer } from "./mcp.server.js";
-import { MCP_READ_SCOPE, mcpPublicUrls, verifyMcpAccessToken } from "./mcp.security.js";
+import { MCP_DEFAULT_SCOPES, mcpPublicUrls, verifyMcpAccessToken } from "./mcp.security.js";
 
 const requestCounts = new Map<string, { count: number; resetAt: number }>();
 
@@ -29,7 +29,7 @@ export const mcpRoutes: FastifyPluginAsync = async (app) => {
     } catch {
       return reply
         .code(401)
-        .header("WWW-Authenticate", `Bearer resource_metadata="${new URL("/.well-known/oauth-protected-resource/mcp", urls.issuer)}", scope="${MCP_READ_SCOPE}"`)
+        .header("WWW-Authenticate", `Bearer resource_metadata="${new URL("/.well-known/oauth-protected-resource/mcp", urls.issuer)}", scope="${MCP_DEFAULT_SCOPES.join(" ")}"`)
         .send({ jsonrpc: "2.0", error: { code: -32001, message: "Autorização MCP obrigatória." }, id: null });
     }
     if (!allowed(`${claims.client_id}:${claims.sub}`)) {
