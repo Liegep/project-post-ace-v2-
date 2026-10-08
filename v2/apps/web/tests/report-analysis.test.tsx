@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ReportAnalysisPanel } from '../src/ReportAnalysisPanel';
 import { ReportsWorkspace } from '../src/ReportsWorkspace';
 import { appendReportAnalysis, type ReportAnalysis } from '../src/reportAnalysis';
-import { analyzeAdminReport, type ClientReport } from '../src/api';
+import { analyzeAdminReport, listAdminReports, loadClientMetaDestinations, loadClientMetaInsights, loadClientMetaAdsInsights, updateAdminReport, type ClientReport } from '../src/api';
 const metrics = { instagram: { reach: 120, impressions: 200, engagement: 20, followers: 5, visits: 3, clicks: 2 }, facebook: { reach: 70, impressions: 100, engagement: 10, followers: 2, visits: 2, clicks: 1 } };
 const report: ClientReport = { id: 'report-a', clientAccountId: 'client-a', metaDestinationId: null, metaDestinationName: null, title: 'Relatório A', periodStart: '2026-09-01', periodEnd: '2026-09-30', status: 'draft', metrics, highlights: [], evidenceUrls: [], notes: 'Texto manual preservado', createdAt: '', updatedAt: '', publishedAt: null };
 const analysis: ReportAnalysis = { executiveSummary: 'Resumo com 120 de alcance.', keyFindings: ['fact', 'interpretation', 'hypothesis'].map(type => ({ title: type, finding: 'Achado', evidence: 'Alcance 120', evidenceRefs: ['current.instagram.reach'], type: type as 'fact' | 'interpretation' | 'hypothesis' })), whatWorked: [], attentionPoints: [], platformComparison: null, contentInsights: [], nextSteps: [], experiments: [], confidenceNotes: ['Dados comparativos insuficientes.'] };
@@ -80,4 +80,57 @@ it('formatted manual notes remain an exact prefix; generated HTML is escaped', (
   const notes = '<h2>Manual</h2><p>Texto <b>original</b> &amp; completo.</p>';
   const added = appendReportAnalysis(notes, { ...analysis, executiveSummary: '<script>malicious</script>' });
   expect(added.startsWith(notes)).toBe(true); expect(added).toContain('&lt;script&gt;'); expect(added.slice(notes.length)).not.toContain('<script>');
+});
+
+
+describe('Meta report import period guard', () => {
+  async function openLongReport() {
+    vi.mocked(listAdminReports).mockResolvedValueOnce({ items: [{ ...report, periodEnd: '2026-10-07' }] });
+    render(<ReportsWorkspace />);
+    fireEvent.click(await screen.findByRole('button', { name: /Relatório A/ }));
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Importar dados da Meta' }) as HTMLButtonElement).disabled).toBe(false));
+  }
+  it('warns before importing Instagram and preserves the full existing form, including manual edits', async () => {
+    await openLongReport();
+    fireEvent.change(screen.getByLabelText('Título'), { target: { value: 'Título manual' } });
+    fireEvent.change(screen.getAllByLabelText('Seguidores')[0], { target: { value: '830' } });
+    const before = Array.from(document.querySelectorAll('.report-editor input')).map(input => (input as HTMLInputElement).value);
+    const notesBefore = document.querySelector('.report-editor [contenteditable]')?.innerHTML;
+    fireEvent.click(screen.getByRole('button', { name: 'Importar dados da Meta' }));
+    expect(await screen.findByText('O Instagram permite importar Insights em períodos de até 30 dias. Ajuste as datas e tente novamente.')).toBeTruthy();
+    expect(loadClientMetaInsights).not.toHaveBeenCalled();
+    expect(loadClientMetaAdsInsights).not.toHaveBeenCalled();
+    expect(Array.from(document.querySelectorAll('.report-editor input')).map(input => (input as HTMLInputElement).value)).toEqual(before);
+    expect(document.querySelector('.report-editor [contenteditable]')?.innerHTML).toEqual(notesBefore);
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar rascunho' }));
+    await screen.findByText('Relatório salvo como rascunho.');
+    expect(vi.mocked(updateAdminReport).mock.calls[0][2]).toMatchObject({ title: 'Título manual', periodEnd: '2026-10-07', notes: report.notes, metrics: { instagram: { followers: 830 } } });
+  });
+  it('imports normally after correcting dates to exactly 30 days', async () => {
+    await openLongReport();
+    fireEvent.click(screen.getByRole('button', { name: 'Importar dados da Meta' }));
+    expect(loadClientMetaInsights).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText('Até'), { target: { value: '2026-10-01' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Importar dados da Meta' }));
+    await screen.findByText('Dados orgânicos e de anúncios importados da Meta com sucesso.');
+    expect(loadClientMetaInsights).toHaveBeenCalledTimes(1);
+    expect(loadClientMetaInsights).toHaveBeenCalledWith('client-a', '2026-09-01', '2026-10-01', undefined);
+  });
+  it('preserves data and shows the specific warning if the server rejects the period', async () => {
+    vi.mocked(loadClientMetaInsights).mockRejectedValueOnce(new Error('O Instagram permite importar Insights em períodos de até 30 dias. Ajuste as datas e tente novamente.'));
+    render(<ReportsWorkspace />);
+    fireEvent.click(await screen.findByRole('button', { name: /Relatório A/ }));
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Importar dados da Meta' }) as HTMLButtonElement).disabled).toBe(false));
+    const before = Array.from(document.querySelectorAll('.report-editor input')).map(input => (input as HTMLInputElement).value);
+    fireEvent.click(screen.getByRole('button', { name: 'Importar dados da Meta' }));
+    await screen.findByText('O Instagram permite importar Insights em períodos de até 30 dias. Ajuste as datas e tente novamente.');
+    expect(Array.from(document.querySelectorAll('.report-editor input')).map(input => (input as HTMLInputElement).value)).toEqual(before);
+  });
+  it('honors a Facebook-only selected destination even if legacy client assets include Instagram', async () => {
+    vi.mocked(loadClientMetaDestinations).mockResolvedValueOnce({ destinations: [{ id: 'facebook-only', clientAccountId: 'client-a', name: 'Facebook', facebookPageId: 'fb', facebookPageName: 'Page', instagramAccountId: null, instagramUsername: null, isDefault: true, createdAt: '', updatedAt: '' }] });
+    await openLongReport();
+    fireEvent.click(screen.getByRole('button', { name: 'Importar dados da Meta' }));
+    await screen.findByText('Dados orgânicos e de anúncios importados da Meta com sucesso.');
+    expect(loadClientMetaInsights).toHaveBeenCalledWith('client-a', '2026-09-01', '2026-10-07', 'facebook-only');
+  });
 });

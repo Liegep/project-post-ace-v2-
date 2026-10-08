@@ -9,7 +9,7 @@ import {
   type AdminClientOption, type ClientMetaAdsInsights, type ClientMetaAssets, type ClientMetaInsights, type ClientReport, type MetaPublishDestination,
   type MetaStatus, type ReportMetricKey, type ReportMetrics,
 } from "./api";
-import { chooseReportMetaDestination, emptyReportMetrics, reportDestinationMetadata, resetOrganicReportMetrics } from "./reportMetaDestinations";
+import { chooseReportMetaDestination, emptyReportMetrics, reportDestinationMetadata, reportMetaImportPeriodWarning, REPORT_INSTAGRAM_INSIGHTS_PERIOD_MESSAGE, resetOrganicReportMetrics } from "./reportMetaDestinations";
 
 const METRICS: Array<[ReportMetricKey, string]> = [["reach", "Alcance"], ["impressions", "Visualizações"], ["engagement", "Interações"], ["followers", "Seguidores"], ["followersGained", "Seguidores ganhos"], ["followersLost", "Seguidores perdidos"], ["followersNet", "Crescimento líquido"], ["visits", "Visitas ao perfil"], ["clicks", "Cliques no link"]];
 const FACEBOOK_EXTRAS = [["posts", "Publicações em destaque"], ["reactions", "Reações nos destaques"], ["comments", "Comentários nos destaques"], ["shares", "Compartilhamentos nos destaques"]] as const;
@@ -367,8 +367,10 @@ export function ReportsWorkspace({ newReportSignal = 0 }: { newReportSignal?: nu
   useEffect(() => { if (newReportSignal > 0 && clientId) newReport(); }, [newReportSignal, clientId]);
   const importMeta = async () => {
     if (!editing) return;
-    setImportingMeta(true); setMessage("");
     const since = reportDateValue(editing.periodStart); const until = reportDateValue(editing.periodEnd);
+    const periodWarning = reportMetaImportPeriodWarning(Boolean(selectedMetaDestination ? selectedMetaDestination.instagramAccountId : metaAssets?.instagramAccountId), since, until);
+    if (periodWarning) { setMessageTone("warning"); setMessage(periodWarning); return; }
+    setImportingMeta(true); setMessage("");
     const hasOrganic = selectedMetaDestination
       ? Boolean(selectedMetaDestination.instagramAccountId || selectedMetaDestination.facebookPageId)
       : Boolean(metaAssets?.instagramAccountId || metaAssets?.facebookPageId);
@@ -378,6 +380,9 @@ export function ReportsWorkspace({ newReportSignal = 0 }: { newReportSignal?: nu
         hasOrganic ? loadClientMetaInsights(clientId, since, until, selectedMetaDestination?.id) : Promise.resolve(null),
         hasAds ? loadClientMetaAdsInsights(clientId, since, until) : Promise.resolve(null),
       ]);
+      if (organicResult.status === "rejected" && organicResult.reason instanceof Error && organicResult.reason.message === REPORT_INSTAGRAM_INSIGHTS_PERIOD_MESSAGE) {
+        setMessageTone("warning"); setMessage(REPORT_INSTAGRAM_INSIGHTS_PERIOD_MESSAGE); return;
+      }
       const destinationChanged = Boolean(selectedMetaDestination && editing.metaDestinationId !== selectedMetaDestination.id);
       let nextMetrics: ReportMetrics = destinationChanged ? resetOrganicReportMetrics(editing.metrics) : editing.metrics;
       let nextHighlights = destinationChanged ? [] : editing.highlights;

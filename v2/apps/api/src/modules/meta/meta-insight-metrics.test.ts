@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import Fastify from "fastify";
 import type { FastifyInstance } from "fastify";
 import type { Pool } from "mysql2/promise";
-import { followerGrowth, metricStatus, parseInsightNumber, parseInstagramFollowerGrowth, safeInsightsDiagnostics } from "./meta-insight-metrics.js";
+import { followerGrowth, metricFailureDetails, metricStatus, parseInsightNumber, parseInstagramFollowerGrowth, safeInsightsDiagnostics } from "./meta-insight-metrics.js";
 import { getMetaInsights } from "./meta.service.js";
 import { metaRoutes } from "./meta.routes.js";
 import { httpErrorsPluginRegistered } from "../../plugins/http-errors.js";
@@ -56,10 +56,10 @@ function harness() {
   const log = { info(...args: unknown[]) { logs.push(args); }, warn(...args: unknown[]) { logs.push(args); }, error(...args: unknown[]) { logs.push(args); } };
   return { db, log, fetchImpl, requests, logs };
 }
-async function runInsights(change?: (url: URL) => Response | undefined, linked = { instagram: true, facebook: true }) {
+async function runInsights(change?: (url: URL) => Response | undefined, linked = { instagram: true, facebook: true }, period = { since: "2026-09-01", until: "2026-09-30" }) {
   const h = harness(), original = globalThis.fetch;
   globalThis.fetch = async (input, init) => change?.(new URL(String(input))) ?? h.fetchImpl(input, init);
-  try { const result = await getMetaInsights({ db: h.db, log: h.log, appEnv: env } as unknown as FastifyInstance, "owner", { facebookPageId: linked.facebook ? "page" : null, facebookPageName: "Page", instagramAccountId: linked.instagram ? "ig" : null, instagramUsername: "test" }, { since: "2026-09-01", until: "2026-09-30" }); return { h, result }; } finally { globalThis.fetch = original; }
+  try { const result = await getMetaInsights({ db: h.db, log: h.log, appEnv: env } as unknown as FastifyInstance, "owner", { facebookPageId: linked.facebook ? "page" : null, facebookPageName: "Page", instagramAccountId: linked.instagram ? "ig" : null, instagramUsername: "test" }, period); return { h, result }; } finally { globalThis.fetch = original; }
 }
 test("report survives a failed Facebook metric and exposes safe diagnostics", async () => {
   const { h, result } = await runInsights();
@@ -146,4 +146,71 @@ test("empty growth periods remain null without hiding known current followers", 
   const { result } = await runInsights(url => ["follows_and_unfollows", "page_daily_follows_unique", "page_daily_unfollows_unique"].includes(url.searchParams.get("metric") ?? "") ? Response.json({ data: [] }) : undefined);
   assert.equal(result.instagram?.metrics.followersNet, null); assert.equal(result.facebook?.metrics.followersNet, null); assert.equal(result.facebook?.metrics.followers, 184);
   assert.equal(result.instagram?.metricMetadata.followersGained.status, "empty"); assert.equal(result.facebook?.metricMetadata.followersLost.status, "empty");
+});
+
+
+test("Instagram accepts exactly 30 elapsed UTC days and imports insights normally", async () => {
+  const { result, h } = await runInsights(undefined, { instagram: true, facebook: false }, { since: "2026-09-01", until: "2026-10-01" });
+  assert.equal(result.instagram?.metrics.reach, 6);
+  assert.equal(result.instagram?.metrics.followers, 100);
+  assert.equal(result.instagram?.metrics.followersNet, 9);
+  assert.equal(h.requests.filter(url => url.pathname === "/v26.0/ig/insights").length, 7);
+});
+
+test("Instagram over 30 days fails before any Meta request, including follower snapshot", async () => {
+  const h = harness(), original = globalThis.fetch;
+  globalThis.fetch = h.fetchImpl;
+  try {
+    for (const until of ["2026-10-02", "2026-10-07"]) await assert.rejects(getMetaInsights({ db: h.db, appEnv: env } as unknown as FastifyInstance, "owner", {
+      instagramAccountId: "ig", instagramUsername: "test", facebookPageId: "page", facebookPageName: "Page",
+    }, { since: "2026-09-01", until }), error => {
+      assert.equal((error as { code: string }).code, "INSTAGRAM_INSIGHTS_PERIOD_TOO_LONG");
+      assert.equal((error as { statusCode: number }).statusCode, 400);
+      assert.match((error as Error).message, /até 30 dias.*Ajuste as datas/);
+      return true;
+    });
+    assert.equal(h.requests.length, 0);
+  } finally { globalThis.fetch = original; }
+});
+
+test("Facebook-only imports retain support for periods over 30 days", async () => {
+  const { result, h } = await runInsights(undefined, { instagram: false, facebook: true }, { since: "2026-09-01", until: "2026-10-07" });
+  assert.equal(result.instagram, null);
+  assert.equal(result.facebook?.metrics.reach, 6);
+  assert.ok(h.requests.some(url => url.pathname === "/v26.0/page/insights" && url.searchParams.get("until") === "2026-10-07"));
+});
+
+test("Meta #100 for a long period retains compatible status and safe structured reason", async () => {
+  const warning = { code: 100, message: "The difference between since and until must not exceed 30 days" };
+  assert.equal(metricStatus(warning, null), "api_error");
+  assert.deepEqual(metricFailureDetails(warning), { reason: "period_too_long" });
+  assert.deepEqual(metricFailureDetails({ code: 100, message: "The interval between since and until must be less than 2592000 seconds" }), { reason: "period_too_long" });
+  assert.deepEqual(metricFailureDetails({ code: 100, message: "invalid metric" }), {});
+  assert.deepEqual(metricFailureDetails({ code: 200, message: warning.message }), {});
+  const { result } = await runInsights(url => url.searchParams.get("metric") === "reach" && url.pathname === "/v26.0/ig/insights" ? Response.json({ error: warning }, { status: 400 }) : undefined);
+  assert.equal(safeInsightsDiagnostics(result).find(item => item.platform === "instagram" && item.metric === "reach")?.reason, "period_too_long");
+});
+
+test("import and debug endpoints return a structured 400 without Meta calls for a long Instagram period", async () => {
+  const h = harness(), original = globalThis.fetch; globalThis.fetch = h.fetchImpl;
+  const app = Fastify(); await app.register(httpErrorsPluginRegistered); app.decorate("db", h.db); app.decorate("appEnv", env as FastifyInstance["appEnv"]);
+  app.addHook("preHandler", async request => { request.auth = { user: { id: "owner", globalRole: "super_admin" }, memberships: [] } as unknown as typeof request.auth; });
+  await app.register(metaRoutes, { prefix: "/api" });
+  try {
+    for (const path of ["/api/meta/insights/debug?clientAccountId=client&", "/api/clients/client/meta-insights?"]) {
+      const response = await app.inject({ method: "GET", url: path + "since=2026-09-01&until=2026-10-07" });
+      assert.equal(response.statusCode, 400);
+      assert.equal(response.json().code, "INSTAGRAM_INSIGHTS_PERIOD_TOO_LONG");
+      assert.match(response.json().message, /Ajuste as datas/);
+    }
+    assert.equal(h.requests.length, 0);
+  } finally { globalThis.fetch = original; await app.close(); }
+});
+
+test("report storage accepts periods over 30 days and optional diagnostic reason", () => {
+  const channel = { reach: null, impressions: null, engagement: null, followers: 830, visits: null, clicks: null,
+    metricMetadata: { reach: { status: "api_error", reason: "period_too_long", source: "reach", aggregation: "period_total", code: 100, structure: { entries: 0, dailyValues: 0, totalValue: false, breakdowns: 0 } } } };
+  const parsed = createReportSchema.parse({ title: "Long report", periodStart: "2026-09-01", periodEnd: "2026-10-07", metrics: { instagram: channel, facebook: channel } });
+  assert.equal(parsed.periodEnd, "2026-10-07");
+  assert.equal(parsed.metrics.instagram.metricMetadata?.reach.reason, "period_too_long");
 });
