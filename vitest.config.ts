@@ -11,6 +11,12 @@ export default defineConfig({
     include: ["src/**/*.{test,spec}.{ts,tsx}", "v2/apps/web/tests/**/*.test.tsx"],
   },
   resolve: {
-    alias: { "@": path.resolve(__dirname, "./src"), react: path.resolve(__dirname, "node_modules/react"), "react-dom": path.resolve(__dirname, "node_modules/react-dom") },
+    alias: {
+      "@": path.resolve(__dirname, "./src"),
+      react: path.resolve(__dirname, "node_modules/react"),
+      "react-dom": path.resolve(__dirname, "node_modules/react-dom"),
+      "react-router": path.resolve(__dirname, "node_modules/react-router"),
+      "react-router-dom": path.resolve(__dirname, "node_modules/react-router-dom"),
+    },
   },
 });
