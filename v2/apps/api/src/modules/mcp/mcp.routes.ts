@@ -40,7 +40,7 @@ export const mcpRoutes: FastifyPluginAsync = async (app) => {
       return reply.code(403).send({ jsonrpc: "2.0", error: { code: -32003, message: "Esta autorização não possui mais acesso." }, id: null });
     }
 
-    const server = createPlanningMcpServer(app, auth, claims.client_id, claims.scope.split(/\s+/));
+    const server = createPlanningMcpServer(app, auth, claims.client_id, claims.scope.split(/\s+/), { radarAiAuthorized: claims.radar_ai_authorized === true });
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
       enableJsonResponse: true,

@@ -13,6 +13,9 @@ import { mcpRoutes } from "./mcp.routes.js";
 import { createPlanningMcpServer } from "./mcp.server.js";
 import { saveRefreshToken } from "./mcp.repository.js";
 import type { AuthContext } from "../auth/auth.types.js";
+import crypto from "node:crypto";
+import jwt from "jsonwebtoken";
+import { readFileSync } from "node:fs";
 
 const app = {
   appEnv: {
@@ -39,7 +42,8 @@ test("PKCE challenge is URL-safe and deterministic", () => {
   assert.equal(challenge, pkceChallenge(verifier));
 });
 
-const defaultScope = "planning:read pauta:create radar:suggest";
+const defaultScope = "planning:read pauta:create";
+const supportedScopes = ["planning:read", "pauta:create", "radar:suggest"];
 const legacyScope = "planning:read pauta:create";
 const clientId = "oauth-test-client";
 const userId = "11111111-1111-4111-8111-111111111111";
@@ -61,10 +65,14 @@ async function oauthFixture() {
       is_active: 1, password_hash: passwordHash, locale: "pt-BR", avatar_url: null,
     }]];
     if (sql.includes("FROM client_memberships")) return [[]];
+    if (sql.startsWith("SELECT a.id, a.name, a.slug, a.locale FROM client_accounts")) {
+      return [[{ id: userId, name: "Test client", slug: "test", locale: "pt-BR" }]];
+    }
+    if (sql.startsWith("INSERT INTO mcp_audit_log")) return [{}];
     if (sql.startsWith("INSERT INTO mcp_oauth_codes")) {
-      const [hash, client, user, redirect, challenge, scope, resource, expiry] = values;
+      const [hash, client, user, redirect, challenge, scope, resource, expiry, radarAiAuthorized] = values;
       codes.set(String(hash), { client_id: client, user_id: user, redirect_uri: redirect,
-        code_challenge: challenge, scope, resource, expires_at_ms: expiry, used_at_ms: null });
+        code_challenge: challenge, scope, resource, expires_at_ms: expiry, used_at_ms: null, radar_ai_authorized: radarAiAuthorized });
       return [{}];
     }
     if (sql.includes("FROM mcp_oauth_codes")) {
@@ -76,9 +84,9 @@ async function oauthFixture() {
       return [{}];
     }
     if (sql.startsWith("INSERT INTO mcp_oauth_refresh_tokens")) {
-      const [hash, client, user, scope, resource, expiry] = values;
+      const [hash, client, user, scope, resource, expiry, radarAiAuthorized] = values;
       refreshes.set(String(hash), { client_id: client, user_id: user, scope, resource,
-        expires_at_ms: expiry, revoked_at_ms: null });
+        expires_at_ms: expiry, revoked_at_ms: null, radar_ai_authorized: radarAiAuthorized });
       return [{}];
     }
     if (sql.includes("FROM mcp_oauth_refresh_tokens")) {
@@ -120,14 +128,14 @@ async function oauthFixture() {
     assert.equal(token.statusCode, 200);
     return token.json();
   }
-  return { server, authorization, codes, authorize };
+  return { server, authorization, codes, refreshes, authorize };
 }
 
 async function listedTools(server: FastifyInstance, accessToken: string) {
   const claims = verifyMcpAccessToken(server, accessToken);
   const auth: AuthContext = { user: { id: userId, fullName: "Test", email: "test@example.org",
     globalRole: "super_admin", avatarUrl: null, locale: "pt-BR", isActive: true }, memberships: [] };
-  const mcp = createPlanningMcpServer(server, auth, claims.client_id, claims.scope.split(/\s+/));
+  const mcp = createPlanningMcpServer(server, auth, claims.client_id, claims.scope.split(/\s+/), { radarAiAuthorized: claims.radar_ai_authorized === true });
   const client = new Client({ name: "oauth-scope-test", version: "1" });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   try {
@@ -143,7 +151,7 @@ test("OAuth discovery advertises all new-connection scopes without granting acce
     for (const path of ["/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource/mcp"]) {
       const response = await f.server.inject(path);
       assert.equal(response.statusCode, 200);
-      assert.deepEqual(response.json().scopes_supported, defaultScope.split(" "));
+      assert.deepEqual(response.json().scopes_supported, supportedScopes);
     }
     const denied = await f.server.inject({ method: "POST", url: "/mcp", payload: {} });
     assert.equal(denied.statusCode, 401);
@@ -153,68 +161,148 @@ test("OAuth discovery advertises all new-connection scopes without granting acce
   } finally { await f.server.close(); }
 });
 
-test("OAuth no-scope authorization displays unchecked Radar consent and rejects missing consent", async () => {
+test("OAuth real ChatGPT URL shows optional unchecked internal Radar consent", async () => {
   const f = await oauthFixture();
   try {
-    const page = await f.server.inject("/oauth/authorize?" + new URLSearchParams(f.authorization));
+    const params = new URLSearchParams({ ...f.authorization, scope: defaultScope });
+    assert.match(params.toString(), /scope=planning%3Aread\+pauta%3Acreate/);
+    const page = await f.server.inject("/oauth/authorize?" + params);
     assert.equal(page.statusCode, 200);
-    assert.match(page.body, /name="scope" value="planning:read pauta:create radar:suggest"/);
-    assert.match(page.body, /name="radar_consent" value="yes" required/);
+    assert.match(page.body, /name="scope" value="planning:read pauta:create"/);
+    assert.match(page.body, /name="radar_consent" value="yes"/);
     assert.match(page.body, /Autorizo sugestões do Radar com uso de IA\./);
-    assert.doesNotMatch(page.body, /radar_consent[^>]*checked/);
-    for (const scope of [undefined, defaultScope]) {
-      const denied = await f.server.inject({ method: "POST", url: "/oauth/authorize",
-        payload: { ...f.authorization, ...(scope === undefined ? {} : { scope }),
-          email: "test@example.org", password: "test-password-only" } });
-      assert.equal(denied.statusCode, 400);
-      assert.match(denied.body, /consentimento para radar:suggest/);
-      assert.equal(f.codes.size, 0);
-    }
+    assert.doesNotMatch(page.body, /radar_consent[^>]*(?:checked|required)/);
+    const noScopePage = await f.server.inject("/oauth/authorize?" + new URLSearchParams(f.authorization));
+    assert.match(noScopePage.body, /name="scope" value="planning:read pauta:create"/);
   } finally { await f.server.close(); }
 });
 
-test("OAuth explicit consent grants Radar in token/tools list; refresh preserves it and old tools", async () => {
+test("OAuth real ChatGPT scopes work without consent, preserve old tools and never grant Radar", async () => {
   const f = await oauthFixture();
   try {
-    const token = await f.authorize(undefined, true);
+    const token = await f.authorize(defaultScope);
     assert.equal(token.scope, defaultScope);
-    assert.equal(verifyMcpAccessToken(f.server, token.access_token).scope, defaultScope);
+    assert.equal(verifyMcpAccessToken(f.server, token.access_token).radar_ai_authorized, false);
+    assert.ok([...f.codes.values()].every(code => code.radar_ai_authorized === 0));
+    assert.ok([...f.refreshes.values()].every(token => token.radar_ai_authorized === 0));
+    const tools = await listedTools(f.server, token.access_token);
+    assert.ok(!tools.includes("create_radar_suggestion"));
+    assert.ok(tools.includes("create_pauta_draft"));
+    assert.ok(tools.includes("list_clients"));
+    const renewed = await f.server.inject({ method: "POST", url: "/oauth/token",
+      payload: { grant_type: "refresh_token", client_id: clientId,
+        refresh_token: token.refresh_token, radar_consent: "yes", radar_ai_authorized: true } });
+    assert.equal(renewed.statusCode, 200);
+    assert.equal(renewed.json().scope, defaultScope);
+    assert.equal(verifyMcpAccessToken(f.server, renewed.json().access_token).radar_ai_authorized, false);
+    assert.ok(!(await listedTools(f.server, renewed.json().access_token)).includes("create_radar_suggestion"));
+  } finally { await f.server.close(); }
+});
+
+test("OAuth explicit internal consent enables Radar without adding OAuth scopes; refresh preserves decision", async () => {
+  const f = await oauthFixture();
+  try {
+    const token = await f.authorize(defaultScope, true);
+    assert.equal(token.scope, defaultScope);
+    const claims = verifyMcpAccessToken(f.server, token.access_token);
+    assert.equal(claims.scope, defaultScope);
+    assert.equal(claims.radar_ai_authorized, true);
+    assert.ok([...f.codes.values()].every(code => code.radar_ai_authorized === 1));
+    assert.ok([...f.refreshes.values()].every(token => token.radar_ai_authorized === 1));
     const legacyToken = signMcpAccessToken(f.server, { userId, clientId, scope: legacyScope });
     const legacyTools = await listedTools(f.server, legacyToken);
     const tools = await listedTools(f.server, token.access_token);
     assert.ok(tools.includes("create_radar_suggestion"));
-    assert.ok(tools.includes("create_pauta_draft"));
-    assert.ok(tools.includes("list_clients"));
     assert.deepEqual(tools.filter(name => name !== "create_radar_suggestion").sort(), legacyTools.sort());
-    const refresh = await f.server.inject({ method: "POST", url: "/oauth/token",
-      payload: { grant_type: "refresh_token", client_id: clientId, refresh_token: token.refresh_token } });
-    assert.equal(refresh.statusCode, 200);
-    assert.equal(refresh.json().scope, defaultScope);
-    assert.equal(verifyMcpAccessToken(f.server, refresh.json().access_token).scope, defaultScope);
+    let current = token;
+    for (let i = 0; i < 2; i++) {
+      const refresh = await f.server.inject({ method: "POST", url: "/oauth/token",
+        payload: { grant_type: "refresh_token", client_id: clientId, refresh_token: current.refresh_token } });
+      assert.equal(refresh.statusCode, 200);
+      current = refresh.json();
+      assert.equal(current.scope, defaultScope);
+      assert.equal(verifyMcpAccessToken(f.server, current.access_token).radar_ai_authorized, true);
+      assert.ok((await listedTools(f.server, current.access_token)).includes("create_radar_suggestion"));
+    }
+    const noConsentConnection = await f.authorize(defaultScope, false);
+    assert.equal(verifyMcpAccessToken(f.server, noConsentConnection.access_token).radar_ai_authorized, false);
+    assert.equal(verifyMcpAccessToken(f.server, current.access_token).radar_ai_authorized, true);
+    const down = await f.server.inject({ method: "POST", url: "/oauth/token", payload: {
+      grant_type: "refresh_token", client_id: clientId, refresh_token: current.refresh_token, scope: "planning:read" } });
+    assert.equal(down.statusCode, 200);
+    assert.equal(down.json().scope, "planning:read");
+    assert.equal(verifyMcpAccessToken(f.server, down.json().access_token).radar_ai_authorized, true);
+    assert.ok(!(await listedTools(f.server, down.json().access_token)).includes("create_radar_suggestion"));
   } finally { await f.server.close(); }
 });
 
-test("OAuth legacy authorizations and existing access/refresh tokens never acquire Radar silently", async () => {
+test("OAuth old refresh tokens and the compatibility radar scope never imply internal consent", async () => {
   const f = await oauthFixture();
   try {
-    const page = await f.server.inject("/oauth/authorize?" + new URLSearchParams({
-      ...f.authorization, scope: legacyScope }));
-    assert.doesNotMatch(page.body, /name="radar_consent"/);
-    const token = await f.authorize(legacyScope);
-    assert.equal(token.scope, legacyScope);
-    assert.ok(!(await listedTools(f.server, token.access_token)).includes("create_radar_suggestion"));
     await saveRefreshToken(f.server.db, { token: "existing-refresh-token", clientId, userId,
       scope: legacyScope, resource: "https://app.example.com/mcp", expiresAtMs: Date.now() + 60_000 });
-    const denied = await f.server.inject({ method: "POST", url: "/oauth/token",
-      payload: { grant_type: "refresh_token", client_id: clientId,
-        refresh_token: "existing-refresh-token", scope: defaultScope } });
+    const denied = await f.server.inject({ method: "POST", url: "/oauth/token", payload: {
+      grant_type: "refresh_token", client_id: clientId, refresh_token: "existing-refresh-token",
+      scope: legacyScope + " radar:suggest" } });
     assert.equal(denied.statusCode, 400);
     assert.equal(denied.json().error, "invalid_scope");
-    const renewed = await f.server.inject({ method: "POST", url: "/oauth/token",
-      payload: { grant_type: "refresh_token", client_id: clientId, refresh_token: "existing-refresh-token" } });
+    const renewed = await f.server.inject({ method: "POST", url: "/oauth/token", payload: {
+      grant_type: "refresh_token", client_id: clientId, refresh_token: "existing-refresh-token" } });
     assert.equal(renewed.statusCode, 200);
     assert.equal(renewed.json().scope, legacyScope);
-    assert.equal(verifyMcpAccessToken(f.server, token.access_token).scope, legacyScope);
-    assert.ok(!(await listedTools(f.server, renewed.json().access_token)).includes("create_radar_suggestion"));
+    assert.equal(verifyMcpAccessToken(f.server, renewed.json().access_token).radar_ai_authorized, false);
+    const compatibility = await f.authorize(defaultScope + " radar:suggest", false);
+    assert.equal(compatibility.scope, defaultScope + " radar:suggest");
+    assert.ok(!(await listedTools(f.server, compatibility.access_token)).includes("create_radar_suggestion"));
+    const readOnly = await f.authorize("planning:read", true);
+    assert.equal(verifyMcpAccessToken(f.server, readOnly.access_token).radar_ai_authorized, false);
+    assert.ok(!(await listedTools(f.server, readOnly.access_token)).includes("create_radar_suggestion"));
   } finally { await f.server.close(); }
+});
+
+test("signed legacy access tokens missing internal consent stay unauthorized for Radar", async () => {
+  const f = await oauthFixture();
+  try {
+    const claims = jwt.decode(signMcpAccessToken(f.server, {
+      userId, clientId, scope: defaultScope + " radar:suggest",
+    })) as jwt.JwtPayload;
+    delete claims.radar_ai_authorized;
+    const secret = crypto.createHmac("sha256", f.server.appEnv.JWT_SECRET)
+      .update("design-hub-v2:mcp-oauth:v1").digest("hex");
+    const legacy = jwt.sign(claims, secret);
+    assert.equal(verifyMcpAccessToken(f.server, legacy).radar_ai_authorized, undefined);
+    assert.ok(!(await listedTools(f.server, legacy)).includes("create_radar_suggestion"));
+  } finally { await f.server.close(); }
+});
+
+test("HTTP MCP tools/list uses signed consent and keeps existing read tools operational", async () => {
+  const f = await oauthFixture();
+  try {
+    for (const consent of [false, true]) {
+      const token = await f.authorize(defaultScope, consent);
+      const headers = { authorization: "Bearer " + token.access_token,
+        accept: "application/json, text/event-stream", host: "app.example.com" };
+      const listed = await f.server.inject({ method: "POST", url: "/mcp", headers,
+        payload: { jsonrpc: "2.0", id: 1, method: "tools/list" } });
+      assert.equal(listed.statusCode, 200);
+      const names = listed.json().result.tools.map((tool: { name: string }) => tool.name);
+      assert.equal(names.includes("create_radar_suggestion"), consent);
+      assert.ok(names.includes("create_pauta_draft"));
+      const clients = await f.server.inject({ method: "POST", url: "/mcp", headers,
+        payload: { jsonrpc: "2.0", id: 2, method: "tools/call", params: {
+          name: "list_clients", arguments: {},
+        } } });
+      assert.equal(clients.statusCode, 200);
+      assert.equal(clients.json().result.isError, undefined);
+      assert.equal(JSON.parse(clients.json().result.content[0].text).clients[0].name, "Test client");
+    }
+  } finally { await f.server.close(); }
+});
+
+test("consent migration is additive, defaults to denied and contains no legacy scope inference", () => {
+  const sql = readFileSync(new URL("../../../../../database/migrations/20261008_mcp_radar_internal_consent.sql", import.meta.url), "utf8");
+  assert.match(sql, /ALTER TABLE mcp_oauth_codes/);
+  assert.match(sql, /ALTER TABLE mcp_oauth_refresh_tokens/);
+  assert.equal((sql.match(/ADD COLUMN IF NOT EXISTS radar_ai_authorized TINYINT\(1\) NOT NULL DEFAULT 0/g) ?? []).length, 2);
+  assert.doesNotMatch(sql, /\b(?:UPDATE|DELETE|DROP|INSERT)\b|radar:suggest/i);
 });

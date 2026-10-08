@@ -5,9 +5,9 @@ import type { FastifyInstance } from "fastify";
 export const MCP_READ_SCOPE = "planning:read";
 export const MCP_PAUTA_CREATE_SCOPE = "pauta:create";
 export const MCP_RADAR_SUGGEST_SCOPE = "radar:suggest";
-// Requested for new authorizations only; radar:suggest still requires explicit consent.
-export const MCP_DEFAULT_SCOPES = [MCP_READ_SCOPE, MCP_PAUTA_CREATE_SCOPE, MCP_RADAR_SUGGEST_SCOPE] as const;
-export const MCP_SUPPORTED_SCOPES = [...MCP_DEFAULT_SCOPES] as const;
+// OAuth stays compatible with clients requesting only the established scopes.
+export const MCP_DEFAULT_SCOPES = [MCP_READ_SCOPE, MCP_PAUTA_CREATE_SCOPE] as const;
+export const MCP_SUPPORTED_SCOPES = [...MCP_DEFAULT_SCOPES, MCP_RADAR_SUGGEST_SCOPE] as const;
 export function requestedMcpScopes(value?: string) {
   const scopes = [...new Set((value ?? MCP_DEFAULT_SCOPES.join(" ")).split(/\s+/).filter(Boolean))];
   if (!scopes.includes(MCP_READ_SCOPE) || scopes.some(scope => !(MCP_SUPPORTED_SCOPES as readonly string[]).includes(scope))) throw Error("A conexão solicitou uma permissão não permitida.");
@@ -57,11 +57,12 @@ type McpAccessClaims = jwt.JwtPayload & {
   sub: string;
   client_id: string;
   scope: string;
+  radar_ai_authorized?: boolean;
 };
 
 export function signMcpAccessToken(
   app: FastifyInstance,
-  input: { userId: string; clientId: string; scope: string },
+  input: { userId: string; clientId: string; scope: string; radarAiAuthorized?: boolean },
 ) {
   const urls = mcpPublicUrls(app);
   return jwt.sign(
@@ -69,6 +70,7 @@ export function signMcpAccessToken(
       type: "mcp_access",
       client_id: input.clientId,
       scope: input.scope,
+      radar_ai_authorized: input.radarAiAuthorized === true,
     },
     mcpSigningSecret(app),
     {
