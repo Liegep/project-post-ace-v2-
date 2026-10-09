@@ -114,11 +114,11 @@ test("successful Meta scheduling updates local state without duplicating returne
 });
 
 
-test("only scheduled and publishing occupy a slot; terminal history releases both platforms", () => {
+test("scheduled, publishing and published occupy a slot; cancelled and failed release both platforms", () => {
   for (const status of ["scheduled", "publishing", "cancelled", "failed", "published"] as const) {
     const publications = [publication({ status }), publication({ id: "facebook-1", platform: "facebook", status })];
     assert.deepEqual(scheduledMetaPlatformsAt(publications, "card-1", "2026-09-30T16:00", "destination-a"),
-      status === "scheduled" || status === "publishing" ? ["instagram", "facebook"] : []);
+      status === "scheduled" || status === "publishing" || status === "published" ? ["instagram", "facebook"] : []);
   }
 });
 

@@ -90,7 +90,7 @@ export function scheduledMetaPlatformsAt(
   const targetMinute = minute(localDateTime);
   if (targetMinute === null) return [];
   return (["instagram", "facebook"] as const).filter((platform) => publications.some((publication) =>
-    (publication.status === "scheduled" || publication.status === "publishing")
+    (publication.status === "scheduled" || publication.status === "publishing" || publication.status === "published")
     && publication.cardId === cardId
     && publication.platform === platform
     && (publication.destinationId ?? null) === (destinationId ?? null)
