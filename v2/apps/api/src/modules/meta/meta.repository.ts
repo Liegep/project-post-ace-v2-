@@ -618,13 +618,16 @@ export type GlobalMetaPublicationFilters = {
   offset: number;
 };
 
+const globalPublicationFailure = "(p.status = 'failed' OR (p.status = 'cancelled' AND OCTET_LENGTH(p.last_error) > 0))";
+
 function globalPublicationWhere(filters: GlobalMetaPublicationFilters) {
   const conditions: string[] = [];
   const params: unknown[] = [];
   if (filters.clientAccountId) { conditions.push("p.client_account_id = ?"); params.push(filters.clientAccountId); }
   if (filters.platform) { conditions.push("p.platform = ?"); params.push(filters.platform); }
   if (filters.mediaType) { conditions.push("p.media_type = ?"); params.push(filters.mediaType); }
-  if (filters.status) { conditions.push("p.status = ?"); params.push(filters.status); }
+  if (filters.status === "failed") conditions.push(globalPublicationFailure);
+  else if (filters.status) { conditions.push("p.status = ?"); params.push(filters.status); }
   if (filters.from) { conditions.push("p.scheduled_at >= ?"); params.push(mysqlUtcDateTime(filters.from)); }
   if (filters.to) { conditions.push("p.scheduled_at < ?"); params.push(mysqlUtcDateTime(filters.to)); }
   return { sql: conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "", params };
@@ -650,10 +653,10 @@ export async function listGlobalScheduledPublications(db: Pool, filters: GlobalM
     where.params,
   );
   const [summaryRows] = await db.query<(RowDataPacket & { scheduled: number | string; publishing: number | string; published_today: number | string; failed: number | string })[]>([
-    "SELECT SUM(status = 'scheduled') AS scheduled, SUM(status = 'publishing') AS publishing,",
-    "SUM(status = 'published' AND published_at >= UTC_DATE()) AS published_today, SUM(status = 'failed') AS failed",
-    "FROM meta_scheduled_publications",
-  ].join(" "));
+    "SELECT SUM(p.status = 'scheduled') AS scheduled, SUM(p.status = 'publishing') AS publishing,",
+    `SUM(p.status = 'published' AND p.published_at >= UTC_DATE()) AS published_today, SUM(${globalPublicationFailure}) AS failed`,
+    `${joins}${where.sql}`,
+  ].join(" "), where.params);
   return {
     items: rows.map((row) => ({
       ...mapScheduledPublication(row),

@@ -27,7 +27,7 @@ test("global listing joins clients and cards while preserving each platform stat
   const db = { async query(sql: string, params: unknown[] = []) {
     calls.push({ sql, params });
     if (sql.includes("COUNT(*) AS total")) return [[{ total: 2 }], []];
-    if (sql.includes("SUM(status = 'scheduled')")) return [[{ scheduled: 1, publishing: 0, published_today: 1, failed: 0 }], []];
+    if (sql.includes("SUM(p.status = 'scheduled')")) return [[{ scheduled: 1, publishing: 0, published_today: 1, failed: 0 }], []];
     return [[publicationRow(), publicationRow({ id: "publication-2", platform: "facebook", status: "published", published_meta_id: "post-2" })], []];
   } } as unknown as Pool;
   const result = await listGlobalScheduledPublications(db, { clientAccountId: "client-1", limit: 100, offset: 0 });
@@ -324,4 +324,25 @@ test("official pages search returns safe place data without exposing tokens", as
     assert.equal(requests[0]?.searchParams.get("fields"), "id,name,location");
     assert.doesNotMatch(JSON.stringify(places), /EA-test|app-secret|appsecret_proof/);
   } finally { globalThis.fetch = original; }
+});
+
+
+test("global failure summary shares every listing filter and excludes pagination", async () => {
+  const calls: Array<{ sql: string; params: unknown[] }> = [];
+  const db = { async query(sql: string, params: unknown[] = []) {
+    calls.push({ sql, params });
+    if (sql.includes("COUNT(*)")) return [[{ total: 1 }], []];
+    if (sql.includes(" AS failed")) return [[{ scheduled: 0, publishing: 0, published_today: 0, failed: 1 }], []];
+    return [[publicationRow({ status: "cancelled", last_error: "Original failure" })], []];
+  } } as unknown as Pool;
+  const result = await listGlobalScheduledPublications(db, { clientAccountId: "client-1", platform: "instagram", mediaType: "image", status: "failed", from: "2026-09-01T00:00:00Z", to: "2026-10-01T00:00:00Z", limit: 1, offset: 5 });
+  assert.equal(result.summary.failed, 1);
+  assert.equal(result.items[0].status, "cancelled");
+  assert.equal(result.items[0].lastError, "Original failure");
+  const summary = calls.find((call) => call.sql.includes(" AS failed"))!;
+  assert.match(summary.sql, /p.status = 'failed' OR \(p.status = 'cancelled' AND OCTET_LENGTH\(p.last_error\) > 0\)/);
+  assert.match(summary.sql, /WHERE p.client_account_id = \? AND p.platform = \? AND p.media_type = \?.+p.scheduled_at >= \? AND p.scheduled_at < \?/);
+  assert.deepEqual(summary.params, calls[0].params);
+  assert.deepEqual(summary.params, ["client-1", "instagram", "image", "2026-09-01 00:00:00.000", "2026-10-01 00:00:00.000"]);
+  assert.doesNotMatch(summary.sql, /LIMIT|OFFSET/);
 });
