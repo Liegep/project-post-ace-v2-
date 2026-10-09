@@ -11615,3 +11615,19 @@ button.agenda-more { border:0;background:transparent;cursor:pointer;padding:5px;
   .login-shell .login-product-preview::after { display: none; }
   .login-intro .login-primary, .login-intro .login-showcase-panel { opacity: 1; visibility: visible; pointer-events: auto; transform: none; }
 }
+
+
+/* Brand Brain admin: keep the internal section tabs fully accessible inside the fixed-height Kanban shell. */
+@media (min-width: 761px) {
+  .kanban-admin-layout .board-layout:has(> .brand-v2) {
+    display: block;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+  }
+
+  .kanban-admin-layout .board-layout:has(> .brand-v2) > .brand-v2 {
+    min-height: 100%;
+    height: auto;
+  }
+}
