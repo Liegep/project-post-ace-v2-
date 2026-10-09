@@ -133,3 +133,8 @@ test("merging cancellation releases the slot immediately and recreation retains 
   assert.deepEqual(scheduledMetaPlatformsAt(recreated, "card-1", "2026-09-30T16:01", "destination-a"), []);
   assert.deepEqual(scheduledMetaPlatformsAt(recreated, "card-1", "2026-09-30T16:00", "other-destination"), []);
 });
+
+
+test("a cancelled failure remains reusable even though its presentation indicates failure", () => {
+  assert.deepEqual(scheduledMetaPlatformsAt([publication({ status: "cancelled", lastError: "Meta failed" })], "card-1", "2026-09-30T16:00", "destination-a"), []);
+});

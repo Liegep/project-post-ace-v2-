@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import mysql, { type RowDataPacket } from "mysql2/promise";
 import { ensureMetaStorage } from "./meta.storage.js";
-import { cancelScheduledPublication, cancelScheduledPublicationGroup, createScheduledPublications, markPublicationPublishing, markPublicationFailed, markPublicationPublished, type CreateScheduledPublicationInput } from "./meta.repository.js";
+import { cancelScheduledPublication, cancelScheduledPublicationGroup, createScheduledPublications, markPublicationPublishing, markPublicationFailed, markPublicationPublished, listGlobalScheduledPublications, type CreateScheduledPublicationInput } from "./meta.repository.js";
 
 // Never reads .env or accepts TCP/production credentials. Run only against an
 // isolated temporary MariaDB server with --skip-networking.
@@ -13,7 +13,7 @@ if (socketPath && !/^\/(?:private\/)?tmp\/meta-mariadb-[^/]+\/server\.sock$/.tes
   throw new Error("META_TEST_SOCKET must be /tmp/meta-mariadb-*/server.sock");
 }
 
-test("Meta slot generations preserve history and deduplicate concurrent active requests", { skip: !socketPath }, async () => {
+test("Meta slot generations preserve history and deduplicate concurrent active requests", { skip: !socketPath }, async (context) => {
   const database = `meta_test_${randomUUID().replace(/-/g, "")}`;
   const server = await mysql.createConnection({ socketPath, user: "root" });
   await server.query(`CREATE DATABASE \`${database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
@@ -85,6 +85,50 @@ test("Meta slot generations preserve history and deduplicate concurrent active r
     assert.equal(publishedReplay.created, false);
     assert.equal(publishedReplay.publication.status, "published");
     assert.equal(publishedReplay.publication.id, afterFailure.publication.id);
+
+    await context.test("failure summaries respect periods, filters and cancellation history", async () => {
+      const otherClient = randomUUID();
+      await db.query("INSERT INTO client_accounts (id, name, slug, portal_title, locale) VALUES (?, 'Other', 'other', 'Other', 'pt')", [otherClient]);
+      const entries = [
+        { status: "failed", error: "Original error", day: "2028-01-15", platform: "instagram", media: "image", client },
+        { status: "failed", error: null, day: "2028-01-15", platform: "facebook", media: "carousel", client },
+        { status: "cancelled", error: "Cancelled failure", day: "2028-01-16", platform: "instagram", media: "image", client },
+        { status: "cancelled", error: null, day: "2028-01-17", platform: "instagram", media: "image", client },
+        { status: "cancelled", error: "", day: "2028-01-18", platform: "instagram", media: "image", client },
+        { status: "scheduled", error: "Stale scheduled error", day: "2028-01-19", platform: "instagram", media: "image", client },
+        { status: "publishing", error: null, day: "2028-01-20", platform: "instagram", media: "image", client },
+        { status: "published", error: "Stale published error", day: "2028-01-21", platform: "instagram", media: "image", client },
+        { status: "cancelled", error: "Old failure", day: "2027-12-31", platform: "instagram", media: "image", client },
+        { status: "failed", error: "At exclusive end", day: "2028-02-01", platform: "instagram", media: "image", client },
+        { status: "failed", error: "Other client", day: "2028-01-15", platform: "instagram", media: "image", client: otherClient },
+      ] as const;
+      for (const [index, entry] of entries.entries()) {
+        const [created] = await createScheduledPublications(db, [input(entry.platform, {
+          clientAccountId: entry.client, cardId: entry.client === client ? card : null,
+          destinationId: entry.client === client ? destination : null,
+          scheduledAt: `${entry.day}T00:00:00.000Z`, mediaType: entry.media,
+          idempotencyKey: createHash("sha256").update(`summary-${index}`).digest("hex"),
+        })]);
+        await db.query("UPDATE meta_scheduled_publications SET status = ?, last_error = ?, published_at = CASE WHEN ? = 'published' THEN UTC_TIMESTAMP(3) ELSE NULL END WHERE id = ?", [entry.status, entry.error, entry.status, created.publication.id]);
+      }
+      const filters = { clientAccountId: client, from: "2028-01-15T00:00:00Z", to: "2028-02-01T00:00:00Z", limit: 1, offset: 2 };
+      const result = await listGlobalScheduledPublications(db, filters);
+      assert.equal(result.total, 8);
+      assert.equal(result.items.length, 1);
+      assert.deepEqual(result.summary, { scheduled: 1, publishing: 1, publishedToday: 1, failed: 3 });
+      const failures = await listGlobalScheduledPublications(db, { ...filters, status: "failed", limit: 100, offset: 0 });
+      assert.equal(failures.total, 3);
+      assert.equal(failures.summary.failed, 3);
+      assert.ok(failures.items.some((item) => item.status === "cancelled" && item.lastError === "Cancelled failure"));
+      assert.ok(failures.items.every((item) =>
+        new Date(item.scheduledAt).getTime() >= new Date(filters.from).getTime()
+        && new Date(item.scheduledAt).getTime() < new Date(filters.to).getTime()));
+      assert.equal((await listGlobalScheduledPublications(db, { ...filters, platform: "instagram", mediaType: "image" })).summary.failed, 2);
+      assert.equal((await listGlobalScheduledPublications(db, { ...filters, platform: "facebook", mediaType: "carousel" })).summary.failed, 1);
+      assert.equal((await listGlobalScheduledPublications(db, { ...filters, status: "cancelled" })).summary.failed, 1);
+      assert.equal((await listGlobalScheduledPublications(db, { ...filters, clientAccountId: otherClient })).summary.failed, 1);
+      assert.deepEqual((await listGlobalScheduledPublications(db, { ...filters, from: "2028-03-01T00:00:00Z", to: "2028-04-01T00:00:00Z" })).summary, { scheduled: 0, publishing: 0, publishedToday: 0, failed: 0 });
+    });
 
     // A later invalid input rolls back every newly inserted platform in the group.
     const newKey = createHash("sha256").update("rollback-test").digest("hex");
