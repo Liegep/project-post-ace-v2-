@@ -20,7 +20,7 @@ test("Brand Brain AI manual UI: explicit calls, readonly analysis, previews, ref
     const url = String(input), method = init?.method || "GET", body = init?.body ? JSON.parse(String(init.body)) : null; calls.push({ url, method, body });
     const response = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status });
     if (url === "/api/clients") return response({ items: [{ id: "client-a", slug: "kynagogi", name: "Kynagogi" }] });
-    if (url.endsWith("/brand-brain-ai/context")) return response({ enabled, reason: enabled ? null : "O Brand Brain AI está desativado.", completion: 10, contextHash: "hash", contextVersion: "compact-v1" });
+    if (url.endsWith("/brand-brain-ai/context")) return response({ enabled, reason: enabled ? null : "O Brand Brain AI está desativado.", completion: 10, contextHash: "hash", contextVersion: "compact-v2" });
     if (fail) return response({ message: "Falha simulada" }, 503);
     if (url.endsWith("/generate")) return response({ ideas: [idea("one"), idea("two"), idea("three")] });
     if (url.endsWith("/refine")) return response({ ...body.idea, title: "Ideia refinada" });
