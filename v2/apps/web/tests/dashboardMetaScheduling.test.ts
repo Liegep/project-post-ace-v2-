@@ -112,3 +112,24 @@ test("successful Meta scheduling updates local state without duplicating returne
   assert.deepEqual(merged.map((item) => item.id), ["publication-2", "publication-1"]);
   assert.equal(merged.find((item) => item.id === "publication-1")?.status, "published");
 });
+
+
+test("scheduled, publishing and published occupy a slot; cancelled and failed release both platforms", () => {
+  for (const status of ["scheduled", "publishing", "cancelled", "failed", "published"] as const) {
+    const publications = [publication({ status }), publication({ id: "facebook-1", platform: "facebook", status })];
+    assert.deepEqual(scheduledMetaPlatformsAt(publications, "card-1", "2026-09-30T16:00", "destination-a"),
+      status === "scheduled" || status === "publishing" || status === "published" ? ["instagram", "facebook"] : []);
+  }
+});
+
+test("merging cancellation releases the slot immediately and recreation retains history", () => {
+  const cancelled = mergeDashboardMetaPublications([publication()], [publication({ status: "cancelled" })]);
+  assert.deepEqual(scheduledMetaPlatformsAt(cancelled, "card-1", "2026-09-30T16:00", "destination-a"), []);
+  const recreated = mergeDashboardMetaPublications(cancelled, [publication({ id: "recreated", locationId: "new-place" })]);
+  assert.equal(recreated.length, 2);
+  assert.equal(recreated.find((item) => item.id === "publication-1")?.status, "cancelled");
+  assert.deepEqual(scheduledMetaPlatformsAt(recreated, "card-1", "2026-09-30T16:00", "destination-a"), ["instagram"]);
+  assert.deepEqual(scheduledMetaPlatformsAt(recreated, "other-card", "2026-09-30T16:00", "destination-a"), []);
+  assert.deepEqual(scheduledMetaPlatformsAt(recreated, "card-1", "2026-09-30T16:01", "destination-a"), []);
+  assert.deepEqual(scheduledMetaPlatformsAt(recreated, "card-1", "2026-09-30T16:00", "other-destination"), []);
+});

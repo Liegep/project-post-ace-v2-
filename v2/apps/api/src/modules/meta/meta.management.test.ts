@@ -214,6 +214,8 @@ test("a scheduled post persists the chosen destination and immutable Meta asset"
   const connection = {
     async beginTransaction() {}, async commit() {}, async rollback() {}, release() {},
     async query(sql: string, params: unknown[] = []) {
+      if (sql.includes("FROM client_accounts")) return [[{ id: "client-1" }], []];
+      if (sql.includes("WHERE idempotency_key")) return [[], []];
       if (sql.startsWith("INSERT INTO meta_scheduled_publications")) { insertParams = params; return [{ affectedRows: 1 }, []]; }
       if (sql.includes("FROM meta_scheduled_publications")) return [[publicationRow({ destination_id: "destination-2", destination_name: "Marca secundária", meta_asset_id: "ig-secondary" })], []];
       throw new Error(`Unexpected SQL: ${sql}`);

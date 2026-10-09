@@ -24,7 +24,8 @@
     "test:brand-brain-ai": "tsx --test src/modules/brand-brain-ai/brand-brain-ai.test.ts ../web/tests/brandBrainAi.test.tsx",
     "test:brand-brain-ai:mysql": "tsx --test src/modules/brand-brain-ai/brand-brain-ai.mysql.test.ts",
     "test:mcp-radar": "tsx --test src/modules/mcp/mcp.radar.test.ts",
-    "test:mcp-radar:mysql": "tsx --test src/modules/mcp/mcp.radar.mysql.test.ts"
+    "test:mcp-radar:mysql": "tsx --test src/modules/mcp/mcp.radar.mysql.test.ts",
+    "test:meta:mysql": "tsx --test src/modules/meta/meta.scheduling.mysql.test.ts"
   },
   "dependencies": {
     "@fastify/formbody": "^8.0.2",
