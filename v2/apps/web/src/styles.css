@@ -6198,6 +6198,19 @@ button {
   margin-bottom: 8px;
 }
 
+/* No Brand Brain dentro do Kanban admin, mantenha a navegação das seções
+   sempre acessível enquanto o conteúdo rola no scroll interno do board. */
+.kanban-admin-layout .board-layout:has(.brand-v2) .brand-v2-nav {
+  position: sticky;
+  z-index: 12;
+  top: 8px;
+  flex: 0 0 auto;
+  background: rgba(255, 255, 255, .96);
+  box-shadow: 0 10px 24px rgba(55, 66, 102, .12);
+  backdrop-filter: blur(18px) saturate(145%);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+}
+
 .kanban-admin-layout .columns-scroll {
   box-sizing: border-box;
   height: 100%;
