@@ -607,3 +607,87 @@ test("portal endpoints isolate clients, reject viewers, validate answers and all
     await app.close();
   }
 });
+
+
+test("portal list follows send, answer and reopen without exposing drafts or another account", async () => {
+  const account = randomUUID(), other = randomUUID();
+  await pool.query("INSERT INTO client_accounts(id,name,slug,portal_title,locale) VALUES(?,'Visibility','visibility','Portal','pt'),(?,'Other','other','Portal','pt')", [account, other]);
+  const app = Fastify();
+  app.decorate("db", pool);
+  app.decorate("appEnv", { UPLOAD_DIR: "/tmp/briefs-mariadb-foundation/uploads" } as any);
+  await app.register(httpErrorsPluginRegistered);
+  app.addHook("onRequest", async (request) => {
+    request.auth = { user: { id: respondent, globalRole: "cliente" }, memberships: [{ clientAccountId: account, membershipRole: "cliente", portalAccessLevel: "approver" }] } as any;
+  });
+  await app.register(briefFoundationRoutes);
+  const base = `/portal/accounts/${account}/briefs`;
+  const list = async () => { const response = await app.inject({ url: base }); assert.equal(response.statusCode, 200); return response.json().items; };
+  try {
+    assert.deepEqual(await list(), []);
+    let b = await repo.createInstance(actor, instanceSchema.parse({ id: randomUUID(), clientAccountId: account, form: form() }));
+    assert.deepEqual(await list(), []);
+    assert.equal((await app.inject({ url: `${base}/${b.brief.id}` })).statusCode, 404);
+    const hidden = await repo.createInstance(actor, instanceSchema.parse({ id: randomUUID(), clientAccountId: other, form: form() }));
+    await repo.transition(hidden.brief.id, actor, "send", hidden.brief.version);
+    assert.deepEqual(await list(), []);
+    assert.equal((await app.inject({ url: `${base}/${hidden.brief.id}` })).statusCode, 404);
+    b = await repo.transition(b.brief.id, actor, "send", b.brief.version);
+    assert.equal((await list())[0].status, "sent");
+    b = await repo.saveResponse(b.brief.id, account, respondent, { expectedVersion: 1, answers: { name: "Marca" } }, false);
+    b = await repo.saveResponse(b.brief.id, account, respondent, { expectedVersion: b.response!.version, answers: { name: "Marca" }, idempotencyKey: randomUUID() }, true);
+    assert.equal((await list())[0].status, "answered");
+    assert.equal((await app.inject({ url: `${base}/${b.brief.id}` })).statusCode, 200);
+    await repo.transition(b.brief.id, actor, "reopen", b.brief.version);
+    assert.equal((await list())[0].status, "reopened");
+  } finally { await app.close(); }
+});
+
+
+test("tracker persists Brand Brain View and fresh portal home reads it, including legacy Edit-only rows", async () => {
+  const { clientRoutes } = await import("../clients/clients.routes.js");
+  const { portalRoutes } = await import("../portal/portal.routes.js");
+  const { createClientAccountSchema } = await import("../clients/clients.schemas.js");
+  const account = randomUUID();
+  await pool.query("INSERT INTO client_accounts(id,name,slug,portal_title,locale) VALUES(?,'Patricia test','patricia-test','Portal','pt')", [account]);
+  await pool.query("INSERT INTO client_permissions(id,client_account_id) VALUES(?,?)", [randomUUID(), account]);
+  const app = Fastify();
+  app.decorate("db", pool);
+  app.decorate("appEnv", { APP_TIMEZONE: "Europe/Stockholm" } as any);
+  await app.register(httpErrorsPluginRegistered);
+  let auth: any = { user: { id: actor, globalRole: "super_admin" }, memberships: [] };
+  app.addHook("onRequest", async (request) => { request.auth = auth; });
+  await app.register(clientRoutes);
+  await app.register(portalRoutes);
+  const base = `/clients/${account}/tracker-settings`;
+  const defaults = createClientAccountSchema.parse({ name: "Patricia test", slug: "patricia-test", portalTitle: "Portal" }).clientPermissions;
+  const save = async (permissions: typeof defaults) => {
+    auth = { user: { id: actor, globalRole: "super_admin" }, memberships: [] };
+    const response = await app.inject({ method: "PATCH", url: base, payload: { locale: "pt", trackingEnabled: false, trackingVisibleToClient: false, showUpcomingPosts: false, showArchivedToClient: false, visibleColumnIds: [], clientPermissions: permissions } });
+    assert.equal(response.statusCode, 200, response.body);
+    const settings = await app.inject({ url: base });
+    assert.equal(settings.statusCode, 200, settings.body);
+    return settings.json().settings.clientPermissions;
+  };
+  const home = async () => {
+    auth = { user: { id: respondent, globalRole: "cliente" }, memberships: [{ clientAccountId: account, membershipRole: "cliente", portalAccessLevel: "approver" }] };
+    const response = await app.inject({ url: `/portal/accounts/${account}/home` });
+    assert.equal(response.statusCode, 200, response.body);
+    return response.json();
+  };
+  try {
+    assert.equal((await save({ ...defaults, allowClientViewBrandBrain: true })).allowClientViewBrandBrain, true);
+    assert.equal((await home()).permissions.allowClientViewBrandBrain, true);
+    assert.equal((await home()).permissions.allowClientViewBrandBrain, true, "refresh must read saved View");
+    await save({ ...defaults, allowClientEditBrandBrain: true, allowClientViewBrandBrain: false });
+    const [rows] = await pool.query<RowDataPacket[]>("SELECT allow_client_edit_brand_brain,allow_client_view_brand_brain FROM client_permissions WHERE client_account_id=?", [account]);
+    assert.equal(rows[0].allow_client_view_brand_brain, 1, "invalid input must never persist View=false with Edit=true");
+    assert.equal((await home()).permissions.allowClientViewBrandBrain, true);
+    await save(defaults);
+    assert.equal((await home()).permissions.allowClientEditBrandBrain, false);
+    assert.equal((await home()).permissions.allowClientViewBrandBrain, false);
+    await pool.query("UPDATE client_permissions SET allow_client_edit_brand_brain=1,allow_client_view_brand_brain=0 WHERE client_account_id=?", [account]);
+    assert.equal((await home()).permissions.allowClientViewBrandBrain, true, "legacy rows normalize on read without a migration");
+    const [legacy] = await pool.query<RowDataPacket[]>("SELECT allow_client_view_brand_brain FROM client_permissions WHERE client_account_id=?", [account]);
+    assert.equal(legacy[0].allow_client_view_brand_brain, 0, "read must not mutate stored legacy data");
+  } finally { await app.close(); }
+});

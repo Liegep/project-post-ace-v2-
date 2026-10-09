@@ -261,10 +261,14 @@ test("brief authoring and portal responses preserve frozen forms, server drafts 
     await t.test(
       "portal drafts persist, failed submit retries the same key and submitted answers stay consultable",
       async () => {
+        const menuCounts: number[] = [];
+        const { portalKnowledgeNavigation } = await server.ssrLoadModule("/src/portalVisibility.ts");
         await mount(PortalBriefsFoundation, {
           slug: "cliente",
           canRespond: true,
+          onBriefsChange: (items: any[]) => menuCounts.push(portalKnowledgeNavigation(false, items)[0]?.count ?? 0),
         });
+        assert.equal(menuCounts.at(-1), 1, "sent brief needs a response");
         await act(async () =>
           [...document.querySelectorAll<HTMLButtonElement>("button")]
             .find((b) => b.textContent?.includes("Identidade visual"))!
@@ -299,6 +303,7 @@ test("brief authoring and portal responses preserve frozen forms, server drafts 
         assert.equal(button("Enviar resposta"), undefined);
         assert.match(document.body.textContent!, /Minha marca/);
         assert.match(document.body.textContent!, /Revisão 1/);
+        assert.equal(menuCounts.at(-1), 0, "successful submit refreshes the menu counter immediately");
       },
     );
     await t.test(

@@ -1214,9 +1214,11 @@ export function BriefsFoundationWorkspace({
 export function PortalBriefsFoundation({
   slug,
   canRespond,
+  onBriefsChange,
 }: {
   slug: string;
   canRespond: boolean;
+  onBriefsChange?: (items: BriefInstance[]) => void;
 }) {
   const [base, setBase] = useState(""),
     [briefs, setBriefs] = useState<BriefInstance[]>([]),
@@ -1237,6 +1239,7 @@ export function PortalBriefsFoundation({
         if (alive) {
           setBase(url);
           setBriefs(result.items);
+          onBriefsChange?.(result.items);
         }
       })
       .catch((e) => {
@@ -1245,7 +1248,7 @@ export function PortalBriefsFoundation({
     return () => {
       alive = false;
     };
-  }, [slug]);
+  }, [slug, onBriefsChange]);
   useEffect(() => {
     const before = (event: BeforeUnloadEvent) => {
       if (dirty) {
@@ -1256,6 +1259,11 @@ export function PortalBriefsFoundation({
     window.addEventListener("beforeunload", before);
     return () => window.removeEventListener("beforeunload", before);
   }, [dirty]);
+  const refreshBriefs = async () => {
+    const { items } = await listPortalBriefs(base);
+    setBriefs(items);
+    onBriefsChange?.(items);
+  };
   const run = async (task: () => Promise<void>) => {
     if (busyRef.current) return;
     busyRef.current = true;
@@ -1320,7 +1328,7 @@ export function PortalBriefsFoundation({
               setDetail(null);
               setDirty(false);
               void run(async () =>
-                setBriefs((await listPortalBriefs(base)).items),
+                refreshBriefs(),
               );
             }}
           >
@@ -1395,7 +1403,7 @@ export function PortalBriefsFoundation({
                           submitKey.current,
                         ),
                       );
-                      setBriefs((await listPortalBriefs(base)).items);
+                      await refreshBriefs();
                       setMessage(
                         "Resposta enviada. Uma cópia foi preservada no histórico.",
                       );
