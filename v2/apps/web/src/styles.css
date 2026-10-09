@@ -6198,17 +6198,35 @@ button {
   margin-bottom: 8px;
 }
 
-/* No Brand Brain dentro do Kanban admin, mantenha a navegação de seções
-   totalmente acessível enquanto o conteúdo rola. O z-index evita que cards
-   da visão geral passem visualmente por cima da barra. */
+/* Brand Brain admin: mantenha hero e abas em linhas independentes.
+   Sticky criava sobreposição no grid interno ao rolar o Kanban. */
+.kanban-admin-layout .board-layout:has(.brand-v2) .brand-v2 {
+  align-content: start;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+.kanban-admin-layout .board-layout:has(.brand-v2) .brand-v2-hero,
 .kanban-admin-layout .board-layout:has(.brand-v2) .brand-v2-nav {
-  position: sticky;
-  z-index: 8;
-  top: 0;
+  min-width: 0;
+  position: relative;
+  z-index: auto;
+  grid-column: 1 / -1;
+}
+.kanban-admin-layout .board-layout:has(.brand-v2) .brand-v2-nav {
+  top: auto;
+  align-self: start;
+  flex: 0 0 auto;
+  overflow-x: auto;
+  overflow-y: hidden;
   background: rgba(255, 255, 255, .94);
-  box-shadow: 0 8px 22px rgba(45, 54, 92, .08);
-  backdrop-filter: blur(16px) saturate(145%);
-  -webkit-backdrop-filter: blur(16px) saturate(145%);
+  -webkit-overflow-scrolling: touch;
+}
+@media (max-width: 760px) {
+  .kanban-admin-layout .board-layout:has(.brand-v2) {
+    overflow-x: hidden;
+    overflow-y: auto;
+    min-height: 0;
+  }
 }
 
 .kanban-admin-layout .columns-scroll {
