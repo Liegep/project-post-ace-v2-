@@ -517,38 +517,53 @@ export async function createScheduledPublications(db: Pool, inputs: CreateSchedu
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
+    // Serialize creation per client before looking up absent keys. This avoids
+    // InnoDB gap-lock/duplicate-key upgrade races, including multi-platform requests.
+    for (const clientId of [...new Set(inputs.map((input) => input.clientAccountId))].sort()) {
+      await connection.query("SELECT id FROM client_accounts WHERE id = ? FOR UPDATE", [clientId]);
+    }
     const results = [];
     for (const input of inputs) {
-      const id = crypto.randomUUID();
-      try {
-        await connection.query(
-          [
-            "INSERT INTO meta_scheduled_publications",
-            "(id, client_account_id, card_id, destination_id, destination_name, platform, meta_asset_id, scheduled_at, timezone, caption, media_url, media_urls_json, media_type, reel_cover_url, location_id, location_name, instagram_user_tags_json, status, created_by_user_id, idempotency_key)",
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)",
-          ].join(" "),
-          [
-            id, input.clientAccountId, input.cardId, input.destinationId, input.destinationName, input.platform, input.metaAssetId,
-            mysqlUtcDateTime(input.scheduledAt), input.timezone, input.caption, input.mediaUrl,
-            JSON.stringify(input.mediaUrls), input.mediaType, input.reelCoverUrl, input.locationId, input.locationName, JSON.stringify(input.instagramUserTags),
-            input.createdByUserId, input.idempotencyKey,
-          ],
-        );
+      let idempotencyKey = input.idempotencyKey;
+      let existing: ScheduledPublicationRow | undefined;
+      while (true) {
         const [rows] = await connection.query<ScheduledPublicationRow[]>(
-          `${scheduledPublicationSelect} WHERE id = ? LIMIT 1`,
-          [id],
+          `${scheduledPublicationSelect} WHERE idempotency_key = ? LIMIT 1 FOR UPDATE`,
+          [idempotencyKey],
         );
-        if (!rows[0]) throw new Error("Scheduled Meta publication could not be loaded after insert");
-        results.push({ publication: mapScheduledPublication(rows[0]), created: true });
-      } catch (error) {
-        if ((error as { code?: string }).code !== "ER_DUP_ENTRY") throw error;
-        const [rows] = await connection.query<ScheduledPublicationRow[]>(
-          `${scheduledPublicationSelect} WHERE idempotency_key = ? LIMIT 1`,
-          [input.idempotencyKey],
-        );
-        if (!rows[0]) throw error;
-        results.push({ publication: mapScheduledPublication(rows[0]), created: false });
+        existing = rows[0];
+        if (!existing || !["cancelled", "failed"].includes(existing.status)) break;
+        // Persisted history determines the next generation. Concurrent replays
+        // traverse the same chain and find the same active publication.
+        idempotencyKey = crypto.createHash("sha256")
+          .update(`${input.idempotencyKey}:after:${existing.id}`)
+          .digest("hex");
       }
+      if (existing) {
+        // Published requests remain idempotent so replays cannot publish twice.
+        results.push({ publication: mapScheduledPublication(existing), created: false });
+        continue;
+      }
+      const id = crypto.randomUUID();
+      await connection.query(
+        [
+          "INSERT INTO meta_scheduled_publications",
+          "(id, client_account_id, card_id, destination_id, destination_name, platform, meta_asset_id, scheduled_at, timezone, caption, media_url, media_urls_json, media_type, reel_cover_url, location_id, location_name, instagram_user_tags_json, status, created_by_user_id, idempotency_key)",
+          "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?, ?)",
+        ].join(" "),
+        [
+          id, input.clientAccountId, input.cardId, input.destinationId, input.destinationName, input.platform, input.metaAssetId,
+          mysqlUtcDateTime(input.scheduledAt), input.timezone, input.caption, input.mediaUrl,
+          JSON.stringify(input.mediaUrls), input.mediaType, input.reelCoverUrl, input.locationId, input.locationName, JSON.stringify(input.instagramUserTags),
+          input.createdByUserId, idempotencyKey,
+        ],
+      );
+      const [rows] = await connection.query<ScheduledPublicationRow[]>(
+        `${scheduledPublicationSelect} WHERE id = ? LIMIT 1`,
+        [id],
+      );
+      if (!rows[0]) throw new Error("Scheduled Meta publication could not be loaded after insert");
+      results.push({ publication: mapScheduledPublication(rows[0]), created: true });
     }
     await connection.commit();
     return results;

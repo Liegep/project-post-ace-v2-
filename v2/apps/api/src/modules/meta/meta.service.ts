@@ -1338,6 +1338,7 @@ export async function scheduleMetaCardPublications(app: FastifyInstance, input: 
     locationName: plan.locationId ? input.locationName?.trim() || null : null,
     instagramUserTags: plan.instagramUserTags,
     createdByUserId: input.userId,
+    // Stable slot identity; the repository derives generations after cancellation/failure.
     idempotencyKey: crypto.createHash("sha256")
       .update([input.clientAccountId, input.destinationId ?? "legacy", input.card.id, plan.platform, scheduledAt].join(":"))
       .digest("hex"),
