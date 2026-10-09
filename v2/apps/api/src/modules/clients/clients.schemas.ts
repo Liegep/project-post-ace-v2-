@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { normalizeClientPermissions } from "../../../../../shared/client-permissions.mjs";
 import { membershipRoles } from "../auth/auth.types.js";
 import { portalAccessLevels } from "../auth/auth.types.js";
 
@@ -54,7 +55,8 @@ export const createClientAccountSchema = z.object({
       allowClientViewBrandBrain: z.boolean().default(false),
       allowClientViewTracking: z.boolean().default(false),
     })
-    .default(defaultClientPermissions),
+    .default(defaultClientPermissions)
+    .transform(normalizeClientPermissions),
 });
 
 export const upsertClientMembershipSchema = z.object({
@@ -90,7 +92,7 @@ export const updateClientTrackerSchema = z.object({
     allowClientViewReports: z.boolean(),
     allowClientViewBrandBrain: z.boolean(),
     allowClientViewTracking: z.boolean(),
-  }),
+  }).transform(normalizeClientPermissions),
   visibleColumnIds: z.array(z.string().min(1)),
 });
 

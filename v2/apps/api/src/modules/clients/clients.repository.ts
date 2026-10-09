@@ -1,3 +1,4 @@
+import { normalizeClientPermissions } from "../../../../../shared/client-permissions.mjs";
 import type { Pool, RowDataPacket } from "mysql2/promise";
 import crypto from "node:crypto";
 import type {
@@ -98,7 +99,7 @@ export async function findClientPermissionsByAccountId(
   const row = rows[0];
   if (!row) return null;
 
-  return {
+  return normalizeClientPermissions({
     allowClientEditCaption: Boolean(row.allow_client_edit_caption),
     allowClientCreatePost: Boolean(row.allow_client_create_post),
     allowClientCreateTags: Boolean(row.allow_client_create_tags),
@@ -110,7 +111,7 @@ export async function findClientPermissionsByAccountId(
     allowClientViewReports: Boolean(row.allow_client_view_reports),
     allowClientViewBrandBrain: Boolean(row.allow_client_view_brand_brain),
     allowClientViewTracking: Boolean(row.allow_client_view_tracking),
-  };
+  });
 }
 
 export async function findClientAccountBySlug(db: Pool, slug: string) {
