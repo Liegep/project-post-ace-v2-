@@ -6193,40 +6193,27 @@ button {
   scrollbar-gutter: stable;
 }
 
+/* Admin Brand Brain: scrollable tabs must contribute their full content height
+   to the grid track; auto rows can otherwise reserve only the nav padding. */
 .kanban-admin-layout .board-layout:has(.brand-v2) .brand-v2 {
+  grid-template-columns: minmax(0, 1fr);
+  grid-auto-rows: max-content;
+  align-content: start;
+  min-width: 0;
   min-height: max-content;
   margin-bottom: 8px;
 }
 
-/* Brand Brain admin: mantenha hero e abas em linhas independentes.
-   Sticky criava sobreposição no grid interno ao rolar o Kanban. */
-.kanban-admin-layout .board-layout:has(.brand-v2) .brand-v2 {
-  align-content: start;
-  grid-template-columns: minmax(0, 1fr);
+.kanban-admin-layout .brand-v2 > .brand-v2-hero,
+.kanban-admin-layout .brand-v2 > .brand-v2-nav {
   min-width: 0;
 }
-.kanban-admin-layout .board-layout:has(.brand-v2) .brand-v2-hero,
-.kanban-admin-layout .board-layout:has(.brand-v2) .brand-v2-nav {
-  min-width: 0;
-  position: relative;
-  z-index: auto;
-  grid-column: 1 / -1;
-}
-.kanban-admin-layout .board-layout:has(.brand-v2) .brand-v2-nav {
-  top: auto;
-  align-self: start;
-  flex: 0 0 auto;
+
+.kanban-admin-layout .brand-v2 > .brand-v2-nav {
   overflow-x: auto;
   overflow-y: hidden;
   background: rgba(255, 255, 255, .94);
   -webkit-overflow-scrolling: touch;
-}
-@media (max-width: 760px) {
-  .kanban-admin-layout .board-layout:has(.brand-v2) {
-    overflow-x: hidden;
-    overflow-y: auto;
-    min-height: 0;
-  }
 }
 
 .kanban-admin-layout .columns-scroll {

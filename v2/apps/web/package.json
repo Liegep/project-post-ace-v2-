@@ -8,7 +8,8 @@
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "preview": "vite preview",
     "test:seasonal": "tsx --test tests/seasonalWorkspace.test.tsx",
-    "check": "tsc --noEmit -p tsconfig.json"
+    "check": "tsc --noEmit -p tsconfig.json",
+    "test:brand-brain-layout": "node --test tests/brandBrainLayout.test.mjs"
   },
   "dependencies": {
     "@types/react": "^18.3.31",
@@ -23,6 +24,7 @@
     "vite": "^5.4.21"
   },
   "devDependencies": {
-    "jsdom": "^20.0.3"
+    "jsdom": "^20.0.3",
+    "playwright": "^1.62.1"
   }
 }
