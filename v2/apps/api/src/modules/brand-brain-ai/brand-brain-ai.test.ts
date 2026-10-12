@@ -53,7 +53,7 @@ test("internal radar supports true/false and treats external injection as untrus
   f.value({ shouldCreate: false, suggestion: null }); assert.deepEqual(await f.service.generateRadarSuggestion(input), { shouldCreate: false }); f.value({ shouldCreate: false, suggestion }); await assert.rejects(f.service.generateRadarSuggestion(input));
 });
 test("local schemas reject extra/missing fields, invalid scores, excessive arrays and invented pillars", async () => {
-  const f = fixture(); for (const value of [{ ...analysis(), extra: "x" }, { alignmentScore: 80 }, { ...analysis(), alignmentScore: 101 }, { ...analysis(), alignmentScore: -1 }, { ...analysis(), strengths: ["1", "2", "3", "4"] }, { ...analysis(), warnings: ["1", "2", "3", "4"] }, { ...analysis(), mainPillar: "Inventado" }]) { f.value(value); await assert.rejects(f.service.analyzePauta(clientA, { title: "Teste" }), /inválidos/); }
+  const f = fixture(); for (const value of [{ ...analysis(), extra: "x" }, { alignmentScore: 80 }, { ...analysis(), alignmentScore: 101 }, { ...analysis(), alignmentScore: -1 }, { ...analysis(), strengths: ["1", "2", "3", "4"] }, { ...analysis(), warnings: ["1", "2", "3", "4"] }, { ...analysis(), mainPillar: "Inventado" }]) { f.value(value); await assert.rejects(f.service.analyzePauta(clientA, { title: "Teste" }), {code: "mainPillar" in value && value.mainPillar === "Inventado" ? "pillar_not_published" : "schema_invalid"}); }
   await assert.rejects(f.service.analyzePauta(clientA, { title: "x", secret: "x" }));
 });
 test("disabled/missing key prevents provider requests and opening context is never a paid request", async () => {
@@ -90,7 +90,7 @@ test("Responses adapter aborts on timeout and sanitizes unavailable/provider sec
 
 test("refinement rejects prohibited vocabulary even when direction requests it", async () => {
  const f = fixture(); const original = idea(); f.value({ ...original, contentSuggestion: "Domine o seu cão" });
- await assert.rejects(f.service.refinePauta(clientA, { idea: original, direction: "custom", customDirection: "Use o termo domine" }), /inválidos/);
+ await assert.rejects(f.service.refinePauta(clientA, { idea: original, direction: "custom", customDirection: "Use o termo domine" }), {code:"editorial_term_violation"});
  assert.equal(f.metrics[0].end!.status, "failed");
 });
 
@@ -153,14 +153,14 @@ test("score contracts reject fractions, strings and values outside 0–100 witho
   for (const score of [-1, 101, 9.5, "90"]) {
     const value = { ...idea(), alignmentScore: score };
     f.value({ ...analysis(), alignmentScore: score });
-    await assert.rejects(f.service.analyzePauta(clientA, { title: "Teste" }), AiProviderError);
+    await assert.rejects(f.service.analyzePauta(clientA, { title: "Teste" }), {code:"schema_invalid"});
     f.value({ ideas: [value, idea(), idea()] });
-    await assert.rejects(f.service.generatePautas(clientA, { objective: "education", quantity: 3 }), AiProviderError);
+    await assert.rejects(f.service.generatePautas(clientA, { objective: "education", quantity: 3 }), {code:"schema_invalid"});
     f.value(value);
-    await assert.rejects(f.service.refinePauta(clientA, { idea: idea(), direction: "educational" }), AiProviderError);
+    await assert.rejects(f.service.refinePauta(clientA, { idea: idea(), direction: "educational" }), {code:"schema_invalid"});
     const { temporaryId, contentSuggestion, ...base } = value;
     f.value({ shouldCreate: true, suggestion: { ...base, captionSuggestion: contentSuggestion } });
-    await assert.rejects(f.service.generateRadarSuggestion({ clientId: clientA, sourceTitle: "Estudo", sourceSummary: "Dados." }), AiProviderError);
+    await assert.rejects(f.service.generateRadarSuggestion({ clientId: clientA, sourceTitle: "Estudo", sourceSummary: "Dados." }), {code:"schema_invalid"});
   }
   assert.equal(f.requests.length, 16); assert.ok(f.metrics.every(m => m.end?.status === "failed"));
 });
@@ -185,7 +185,7 @@ test("Radar preserves associative observational and explicitly supported causal 
   assert.equal(f.requests.length, 2); assert.ok(f.metrics.every(m => m.end?.status === "success"));
 });
 
-test("compact-v2 includes normalized editorial weights without mutating published data", () => {
+test("compact-v3 includes normalized editorial weights without mutating published data", () => {
   const pillars = Object.freeze([
     Object.freeze({ name: "Legado", focus: "Foco importante — 30%", weight: 0 }),
     Object.freeze({ name: "Oficial", focus: "Foco — 90%", weight: 25 }),
@@ -196,7 +196,7 @@ test("compact-v2 includes normalized editorial weights without mutating publishe
   const client = { id: clientA, name: "Patrícia", locale: "pt-BR", brain: { pillars }, recentPautas: [] };
   const before = JSON.stringify(client);
   const context = buildBrandBrainContext(client);
-  assert.equal(context.contextVersion, "compact-v2");
+  assert.equal(context.contextVersion, "compact-v3");
   assert.deepEqual(context.brandBrain.pillars, [
     { name: "Legado", focus: "Foco importante", weight: 30 },
     { name: "Oficial", focus: "Foco — 90%", weight: 25 },
@@ -224,4 +224,34 @@ test("opening a published Brand Brain snapshot never writes recovered legacy pil
   }
   assert.equal(queries.length, 8);
   assert.ok(queries.every(sql => sql.startsWith("SELECT ")));
+});
+
+test("full validation snapshot is private, immutable and hashes rules beyond the compact prompt", async () => {
+  const { publishedValidation } = await import("./brand-brain-ai.context.js");
+  const rules = [...Array.from({length:8}, (_,i)=>`regra ${i}`), "PRIVATE_LAST_RULE"];
+  const client = {id:clientA,name:"Synthetic",locale:"pt",brain:{avoidWords:rules,pillars:[{name:"Canonical",focus:"x".repeat(300)}]},recentPautas:[]};
+  const context = buildBrandBrainContext(client);
+  const changed = buildBrandBrainContext({...client,brain:{...client.brain,avoidWords:[...rules.slice(0,8),"PRIVATE_CHANGED_RULE"]}});
+  assert.deepEqual(context.brandBrain,changed.brandBrain);assert.notEqual(context.contextHash,changed.contextHash);
+  assert.doesNotMatch(JSON.stringify(context),/PRIVATE_LAST_RULE/);assert.ok(publishedValidation(context).avoidWords.includes("PRIVATE_LAST_RULE"));
+  assert.ok(Object.isFrozen(publishedValidation(context)));assert.ok(Object.isFrozen(publishedValidation(context).avoidWords));
+  rules[8]="mutated";context.brandBrain.avoidWords=[];context.brandBrain.pillars=[];
+  assert.ok(publishedValidation(context).avoidWords.includes("PRIVATE_LAST_RULE"));assert.deepEqual(publishedValidation(context).pillarNames,["Canonical"]);
+  assert.throws(()=>publishedValidation({...context}),/indisponível/);
+});
+
+test("all operations validate full canonical names and generation/refinement use all editorial terms", async () => {
+  const f=fixture();const name="P".repeat(240),term="PRIVATE_RULE_AFTER_EIGHT";
+  f.store.officialClient=async id=>({id,name:"Synthetic",locale:"pt",brain:{pillars:[{name}],avoidWords:[...Array.from({length:8},(_,i)=>`rule ${i}`),term]},recentPautas:[]});
+  f.value({...analysis(),mainPillar:name});assert.equal((await f.service.analyzePauta(clientA,{title:"Tema"})).mainPillar,name);
+  f.value({ideas:[{...idea(),pillar:name}, {...idea(),pillar:name}, {...idea(),pillar:name}]});
+  assert.ok((await f.service.generatePautas(clientA,{objective:"education",quantity:3})).ideas.every(i=>i.pillar===name));
+  const original={...idea(),pillar:name};f.value(original);
+  assert.equal((await f.service.refinePauta(clientA,{idea:original,direction:"educational"})).pillar,name);
+  f.value({ideas:[{...original,title:term}, {...idea(),pillar:name}, {...idea(),pillar:name}]});
+  await assert.rejects(f.service.generatePautas(clientA,{objective:"education",quantity:3}),{code:"editorial_term_violation"});
+  f.value({...original,contentSuggestion:term});
+  await assert.rejects(f.service.refinePauta(clientA,{idea:original,direction:"educational"}),{code:"editorial_term_violation"});
+  assert.ok(f.metrics.slice(-2).every(m=>m.end?.errorCode==="editorial_term_violation"));
+  assert.doesNotMatch(JSON.stringify(f.metrics),/PRIVATE_RULE_AFTER_EIGHT|PPPPPP/);
 });

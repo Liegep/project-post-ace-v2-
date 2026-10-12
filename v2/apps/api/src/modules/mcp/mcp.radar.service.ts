@@ -2,14 +2,14 @@ import { z } from "zod";
 import { getClientScope, hasMembershipRole } from "../auth/auth.access.js";
 import type { AuthContext } from "../auth/auth.types.js";
 import { radarInput } from "../brand-brain-ai/brand-brain-ai.schemas.js";
-import { BrandBrainAiService, BrandBrainAiError } from "../brand-brain-ai/brand-brain-ai.service.js";
+import { BrandBrainAiService, BrandBrainAiError, brandBrainValidationError } from "../brand-brain-ai/brand-brain-ai.service.js";
 import { AiProviderError } from "../../lib/openai-responses.js";
 import { radarSourceKey } from "../radar-suggestions/radar-suggestions.service.js";
 import { radarSuggestionInputSchema } from "../radar-suggestions/radar-suggestions.schemas.js";
 import type { McpRadarStore } from "./mcp.radar.repository.js";
 import { MCP_PAUTA_CREATE_SCOPE } from "./mcp.security.js";
 export const mcpRadarInput = radarInput.extend({ clientId: z.string().uuid() }).strict();
-export type McpRadarOutcome = { outcome: "created" | "existing" | "no_op" | "processing"; suggestionId: string | null; status: string; sourceHash: string; suggestion?: Awaited<ReturnType<McpRadarStore["summary"]>> };
+export type McpRadarOutcome = { outcome: "created" | "existing" | "no_op" | "processing"; suggestionId: string | null; status: string; sourceHash: string; personalization?: Awaited<ReturnType<BrandBrainAiService["context"]>>["personalization"]; suggestion?: Awaited<ReturnType<McpRadarStore["summary"]>> };
 export class McpRadarService {
   constructor(private store: McpRadarStore, private ai: BrandBrainAiService, private model: string) {}
   async create(auth: AuthContext, scopes: string[], raw: unknown, radarAiAuthorized = false): Promise<McpRadarOutcome> {
@@ -36,10 +36,12 @@ export class McpRadarService {
     try {
       const result = await this.ai.generateRadarSuggestion(input, context);
       const { format, ...fields } = result.shouldCreate ? result.suggestion : { format: "" };
-      const suggestion = result.shouldCreate ? radarSuggestionInputSchema.parse({ ...fields, contentType: format, sourceTitle: input.sourceTitle, sourceUrl: input.sourceUrl, sourceDate: input.sourceDate, radarName: input.radarName, aiModel: this.model, brandBrainVersion: context.brandBrainVersion, brandBrainContextHash: context.contextHash }) : null;
+      const parsedSuggestion = result.shouldCreate ? radarSuggestionInputSchema.safeParse({ ...fields, contentType: format, sourceTitle: input.sourceTitle, sourceUrl: input.sourceUrl, sourceDate: input.sourceDate, radarName: input.radarName, aiModel: this.model, brandBrainVersion: context.brandBrainVersion, brandBrainContextHash: context.contextHash }) : null;
+      if (parsedSuggestion && !parsedSuggestion.success) throw brandBrainValidationError("schema_invalid");
+      const suggestion = parsedSuggestion?.data ?? null;
       const finished = await this.store.finish(claim.run.id, input.clientId, auth.user.id, suggestion);
       const summary = finished.suggestionId ? await this.store.summary(input.clientId, finished.suggestionId) : null;
-      return { outcome: finished.status === "no_op" ? "no_op" : finished.created ? "created" : "existing", suggestionId: finished.suggestionId, status: summary?.status ?? finished.status, sourceHash, ...(summary ? { suggestion: summary } : {}) };
+      return { outcome: finished.status === "no_op" ? "no_op" : finished.created ? "created" : "existing", suggestionId: finished.suggestionId, status: summary?.status ?? finished.status, sourceHash, personalization: context.personalization, ...(summary ? { suggestion: summary } : {}) };
     } catch (error) {
       const code = error instanceof AiProviderError || error instanceof BrandBrainAiError ? error.code : "storage_unavailable";
       await this.store.fail(claim.run.id, code).catch(() => undefined);

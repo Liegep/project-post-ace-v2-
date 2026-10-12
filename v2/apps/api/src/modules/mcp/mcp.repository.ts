@@ -178,10 +178,17 @@ export async function recordMcpAudit(db: Pool, input: { userId: string; clientId
   );
 }
 
+const radarAuditErrorCodes = new Set([
+  "schema_invalid", "pillar_not_published", "editorial_term_violation", "radar_output_inconsistent",
+  "invalid_response", "timeout", "unavailable", "refusal", "incomplete", "invalid_input",
+  "missing_scope", "missing_radar_consent", "client_forbidden", "client_not_found", "context_mismatch",
+  "disabled", "busy", "source_failed", "storage_unavailable",
+]);
 // Defense in depth: this tool can never persist a source, caption, prompt or Brand Brain.
 export function sanitizeRadarAudit(value: unknown) {
   const data = value && typeof value === "object" ? value as Record<string, unknown> : {};
   return {
+    errorCode: typeof data.errorCode === "string" && radarAuditErrorCodes.has(data.errorCode) ? data.errorCode : null,
     clientId: typeof data.clientId === "string" && /^[a-f0-9-]{36}$/i.test(data.clientId) ? data.clientId : null,
     sourceHash: typeof data.sourceHash === "string" && /^[a-f0-9]{64}$/.test(data.sourceHash) ? data.sourceHash : null,
     suggestionId: typeof data.suggestionId === "string" && /^[a-f0-9-]{36}$/i.test(data.suggestionId) ? data.suggestionId : null,
