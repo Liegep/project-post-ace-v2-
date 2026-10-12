@@ -1,3 +1,4 @@
+import { radarConnectionDiagnostics, radarSourcePreflight } from "./mcp.radar-diagnostics.js";
 import { BrandBrainAiRepository } from "../brand-brain-ai/brand-brain-ai.repository.js";
 import { BRAND_BRAIN_VALIDATION_MESSAGES, BrandBrainAiService } from "../brand-brain-ai/brand-brain-ai.service.js";
 import { McpRadarRepository } from "./mcp.radar.repository.js";
@@ -81,6 +82,28 @@ export function createPlanningMcpServer(app: FastifyInstance, auth: AuthContext,
     inputSchema: { cardId: z.string().min(1).max(100) },
     annotations: readOnly,
   }, audited("get_card_summary", async ({ cardId }) => ({ card: await mcpCardSummary(app.db, auth, cardId) })));
+
+  server.registerTool("get_radar_connection_status", {
+    title: "Verificar conexão do Radar",
+    description: "Verifica acesso ao cliente, permissões, consentimento e disponibilidade de configuração nesta conexão. Não chama IA, não envia fontes nem cria sugestões.",
+    inputSchema: {clientId:z.string().uuid()}, annotations:readOnly,
+  }, audited("get_radar_connection_status", async({clientId})=>radarConnectionDiagnostics(app,auth,clientId,scopes,options.radarAiAuthorized===true)));
+
+  server.registerTool("validate_radar_source", {
+    title: "Validar envio do Radar sem IA",
+    description: "Valida os dados de uma fonte e a configuração da conexão sem chamar IA nem registrar fonte/sugestão. source deve conter os mesmos campos de fonte de create_radar_suggestion.",
+    inputSchema:{clientId:z.string().uuid(),source:z.unknown()},annotations:readOnly,
+  }, async({clientId,source})=>{
+    try {
+      const data=await radarSourcePreflight(app,auth,clientId,source,scopes,options.radarAiAuthorized===true);
+      await audit(app.db,{userId:auth.user.id,clientId:oauthClientId,toolName:"validate_radar_source",success:true,args:{clientId,sourceHash:data.sourceHash,result:data.canSubmit?"validated":"blocked"}});
+      return result(data);
+    }catch(error){
+      const code=(error as {code?:string}).code==="invalid_input"?"invalid_input":"preflight_unavailable";
+      await audit(app.db,{userId:auth.user.id,clientId:oauthClientId,toolName:"validate_radar_source",success:false,args:{clientId,sourceHash:null,result:"invalid",errorCode:code}}).catch(()=>undefined);
+      return {isError:true,content:[{type:"text" as const,text:code==="invalid_input"?"Dados da fonte inválidos. Nenhuma análise ou sugestão foi feita.":"Não foi possível validar a conexão desta fonte. Nenhuma análise ou sugestão foi feita."}]};
+    }
+  });
 
   server.registerTool("get_client_radar_context", {
     title: "Consultar Radar do cliente",

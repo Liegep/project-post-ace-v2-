@@ -38,6 +38,7 @@ const envSchema = z.object({
   REPORT_AI_MODEL: z.string().regex(/^[\w.:-]{1,120}$/).default("gpt-4.1-mini"),
   REPORT_AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(256).max(8000).default(4000),
   REPORT_AI_TIMEOUT_MS: z.coerce.number().int().min(100).max(120000).default(45000),
+  RADAR_RECOVERY_ENABLED: z.preprocess(value => value === true || value === "true", z.boolean()).default(false),
   BRAND_BRAIN_AI_ENABLED: z.preprocess(value => value === true || value === "true", z.boolean()).default(false),
   BRAND_BRAIN_AI_MODEL: z.string().regex(/^[\w.:-]{1,120}$/).default("gpt-4.1-mini"),
   BRAND_BRAIN_AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().min(512).max(16000).default(6000),

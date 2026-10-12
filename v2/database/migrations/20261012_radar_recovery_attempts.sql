@@ -1,0 +1,33 @@
+-- PROPOSAL ONLY. Requires explicit approval before execution. Never run on startup/deploy.
+-- No backfill, no UPDATE to historic failures, and no source/prompt/output payload storage.
+CREATE TABLE radar_recovery_attempts (
+ id CHAR(36) NOT NULL PRIMARY KEY,
+ source_run_id CHAR(36) NOT NULL,
+ client_account_id CHAR(36) NOT NULL,
+ request_id CHAR(36) NOT NULL,
+ attempt_number TINYINT UNSIGNED NOT NULL,
+ input_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ context_hash CHAR(64) CHARACTER SET ascii COLLATE ascii_bin NOT NULL,
+ created_by_user_id CHAR(36) NULL,
+ ai_consent TINYINT(1) NOT NULL,
+ source_reviewed TINYINT(1) NOT NULL,
+ status VARCHAR(20) NOT NULL DEFAULT 'processing',
+ error_code VARCHAR(40) NULL,
+ suggestion_id CHAR(36) NULL,
+ suggestion_created TINYINT(1) NOT NULL DEFAULT 0,
+ ai_run_id CHAR(36) NULL,
+ created_at TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
+ finished_at TIMESTAMP(3) NULL,
+ UNIQUE KEY uq_radar_recovery_number (source_run_id, attempt_number),
+ UNIQUE KEY uq_radar_recovery_request (source_run_id, request_id),
+ KEY idx_radar_recovery_client_time (client_account_id, created_at),
+ KEY idx_radar_recovery_client_status (client_account_id, status),
+ CONSTRAINT fk_radar_recovery_source FOREIGN KEY (source_run_id) REFERENCES radar_source_runs(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+ CONSTRAINT fk_radar_recovery_client FOREIGN KEY (client_account_id) REFERENCES client_accounts(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+ CONSTRAINT fk_radar_recovery_actor FOREIGN KEY (created_by_user_id) REFERENCES users(id) ON DELETE SET NULL ON UPDATE RESTRICT,
+ CONSTRAINT fk_radar_recovery_suggestion FOREIGN KEY (suggestion_id) REFERENCES radar_suggestions(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+ CONSTRAINT fk_radar_recovery_ai FOREIGN KEY (ai_run_id) REFERENCES brand_brain_ai_runs(id) ON DELETE RESTRICT ON UPDATE RESTRICT,
+ CONSTRAINT chk_radar_recovery_number CHECK (attempt_number BETWEEN 1 AND 2),
+ CONSTRAINT chk_radar_recovery_consent CHECK (ai_consent=1 AND source_reviewed=1),
+ CONSTRAINT chk_radar_recovery_status CHECK (status IN ('processing','completed','no_op','failed'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
