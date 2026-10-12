@@ -174,7 +174,7 @@ export async function revokeRefreshToken(db: Pool, token: string, clientId: stri
 export async function recordMcpAudit(db: Pool, input: { userId: string; clientId: string; toolName: string; success: boolean; args: unknown }) {
   await db.query(
     "INSERT INTO mcp_audit_log (id, user_id, oauth_client_id, tool_name, success, arguments_json) VALUES (?, ?, ?, ?, ?, ?)",
-    [crypto.randomUUID(), input.userId, input.clientId, input.toolName, input.success ? 1 : 0, JSON.stringify(input.toolName === "create_radar_suggestion" ? sanitizeRadarAudit(input.args) : input.args ?? {})],
+    [crypto.randomUUID(), input.userId, input.clientId, input.toolName, input.success ? 1 : 0, JSON.stringify(input.toolName === "create_radar_suggestion" ? sanitizeRadarAudit(input.args) : input.toolName === "validate_radar_source" ? sanitizeRadarValidationAudit(input.args) : input.args ?? {})],
   );
 }
 
@@ -182,7 +182,7 @@ const radarAuditErrorCodes = new Set([
   "schema_invalid", "pillar_not_published", "editorial_term_violation", "radar_output_inconsistent",
   "invalid_response", "timeout", "unavailable", "refusal", "incomplete", "invalid_input",
   "missing_scope", "missing_radar_consent", "client_forbidden", "client_not_found", "context_mismatch",
-  "disabled", "busy", "source_failed", "storage_unavailable",
+  "disabled", "busy", "source_failed", "storage_unavailable", "preflight_unavailable",
 ]);
 // Defense in depth: this tool can never persist a source, caption, prompt or Brand Brain.
 export function sanitizeRadarAudit(value: unknown) {
@@ -195,4 +195,11 @@ export function sanitizeRadarAudit(value: unknown) {
     result: ["created", "existing", "no_op", "processing", "error"].includes(String(data.result)) ? data.result : "error",
     status: ["pending", "accepted", "dismissed", "processing", "completed", "no_op", "failed"].includes(String(data.status)) ? data.status : "failed",
   };
+}
+
+
+export function sanitizeRadarValidationAudit(value:unknown) {
+  const {clientId,sourceHash,errorCode}=sanitizeRadarAudit(value);
+  const result=value && typeof value==="object" ? (value as Record<string,unknown>).result : undefined;
+  return {clientId,sourceHash,errorCode,result:["validated","blocked","invalid"].includes(String(result)) ? result : "invalid"};
 }

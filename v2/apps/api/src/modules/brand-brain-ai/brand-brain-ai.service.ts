@@ -35,7 +35,7 @@ export class BrandBrainAiService {
     if (!result.success) throw new BrandBrainAiError(400, "invalid_input", "Verifique os campos enviados.");
     return result.data;
   }
-  private async run<T>(clientId: string, operation: "analyze" | "generate" | "refine" | "radar", input: unknown, schema: z.ZodType<T>, validate?: (value: T, context: BrandBrainContext) => void, preparedContext?: BrandBrainContext): Promise<T> {
+  private async run<T>(clientId: string, operation: "analyze" | "generate" | "refine" | "radar", input: unknown, schema: z.ZodType<T>, validate?: (value: T, context: BrandBrainContext) => void, preparedContext?: BrandBrainContext, onRunStarted?: (id:string)=>Promise<void>): Promise<T> {
     const availability = this.availability();
     if (!availability.enabled) throw new BrandBrainAiError(503, "disabled", availability.reason!);
     if (this.active.has(clientId)) throw new BrandBrainAiError(409, "busy", "Já há uma solicitação em andamento para este cliente.");
@@ -50,6 +50,7 @@ export class BrandBrainAiService {
       if (publishedValidation(context).clientId !== clientId) throw new BrandBrainAiError(403, "context_mismatch", "Contexto de outro cliente recusado.");
       // Fail before any paid request if the explicitly reviewed migration is unavailable.
       runId = await this.store.beginRun(clientId, operation, model, context.contextHash);
+      if (onRunStarted) await onRunStarted(runId);
       const jsonSchema = z.toJSONSchema(schema, { target: "draft-7" }); delete jsonSchema.$schema;
       const response = await this.provider({ apiKey: this.config.OPENAI_API_KEY!, model, timeoutMs: this.config.BRAND_BRAIN_AI_TIMEOUT_MS, maxOutputTokens: this.config.BRAND_BRAIN_AI_MAX_OUTPUT_TOKENS, name: `brand_brain_${operation}`, schema: jsonSchema, input: [{ role: "system", content: BRAND_BRAIN_SYSTEM }, { role: "user", content: JSON.stringify({ operation, context, input }) }] });
       usage = response.usage; model = response.model;
@@ -90,12 +91,12 @@ export class BrandBrainAiService {
     const result = await this.run(clientId, "refine", input, ideaOutput, (value, context) => { this.pillar(value.pillar, context); this.publicCopy(value, context); });
     return { ...result, temporaryId: input.idea.temporaryId };
   }
-  async generateRadarSuggestion(input: { clientId: string } & z.input<typeof radarInput>, preparedContext?: BrandBrainContext) {
+  async generateRadarSuggestion(input: { clientId: string } & z.input<typeof radarInput>, preparedContext?: BrandBrainContext, onRunStarted?: (id:string)=>Promise<void>) {
     const { clientId, ...raw } = input;
     const result = await this.run(clientId, "radar", this.parse(radarInput, raw), radarOutput, (value, context) => {
       if (value.shouldCreate !== (value.suggestion !== null)) throw brandBrainValidationError("radar_output_inconsistent");
       if (value.suggestion) { this.pillar(value.suggestion.pillar, context); this.publicCopy(value.suggestion, context); }
-    }, preparedContext);
+    }, preparedContext, onRunStarted);
     return result.shouldCreate ? { shouldCreate: true as const, suggestion: result.suggestion! } : { shouldCreate: false as const };
   }
 }

@@ -1,3 +1,4 @@
+import { radarRecoveryRoutes } from "./modules/radar-recovery/radar-recovery.routes.js";
 import { brandBrainAiRoutes } from "./modules/brand-brain-ai/brand-brain-ai.routes.js";
 import { radarSuggestionsRoutes } from "./modules/radar-suggestions/radar-suggestions.routes.js";
 import { briefFoundationRoutes } from "./modules/brief-foundation/brief.routes.js";
@@ -166,6 +167,7 @@ export async function buildApp() {
     await app.register(dashboardNotesRoutes, { prefix: "/api" });
     await app.register(seasonalRoutes, { prefix: "/api" });
     await app.register(radarSuggestionsRoutes, { prefix: "/api" });
+    await app.register(radarRecoveryRoutes, { prefix: "/api" });
     await app.register(brandBrainAiRoutes, { prefix: "/api" });
     await app.register(metaRoutes, { prefix: "/api" });
     await app.register(scheduledCardArchiverPluginRegistered);
