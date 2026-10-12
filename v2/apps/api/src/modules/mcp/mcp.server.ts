@@ -1,5 +1,5 @@
 import { BrandBrainAiRepository } from "../brand-brain-ai/brand-brain-ai.repository.js";
-import { BrandBrainAiService } from "../brand-brain-ai/brand-brain-ai.service.js";
+import { BRAND_BRAIN_VALIDATION_MESSAGES, BrandBrainAiService } from "../brand-brain-ai/brand-brain-ai.service.js";
 import { McpRadarRepository } from "./mcp.radar.repository.js";
 import { McpRadarService, mcpRadarInput } from "./mcp.radar.service.js";
 import { radarSourceKey } from "../radar-suggestions/radar-suggestions.service.js";
@@ -123,9 +123,9 @@ export function createPlanningMcpServer(app: FastifyInstance, auth: AuthContext,
         await audit(app.db, { userId: auth.user.id, clientId: oauthClientId, toolName: "create_radar_suggestion", success: true, args: { ...base, result: data.outcome, suggestionId: data.suggestionId, status: data.status } });
         return result(data);
       } catch (error) {
-        await audit(app.db, { userId: auth.user.id, clientId: oauthClientId, toolName: "create_radar_suggestion", success: false, args: { ...base, result: "error", suggestionId: null, status: "failed" } }).catch(() => undefined);
         const code = (error as { code?: string }).code;
-        const messages: Record<string, string> = { disabled: "Brand Brain AI desativado ou sem chave configurada.", missing_scope: "Permissão pauta:create obrigatória.", missing_radar_consent: "Consentimento interno do Radar obrigatório.", client_forbidden: "Cliente fora do seu acesso.", client_not_found: "Cliente não encontrado.", timeout: "A IA excedeu o tempo limite. Retry não chama IA novamente para esta fonte.", source_failed: "Fonte já processada com falha; reanálise exige revisão explícita.", invalid_input: "Dados da fonte inválidos.", invalid_response: "Saída da IA inválida. Nenhuma sugestão foi criada.", refusal: "A IA recusou a solicitação.", incomplete: "Resposta da IA incompleta.", unavailable: "Provider de IA indisponível.", busy: "Há outra solicitação de IA em andamento para este cliente." };
+        await audit(app.db, { userId: auth.user.id, clientId: oauthClientId, toolName: "create_radar_suggestion", success: false, args: { ...base, result: "error", suggestionId: null, status: "failed", errorCode: code } }).catch(() => undefined);
+        const messages: Record<string, string> = { ...BRAND_BRAIN_VALIDATION_MESSAGES, disabled: "Brand Brain AI desativado ou sem chave configurada.", missing_scope: "Permissão pauta:create obrigatória.", missing_radar_consent: "Consentimento interno do Radar obrigatório.", client_forbidden: "Cliente fora do seu acesso.", client_not_found: "Cliente não encontrado.", timeout: "A IA excedeu o tempo limite. Retry não chama IA novamente para esta fonte.", source_failed: "Fonte já processada com falha; reanálise exige revisão explícita.", invalid_input: "Dados da fonte inválidos.", invalid_response: "Saída da IA inválida. Nenhuma sugestão foi criada.", refusal: "A IA recusou a solicitação.", incomplete: "Resposta da IA incompleta.", unavailable: "Provider de IA indisponível.", busy: "Há outra solicitação de IA em andamento para este cliente." };
         return { isError: true, content: [{ type: "text" as const, text: messages[code ?? ""] ?? "Não foi possível concluir a sugestão do Radar." }] };
       }
     });
