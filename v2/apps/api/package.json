@@ -26,7 +26,8 @@
     "test:mcp-radar": "tsx --test src/modules/mcp/mcp.radar.test.ts",
     "test:mcp-radar:mysql": "tsx --test src/modules/mcp/mcp.radar.mysql.test.ts",
     "test:meta:mysql": "tsx --test src/modules/meta/meta.scheduling.mysql.test.ts",
-    "test:radar-recovery": "tsx --test src/modules/radar-recovery/radar-recovery.test.ts src/modules/radar-recovery/radar-recovery.repository.test.ts src/modules/mcp/mcp.radar-diagnostics.test.ts"
+    "test:radar-recovery": "tsx --test src/modules/radar-recovery/radar-recovery.test.ts src/modules/radar-recovery/radar-recovery.repository.test.ts src/modules/mcp/mcp.radar-diagnostics.test.ts",
+    "test:radar-recovery:mysql": "tsx --test src/modules/radar-recovery/radar-recovery.mysql.test.ts"
   },
   "dependencies": {
     "@fastify/formbody": "^8.0.2",

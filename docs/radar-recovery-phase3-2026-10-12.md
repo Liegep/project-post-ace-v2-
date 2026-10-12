@@ -59,15 +59,15 @@ O histórico guarda hashes, IDs, ator, número, consentimento/revisão, contexto
 
 **Contagens históricas permanecem históricas:** o ledger original pode continuar `failed` mesmo após recuperação concluída. O estado atual da recuperação vem do histórico novo. Uma sugestão recuperada é encontrada pela deduplicação do fluxo comum. Um `no_op` de recuperação é terminal no fluxo manual; não se apaga a falha original para liberar outras chamadas.
 
-## Migration proposta — não executada
+## Migration proposta — validada somente em MariaDB descartável
 
 Arquivo: `v2/database/migrations/20261012_radar_recovery_attempts.sql`.
 
 Justificativa: histórico de tentativas, idempotência da solicitação, limite por fonte e vínculo à IA precisam de persistência compartilhada entre processos; um contador em memória ou sobrescrever a falha original não atende esses requisitos.
 
-A proposta cria somente a tabela nova, com PK, índices UNIQUE de fonte/número e fonte/solicitação, CHECKs e FKs. Não faz backfill, UPDATE ou reprocessamento de registros antigos. Não é executada pelo startup ou pelo deploy. **Antes de qualquer execução, justificar ambiente/escopo e solicitar aprovação explícita. Esta entrega não concede essa aprovação.**
+A proposta cria somente a tabela nova, com PK, índices UNIQUE de fonte/número e fonte/solicitação, CHECKs e FKs. Não faz backfill, UPDATE ou reprocessamento de registros antigos. Não é executada pelo startup ou pelo deploy. **A revisão final autorizou sua execução somente em MariaDB isolado e descartável. Execução em produção continua exigindo aprovação explícita e não foi realizada.**
 
-`RADAR_RECOVERY_ENABLED=false` por padrão. Código pode ser entregue com escritas de recuperação desativadas. Depois de aprovação, validar a migration em MariaDB isolado, revisar compatibilidade/DDL/FKs e aplicação no ambiente correto. Somente após aprovação da aplicação e habilitação explícita a API aceita POSTs de recuperação. GET de histórico não depende de IA habilitada e permanece possível com escritas desligadas, se a tabela existir; tabela indisponível produz erro seguro.
+`RADAR_RECOVERY_ENABLED=false` por padrão. Código pode ser entregue com escritas de recuperação desativadas. A migration e as transações foram validadas em MariaDB isolado conforme [relatório da revisão final](radar-recovery-mariadb-validation-2026-10-12.md). Revisar o ambiente e aprovar separadamente qualquer aplicação fora desse teste descartável. Somente após aprovação da aplicação e habilitação explícita a API aceita POSTs de recuperação. GET de histórico não depende de IA habilitada e permanece possível com escritas desligadas, se a tabela existir; tabela indisponível produz erro seguro.
 
 Para desativar, desligar a flag e manter o histórico. Não excluir tentativas ou apagar o ledger para “desbloquear” fontes.
 
@@ -127,6 +127,6 @@ Executados em `v2/`, Node 22.23.3:
 - `npm run build`: API/web aprovados; permanece o aviso existente de chunks grandes.
 - `git diff --check`.
 
-**Nenhuma migration foi executada, nem mesmo para estes testes.** O SQL proposto foi inspecionado/testado estaticamente; as transações são exercitadas por conexões falsas. Compatibilidade e concorrência no engine MariaDB real precisam de validação após aprovação explícita da execução em ambiente isolado. Os testes simulados não são prova de execução da migration ou do estado de outra sessão em produção.
+Na entrega inicial, os testes eram simulados e a migration não havia sido executada. A revisão final autorizada executou o SQL e as transações em MariaDB 10.11.19 descartável, com fixtures e provedor sintéticos. Resultados e limites estão no [relatório da revisão final](radar-recovery-mariadb-validation-2026-10-12.md). Nenhuma migration foi executada em produção; os testes não provam o estado de outra sessão em produção.
 
 Nenhum dado real de cliente foi modificado; nenhuma sugestão real, recuperação histórica ou chamada paga à IA foi realizada. Sem merge/deploy nesta fase.
