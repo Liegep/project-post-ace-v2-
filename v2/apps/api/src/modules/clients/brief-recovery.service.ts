@@ -60,8 +60,15 @@ async function inspect(app: FastifyInstance, db: PoolConnection, clientId: strin
   const [sources] = idea?.radarSuggestionId ? await db.query<RowDataPacket[]>(`SELECT * FROM radar_suggestions WHERE client_account_id=? AND id=?${lock ? " FOR UPDATE" : ""}`, [clientId, idea.radarSuggestionId]) : [[]];
   const source = sources[0];
   const [events] = await db.query<RowDataPacket[]>("SELECT id,revision,action,decision,before_json,after_json FROM card_approval_events WHERE card_id=? ORDER BY revision", [cardId]);
-  const [links] = await db.query<RowDataPacket[]>(`SELECT id,is_active,approved_at,expires_at FROM approval_links WHERE card_id=? ORDER BY id${lock ? " FOR UPDATE" : ""}`, [cardId]);
+  const [links] = await db.query<RowDataPacket[]>(`SELECT id,client_account_id,is_active,approved_at,expires_at FROM approval_links WHERE card_id=? ORDER BY id${lock ? " FOR UPDATE" : ""}`, [cardId]);
+  const [columns] = card.columnId ? await db.query<RowDataPacket[]>(`SELECT id,name FROM kanban_columns WHERE id=? AND client_account_id=?${lock ? " FOR UPDATE" : ""}`,[card.columnId,clientId]) : [[]];
   const blockers: string[] = [];
+  const normalize = (value:string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toLowerCase();
+  if (links.some(link=>link.client_account_id !== clientId)) blockers.push("Existe link vinculado a outra conta; revise o vínculo antes de recuperar.");
+  if (card.columnId && !columns[0]) blockers.push("A coluna do card não pertence a este cliente.");
+  if (columns[0] && /^(pautas? aprovad[ao]s?|aprovados(?: pelo cliente)?|publicad[oa]s?|agendad[oa]s?|finalizad[oa]s?|cancelad[oa]s?|arquivad[oa]s?)$/.test(normalize(columns[0].name))) blockers.push("A coluna atual indica um estado incompatível com recuperação.");
+  if (card.archivedAt) blockers.push("Existe indicação de arquivamento que precisa de revisão.");
+  if ([card.clientLabel,...card.status,...card.tags].some(value=>/^(aprovad[oa]|aprovado pelo cliente|pautas? aprovad[ao]s?)$/.test(normalize(value)))) blockers.push("Existe indicação de aprovação que precisa ser preservada.");
   if (!idea || !source || source.status !== "accepted" || source.accepted_pauta_id !== idea.id) blockers.push("Não há vínculo único com uma sugestão original aceita.");
   if (!card.isBriefApproval || idea?.status !== "sent") blockers.push("A recuperação exige uma pauta enviada para aprovação.");
   const state = inferredApprovalState(card);
@@ -82,7 +89,7 @@ async function inspect(app: FastifyInstance, db: PoolConnection, clientId: strin
   }
   if (!Object.keys(plan.additions).length && !Object.keys(plan.bankAdditions).length) blockers.push("Não há campos ausentes recuperáveis.");
   return { card, drawer, ideas, idea, source, events, links, plan, blockers, rawBrief,
-    digest: hash({ card, idea, source, events, links, plan }) };
+    digest: hash({ card, idea, source, events, links, columns, plan }) };
 }
 
 export async function previewBriefRecovery(app: FastifyInstance, clientId: string, cardId: string, actor: Actor) {
@@ -94,7 +101,7 @@ export async function previewBriefRecovery(app: FastifyInstance, clientId: strin
     await db.commit();
     const previewToken = data.blockers.length ? null : jwt.sign({ purpose: "brief-recovery", clientId, cardId, userId: actor.id, digest: data.digest }, app.appEnv.JWT_SECRET, { algorithm: "HS256", audience: "brief-recovery", expiresIn: "10m", jwtid: randomUUID() });
     return { eligible: !data.blockers.length, blockers: data.blockers, previewToken, revision: data.card.approvalRevision,
-      currentBrief: data.card.editorialBrief, recoverableBrief: readEditorialBrief(data.plan.recoveredBrief),
+      currentTitle: data.card.title, currentCaption: data.card.caption, currentBrief: data.card.editorialBrief, recoverableBrief: readEditorialBrief(data.plan.recoveredBrief),
       additions: data.plan.additions, bankAdditions: data.plan.bankAdditions, divergences: data.plan.divergences, unavailable: data.plan.unavailable,
       effects: { activeLinksToInvalidate: data.links.filter(link => link.is_active).length, newRevision: data.card.approvalRevision + 1, requiresNewApproval: true, preservesDescriptionCaptionMediaStatus: true } };
   } catch (error) { await db.rollback();

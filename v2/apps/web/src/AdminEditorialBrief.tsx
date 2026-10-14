@@ -5,9 +5,13 @@ import type { BoardCard } from "./types";
 
 const labels: Record<string,string> = { title:"Título",caption:"Legenda",concept:"Ideia central",hook:"Gancho",description:"Descrição",rationale:"Justificativa editorial",objective:"Objetivo",cta:"Chamada para ação",sourceSummary:"Resumo factual",sourceTitle:"Fonte",sourceUrl:"URL da fonte",sourceDate:"Data da fonte" };
 export function RecoveryPreview({ preview }: { preview:BriefRecoveryPreview }) {
-  return <section aria-label="Prévia da recuperação"><h4>Conteúdo recuperável — ainda não aplicado</h4>
+  return <section aria-label="Prévia da recuperação"><h4>{preview.eligible?"Prévia completa após recuperação — ainda não aplicada":"Conteúdo disponível para análise — recuperação bloqueada"}</h4>
+    <h5>{preview.currentTitle}</h5>
+    <EditorialBrief brief={preview.recoverableBrief} caption={preview.currentCaption}/>
+    {preview.currentCaption?<div><strong>Legenda atual — será preservada</strong><p>{preview.currentCaption}</p></div>:null}
+    <details><summary>Conteúdo atual salvo — sem recuperação</summary><EditorialBrief brief={preview.currentBrief} caption={preview.currentCaption}/>{!preview.currentBrief?<p>Sem briefing editorial salvo.</p>:null}</details>
+    <details><summary>Conteúdo recuperável — ainda não aplicado</summary><EditorialBrief brief={preview.additions}/></details>
     <p>Somente campos ausentes serão complementados. Descrição, legenda, mídias e status existentes serão preservados.</p>
-    <EditorialBrief brief={preview.additions} />
     {Object.keys(preview.bankAdditions).length ? <p>Também serão complementados no Banco de Pautas: {Object.keys(preview.bankAdditions).map(field=>labels[field]||field).join(", ")}.</p> : null}
     {preview.divergences.length ? <details><summary>Divergências — valores existentes serão mantidos</summary>{preview.divergences.map(row=><div key={row.field}><strong>{labels[row.field]||row.field}</strong><p>Na pauta: {String(row.pauta??"Não disponível")}</p><p>No briefing atual: {String(row.current??"Não disponível")}</p><p>Na sugestão original: {row.original}</p></div>)}</details> : null}
     {preview.unavailable.includes("sourceSummary") ? <p>Resumo factual indisponível na sugestão original. Nenhum texto será reconstruído.</p> : null}

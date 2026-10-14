@@ -47,8 +47,8 @@ O portal recebe a nova revisão. Uma tela antiga não pode aprová-la. Links ant
 
 Node 22.23.3:
 
-- **658 testes de regressão passaram**, zero falhas/skips.
-- **14 testes nativos MariaDB passaram**: nove novos de recuperação e cinco existentes do ciclo editorial.
+- **659 testes de regressão passaram**, zero falhas/skips.
+- **18 testes nativos MariaDB passaram**: treze de recuperação/revisão e cinco existentes do ciclo editorial.
 - Typecheck API/web e build API/web aprovados; aviso existente de bundles acima de 500 kB.
 - `git diff --check` aprovado.
 
@@ -68,3 +68,48 @@ Deploy/API/web e a aplicação a uma pauta real permanecem pendentes de autoriza
 - Links encerrados não devem ser reativados; novo link/reenvio depende de ação explícita. Não reutilizar snapshots aprovados para apresentar texto diferente.
 
 A reversão de dados não é automatizada nesta entrega. Não foi feita recuperação real, escrita em produção, chamada de IA, merge ou deploy.
+
+## Revisão final do PR #40
+
+Revisão inicial: `8cf6a33e78a821bca7491485c14ab0409b39090c`.
+
+### Elegibilidade da Patrícia: ainda não confirmada
+
+Os resultados fornecidos pelo usuário comprovam campos recuperáveis na sugestão original, pauta `sent`, briefing do card NULL e revisão 0. **Não comprovam todas as condições de elegibilidade.** Ainda faltam:
+
+- `is_brief_approval`, `approval_state`, status/tags/client_label completos;
+- coluna, pertencimento ao cliente e sinais de estado terminal;
+- arquivamento, publicação e agendamento;
+- eventos de aprovação anteriores e todos os links, inclusive aprovados/inativos;
+- vínculo único com o card, status `accepted` e `accepted_pauta_id` da sugestão;
+- igualdade exata de descrição/URL, que não pode ser deduzida pelos comprimentos.
+
+O MCP desta conversa não disponibiliza esses campos nem acesso SQL. Não foi usada conexão de produção nesta revisão. `docs/pr40-patricia-eligibility-readonly.sql` contém seis consultas SELECT restritas aos IDs fornecidos, sem textos editoriais, tokens, contatos ou autores. A sintaxe e a ausência de escrita foram verificadas em MariaDB descartável substituindo os IDs por fixtures sintéticas. O arquivo **não foi executado em produção**. Os resultados precisam ser conferidos antes de declarar elegibilidade; depois do deploy autorizado, a prévia e a aplicação ainda revalidam o estado atual.
+
+### Correções
+
+1. A prévia inicial apresentava somente acréscimos. Agora apresenta o briefing final completo usando `recoverableBrief`, com título/legenda atuais lidos do banco, iguais aos que permanecerão após a aplicação. Separa conteúdo atual salvo, campos recuperáveis e divergências em blocos próprios. Quando bloqueada, identifica o conteúdo como análise e não como recuperação disponível. Testes comprovam que campos atuais divergentes permanecem na prévia final e que o resultado aplicado é igual à prévia.
+2. Colunas padronizadas de aprovados/publicados/agendados/finalizados/cancelados/arquivados bloqueiam recuperação, assim como coluna de outra conta. Nome/identidade da coluna participam da assinatura da prévia e são bloqueados durante a aplicação. Uma alteração de coluna invalida a prévia.
+3. Indicadores explícitos de aprovação em status/tags/client_label continuam protegidos mesmo quando há outros indicadores conflitantes. `archived_at` não nulo e links vinculados a outra conta também bloqueiam.
+
+### Endpoints e aprovação
+
+| Caminho na API V2 | Proteção confirmada |
+| --- | --- |
+| GET `/portal/approval/:token` | Link encerrado/expirado não apresenta a aprovação. |
+| POST `/portal/approval/:token/decision` | Verifica o link antes de iniciar e novamente após bloquear o card; encerramento por recuperação impede decisão mesmo se a checagem inicial já passou. |
+| POST `/portal/accounts/:clientAccountId/cards/:cardId/decision` | Exige autenticação, acesso e permissão de aprovação; revisão antiga é recusada. Um token no body não substitui essas proteções. |
+| POST `/clients/:clientAccountId/cards/:cardId/approval-links` | Exige autenticação/acesso e confere a revisão sob bloqueio; criação com revisão anterior é recusada. |
+| `submitApprovalDecision` do repositório | Helper interno usado pelo workflow protegido; não há endpoint independente expondo essa gravação. |
+
+A recuperação não chama decisão de aprovação, não grava `approved_at`, não cria comentário de aprovação nem evento `approved`. Grava `brief_restored` com decisão NULL e preserva estado/status. As provas cobrem aprovação e solicitação de alterações por link encerrado, revisão antiga no portal, criação de link antigo e um novo link legítimo criado explicitamente. A auditoria é do código/endpoints V2 deste repositório, não de um deploy ainda inexistente.
+
+### Concorrência e confirmação perdida
+
+Mantidos os testes de operação repetida, prévias concorrentes, rollback integral, commit efetivo com confirmação perdida e corrida com aprovação. Acrescentados:
+
+- Pausa determinística de decisão pública entre a primeira checagem do token e o bloqueio do card; recuperação conclui e a decisão antiga retorna 403, sem aprovação.
+- Criação de link concorrente: ou vence a recuperação e não resta link ativo da revisão anterior, ou o link é criado antes e a prévia fica desatualizada, sem escrita parcial.
+- Consultas de elegibilidade executadas com IDs sintéticos mantêm integralmente as tabelas.
+
+Resultado final: 659 testes de regressão, 18 nativos MariaDB (17 da suíte conjunta mais um de SQL fornecido), typecheck e build aprovados. Nenhuma migration nova, chamada à IA, escrita em produção, recuperação da Patrícia, merge ou deploy. Branch do PR #39 não alterada. O plano de rollback acima permanece válido.

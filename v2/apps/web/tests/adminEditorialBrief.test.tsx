@@ -25,3 +25,11 @@ test("unsaved edits disable recovery without sending or changing current content
  const html=renderToStaticMarkup(<AdminEditorialBrief card={{id:"synthetic",isBriefApproval:true} as any} slug="synthetic" onRecovered={()=>{}} disabledReason="Save first"/>);
  assert.match(html,/disabled=""/);assert.match(html,/Save first/);assert.doesNotMatch(html,/Confirmar recuperação/);
 });
+
+test("complete resulting briefing includes preserved current fields and additions with unchanged caption",()=>{
+ const preview={eligible:true,blockers:[],currentTitle:"Current title",currentCaption:"Protected caption",currentBrief:{concept:"Existing concept"},recoverableBrief:{concept:"Existing concept",hook:"Restored hook",description:"Existing description"},additions:{hook:"Restored hook"},bankAdditions:{hook:"Restored hook"},divergences:[],unavailable:[],effects:{activeLinksToInvalidate:1}};
+ const html=renderToStaticMarkup(<RecoveryPreview preview={preview as any}/>);
+ const complete=html.split("<details>")[0];
+ assert.match(complete,/Prévia completa/);assert.match(complete,/Existing concept/);assert.match(complete,/Restored hook/);assert.match(complete,/Existing description/);assert.match(complete,/Protected caption/);assert.match(complete,/Current title/);
+ assert.match(html,/Conteúdo atual salvo/);assert.match(html,/Conteúdo recuperável/);
+});

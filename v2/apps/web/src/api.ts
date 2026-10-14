@@ -2000,7 +2000,7 @@ export async function sendAdminPautaForApprovalBySlug(slug: string, ideaId: stri
 
 export type BriefRecoveryPreview = {
   eligible:boolean; blockers:string[]; previewToken:string|null; revision:number;
-  currentBrief:EditorialBriefData|null; recoverableBrief:EditorialBriefData|null;
+  currentTitle:string;currentCaption:string|null;currentBrief:EditorialBriefData|null; recoverableBrief:EditorialBriefData|null;
   additions:EditorialBriefData; bankAdditions:EditorialBriefData;
   divergences:Array<{field:string;pauta:unknown;current:unknown;original:string}>;
   unavailable:string[];

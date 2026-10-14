@@ -16,6 +16,7 @@ import { decideCardApproval } from "../approvals/approval-workflow.service.js";
 import { previewBriefRecovery,applyBriefRecovery } from "./brief-recovery.service.js";
 import { approvalRoutes } from "../approvals/approvals.routes.js";
 import { portalRoutes } from "../portal/portal.routes.js";
+import { submitPublicApprovalDecision, createCardApprovalLink } from "../approvals/approvals.service.js";
 import { createApprovalLink } from "../approvals/approvals.repository.js";
 import { clientRoutes } from "./clients.routes.js";
 
@@ -115,7 +116,7 @@ test("MariaDB stale data, forged/expired preview and cross-client or user replay
  }finally{await f.close();}
 });
 test("MariaDB approved/history-approved/requested/scheduled/archived/manual/unlinked states have no apply token or preview writes",async()=>{
- for(const change of ["INSERT INTO card_approval_events(id,card_id,revision,action,decision,source,actor_name,actor_role,before_json,after_json) SELECT UUID(),id,0,'approved','approved','legacy','Synthetic','unknown','{}','{}' FROM kanban_cards", "UPDATE kanban_cards SET approval_state='approved'","UPDATE approval_links SET approved_at=CURRENT_TIMESTAMP","UPDATE kanban_cards SET approval_state='changes_requested'","UPDATE kanban_cards SET scheduled_at='2099-01-01'","UPDATE kanban_cards SET archived=1","UPDATE kanban_cards SET is_brief_approval=0","UPDATE radar_suggestions SET accepted_pauta_id=NULL"]) {
+ for(const change of ["UPDATE approval_links SET client_account_id=(SELECT id FROM client_accounts WHERE slug='synthetic-b')","UPDATE kanban_cards SET column_id=(SELECT id FROM kanban_columns LIMIT 1)","UPDATE kanban_cards SET archived_at=CURRENT_TIMESTAMP", "UPDATE kanban_cards SET approval_state='pending',status_json='[\"Aprovado\",\"Alterado\"]'","INSERT INTO card_approval_events(id,card_id,revision,action,decision,source,actor_name,actor_role,before_json,after_json) SELECT UUID(),id,0,'approved','approved','legacy','Synthetic','unknown','{}','{}' FROM kanban_cards", "UPDATE kanban_cards SET approval_state='approved'","UPDATE approval_links SET approved_at=CURRENT_TIMESTAMP","UPDATE kanban_cards SET approval_state='changes_requested'","UPDATE kanban_cards SET scheduled_at='2099-01-01'","UPDATE kanban_cards SET archived=1","UPDATE kanban_cards SET is_brief_approval=0","UPDATE radar_suggestions SET accepted_pauta_id=NULL"]) {
   const f=await fixture();try{await f.pool.query(change);const before=await snapshot(f),p=await preview(f);assert.equal(p.eligible,false,change);assert.equal(p.previewToken,null);assert.deepEqual(await snapshot(f),before);}finally{await f.close();}
  }
 });
@@ -136,6 +137,13 @@ test("MariaDB portal and public routes expose restored briefing; old public link
   const portal=await f.app.inject(`/portal/accounts/${f.clientId}/cards/${f.cardId}`);assert.equal(portal.statusCode,200);assert.equal(portal.json().card.editorialBrief.concept,"Original concept");
   const old=await f.app.inject("/portal/approval/synthetic-public-token");assert.ok(old.statusCode>=400);
   const denied=await f.app.inject({method:"POST",url:"/portal/approval/synthetic-public-token/decision",payload:{approved:true}});assert.ok(denied.statusCode>=400);
+  for (const approved of [true,false]) {
+    const stale=await f.app.inject({method:"POST",url:`/portal/accounts/${f.clientId}/cards/${f.cardId}/decision`,payload:{approved,expectedApprovalRevision:0,token:"synthetic-public-token"}});assert.equal(stale.statusCode,409);
+    const expired=await f.app.inject({method:"POST",url:"/portal/approval/synthetic-public-token/decision",payload:{approved,expectedApprovalRevision:1}});assert.equal(expired.statusCode,403);
+  }
+  await assert.rejects(createCardApprovalLink(f.app,f.clientId,f.cardId,f.actor.id,{expectedApprovalRevision:0}),{statusCode:409});
+  assert.equal((await findCardById(f.pool,f.cardId))!.approvalState,null);
+  assert.equal((await f.query("SELECT COUNT(*) AS n FROM card_approval_events WHERE action='approved'"))[0].n,0);
   const link=await createApprovalLink(f.pool,{clientAccountId:f.clientId,cardId:f.cardId,createdByUserId:f.actor.id,expiresAt:new Date("2099-01-01")});
   const fresh=await f.app.inject(`/portal/approval/${link!.token}`);assert.equal(fresh.statusCode,200);assert.equal(fresh.json().card.editorialBrief.concept,"Original concept");
   const approved=await f.app.inject({method:"POST",url:`/portal/approval/${link!.token}/decision`,payload:{approved:true}});assert.equal(approved.statusCode,200);
@@ -150,5 +158,55 @@ test("MariaDB route allows scoped active admin only; confirmation requires a rea
   auth={...auth,memberships:[]};assert.equal((await f.app.inject({method:"POST",url,payload:{previewToken:p.json().previewToken,confirm:true}})).statusCode,403);
   auth={...auth,memberships:[{clientAccountId:f.clientId,membershipRole:"admin"}]};
   assert.equal((await f.app.inject({method:"POST",url,payload:{previewToken:p.json().previewToken,confirm:true}})).statusCode,200);
+ }finally{await f.close();}
+});
+
+test("MariaDB resulting preview equals the recovered briefing while retaining existing divergent content",async()=>{
+ const f=await fixture();try{
+  const current={concept:"Human concept",description:"Current description",sourceUrl:"https://example.invalid/current"};
+  await f.pool.query("UPDATE kanban_cards SET editorial_brief_json=? WHERE id=?",[JSON.stringify(current),f.cardId]);
+  const p=await preview(f);assert.equal(p.eligible,true);assert.equal(p.currentTitle,f.idea.title);assert.equal(p.currentCaption,"Independently edited caption");
+  assert.equal(p.recoverableBrief!.concept,current.concept);assert.equal(p.additions.concept,undefined);assert.equal(p.recoverableBrief!.hook,"Original hook");assert.ok(p.divergences.some(row=>row.field==="concept"));
+  const result=await apply(f,p.previewToken!);assert.deepEqual(result.card.editorialBrief,p.recoverableBrief);assert.equal(result.card.caption,p.currentCaption);assert.equal(result.card.title,p.currentTitle);
+ }finally{await f.close();}
+});
+test("MariaDB a public decision that passed an old link precheck is rejected after recovery commits",async()=>{
+ const f=await fixture(),originalGet=f.pool.getConnection.bind(f.pool);let resume!:()=>void,announce!:()=>void;
+ const gate=new Promise<void>(resolve=>{resume=resolve;}),started=new Promise<void>(resolve=>{announce=resolve;});
+ let pause=true,worker:Promise<unknown>|undefined,timer:ReturnType<typeof setTimeout>|undefined;
+ try {
+  const p=await preview(f);
+  f.pool.getConnection=async()=>{const db=await originalGet(),query=db.query.bind(db) as any;db.query=(async(sql:any,...args:any[])=>{
+   if(pause&&typeof sql==="string"&&sql.includes("WHERE id = ? AND client_account_id = ? FOR UPDATE")){pause=false;announce();await gate;}
+   return query(sql,...args);
+  }) as typeof db.query;return db;};
+  worker=submitPublicApprovalDecision(f.app,"synthetic-public-token",{approved:true});
+  await Promise.race([started,new Promise((_,reject)=>{timer=setTimeout(()=>reject(Error("decision did not reach row lock")),5000);})]);clearTimeout(timer);
+  await apply(f,p.previewToken!);resume();await assert.rejects(worker,{statusCode:403});
+  const card=(await findCardById(f.pool,f.cardId))!;assert.equal(card.approvalRevision,1);assert.equal(card.approvalState,null);
+  assert.equal((await f.query("SELECT COUNT(*) AS n FROM card_approval_events WHERE action='approved'"))[0].n,0);
+ }finally{clearTimeout(timer);resume();f.pool.getConnection=originalGet;await worker?.catch(()=>{});await f.close();}
+});
+
+test("MariaDB concurrent link creation and recovery cannot create an active old link after the new revision",async()=>{
+ const f=await fixture();try{
+  const p=await preview(f);
+  const results=await Promise.allSettled([apply(f,p.previewToken!),createCardApprovalLink(f.app,f.clientId,f.cardId,f.actor.id,{expectedApprovalRevision:0})]);
+  assert.equal(results.filter(row=>row.status==="fulfilled").length,1);
+  const card=(await findCardById(f.pool,f.cardId))!;
+  if(card.approvalRevision===1)assert.equal((await f.query("SELECT COUNT(*) AS n FROM approval_links WHERE is_active=1"))[0].n,0);
+  else{assert.equal(card.approvalRevision,0);assert.equal(card.editorialBrief,null);assert.equal((await f.query("SELECT COUNT(*) AS n FROM card_approval_events WHERE action='brief_restored'"))[0].n,0);}
+  assert.equal(card.approvalState,null);
+ }finally{await f.close();}
+});
+
+test("MariaDB supplied eligibility SQL is read-only and scoped when executed with synthetic IDs",async()=>{
+ const f=await fixture();try{
+  const sql=readFileSync(new URL("../../../../../../docs/pr40-patricia-eligibility-readonly.sql",import.meta.url),"utf8")
+    .replaceAll("9234cff8-7337-41f7-b4ac-62664d61eb7d",f.clientId).replaceAll("37e38483-de04-4f33-84cb-5f1baf250d25",f.cardId)
+    .replaceAll("75504c8c-0108-4258-9c94-f995cc9432bf",f.ideaId).replaceAll("3e1b66a0-5474-494c-97b1-dc7758f9b58b",f.suggestion.id);
+  const before=await snapshot(f),[sets]=await f.pool.query<any>(sql);
+  assert.equal(sets.length,6);assert.equal(sets[0][0].is_brief_approval,1);assert.equal(sets[1][0].card_pauta_matches,1);
+  assert.equal(sets[5][0].description_exact_match,1);assert.equal(sets[5][0].card_caption_matches_pauta,0);assert.deepEqual(await snapshot(f),before);
  }finally{await f.close();}
 });
