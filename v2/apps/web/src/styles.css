@@ -11638,3 +11638,89 @@ button.agenda-more { border:0;background:transparent;cursor:pointer;padding:5px;
 .editorial-brief header span,.editorial-brief footer>span{font-size:.65rem;font-weight:650;letter-spacing:.09em;color:#817493}
 .editorial-brief h4{margin:6px 0 20px;font-size:1.12rem;font-weight:600}.editorial-brief dl{display:grid;gap:20px;margin:0}.editorial-brief dt{font-size:.76rem;font-weight:650;color:#6f6680;margin-bottom:6px}.editorial-brief dd{margin:0;font-size:.9rem;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.editorial-brief footer{display:grid;gap:8px;padding-top:20px;margin-top:24px;border-top:1px solid #e9e5ef}.editorial-brief a{color:#6953bd;text-decoration:none;line-height:1.5;overflow-wrap:anywhere}.editorial-brief a:hover{text-decoration:underline}.editorial-brief footer small{color:#7b8193;font-size:.75rem}
 @media(max-width:640px){.editorial-brief{padding:18px;border-radius:14px}.editorial-brief dd{font-size:.85rem}}
+
+/* Pauta reading follows the approved Banco de Pautas modal: the same light
+   surface and EditorialBrief component, including inside the dark Kanban. */
+.editorial-pauta-modal, .editorial-pauta-public, .brief-recovery-dialog, .admin-editorial-brief {
+  color-scheme: light;
+  color: #27324b;
+  background: #fff;
+}
+.editorial-pauta-modal { width: min(540px, calc(100vw - 32px)); height: auto; max-height: calc(100dvh - 32px); padding: 24px 24px 0; border: 1px solid #e4e5ef; border-radius: 18px; background-image: none; }
+.editorial-pauta-modal:focus { outline: none; }
+.editorial-pauta-modal .modal-head { align-items: flex-start; gap: 16px; margin-bottom: 16px; }
+.editorial-pauta-modal .modal-head h3 { margin: 0; color: #202b49; font-size: 1.25rem; line-height: 1.4; overflow-wrap: anywhere; }
+.editorial-pauta-modal .modal-head > .ghost-button { flex-shrink: 0; min-height: 40px; color: #43506a; background: #f3f4f8; }
+.editorial-pauta-modal > .modal-grid { grid-template-columns: minmax(0, 1fr); gap: 18px; padding: 0 0 20px; scrollbar-gutter: auto; }
+.editorial-pauta-modal.no-media { width: min(540px, calc(100vw - 32px)); }
+.editorial-pauta-modal .modal-sidebar-copy { gap: 24px; min-width: 0; }
+.editorial-pauta-modal .portal-summary-card, .editorial-pauta-modal .portal-feedback-card { padding: 0; border: 0; box-shadow: none; border-radius: 0; color: #27324b; background: #fff; }
+.editorial-pauta-modal .editorial-brief { margin: 0 0 24px; }
+.editorial-pauta-modal .portal-summary-heading { gap: 12px; margin-bottom: 10px; }
+.editorial-pauta-modal .portal-summary-heading h4, .pauta-caption-section h2 { margin: 0; color: #596179; font-size: .8rem; font-weight: 650; }
+.pauta-caption-copy { margin: 0; color: #27324b; font-size: .9rem; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.editorial-pauta-modal .portal-feedback-card { padding-top: 20px; border-top: 1px solid #e4e5ef; }
+.editorial-pauta-modal .portal-feedback-card h4 { color: #27324b; }
+.editorial-pauta-modal .portal-feedback-helper { color: #596179; font-size: .8rem; line-height: 1.6; }
+.editorial-pauta-modal .comment-input { box-sizing: border-box; color: #27324b; background: #fff; border: 1px solid #cbd1df; min-height: 96px; }
+.editorial-pauta-modal .comment-input::placeholder { color: #667088; }
+.editorial-pauta-modal .comment-meta, .editorial-pauta-modal .comment-meta strong, .editorial-pauta-modal .comment-item p { color: #43506a; }
+.editorial-pauta-modal .portal-card-sticky-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-inline: -24px; padding: 14px 24px; border-color: #e4e5ef; background: #fff; box-shadow: none; }
+.editorial-pauta-modal .portal-card-sticky-actions > div { display: none; }
+.editorial-pauta-modal .portal-card-sticky-actions > button { min-height: 44px; min-width: 0; padding: 8px; white-space: normal; font-size: .78rem; }
+.editorial-pauta-modal .portal-card-sticky-actions > .ghost-button { display: inline-flex; align-items: center; justify-content: center; color: #43506a; background: #f3f4f8; }
+.editorial-pauta-modal .portal-card-sticky-actions.has-suggestion-action { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.editorial-pauta-modal .modal-media .artwork-carousel { max-width: 100%; }
+.editorial-pauta-modal .modal-media img { max-height: 320px; object-fit: contain; }
+.editorial-pauta-public { box-sizing: border-box; width: min(540px, 100%); padding: 24px; border-radius: 18px; }
+.editorial-pauta-public h1 { color: #202b49; font-size: 1.25rem; line-height: 1.4; overflow-wrap: anywhere; }
+.editorial-pauta-public .editorial-brief { margin-block: 20px 24px; }
+.editorial-pauta-public .pauta-caption-section { display: grid; gap: 10px; }
+.editorial-pauta-public label { color: #43506a; font-size: .8rem; }
+.editorial-pauta-public input, .editorial-pauta-public textarea { box-sizing: border-box; min-width: 0; color: #27324b; background: #fff; }
+.editorial-pauta-public .public-approval-actions button { min-height: 44px; }
+.admin-editorial-brief { min-width: 0; border: 1px solid #dfe1eb; border-radius: 14px; }
+.admin-editorial-brief > summary { padding: 16px 18px; cursor: pointer; list-style-position: inside; color: #27324b; font-size: .9rem; }
+.admin-editorial-brief > summary > span { font-weight: 650; }
+.admin-editorial-brief > summary > small { display: block; margin: 5px 0 0 17px; color: #596179; font-size: .75rem; }
+.admin-editorial-brief-content { padding: 0 18px 18px; color: #43506a; font-size: .85rem; line-height: 1.65; }
+.admin-editorial-brief-content > .editorial-brief { margin: 0 0 16px; }
+.admin-editorial-brief .editorial-brief h4, .brief-recovery-dialog .editorial-brief h4 { color: #27324b; }
+.admin-editorial-brief-content > p { color: #43506a; margin: 10px 0; }
+.admin-editorial-brief .drawer-secondary-action { min-height: 44px; color: #50418f; background: #f6f3ff; border: 1px solid #d6cfeb; white-space: normal; }
+.brief-recovery-dialog { display: none; box-sizing: border-box; width: min(600px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 24px; border: 1px solid #e4e5ef; border-radius: 18px; box-shadow: 0 18px 48px rgba(25,32,55,.25); }
+.brief-recovery-dialog[open] { display: grid; }
+.brief-recovery-dialog::backdrop { background: rgba(25,32,55,.52); }
+.brief-recovery-dialog > header { align-items: flex-start; gap: 16px; }
+.brief-recovery-dialog h2 { margin: 0; color: #202b49; font-size: 1.2rem; }
+.brief-recovery-dialog > header button { flex-shrink: 0; min-width: 40px; min-height: 40px; color: #43506a; }
+.brief-recovery-dialog h3 { margin: 6px 0 14px; color: #43506a; font-size: .92rem; line-height: 1.5; }
+.brief-recovery-dialog h4 { color: #27324b; line-height: 1.5; }
+.brief-recovery-dialog p, .brief-recovery-dialog strong { color: #43506a; font-size: .85rem; line-height: 1.65; overflow-wrap: anywhere; }
+.brief-recovery-dialog details { padding-block: 10px; border-top: 1px solid #e4e5ef; }
+.brief-recovery-dialog summary { cursor: pointer; color: #50418f; font-size: .8rem; line-height: 1.5; }
+.brief-recovery-caption p { white-space: pre-wrap; }
+.brief-recovery-effects { padding: 14px; border-radius: 10px; background: #f6f3ff; }
+.brief-recovery-confirmation { display: grid; gap: 16px; }
+.brief-recovery-confirmation > label { display: flex; align-items: flex-start; gap: 10px; color: #43506a; font-size: .8rem; line-height: 1.6; }
+.brief-recovery-confirmation input { flex-shrink: 0; width: 18px; height: 18px; margin: 3px 0 0; accent-color: #6953bd; }
+.brief-recovery-confirmation .gradient-button { min-height: 44px; }
+:is(.editorial-pauta-modal, .editorial-pauta-public, .admin-editorial-brief, .brief-recovery-dialog) :is(button, a, input, textarea, summary):focus-visible { outline: 3px solid #6953bd; outline-offset: 3px; }
+@media (max-width: 600px) {
+  .editorial-pauta-modal, .editorial-pauta-modal.no-media { width: calc(100vw - 24px); height: auto; min-height: 0; max-height: calc(100dvh - 24px); padding: 20px 20px 0; border-radius: 18px; }
+  .modal-backdrop:has(.editorial-pauta-modal) { align-items: center; padding: 12px; }
+  .editorial-pauta-modal .portal-card-sticky-actions { margin-inline: -20px; padding: 12px 20px; }
+  .editorial-pauta-public, .brief-recovery-dialog { padding: 20px; }
+  .brief-recovery-dialog { width: calc(100vw - 24px); max-height: calc(100dvh - 24px); }
+}
+/* Keep small editorial labels and review actions legible on the light surface. */
+.editorial-brief header span, .editorial-brief footer > span { color: #6f6680; }
+.editorial-pauta-modal .portal-card-sticky-actions > .gradient-button { color: #fff; background: #176d52; box-shadow: none; }
+.editorial-pauta-modal .portal-card-sticky-actions > .danger-button, .editorial-pauta-public .danger-button { color: #9c3650; background: #fff7f8; border: 1px solid #dfbdc7; }
+.editorial-pauta-public .gradient-button, .brief-recovery-dialog .gradient-button { color: #fff; background: #6953bd; box-shadow: none; }
+/* Match the reference's editorial header/source alignment in every reader. */
+.editorial-brief > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.editorial-brief > footer { justify-content: end; justify-items: end; text-align: right; }
+.editorial-brief footer small { color: #626b80; }
+.editorial-pauta-modal .portal-summary-heading { padding: 0; border: 0; background: none; }
+.editorial-brief h4 { color: #27324b; }

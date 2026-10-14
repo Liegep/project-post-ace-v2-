@@ -1,3 +1,4 @@
+import { useModalFocus } from "./useModalFocus";
 import { listInternalApprovalInbox, listInternalApprovalReviewersBySlug, sendInternalApprovalBySlug, type InternalApprovalReviewer, type InternalApprovalRecord } from "./api";
 import { AdminEditorialBrief } from "./AdminEditorialBrief";
 import { sendAdminPautaForApprovalBySlug } from "./api";
@@ -6835,7 +6836,7 @@ function PortalFormattedCaption({ text }: { text: string }) {
   </div>;
 }
 
-function CardDetailModal({
+export function CardDetailModal({
   mode,
   titlePrefix,
   detail,
@@ -6881,6 +6882,7 @@ function CardDetailModal({
   adminContext?: { slug: string; columns: BoardColumn[]; canScheduleMeta?: boolean; onMetaPublicationsSaved?: (publications: MetaScheduledPublication[]) => void; onCardUpdated?: (card: BoardCard) => void };
 }) {
   const { t, localeTag } = usePortalTranslation();
+  const modalRef = useModalFocus<HTMLDivElement>(Boolean(detail) && mode === "portal");
   const [commentDraft, setCommentDraft] = useState("");
   const [submitting, setSubmitting] = useState<"comment" | "approve" | "changes" | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -7066,6 +7068,7 @@ function CardDetailModal({
       setPortalTagWorking(false);
     }
   }
+  const isEditorialPauta = Boolean(detail.card.isBriefApproval || detail.card.editorialBrief);
   const hasPortalVisualMedia = portalCardAssets(detail.card).length > 0;
   const isClientSuggestion = detail.card.statusBadges.some((status) => status
     .normalize("NFD")
@@ -7090,11 +7093,11 @@ function CardDetailModal({
 
   return (
     <div className={`modal-backdrop${mode === "portal" ? " portal-card-modal-backdrop" : ""}`} onClick={onClose}>
-      <div className={`modal-panel glass${mode === "portal" ? ` portal-card-detail-modal${hasPortalVisualMedia ? "" : " no-media"}` : ""}`} onClick={(event) => event.stopPropagation()}>
+      <div className={`modal-panel glass${mode === "portal" ? ` portal-card-detail-modal${hasPortalVisualMedia ? "" : " no-media"}${isEditorialPauta ? " editorial-pauta-modal" : ""}` : ""}`} ref={modalRef} tabIndex={-1} role={mode === "portal" ? "dialog" : undefined} aria-modal={mode === "portal" ? true : undefined} aria-labelledby={`portal-card-title-${detail.card.id}`} onClick={(event) => event.stopPropagation()}>
         <div className="modal-head">
           <div>
-            <p className="eyebrow">{titlePrefix}</p>
-            <h3>{editingSuggestion ? suggestionTitle || detail.card.title : detail.card.title}</h3>
+            {!isEditorialPauta ? <p className="eyebrow">{titlePrefix}</p> : null}
+            <h3 id={`portal-card-title-${detail.card.id}`}>{editingSuggestion ? suggestionTitle || detail.card.title : detail.card.title}</h3>
           </div>
           <button className="ghost-button" onClick={onClose}>
             {t("Fechar")}
@@ -7120,7 +7123,7 @@ function CardDetailModal({
                 <ResilientCardMedia url={portalCardAssets(detail.card)[0]} title={detail.card.title} />
               </div>
             ) : linkedCardMaterial(detail.card) ? <CardMediaFallback title={detail.card.title} linked /> : null}
-            <div className="badge-row">
+            {!isEditorialPauta ? <div className="badge-row">
               {detail.card.statusBadges.map((badge) => (
                 <span key={badge} className="mini-badge status">
                   {cardStatusLabel(badge)}
@@ -7131,7 +7134,7 @@ function CardDetailModal({
                   {cardStatusLabel(tag)}
                 </span>
               ))}
-            </div>
+            </div> : null}
             {linkedCardMaterial(detail.card) ? (
               <a className="external-card-link portal-linked-material-cta" href={linkedCardMaterial(detail.card) ?? undefined} target="_blank" rel="noreferrer">
                 <UiIcon name="link" />
@@ -7142,10 +7145,10 @@ function CardDetailModal({
 
           <div className="modal-sidebar-copy">
             <section className="glass-subtle modal-card portal-summary-card">
-              <EditorialBrief brief={detail.card.editorialBrief} caption={captionDraft} locale={localeTag} t={t} /><header className="portal-summary-heading"><span><UiIcon name="file" /></span><div><small>{t(isClientSuggestion ? "SUGESTÃO DE PAUTA" : "CONTEÚDO DO POST")}</small><h4>{t(isClientSuggestion ? "Detalhes da sugestão" : "Legenda")}</h4></div>{canEditClientSuggestion && !editingSuggestion ? <button type="button" className="portal-caption-edit-button" onClick={() => { setEditingCaption(false); setEditingSuggestion(true); }}><UiIcon name="file" />{t("Editar sugestão")}</button> : allowEditCaption && !editingCaption && !isClientSuggestion ? <button type="button" className="portal-caption-edit-button" onClick={() => setEditingCaption(true)}><UiIcon name="file" />{t("Editar legenda")}</button> : null}</header>
-              {editingSuggestion ? <div className="portal-suggestion-editor"><label>{t("Título da pauta")}<input autoFocus value={suggestionTitle} onChange={(event) => setSuggestionTitle(event.target.value)} maxLength={255} placeholder={t("Título da sugestão")} /></label><label>{t("Texto da sugestão")}<textarea value={suggestionCaption} onChange={(event) => setSuggestionCaption(event.target.value)} maxLength={5000} placeholder={t("Descreva a ideia da pauta...")} /></label><label>{t("Link de referência")}<input type="url" value={suggestionLink} onChange={(event) => setSuggestionLink(event.target.value)} maxLength={1024} placeholder="https://..." /></label><div className="portal-caption-editor-footer"><small>{suggestionCaption.length}/5000 {t("caracteres")}</small><div><button type="button" className="ghost-button" disabled={suggestionSaving} onClick={resetSuggestionDraft}>{t("Cancelar")}</button></div></div></div> : editingCaption ? <div className="portal-caption-editor"><label htmlFor={`portal-caption-${detail.card.id}`}>{t("Edite o texto abaixo")}</label><textarea id={`portal-caption-${detail.card.id}`} autoFocus value={captionDraft} onChange={(event) => setCaptionDraft(event.target.value)} maxLength={5000} placeholder={t("Escreva a legenda do post...")} /><div className="portal-caption-editor-footer"><small>{captionDraft.length}/5000 {t("caracteres")}</small><div><button type="button" className="ghost-button" disabled={captionSaving} onClick={() => { setCaptionDraft(detail.card.subtitle ?? ""); setEditingCaption(false); }}>{t("Cancelar")}</button><button type="button" className="gradient-button" disabled={captionSaving} onClick={() => void savePortalCaption()}>{t(captionSaving ? "Salvando..." : "Salvar legenda")}</button></div></div></div> : <PortalFormattedCaption text={captionDraft} />}
-              {allowManageTags ? <section className="portal-tag-manager"><header><div><small>{t("ETIQUETAS DO POST")}</small><strong>{selectedPortalTags.length ? `${selectedPortalTags.length} ${t(selectedPortalTags.length === 1 ? "etiqueta selecionada" : "etiquetas selecionadas")}` : t("Nenhuma etiqueta")}</strong></div><button type="button" onClick={() => setTagEditorOpen((open) => !open)}>{t(tagEditorOpen ? "Fechar" : "Gerenciar tags")}</button></header>{selectedPortalTags.length ? <div className="portal-tag-pills">{selectedPortalTags.map((name) => { const tag = portalTagLibrary.find((item) => item.name === name); return <span key={name} style={{ "--portal-tag-color": tag?.color ?? "#7568dc" } as CSSProperties}>{name}</span>; })}</div> : null}{tagEditorOpen ? <div className="portal-tag-editor"><div className="portal-tag-options">{portalTagLibrary.map((tag) => { const selected = selectedPortalTags.includes(tag.name); return <button key={tag.id} type="button" className={selected ? "selected" : ""} onClick={() => setSelectedPortalTags((current) => selected ? current.filter((name) => name !== tag.name) : [...current, tag.name])}><i style={{ backgroundColor: tag.color }} />{tag.name}<span>{selected ? "✓" : "+"}</span></button>; })}{portalTagLibrary.length === 0 ? <p>{t("Nenhuma tag criada. Crie a primeira abaixo.")}</p> : null}</div><div className="portal-tag-create"><input value={newPortalTagName} onChange={(event) => setNewPortalTagName(event.target.value)} maxLength={100} placeholder={t("Nome da nova tag")} /><input type="color" value={newPortalTagColor} onChange={(event) => setNewPortalTagColor(event.target.value)} aria-label={t("Cor da nova tag")} /><button type="button" disabled={portalTagWorking || !newPortalTagName.trim()} onClick={() => void createPortalTag()}>{t("+ Criar")}</button></div><div className="portal-tag-actions"><button type="button" className="ghost-button" disabled={portalTagWorking} onClick={() => { setSelectedPortalTags(detail.card.tags); setTagEditorOpen(false); }}>{t("Cancelar")}</button><button type="button" className="gradient-button" disabled={portalTagWorking} onClick={() => void savePortalTags()}>{t(portalTagWorking ? "Salvando..." : "Salvar etiquetas")}</button></div></div> : null}</section> : null}
-              <div className="portal-card-meta-grid">
+              <EditorialBrief brief={detail.card.editorialBrief} caption={captionDraft} locale={localeTag} t={t} />{!isEditorialPauta || captionDraft.trim() || editingCaption || editingSuggestion || canEditClientSuggestion || allowEditCaption ? <header className="portal-summary-heading">{!isEditorialPauta ? <span><UiIcon name="file" /></span> : null}<div>{!isEditorialPauta ? <small>{t(isClientSuggestion ? "SUGESTÃO DE PAUTA" : "CONTEÚDO DO POST")}</small> : null}<h4>{t(isEditorialPauta ? "Legenda sugerida" : isClientSuggestion ? "Detalhes da sugestão" : "Legenda")}</h4></div>{canEditClientSuggestion && !editingSuggestion ? <button type="button" className="portal-caption-edit-button" onClick={() => { setEditingCaption(false); setEditingSuggestion(true); }}><UiIcon name="file" />{t("Editar sugestão")}</button> : allowEditCaption && !editingCaption && !isClientSuggestion ? <button type="button" className="portal-caption-edit-button" onClick={() => setEditingCaption(true)}><UiIcon name="file" />{t("Editar legenda")}</button> : null}</header> : null}
+              {editingSuggestion ? <div className="portal-suggestion-editor"><label>{t("Título da pauta")}<input autoFocus value={suggestionTitle} onChange={(event) => setSuggestionTitle(event.target.value)} maxLength={255} placeholder={t("Título da sugestão")} /></label><label>{t("Texto da sugestão")}<textarea value={suggestionCaption} onChange={(event) => setSuggestionCaption(event.target.value)} maxLength={5000} placeholder={t("Descreva a ideia da pauta...")} /></label><label>{t("Link de referência")}<input type="url" value={suggestionLink} onChange={(event) => setSuggestionLink(event.target.value)} maxLength={1024} placeholder="https://..." /></label><div className="portal-caption-editor-footer"><small>{suggestionCaption.length}/5000 {t("caracteres")}</small><div><button type="button" className="ghost-button" disabled={suggestionSaving} onClick={resetSuggestionDraft}>{t("Cancelar")}</button></div></div></div> : editingCaption ? <div className="portal-caption-editor"><label htmlFor={`portal-caption-${detail.card.id}`}>{t("Edite o texto abaixo")}</label><textarea id={`portal-caption-${detail.card.id}`} autoFocus value={captionDraft} onChange={(event) => setCaptionDraft(event.target.value)} maxLength={5000} placeholder={t("Escreva a legenda do post...")} /><div className="portal-caption-editor-footer"><small>{captionDraft.length}/5000 {t("caracteres")}</small><div><button type="button" className="ghost-button" disabled={captionSaving} onClick={() => { setCaptionDraft(detail.card.subtitle ?? ""); setEditingCaption(false); }}>{t("Cancelar")}</button><button type="button" className="gradient-button" disabled={captionSaving} onClick={() => void savePortalCaption()}>{t(captionSaving ? "Salvando..." : "Salvar legenda")}</button></div></div></div> : isEditorialPauta ? (captionDraft.trim() ? <p className="pauta-caption-copy">{captionDraft}</p> : null) : <PortalFormattedCaption text={captionDraft} />}
+              {allowManageTags && !isEditorialPauta ? <section className="portal-tag-manager"><header><div><small>{t("ETIQUETAS DO POST")}</small><strong>{selectedPortalTags.length ? `${selectedPortalTags.length} ${t(selectedPortalTags.length === 1 ? "etiqueta selecionada" : "etiquetas selecionadas")}` : t("Nenhuma etiqueta")}</strong></div><button type="button" onClick={() => setTagEditorOpen((open) => !open)}>{t(tagEditorOpen ? "Fechar" : "Gerenciar tags")}</button></header>{selectedPortalTags.length ? <div className="portal-tag-pills">{selectedPortalTags.map((name) => { const tag = portalTagLibrary.find((item) => item.name === name); return <span key={name} style={{ "--portal-tag-color": tag?.color ?? "#7568dc" } as CSSProperties}>{name}</span>; })}</div> : null}{tagEditorOpen ? <div className="portal-tag-editor"><div className="portal-tag-options">{portalTagLibrary.map((tag) => { const selected = selectedPortalTags.includes(tag.name); return <button key={tag.id} type="button" className={selected ? "selected" : ""} onClick={() => setSelectedPortalTags((current) => selected ? current.filter((name) => name !== tag.name) : [...current, tag.name])}><i style={{ backgroundColor: tag.color }} />{tag.name}<span>{selected ? "✓" : "+"}</span></button>; })}{portalTagLibrary.length === 0 ? <p>{t("Nenhuma tag criada. Crie a primeira abaixo.")}</p> : null}</div><div className="portal-tag-create"><input value={newPortalTagName} onChange={(event) => setNewPortalTagName(event.target.value)} maxLength={100} placeholder={t("Nome da nova tag")} /><input type="color" value={newPortalTagColor} onChange={(event) => setNewPortalTagColor(event.target.value)} aria-label={t("Cor da nova tag")} /><button type="button" disabled={portalTagWorking || !newPortalTagName.trim()} onClick={() => void createPortalTag()}>{t("+ Criar")}</button></div><div className="portal-tag-actions"><button type="button" className="ghost-button" disabled={portalTagWorking} onClick={() => { setSelectedPortalTags(detail.card.tags); setTagEditorOpen(false); }}>{t("Cancelar")}</button><button type="button" className="gradient-button" disabled={portalTagWorking} onClick={() => void savePortalTags()}>{t(portalTagWorking ? "Salvando..." : "Salvar etiquetas")}</button></div></div> : null}</section> : null}
+              {!isEditorialPauta ? <div className="portal-card-meta-grid">
                 <article className={`portal-card-meta status ${lifecycle.tone}`}>
                   <span><UiIcon name={lifecycle.icon} /></span>
                   <div><small>{t("Status atual")}</small><strong>{lifecycle.label}</strong></div>
@@ -7162,7 +7165,7 @@ function CardDetailModal({
                   <span><UiIcon name="comment" /></span>
                   <div><small>{t("Comentários")}</small><strong>{detail.comments.length} {t(detail.comments.length === 1 ? "comentário" : "comentários")}</strong></div>
                 </article>
-              </div>
+              </div> : null}
             </section>
 
             <section className="glass-subtle modal-card portal-feedback-card">
@@ -7171,6 +7174,7 @@ function CardDetailModal({
               {canRespond ? <div className="comment-form">
                 <textarea
                   className="comment-input"
+                  aria-label={t("Comentário")}
                   placeholder={
                     mode === "admin"
                       ? "Escreva um comentário interno para este card"
@@ -7219,7 +7223,7 @@ function CardDetailModal({
                   <article key={comment.id} className="comment-item">
                     <div className="comment-meta">
                       <CommentAvatar name={comment.authorName} url={comment.authorAvatarUrl} />
-                      <div><strong>{comment.authorName}</strong><span>{comment.authorRole}</span></div>
+                      <div><strong>{comment.authorName}</strong>{!isEditorialPauta ? <span>{comment.authorRole}</span> : null}</div>
                     </div>
                     <p>{comment.commentText}</p>
                   </article>
@@ -7738,7 +7742,7 @@ function AdminCardEditor({
 
   useEffect(() => {
     const saveAndCloseOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || document.querySelector("dialog[open]")) return;
       event.preventDefault();
       event.stopImmediatePropagation();
       void requestClose();
@@ -7964,7 +7968,7 @@ function AdminCardEditor({
               </EditorField>
             </div>
             {detail.approvalEvents?.some((event) => event.action !== "legacy_snapshot") ? <section className="approval-history-panel"><h4>Histórico de aprovação</h4>{detail.approvalEvents.filter((event) => event.action !== "legacy_snapshot").map((event) => <article key={event.id}><strong>{event.action === "brief_restored" ? "Briefing original recuperado — nova aprovação necessária" : event.action === "brief_updated" ? "Briefing atualizado — revisar novamente" : event.action === "converted_to_post" ? "Pauta convertida em post — nova aprovação" : event.action === "resubmitted" ? "Enviado novamente para aprovação" : event.action === "approved" ? "Aprovado pelo cliente" : "Alteração solicitada"}</strong><small>{event.actorName} · {event.source === "public_link" ? "Link público" : event.source === "portal" ? "Portal" : "Equipe"} · {new Date(event.createdAt).toLocaleString("pt-BR")}</small>{event.commentText ? <p>{event.commentText}</p> : null}<ApprovalBriefSnapshot snapshot={event.afterSnapshot} /></article>)}</section> : null}
-            <AdminEditorialBrief key={card.id} card={card} slug={slug} onRecovered={onRefresh} disabledReason={approvalConflict ? "Confira a revisão atual antes de recuperar o briefing." : saving || uploading || autosaveState === "pending" || autosaveState === "saving" || autosaveState === "recovered" ? "Conclua o salvamento das alterações antes de consultar ou aplicar uma recuperação." : undefined} />
+            <AdminEditorialBrief key={card.id} card={card} slug={slug} onRecovered={onRefresh} hasPreviousApproval={Boolean(detail.approvalEvents?.some(event => event.action === "approved" || event.decision === "approved") || detail.approvalLinks.some(link => link.approvedAt))} disabledReason={approvalConflict ? "Confira a revisão atual antes de recuperar o briefing." : saving || uploading || autosaveState === "pending" || autosaveState === "saving" || autosaveState === "recovered" ? "Conclua o salvamento das alterações antes de consultar ou aplicar uma recuperação." : undefined} />
             <section className="editor-comments">
             <h4>Comentários ({detail.comments.length})</h4>
             {detail.comments.map((comment) => (
@@ -8955,7 +8959,7 @@ function KanbanActivities({ slug }: { slug: string }) {
 }
 
 const EMPTY_BRAND_BRAIN: BrandBrain = { mission: "", vision: "", positioning: "", brandPromise: "", audience: "", audiencePains: [], audienceDesires: [], voice: "", personalityTraits: [], voiceExamples: [], voiceAvoidExamples: [], visualNotes: "", typographyDisplay: "", typographyBody: "", typographyAccent: "", typographySample: "A identidade ganha voz quando cada detalhe fala a mesma língua.", approvedWords: [], avoidWords: [], expressions: [], colors: ["#5b5ce2", "#18b98b", "#f5a41a"], differentiators: [], proofPoints: [], references: [], pillars: [] };
-function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: { slug: string; clientName: string; columns: BoardColumn[]; onSent: () => void; onCountChange?: (count: number) => void }) {
+export function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: { slug: string; clientName: string; columns: BoardColumn[]; onSent: () => void; onCountChange?: (count: number) => void }) {
   const [ideas, setIdeas] = useState<PautaIdea[]>([]);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "draft" | "sent" | "approved">("all");
@@ -9090,7 +9094,7 @@ function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: {
     <div className="pautas-toolbar"><BrandBrainGenerateAction key={slug} slug={slug} onAdded={idea => setIdeas(current => [idea, ...current.filter(item => item.id !== idea.id)])} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar pauta" /><select value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)}><option value="all">Todas</option><option value="draft">Rascunhos</option><option value="sent">Enviadas</option><option value="approved">Aprovadas</option></select></div>
     <div className="pautas-table"><div className="pautas-row pautas-head"><span>Cliente</span><span>Título</span><span>Tipo</span><span>Data</span><span>Status</span><span>Ações</span></div>{visible.map((idea) => {
       const status = idea.status ?? "draft";
-      return <div className="pautas-row" key={idea.id}><span>{clientName}</span><strong className="pauta-title-cell">{idea.mediaUrls?.[0] ? <img src={idea.mediaUrls[0]} alt="" /> : null}<span>{idea.title}{idea.mediaUrls?.length ? <small>{idea.mediaUrls.length} {idea.mediaUrls.length === 1 ? "foto" : "fotos"}</small> : null}</span></strong><span>{pautaTypeLabel(idea.contentType)}</span><span>{new Date(idea.plannedDate || idea.createdAt).toLocaleDateString("pt-BR")}</span><span className={`pauta-status ${status}`}>{status === "approved" ? "Aprovada" : status === "sent" ? "Enviada" : "Rascunho"}</span><span className="pauta-actions"><button onClick={() => openEdit(idea)}>✎</button><button className="delete" onClick={() => deleteIdea(idea.id)}>⌫</button>{status === "draft" ? <button disabled={sending !== null} onClick={() => void send(idea)}>{sending === idea.id ? "..." : "Enviar"}</button> : status === "approved" ? <span className="pauta-approved-mark">✓ Aprovada</span> : "✓"}</span></div>;
+      return <div className="pautas-row" key={idea.id}><span>{clientName}</span><strong className="pauta-title-cell">{idea.mediaUrls?.[0] ? <img src={idea.mediaUrls[0]} alt="" /> : null}<span>{idea.title}{idea.mediaUrls?.length ? <small>{idea.mediaUrls.length} {idea.mediaUrls.length === 1 ? "foto" : "fotos"}</small> : null}</span></strong><span>{pautaTypeLabel(idea.contentType)}</span><span>{new Date(idea.plannedDate || idea.createdAt).toLocaleDateString("pt-BR")}</span><span className={`pauta-status ${status}`}>{status === "approved" ? "Aprovada" : status === "sent" ? "Enviada" : "Rascunho"}</span><span className="pauta-actions"><button aria-label="Editar pauta" onClick={() => openEdit(idea)}>✎</button><button className="delete" aria-label="Excluir pauta" onClick={() => deleteIdea(idea.id)}>⌫</button>{status === "draft" ? <button disabled={sending !== null} onClick={() => void send(idea)}>{sending === idea.id ? "..." : "Enviar"}</button> : status === "approved" ? <span className="pauta-approved-mark">✓ Aprovada</span> : "✓"}</span></div>;
     })}{visible.length === 0 ? <p className="pautas-empty">Nenhuma pauta encontrada. Use a lâmpada na lateral para criar uma.</p> : null}</div>
     {editing ? <div className="pauta-modal-backdrop" onMouseDown={closeEdit}><section className="pauta-modal" onMouseDown={(event) => event.stopPropagation()}><header><h3>{editing.status === "approved" ? "Pauta aprovada" : "Editar pauta"}</h3><button disabled={editingSaving} onClick={closeEdit}>×</button></header>{editing.status === "approved" ? <p className="drawer-helper">Conteúdo aprovado preservado. Para alterar a versão enviada, reabra a aprovação no card.</p> : null}<label>Título<input value={editing.title} onChange={(event) => setEditing({ ...editing, title: event.target.value })} /></label><label>Descrição<textarea value={editing.description} onChange={(event) => setEditing({ ...editing, description: event.target.value })} /></label><EditorialBrief brief={clientEditorialBrief(editing)} caption={editing.caption || editing.description} /><label>Legenda sugerida<textarea value={editing.caption} onChange={(event) => setEditing({ ...editing, caption: event.target.value })} /></label>{editing.internalNotes ? <label>Notas internas<textarea value={editing.internalNotes} onChange={(event) => setEditing({ ...editing, internalNotes: event.target.value })} /></label> : null}<div className="pauta-media-editor"><div><strong>Fotos da pauta</strong><small>Estas imagens aparecerão para o cliente ao revisar a pauta.</small></div>{editing.mediaUrls?.length ? <div className="pauta-media-grid">{editing.mediaUrls.map((url, index) => <figure key={`${url}-${index}`}><img src={url} alt={`Foto ${index + 1} da pauta`} /><button type="button" onClick={() => setEditing({ ...editing, mediaUrls: editing.mediaUrls?.filter((_, itemIndex) => itemIndex !== index) })} aria-label={`Remover foto ${index + 1}`}>×</button></figure>)}</div> : null}<label className="pauta-photo-picker">+ Adicionar fotos <span>JPG, PNG ou WebP · até 12 MB cada</span><input type="file" accept="image/*" multiple onChange={(event) => setEditingMediaFiles((current) => [...current, ...Array.from(event.target.files ?? [])])} /></label>{editingMediaFiles.length ? <div className="pauta-file-list">{editingMediaFiles.map((file, index) => <span key={`${file.name}-${file.lastModified}-${index}`}><b>{file.name}</b><button type="button" onClick={() => setEditingMediaFiles((files) => files.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remover ${file.name}`}>×</button></span>)}</div> : null}</div><BrandBrainAnalyzePanel key={editing.id} slug={slug} pauta={{ title: editing.title, description: editing.description, caption: editing.caption, contentType: editing.contentType }} /><button className="brain-check" onClick={() => setBrainOpen((open) => !open)}>✧ Brand Brain</button>{brainOpen ? <div className="brain-feedback">{avoidHits.length ? <p>Evite: {avoidHits.join(", ")}.</p> : <p>Sem termos a evitar encontrados.</p>}{brain.expressions.slice(0, 3).length ? <p>Expressões da marca: {brain.expressions.slice(0, 3).join(" · ")}</p> : null}</div> : null}{editingError ? <p className="form-error">{editingError}</p> : null}<footer><button className="drawer-secondary-action" disabled={editingSaving} onClick={closeEdit}>Cancelar</button><button className="gradient-button" disabled={editingSaving || editing.status === "approved" || !editing.title.trim()} onClick={() => void saveEdit()}>{editingSaving ? "Enviando fotos..." : "Salvar alterações"}</button></footer></section></div> : null}
   </section>;
@@ -9647,7 +9651,7 @@ function TeamManagementWorkspace({ session, newMemberSignal = 0 }: { session: Se
   </section>;
 }
 
-function PublicApprovalPage() {
+export function PublicApprovalPage() {
   const { token = "" } = useParams();
   const [view, setView] = useState<Awaited<ReturnType<typeof loadPublicApproval>> | null>(null);
   const [message, setMessage] = useState("");
@@ -9675,7 +9679,8 @@ function PublicApprovalPage() {
 
   if (!view) return <main className="public-approval-page"><section className="public-approval-card"><h1>{message || "Abrindo seu post..."}</h1></section></main>;
   const card = mapPublicApprovalCard(view.card);
-  return <main className="public-approval-page"><section className="public-approval-card"><p className="eyebrow">{view.account.name}</p><h1>{card.title}</h1>{card.mediaUrl ? <div className={`media-frame ${card.mediaAspect}`}><img src={card.mediaUrl} alt={card.title} /></div> : null}<EditorialBrief brief={view.card.editorialBrief} caption={card.subtitle} locale={view.account.locale || "pt-BR"} /><div className="public-caption">{card.subtitle || "Sem legenda cadastrada."}</div><label>Seu nome<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Como prefere ser identificado?" /></label><label>Comentário<textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Deixe uma observação, se desejar" /></label><div className="public-approval-actions"><button className="gradient-button" disabled={working} onClick={() => decide(true)}>Aprovar</button><button className="danger-button" disabled={working} onClick={() => decide(false)}>Solicitar alteração</button></div>{message ? <p className="form-feedback">{message}</p> : null}</section></main>;
+  const isEditorialPauta = Boolean(view.card.isBriefApproval || view.card.editorialBrief);
+  return <main className="public-approval-page"><section className={`public-approval-card${isEditorialPauta ? " editorial-pauta-public" : ""}`}><p className="eyebrow">{view.account.name}</p><h1>{card.title}</h1>{card.mediaUrl ? <div className={`media-frame ${card.mediaAspect}`}><img src={card.mediaUrl} alt={card.title} /></div> : null}<EditorialBrief brief={view.card.editorialBrief} caption={card.subtitle} locale={view.account.locale || "pt-BR"} />{isEditorialPauta ? (card.subtitle ? <section className="pauta-caption-section"><h2>Legenda sugerida</h2><p className="pauta-caption-copy">{card.subtitle}</p></section> : null) : <div className="public-caption">{card.subtitle || "Sem legenda cadastrada."}</div>}<label>Seu nome<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Como prefere ser identificado?" /></label><label>Comentário<textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Deixe uma observação, se desejar" /></label><div className="public-approval-actions"><button className="gradient-button" disabled={working} onClick={() => decide(true)}>Aprovar</button><button className="danger-button" disabled={working} onClick={() => decide(false)}>Solicitar alteração</button></div>{message ? <p className="form-feedback" role="status">{message}</p> : null}</section></main>;
 }
 
 function mapPublicApprovalCard(card: { id: string; title: string; caption: string | null; mediaType: string; primaryMediaUrl: string | null; mediaUrls: string[]; externalLinkUrl: string | null; artType: string; status: string[]; tags: string[]; commentsCount: number; scheduledAt: string | null; clientLabel: string }) {
@@ -9707,7 +9712,7 @@ export function App() {
 
   useEffect(() => {
     const closeTopModalOnEscape = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || document.querySelector("dialog[open]")) return;
       const overlays = Array.from(document.querySelectorAll<HTMLElement>('[class*="backdrop"]'))
         .filter((element) => element.getClientRects().length > 0)
         .map((element, index) => ({

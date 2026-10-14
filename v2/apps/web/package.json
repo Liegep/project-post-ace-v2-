@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test:seasonal": "tsx --test tests/seasonalWorkspace.test.tsx",
     "check": "tsc --noEmit -p tsconfig.json",
-    "test:brand-brain-layout": "node --test tests/brandBrainLayout.test.mjs"
+    "test:brand-brain-layout": "node --test tests/brandBrainLayout.test.mjs",
+    "test:pauta-layout": "node --test tests/editorialPautaLayout.test.mjs"
   },
   "dependencies": {
     "@types/react": "^18.3.31",
