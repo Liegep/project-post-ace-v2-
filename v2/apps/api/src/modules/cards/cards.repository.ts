@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { readEditorialBrief } from "./editorial-brief.js";
 import type { Pool, ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import type {
   CreateCardInput,
@@ -14,6 +15,7 @@ type CardRow = RowDataPacket & {
   column_id: string | null;
   title: string;
   caption: string | null;
+  editorial_brief_json?: unknown;
   media_type: string;
   primary_media_url: string | null;
   media_urls_json: unknown;
@@ -33,7 +35,7 @@ type CardRow = RowDataPacket & {
   client_label: string;
   approval_revision: number;
   approval_state: "pending" | "approved" | "changes_requested" | null;
-  latest_approval_action: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "legacy_snapshot" | null;
+  latest_approval_action: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "brief_updated" | "legacy_snapshot" | null;
   priority_level: "high" | "medium" | "normal" | null;
   event_color: string | null;
   comments_count_cache: number;
@@ -70,6 +72,7 @@ function mapCardRow(row: CardRow) {
     columnId: row.column_id,
     title: row.title,
     caption: normalizeCardCaption(row.caption),
+    editorialBrief: readEditorialBrief(row.editorial_brief_json),
     mediaType: row.media_type,
     primaryMediaUrl: row.primary_media_url,
     mediaUrls: parseJsonArray(row.media_urls_json),
@@ -104,7 +107,7 @@ function mapCardRow(row: CardRow) {
 export async function findCardById(db: Pick<Pool, "query">, cardId: string) {
   const [rows] = await db.query<CardRow[]>(
     [
-      "SELECT id, client_account_id, column_id, title, caption, media_type, primary_media_url, media_urls_json, external_link_url, art_type,",
+      "SELECT id, client_account_id, column_id, title, caption, editorial_brief_json, media_type, primary_media_url, media_urls_json, external_link_url, art_type,",
       "status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, DATE_FORMAT(scheduled_at, '%Y-%m-%d %H:%i:%s') AS scheduled_at, scheduled_timezone, published_at, archived, archived_at, client_label, approval_revision, approval_state, priority_level, event_color,",
       "comments_count_cache, created_by_user_id, position, legacy_id, created_at, updated_at,",
       "(SELECT e.action FROM card_approval_events e WHERE e.card_id = kanban_cards.id ORDER BY e.revision DESC LIMIT 1) AS latest_approval_action",
@@ -129,7 +132,7 @@ export async function listCardsByClientAccountId(
   },
 ) {
   let sql = [
-    "SELECT id, client_account_id, column_id, title, caption, media_type, primary_media_url, media_urls_json, external_link_url, art_type,",
+    "SELECT id, client_account_id, column_id, title, caption, editorial_brief_json, media_type, primary_media_url, media_urls_json, external_link_url, art_type,",
     "status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, DATE_FORMAT(scheduled_at, '%Y-%m-%d %H:%i:%s') AS scheduled_at, scheduled_timezone, published_at, archived, archived_at, client_label, approval_revision, approval_state, priority_level, event_color,",
     "comments_count_cache, created_by_user_id, position, legacy_id, created_at, updated_at,",
     "(SELECT e.action FROM card_approval_events e WHERE e.card_id = kanban_cards.id ORDER BY e.revision DESC LIMIT 1) AS latest_approval_action",
@@ -183,8 +186,8 @@ export async function createCard(
   await db.query(
     [
       "INSERT INTO kanban_cards",
-      "(id, client_account_id, column_id, title, caption, media_type, primary_media_url, media_urls_json, external_link_url, art_type, status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, scheduled_at, scheduled_timezone, client_label, priority_level, event_color, created_by_user_id, position)",
-      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "(id, client_account_id, column_id, title, caption, editorial_brief_json, media_type, primary_media_url, media_urls_json, external_link_url, art_type, status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, scheduled_at, scheduled_timezone, client_label, priority_level, event_color, created_by_user_id, position)",
+      "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ].join(" "),
     [
       cardId,
@@ -192,6 +195,7 @@ export async function createCard(
       input.columnId ?? null,
       input.title,
       input.caption ?? null,
+      input.editorialBrief ? JSON.stringify(input.editorialBrief) : null,
       input.mediaType,
       input.primaryMediaUrl ?? null,
       stringifyJson(input.mediaUrls),
@@ -227,7 +231,11 @@ export async function updateCard(
   input: UpdateCardInput,
 ) {
   const fields: string[] = [];
+  if (typeof input.editorialBrief !== "undefined") {
+    fields.push("editorial_brief_json = ?");
+  }
   const params: Array<string | number | null> = [];
+  if (typeof input.editorialBrief !== "undefined") params.push(input.editorialBrief ? JSON.stringify(input.editorialBrief) : null);
 
   if (typeof input.title !== "undefined") {
     fields.push("title = ?");
@@ -308,10 +316,10 @@ export async function updateCard(
 
   const guarded = input.expectedApprovalRevision !== undefined;
   const [result] = await db.query<ResultSetHeader>(
-    `UPDATE kanban_cards SET ${fields.join(", ")} WHERE id = ?${guarded ? " AND approval_revision = ?" : ""}`,
+    `UPDATE kanban_cards SET ${fields.join(", ")} WHERE id = ?${guarded ? " AND approval_revision = ?" : ""}${input.editorialBrief !== undefined ? " AND (approval_state IS NULL OR approval_state <> 'approved')" : ""}`,
     [...params, cardId, ...(guarded ? [input.expectedApprovalRevision] : [])],
   );
-  if (guarded && result.affectedRows === 0) {
+  if ((guarded || input.editorialBrief !== undefined) && result.affectedRows === 0) {
     throw Object.assign(new Error("A aprovação deste post mudou. Reabra o card antes de salvar novamente; seu rascunho foi preservado."), { statusCode: 409 });
   }
 

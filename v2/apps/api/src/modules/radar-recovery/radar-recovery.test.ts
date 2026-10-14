@@ -49,7 +49,7 @@ test("manual recovery preserves the original failure, links AI and creates pendi
  const f=fixture(),request=body();const result=await f.service.recover(auth,params,request);
  assert.equal(result.outcome,"created");assert.equal(f.suggestions.length,1);assert.equal(f.suggestions[0].status,"pending");assert.equal(f.attempts[0].aiRunId,f.metrics[0].id);assert.equal(JSON.stringify(f.root),f.original);
  const again=await f.service.recover(auth,params,request);assert.equal(again.attemptId,result.attemptId);assert.equal(f.requests.length,1);assert.equal(f.attempts.length,1);
- assert.ok(!("sourceSummary" in f.suggestions[0]));assert.doesNotMatch(JSON.stringify(f.attempts)+JSON.stringify(f.metrics),/Synthetic educational|private_forbidden|Concept|mock-snapshot.*Synthetic/);
+ assert.equal(f.suggestions[0].sourceSummary,source.sourceSummary);assert.doesNotMatch(JSON.stringify(f.attempts)+JSON.stringify(f.metrics),/Synthetic educational|private_forbidden|Concept|mock-snapshot.*Synthetic/);
 });
 test("concurrent fresh and repeated requests have one owner and no simultaneous provider calls",async()=>{
  const f=fixture();let release!:()=>void;f.gate(new Promise(r=>{release=r;}));const request=body(),first=f.service.recover(auth,params,request);

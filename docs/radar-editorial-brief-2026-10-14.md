@@ -1,0 +1,95 @@
+# Briefing editorial global — Radar → Pautas → Aprovação
+
+Base: `main`, `e289a7be443d75aa69a5e45fd4f6ec199a901946`. Branch: `codex/radar-editorial-brief`.
+
+## Diagnóstico
+
+O MCP já recebe `sourceSummary`, mas o serviço original usa o texto somente na análise e não o copia para `radar_suggestions`. A tabela original também não tem coluna para ele. O resumo factual ausente não pode ser reconstruído a partir do conceito, do hash ou de uma nova resposta da IA.
+
+`RadarSuggestionsRepository.resolve()` preservava título, descrição, legenda, formato, objetivo e parte da referência. Conceito, gancho, justificativa e data da fonte eram perdidos na conversão. O envio do Banco de Pautas transformava somente título e legenda/descrição em card e não levava o briefing ao portal ou ao link público. Criar o card e vincular a pauta eram duas operações separadas.
+
+A consulta autorizada da Patrícia, pelo MCP desta conversa, localizou duas pautas enviadas para aprovação. Ambas têm título, descrição, legenda, objetivo, título da fonte e URL no banco; ambas não têm conceito, gancho, justificativa, resumo factual ou data da fonte. Foi consultada somente a presença dos campos, sem copiar os textos privados para fixtures ou este relatório. A ferramenta de resumo do card confirma título/status, mas **não expõe o texto do portal**: não se afirma uma inspeção direta da apresentação atual do cliente. Pelo código de envio, apenas título e legenda (com fallback para descrição) são copiados para o card. Nenhum registro real foi alterado.
+
+## Comportamento global
+
+Não há branch, regra, ID ou condição por cliente. Clientes atuais e futuros utilizam os mesmos schemas, repositórios, endpoint e componente visual.
+
+1. O resumo factual vem exclusivamente do pacote enviado pelo Radar. A criação comum e a recuperação manual preservam esse mesmo campo, separado do conteúdo gerado. Ausência continua ausência.
+2. A sugestão guarda `source_summary` junto aos campos editoriais existentes. Aceitar copia conceito, gancho, descrição, justificativa, objetivo, CTA, legenda e referência completa para uma pauta nova. Os indicadores/modelo/evidências do Brand Brain continuam internos no banco de pautas.
+3. O envio usa `POST /api/clients/:clientAccountId/workspace-drawer/pauta-ideas/:ideaId/send`. Reutiliza autenticação e acesso de admin/colaborador ao cliente. Lê a pauta armazenada, bloqueia o cliente e cria o card com briefing e vínculo em **uma transação**. O navegador não fornece o briefing a ser enviado. Repetição com a pauta já vinculada retorna o mesmo card, sem substituí-lo.
+4. `editorial_brief_json` contém somente campos destinados ao cliente: conceito, gancho, descrição, justificativa editorial, objetivo, CTA, título/resumo/URL/data da fonte. Não inclui notas internas, pilares, alinhamento, modelo, hashes, versão ou evidências estratégicas. A leitura aplica a mesma lista explícita; URLs inválidas ou com credenciais não são expostas como links.
+5. O portal e o link público usam `EditorialBrief`. Campos ausentes não criam blocos vazios; textos exatamente iguais à legenda ou a outro campo aparecem uma vez. O título fica no cabeçalho existente. A referência tem link seguro em nova aba e data somente quando válida/disponível. Não há HTML bruto vindo do Radar.
+6. A edição humana de uma pauta enviada também é transacional: banco, campos explicitamente editados do card, versão da legenda e evento `brief_updated` são salvos ou revertidos juntos. A aprovação real do card é conferida sob bloqueio, mesmo se o status do banco estiver desatualizado. A revisão é incrementada; uma tela antiga não pode aprovar outro conteúdo e os links públicos da versão anterior são encerrados. Solicitação de alteração continua `changes_requested` até reenvio explícito. Repetição do mesmo pacote já salvo retorna a revisão atual sem outro evento. Legenda e mídias editadas independentemente no card não são substituídas por valores antigos do banco.
+7. O detalhe interno oferece prévia do briefing no editor de pauta. O detalhe da sugestão também mostra o resumo factual quando disponível. O histórico de aprovação guarda o briefing no snapshot já existente do card; a interface oferece “Briefing desta revisão”. Uma revisão posterior não altera snapshots anteriores.
+
+## Compatibilidade e proteção
+
+- Pautas manuais não precisam ter dados de Radar. São enviados apenas os campos realmente disponíveis. Cards antigos sem briefing continuam exibindo sua legenda normalmente.
+- Uma sugestão já aceita retorna a pauta existente; não há complementação automática ou substituição por replay.
+- Nenhum backfill altera pautas/card/histórico já enviados ou aprovados. Se o dado foi perdido antes, ele permanece ausente. Dados conhecidos em uma pauta antiga ainda em rascunho são usados quando ela for enviada explicitamente.
+- Conteúdo de pautas marcadas como aprovadas não pode ser substituído/resetado pelo editor do banco; manutenção do vínculo é permitida. Alterações de briefing do card recusam estado aprovado e usam a proteção de revisão atual, inclusive em uma corrida com a decisão do cliente. Os ciclos existentes de reabertura/decisão permanecem.
+- O fluxo de envio não cria cards de outra conta nem modifica cards existentes. Pauta marcada como enviada/aprovada sem vínculo exige revisão, em vez de gerar automaticamente outra cópia.
+- As edições explícitas e o ciclo de revisão de cards existentes continuam separados da preservação automática dos dados. Uma falha de rede exige repetir a operação/consultar o vínculo; não há repetição de IA.
+
+## Migration proposta — validada somente em banco descartável
+
+`v2/database/migrations/20261014_radar_editorial_brief.sql` adiciona duas colunas opcionais:
+
+- `radar_suggestions.source_summary MEDIUMTEXT NULL`;
+- `kanban_cards.editorial_brief_json JSON NULL`.
+
+São necessárias para preservar o input factual e um snapshot do conteúdo enviado sem misturá-los à legenda, às notas internas ou aos dados estratégicos. O schema de criação de bancos novos inclui o campo do card. A migration é aditiva, sem UPDATE, backfill, mudanças de FK ou execução automática. **Executada em MariaDB isolado 10.11.19 em 14/10/2026, com autorização específica de validação; nunca em produção.** Reaplicação, falha parcial e preservação histórica foram verificadas no motor real. Detalhes e limite de versão em `docs/radar-editorial-mariadb-validation-2026-10-14.md`.
+
+A aplicação em produção ainda requer aprovação separada. As colunas devem existir **antes de ativar este código no ambiente**, pois as consultas passam a referenciá-las. Merge/deploy e migration continuam não autorizados. A presença de `IF NOT EXISTS` permite repetição, mas não substitui conferir tipos/estado do schema autorizado. Reverter o código mantendo os campos opcionais preserva os dados; não apagar colunas/histórico.
+
+## Validação
+
+Node 22.23.3; todos os arquivos de `scripts.test` da API, incluindo testes web, com `--test-concurrency=2`:
+
+- **651 testes passaram**, zero falhas/skip/TODO; 23 regressões adicionais.
+- Typecheck API/web aprovado.
+- Build API/web aprovado, com o aviso existente de chunks maiores que 500 kB.
+- `git diff --check` aprovado.
+- Renderização visual local do componente com conteúdo inteiramente sintético; sem conexão à API de produção.
+
+Cobertura nova: retenção na aceitação, metadados legados nulos, input factual na entrada MCP/recuperação, whitelist e URLs, consistência card/snapshot, proteção de aprovação, edição da pauta aprovada, envio transacional e rollback, resultado ambíguo com replay, isolamento por cliente, pauta manual, ausência de reconstrução, deduplicação visual, escape HTML, datas, renderização histórica, edição enviada atômica, revisão desatualizada, aprovação concorrente, rollback do histórico/legenda/vínculo, decisão de alteração preservada, replay da edição, dados editados separadamente no card e rejeição de novos metadados inválidos.
+
+Nenhuma geração real de IA, sugestão real, aprovação real, migration em produção, merge ou deploy foi executado. A leitura da Patrícia é diagnóstico, não implementação específica ou reparação de registros históricos.
+
+## Arquivos alterados no PR
+
+- `docs/radar-editorial-brief-2026-10-14.md`
+- `v2/apps/api/db/schema.sql`
+- `v2/apps/api/package.json`
+- `v2/apps/api/src/modules/approvals/approval-history.repository.ts`
+- `v2/apps/api/src/modules/approvals/approval-workflow.test.ts`
+- `v2/apps/api/src/modules/cards/cards.repository.ts`
+- `v2/apps/api/src/modules/cards/cards.schemas.ts`
+- `v2/apps/api/src/modules/cards/cards.service.ts`
+- `v2/apps/api/src/modules/cards/editorial-brief.test.ts`
+- `v2/apps/api/src/modules/cards/editorial-brief.ts`
+- `v2/apps/api/src/modules/clients/clients.routes.ts`
+- `v2/apps/api/src/modules/clients/pauta-edit.policy.ts`
+- `v2/apps/api/src/modules/clients/pauta-edit.service.ts`
+- `v2/apps/api/src/modules/clients/pauta-send.service.ts`
+- `v2/apps/api/src/modules/clients/pauta-send.test.ts`
+- `v2/apps/api/src/modules/clients/pauta-editorial.mysql.test.ts`
+- `docs/radar-editorial-mariadb-validation-2026-10-14.md`
+- `v2/apps/api/src/modules/mcp/mcp.radar.mysql.test.ts`
+- `v2/apps/api/src/modules/mcp/mcp.radar.service.ts`
+- `v2/apps/api/src/modules/mcp/mcp.radar.test.ts`
+- `v2/apps/api/src/modules/radar-recovery/radar-recovery.mysql.test.ts`
+- `v2/apps/api/src/modules/radar-recovery/radar-recovery.service.ts`
+- `v2/apps/api/src/modules/radar-recovery/radar-recovery.test.ts`
+- `v2/apps/api/src/modules/radar-suggestions/radar-editorial.test.ts`
+- `v2/apps/api/src/modules/radar-suggestions/radar-suggestions.mysql.test.ts`
+- `v2/apps/api/src/modules/radar-suggestions/radar-suggestions.repository.ts`
+- `v2/apps/api/src/modules/radar-suggestions/radar-suggestions.schemas.ts`
+- `v2/apps/web/src/App.tsx`
+- `v2/apps/web/src/EditorialBrief.tsx`
+- `v2/apps/web/src/RadarSuggestionsWidget.tsx`
+- `v2/apps/web/src/api.ts`
+- `v2/apps/web/src/styles.css`
+- `v2/apps/web/src/types.ts`
+- `v2/apps/web/tests/editorialBrief.test.tsx`
+- `v2/database/migrations/20261014_radar_editorial_brief.sql`

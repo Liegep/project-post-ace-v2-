@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS kanban_cards (
   column_id CHAR(36) NULL,
   title VARCHAR(255) NOT NULL,
   caption TEXT NULL,
+  editorial_brief_json JSON NULL,
   media_type VARCHAR(50) NOT NULL DEFAULT 'image',
   primary_media_url VARCHAR(512) NULL,
   media_urls_json JSON NULL,

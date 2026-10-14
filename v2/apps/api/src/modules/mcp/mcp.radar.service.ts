@@ -36,7 +36,7 @@ export class McpRadarService {
     try {
       const result = await this.ai.generateRadarSuggestion(input, context);
       const { format, ...fields } = result.shouldCreate ? result.suggestion : { format: "" };
-      const parsedSuggestion = result.shouldCreate ? radarSuggestionInputSchema.safeParse({ ...fields, contentType: format, sourceTitle: input.sourceTitle, sourceUrl: input.sourceUrl, sourceDate: input.sourceDate, radarName: input.radarName, aiModel: this.model, brandBrainVersion: context.brandBrainVersion, brandBrainContextHash: context.contextHash }) : null;
+      const parsedSuggestion = result.shouldCreate ? radarSuggestionInputSchema.safeParse({ ...fields, contentType: format, sourceTitle: input.sourceTitle, sourceSummary: input.sourceSummary, sourceUrl: input.sourceUrl, sourceDate: input.sourceDate, radarName: input.radarName, aiModel: this.model, brandBrainVersion: context.brandBrainVersion, brandBrainContextHash: context.contextHash }) : null;
       if (parsedSuggestion && !parsedSuggestion.success) throw brandBrainValidationError("schema_invalid");
       const suggestion = parsedSuggestion?.data ?? null;
       const finished = await this.store.finish(claim.run.id, input.clientId, auth.user.id, suggestion);
