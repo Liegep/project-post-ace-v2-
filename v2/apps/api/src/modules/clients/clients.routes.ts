@@ -1,3 +1,5 @@
+import { preservesApprovedPauta } from "./pauta-edit.policy.js";
+import { sendPautaForApproval } from "./pauta-send.service.js";
 import { calculateDashboardStatistics, loadDashboardStatistics } from "./dashboard-statistics.js";
 import { validTimeZone } from "../../lib/zoned-date-time.js";
 import type { FastifyPluginAsync } from "fastify";
@@ -571,6 +573,8 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
       // AI previews carry a stable ID: retries must not overwrite later human edits.
       const existingAiIdea = idea.createdBy === "ai_brand_brain" ? pautaIdeas.find((item) => item && typeof item === "object" && (item as Record<string, unknown>).id === idea.id) : undefined;
       if (existingAiIdea) { await connection.commit(); return { ok: true, idea: existingAiIdea }; }
+      const existingApproved = pautaIdeas.find(item => item && typeof item === "object" && (item as Record<string, unknown>).id === idea.id && (item as Record<string, unknown>).status === "approved");
+      if (existingApproved) throw app.httpErrors.conflict("O conteúdo desta pauta já foi aprovado e está preservado.");
       const nextIdeas = [idea, ...pautaIdeas.filter((item) => !item || typeof item !== "object" || (item as Record<string, unknown>).id !== idea.id)];
       await connection.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...drawer, pautaIdeas: nextIdeas }), clientAccountId]);
       await connection.commit();
@@ -581,6 +585,13 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     } finally {
       connection.release();
     }
+  });
+
+  app.post("/clients/:clientAccountId/workspace-drawer/pauta-ideas/:ideaId/send", async request => {
+    assertInternalAccess(request);
+    const {clientAccountId, ideaId} = request.params as {clientAccountId:string;ideaId:string};
+    assertClientAccess(request, clientAccountId, ["admin", "colaborador"]);
+    return sendPautaForApproval(app, clientAccountId, ideaId, request.auth!.user.id);
   });
 
   app.patch("/clients/:clientAccountId/workspace-drawer/pauta-ideas/:ideaId", async (request) => {
@@ -603,7 +614,11 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
       let updatedIdea: Record<string, unknown> | null = null;
       const nextIdeas = pautaIdeas.map((item) => {
         if (!item || typeof item !== "object" || (item as Record<string, unknown>).id !== ideaId) return item;
-        updatedIdea = { ...(item as Record<string, unknown>), ...patch, id: ideaId };
+        const existing = item as Record<string, unknown>;
+        if (!preservesApprovedPauta(existing, patch)) {
+          throw app.httpErrors.conflict("O conteúdo desta pauta já foi aprovado e está preservado.");
+        }
+        updatedIdea = { ...existing, ...patch, id: ideaId };
         return updatedIdea;
       });
       if (!updatedIdea) throw app.httpErrors.notFound("Pauta não encontrada.");

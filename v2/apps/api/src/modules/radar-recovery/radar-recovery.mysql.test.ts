@@ -19,7 +19,7 @@ import { RadarRecoveryService } from "./radar-recovery.service.js";
 const socketPath = process.env.RADAR_TEST_SOCKET;
 if (!socketPath || !/^\/(?:private\/)?tmp\/radar-mariadb-[^/]+\/server\.sock$/.test(socketPath)) throw Error("Use apenas o socket temporário /tmp/radar-mariadb-*/server.sock.");
 const schema = readFileSync(new URL("../../../db/schema.sql", import.meta.url), "utf8").split("-- Additive foundation only.")[0];
-const migrations = ["20261007_radar_suggestions_foundation.sql", "20261007_brand_brain_ai_runs.sql", "20261007_radar_source_runs.sql"].map(name => readFileSync(new URL(`../../../../../database/migrations/${name}`, import.meta.url), "utf8"));
+const migrations = ["20261007_radar_suggestions_foundation.sql", "20261007_brand_brain_ai_runs.sql", "20261007_radar_source_runs.sql", "20261014_radar_editorial_brief.sql"].map(name => readFileSync(new URL(`../../../../../database/migrations/${name}`, import.meta.url), "utf8"));
 const migration = readFileSync(new URL("../../../../../database/migrations/20261012_radar_recovery_attempts.sql", import.meta.url), "utf8");
 let server: mysql.Connection;
 before(async () => { server = await mysql.createConnection({ socketPath, user: "root", multipleStatements: true }); });

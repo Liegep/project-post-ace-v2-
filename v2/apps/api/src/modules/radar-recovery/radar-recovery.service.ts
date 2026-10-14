@@ -50,9 +50,9 @@ export class RadarRecoveryService {
       let suggestion=null;
       if(result.shouldCreate) {
         const {format,...fields}=result.suggestion;
-        const {sourceSummary,...sourceMetadata}=source;
+        const sourceMetadata=source;
         const parsedSuggestion=radarSuggestionInputSchema.safeParse({...fields,contentType:format,...sourceMetadata,aiModel:this.model,brandBrainVersion:context.brandBrainVersion,brandBrainContextHash:context.contextHash});
-        // sourceSummary is input only and must never be persisted as an extra suggestion field.
+        // Preserve the reviewed factual input separately from generated editorial text.
         if(!parsedSuggestion.success) throw brandBrainValidationError("schema_invalid");
         suggestion=parsedSuggestion.data;
       }

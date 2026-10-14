@@ -1,3 +1,4 @@
+import type { EditorialBriefData } from "./EditorialBrief";
 import { ACCESS_TOKEN_KEY } from "./authApi";
 import type {
   AdminWorkspacePreview,
@@ -313,6 +314,7 @@ type ApiPortalAccountItem = {
 };
 
 type ApiBoardCard = {
+  editorialBrief?: EditorialBriefData | null;
   approvalRevision?: number;
   approvalState?: "pending" | "approved" | "changes_requested" | null;
   latestApprovalAction?: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "legacy_snapshot" | null;
@@ -730,6 +732,7 @@ function mapCard(card: ApiBoardCard, tagColors: Record<string, string> = {}): Bo
     id: card.id,
     title: card.title,
     subtitle: card.caption ?? undefined,
+    editorialBrief: card.editorialBrief ?? null,
     mediaUrl:
       card.primaryMediaUrl ??
       card.mediaUrls[0],
@@ -1146,6 +1149,7 @@ export async function createAdminCardBySlug(
     columnId: string | null;
     title: string;
     caption: string | null;
+    editorialBrief?: EditorialBriefData | null;
     primaryMediaUrl: string | null;
     externalLinkUrl: string | null;
     artType: string;
@@ -1183,6 +1187,7 @@ export async function updateAdminCardBySlug(
     expectedApprovalRevision: number;
     title: string;
     caption: string | null;
+    editorialBrief?: EditorialBriefData | null;
     mediaType: string;
     primaryMediaUrl: string | null;
     mediaUrls: string[];
@@ -1722,7 +1727,7 @@ export async function loadPublicApproval(token: string) {
     const payload = (await response.json().catch(() => null)) as { message?: string } | null;
     throw new Error(payload?.message ?? "Não foi possível abrir este link de aprovação.");
   }
-  return response.json() as Promise<{ account: { name: string }; card: ApiBoardCard; approvalLink: ApiApprovalLink }>;
+  return response.json() as Promise<{ account: { name: string; locale?: string }; card: ApiBoardCard; approvalLink: ApiApprovalLink }>;
 }
 
 export async function submitPublicApproval(token: string, input: { approved: boolean; commentText?: string; requesterName?: string }) {
@@ -1962,7 +1967,7 @@ export async function downloadBriefAttachment(base:string,id:string,attachment:B
 
 // Radar review reads are separate from the Dashboard overview; detail is fetched on demand.
 export type RadarSuggestionSummary = { id: string; clientAccountId: string; clientName: string; title: string; contentType: string; pillar: string | null; alignmentScore: number | null; sourceTitle: string; sourceDate: string | null; createdAt: string };
-export type RadarSuggestionDetail = RadarSuggestionSummary & { concept: string; hook: string; description: string; objective: string; rationale: string; cta: string | null; captionSuggestion: string | null; sourceUrl: string | null; radarName: string; basedOn: string[] };
+export type RadarSuggestionDetail = RadarSuggestionSummary & { concept: string; hook: string; description: string; objective: string; rationale: string; cta: string | null; captionSuggestion: string | null; sourceUrl: string | null; sourceSummary?: string | null; radarName: string; basedOn: string[] };
 export type RadarSuggestionsPage = { items: RadarSuggestionSummary[]; total: number; hasMore: boolean; limit: number; offset: number };
 export function loadRadarSuggestions(offset = 0) { return fetchJson<RadarSuggestionsPage>(`/api/radar-suggestions?limit=3&offset=${offset}`); }
 export function loadRadarSuggestion(clientId: string, id: string) { return fetchJson<{ suggestion: RadarSuggestionDetail }>(`/api/clients/${encodeURIComponent(clientId)}/radar-suggestions/${encodeURIComponent(id)}`); }
@@ -1986,4 +1991,9 @@ export const refinePautaWithBrandBrain = (slug: string, input: { idea: BrandBrai
 
 export async function analyzeAdminReport(clientAccountId: string, reportId: string, snapshot: Omit<ClientReport, "id" | "clientAccountId" | "metaDestinationName" | "status" | "publishedAt" | "createdAt" | "updatedAt">) {
   return sendJson<import("./reportAnalysis").ReportAnalysisResult>(`/api/clients/${encodeURIComponent(clientAccountId)}/reports/${encodeURIComponent(reportId)}/ai-analysis`, { method: "POST", body: JSON.stringify({ snapshot }) });
+}
+
+export async function sendAdminPautaForApprovalBySlug(slug: string, ideaId: string) {
+  const client = await findAdminClientBySlug(slug);
+  return sendJson<{card:ApiBoardCard;created:boolean}>(`/api/clients/${client.id}/workspace-drawer/pauta-ideas/${encodeURIComponent(ideaId)}/send`, {method:"POST",body:"{}"});
 }

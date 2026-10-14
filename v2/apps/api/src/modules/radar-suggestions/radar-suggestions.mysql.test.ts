@@ -33,7 +33,7 @@ async function fixture() {
     await pool.query("INSERT INTO users (id, full_name, email, password_hash, global_role) VALUES (?, 'Equipe', 'test@invalid.test', 'unused', 'super_admin')", [actorId]);
     const drawer = JSON.stringify({ brandBrain: { positioning: "Oficial" }, pautaIdeas: [{ id: "legacy", title: "Observe o contexto", status: "approved", cardId: "legacy-card" }], links: ["keep"], custom: { nested: true } });
     await pool.query("INSERT INTO client_accounts (id, name, slug, portal_title, workspace_drawer_json) VALUES (?, 'A', 'a', 'Portal A', ?), (?, 'B', 'b', 'Portal B', ?)", [clientA, drawer, clientB, drawer]);
-    await pool.query(migration);
+    await pool.query(migration); await pool.query(readFileSync(new URL("../../../../../database/migrations/20261014_radar_editorial_brief.sql", import.meta.url), "utf8"));
     const repository = new RadarSuggestionsRepository(pool);
     return { database, pool, repository, service: new RadarSuggestionsService(repository), drawer, close };
   } catch (error) { await close(); throw error; }

@@ -1,3 +1,4 @@
+import type { EditorialBriefData } from "./EditorialBrief";
 export type CardPriority = "high" | "medium" | "normal";
 
 export type BoardCard = {
@@ -9,6 +10,7 @@ export type BoardCard = {
   id: string;
   title: string;
   subtitle?: string;
+  editorialBrief?: EditorialBriefData | null;
   mediaUrl?: string;
   mediaUrls?: string[];
   mediaType?: string;
@@ -74,6 +76,8 @@ export type ApprovalEvent = {
   id: string; revision: number; action: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "legacy_snapshot";
   decision: string | null; actorName: string; actorRole: string; source: string;
   commentText: string | null; createdAt: string;
+  beforeSnapshot?: {editorialBrief?:EditorialBriefData | null;caption?:string | null} | string;
+  afterSnapshot?: {editorialBrief?:EditorialBriefData | null;caption?:string | null} | string;
 };
 
 export type CardDetail = {

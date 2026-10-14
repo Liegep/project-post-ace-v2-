@@ -346,6 +346,9 @@ export async function updateKanbanCard(
   if (input.expectedApprovalRevision !== undefined && input.expectedApprovalRevision !== card.approvalRevision) {
     throw app.httpErrors.conflict("A aprovação deste post mudou. Reabra o card antes de salvar novamente; seu rascunho foi preservado.");
   }
+  if (input.editorialBrief !== undefined && inferredApprovalState(card) === "approved") {
+    throw app.httpErrors.conflict("O briefing aprovado está preservado. Reabra a aprovação antes de alterar sua versão.");
+  }
   const convertingBrief = isBriefApprovalConversion(card, input);
   if (card.approvalState && !convertingBrief) {
     if (input.clientLabel !== undefined && input.clientLabel !== card.clientLabel) {

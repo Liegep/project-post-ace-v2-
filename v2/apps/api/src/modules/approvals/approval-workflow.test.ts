@@ -259,3 +259,16 @@ test("pauta conversion preserves its decision and old tokens but requires indepe
     assert.equal(f.sql.prepare("SELECT COUNT(*) AS n FROM card_activity_events").get()!.n, 2);
   } finally { await f.close(); }
 });
+
+test("approval decisions and later revisions keep the client briefing snapshot immutable", async () => {
+ const f=await fixture();try {
+  const original={concept:"Original concept",sourceSummary:"Original factual context",sourceUrl:"https://example.invalid/news",sourceDate:"2026-10-14"};
+  f.sql.prepare("UPDATE kanban_cards SET editorial_brief_json=?").run(JSON.stringify(original));
+  await decideCardApproval(f.app,"account","post",client,{approved:true});
+  const event=f.sql.prepare("SELECT after_json FROM card_approval_events WHERE revision=1").get()!;
+  assert.deepEqual(JSON.parse(event.after_json as string).editorialBrief,original);
+  await resubmitCardApproval(f.app,"account","post",admin,1);
+  await updateCard(f.pool,"post",{editorialBrief:{concept:"Revised direction"},expectedApprovalRevision:2});
+  assert.deepEqual(JSON.parse(f.sql.prepare("SELECT after_json FROM card_approval_events WHERE revision=1").get()!.after_json as string).editorialBrief,original);
+ } finally {await f.close();}
+});

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { editorialBriefSchema } from "./editorial-brief.js";
 
 const nullableString = z.string().min(1).nullable().optional();
 const mediaUrlSchema = z
@@ -27,6 +28,7 @@ export const createCardSchema = z.object({
   columnId: z.string().min(1).nullable().optional(),
   title: z.string().min(1).max(255),
   caption: z.string().nullable().optional(),
+  editorialBrief: editorialBriefSchema.nullable().optional(),
   mediaType: z.string().min(1).max(50).default("image"),
   primaryMediaUrl: mediaUrlSchema.nullable().optional(),
   mediaUrls: z.array(mediaUrlSchema).default([]),
@@ -49,6 +51,7 @@ export const updateCardSchema = z.object({
   expectedApprovalRevision: z.number().int().nonnegative().optional(),
   title: z.string().min(1).max(255).optional(),
   caption: z.string().nullable().optional(),
+  editorialBrief: editorialBriefSchema.nullable().optional(),
   mediaType: z.string().min(1).max(50).optional(),
   primaryMediaUrl: mediaUrlSchema.nullable().optional(),
   mediaUrls: z.array(mediaUrlSchema).optional(),
