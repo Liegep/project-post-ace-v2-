@@ -11633,3 +11633,8 @@ button.agenda-more { border:0;background:transparent;cursor:pointer;padding:5px;
   .login-shell .login-product-preview::after { display: none; }
   .login-intro .login-primary, .login-intro .login-showcase-panel { opacity: 1; visibility: visible; pointer-events: auto; transform: none; }
 }
+
+.editorial-brief{padding:24px;border:1px solid #e4e5ef;border-radius:18px;background:linear-gradient(135deg,#fff,#faf9ff);color:#27324b;margin:18px 0;min-width:0}
+.editorial-brief header span,.editorial-brief footer>span{font-size:.65rem;font-weight:650;letter-spacing:.09em;color:#817493}
+.editorial-brief h4{margin:6px 0 20px;font-size:1.12rem;font-weight:600}.editorial-brief dl{display:grid;gap:20px;margin:0}.editorial-brief dt{font-size:.76rem;font-weight:650;color:#6f6680;margin-bottom:6px}.editorial-brief dd{margin:0;font-size:.9rem;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.editorial-brief footer{display:grid;gap:8px;padding-top:20px;margin-top:24px;border-top:1px solid #e9e5ef}.editorial-brief a{color:#6953bd;text-decoration:none;line-height:1.5;overflow-wrap:anywhere}.editorial-brief a:hover{text-decoration:underline}.editorial-brief footer small{color:#7b8193;font-size:.75rem}
+@media(max-width:640px){.editorial-brief{padding:18px;border-radius:14px}.editorial-brief dd{font-size:.85rem}}

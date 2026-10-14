@@ -4,13 +4,13 @@ import type { RadarSuggestion, RadarSuggestionInput, RadarSuggestionQuery, Radar
 const fields = {
   title: "title", concept: "concept", hook: "hook", description: "description", contentType: "content_type",
   pillar: "pillar", objective: "objective", rationale: "rationale", cta: "cta", captionSuggestion: "caption_suggestion",
-  alignmentScore: "alignment_score", sourceTitle: "source_title", sourceUrl: "source_url", sourceDate: "source_date",
+  alignmentScore: "alignment_score", sourceTitle: "source_title", sourceSummary: "source_summary", sourceUrl: "source_url", sourceDate: "source_date",
   radarName: "radar_name", aiModel: "ai_model", brandBrainVersion: "brand_brain_version", brandBrainContextHash: "brand_brain_context_hash",
 } as const;
 // Read TIMESTAMP instants in SQL, independent of the mysql2/device timezone.
 const selection = "*, UNIX_TIMESTAMP(created_at) AS created_epoch, UNIX_TIMESTAMP(updated_at) AS updated_epoch, UNIX_TIMESTAMP(accepted_at) AS accepted_epoch, UNIX_TIMESTAMP(dismissed_at) AS dismissed_epoch";
 function suggestion(row: RowDataPacket): RadarSuggestion {
-  const data = Object.fromEntries(Object.entries(fields).map(([key, column]) => [key, row[column]])) as Omit<RadarSuggestionInput, "basedOn">;
+  const data = Object.fromEntries(Object.entries(fields).map(([key, column]) => [key, row[column] ?? null])) as Omit<RadarSuggestionInput, "basedOn">;
   const iso = (value: string | number | null) => value == null ? null : new Date(Number(value) * 1000).toISOString();
   return { ...data, basedOn: typeof row.based_on_json === "string" ? JSON.parse(row.based_on_json) : row.based_on_json,
     id: row.id, clientAccountId: row.client_account_id, status: row.status, sourceKey: row.source_key, dedupeHash: row.dedupe_hash,
@@ -70,7 +70,7 @@ export class RadarSuggestionsRepository {
         const now = new Date().toISOString();
         const pauta: RadarPauta = { id: randomUUID(), title: item.title, description: item.description, caption: item.captionSuggestion ?? "", contentType: item.contentType,
           status: "draft", createdAt: now, updatedAt: now, createdBy: "radar_ai", radarSuggestionId: item.id, radarSource: item.radarName,
-          sourceTitle: item.sourceTitle, sourceUrl: item.sourceUrl, pillar: item.pillar, objective: item.objective };
+          concept: item.concept, hook: item.hook, rationale: item.rationale, sourceSummary: item.sourceSummary ?? null, sourceDate: item.sourceDate, cta: item.cta, basedOn: item.basedOn, alignmentScore: item.alignmentScore, aiModel: item.aiModel, brandBrainVersion: item.brandBrainVersion, brandBrainContextHash: item.brandBrainContextHash, sourceTitle: item.sourceTitle, sourceUrl: item.sourceUrl, pillar: item.pillar, objective: item.objective };
         await connection.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...drawer, pautaIdeas: [pauta, ...ideas] }), clientId]);
         await connection.query("UPDATE radar_suggestions SET status = 'accepted', accepted_pauta_id = ?, accepted_by_user_id = ?, accepted_at = CURRENT_TIMESTAMP(3) WHERE client_account_id = ? AND id = ?", [pauta.id, userId, clientId, id]);
         await connection.commit(); return { status: "accepted" as const, pauta, created: true };

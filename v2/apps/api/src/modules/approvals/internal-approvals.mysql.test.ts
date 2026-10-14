@@ -7,13 +7,14 @@ import Fastify from "fastify";
 import type { AuthContext } from "../auth/auth.types.js";
 import { httpErrorsPluginRegistered } from "../../plugins/http-errors.js";
 import { internalApprovalRoutes } from "./internal-approvals.routes.js";
+import { ensureApprovalStorage, recordApprovalEvent } from "./approval-history.repository.js";
 import { demoReviewer } from "./internal-reviewers.repository.js";
 
 // No .env or TCP fallback. Only a disposable server created for this task.
 const socketPath = process.env.INTERNAL_APPROVAL_TEST_SOCKET;
 if (!socketPath || !/^\/(?:private\/)?tmp\/internal-approval-mariadb-[^/]+\/server\.sock$/.test(socketPath)) throw Error("Use a disposable /tmp/internal-approval-mariadb-*/server.sock socket.");
 
-test("MariaDB: actual migration, both sessions, real recipient IDs, cross-connection inbox and rollback", async () => {
+test("MariaDB: actual migration, both sessions, real recipient IDs, cross-connection inbox, preserved editorial brief and rollback", async () => {
   const server = await mysql.createConnection({ socketPath, user: "root", multipleStatements: true });
   const database = `internal_approval_test_${randomUUID().replace(/-/g, "")}`;
   await server.query(`CREATE DATABASE \`${database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
@@ -25,9 +26,12 @@ test("MariaDB: actual migration, both sessions, real recipient IDs, cross-connec
     auth = { user: { id, fullName: id === ids.aline ? "Aline" : "Liege", email: "test@invalid.test", globalRole, isActive: true, locale: "pt", avatarUrl: null }, memberships: globalRole === "super_admin" ? [] : [{ clientAccountId: ids.client, membershipRole: "admin", portalAccessLevel: "admin", isPrimary: true, clientSlug: "synthetic", clientName: "Synthetic", ownerUserId: null }] };
   };
   try {
-    // Use the application's unmodified base DDL, including native FK types.
-    const schema = readFileSync(new URL("../../../db/schema.sql", import.meta.url), "utf8").split("-- Additive foundation only.")[0];
+    // Reconstruct the pre-editorial schema and apply both PR migrations together.
+    const schema = readFileSync(new URL("../../../db/schema.sql", import.meta.url), "utf8").split("-- Additive foundation only.")[0].replace("  editorial_brief_json JSON NULL,\n", "");
     await db.query(schema);
+    await db.query(readFileSync(new URL("../../../../../database/migrations/20261007_radar_suggestions_foundation.sql", import.meta.url), "utf8"));
+    await db.query(readFileSync(new URL("../../../../../database/migrations/20261014_radar_editorial_brief.sql", import.meta.url), "utf8"));
+    await ensureApprovalStorage(db);
     const migration = readFileSync(new URL("../../../../../database/migrations/20261014_internal_approval_requests.sql", import.meta.url), "utf8");
     for (const [id, name, email, role] of [
       [ids.aline, "Aline", "aline@invalid.test", "admin"], [ids.liege, "Liege", "hello@invalid.test", "super_admin"],
@@ -36,6 +40,14 @@ test("MariaDB: actual migration, both sessions, real recipient IDs, cross-connec
     await db.query("INSERT INTO client_accounts (id,name,slug,portal_title) VALUES (?, 'Synthetic', 'synthetic', 'Synthetic')", [ids.client]);
     for (const id of [ids.aline, ids.carlos]) await db.query("INSERT INTO client_memberships (id,user_id,client_account_id,membership_role) VALUES (?, ?, ?, 'colaborador')", [randomUUID(), id, ids.client]);
     await db.query("INSERT INTO kanban_cards (id,client_account_id,title) VALUES (?, ?, 'Synthetic card')", [ids.card, ids.client]);
+    const brief = { concept: "Conceito editorial preservado", hook: "Gancho", description: "Descrição 🎨", rationale: "Justificativa", objective: "Educar", sourceSummary: "Resumo factual da fonte", sourceUrl: "https://example.invalid/source", sourceDate: "2026-10-14" };
+    await db.query("UPDATE kanban_cards SET caption = 'Legenda preservada', editorial_brief_json = ?, approval_revision = 2, approval_state = 'pending' WHERE id = ?", [JSON.stringify(brief), ids.card]);
+    await recordApprovalEvent(db, { cardId: ids.card, revision: 2, action: "brief_updated", decision: "pending", source: "admin", actor: { userId: ids.aline, name: "Aline", role: "admin" }, before: { editorialBrief: { description: "Versão anterior" } }, after: { editorialBrief: brief } });
+    const editorialState = async () => ({
+      card: (await db.query<RowDataPacket[]>("SELECT title, caption, editorial_brief_json, approval_revision, approval_state FROM kanban_cards WHERE id = ?", [ids.card]))[0],
+      history: (await db.query<RowDataPacket[]>("SELECT * FROM card_approval_events WHERE card_id = ? ORDER BY revision", [ids.card]))[0],
+    });
+    const editorialBefore = await editorialState();
     const [before] = await db.query<RowDataPacket[]>("SELECT id,email,is_active FROM users ORDER BY id");
     await db.query(migration);
     await db.query(migration);
@@ -65,11 +77,17 @@ test("MariaDB: actual migration, both sessions, real recipient IDs, cross-connec
     const inbox = (await app.inject("/api/internal-approvals/inbox")).json().items;
     assert.equal(inbox.length, 1); assert.deepEqual(inbox[0].recipients, [ids.liege]);
     assert.equal(inbox[0].message, "Revisão com acentos 🎨");
+    assert.equal(inbox[0].requestedByUserId, ids.aline);
+    assert.equal(inbox[0].commentId, sent.json().commentId);
+    assert.deepEqual(await editorialState(), editorialBefore);
+    session(demoReviewer.id, "super_admin");
+    assert.deepEqual((await app.inject("/api/internal-approvals/inbox")).json().items, []);
     // Force a native failure after the comment is inserted, to verify rollback.
     await db.query("CREATE TRIGGER fail_synthetic_request BEFORE INSERT ON internal_approval_requests FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'synthetic failure'");
     session(ids.aline, "admin");
     assert.equal((await app.inject({ method: "POST", url, payload: { recipientIds: [ids.liege], message: "Must roll back" } })).statusCode, 500);
     const [counts] = await db.query<RowDataPacket[]>("SELECT (SELECT COUNT(*) FROM card_comments) AS comments, (SELECT COUNT(*) FROM internal_approval_requests) AS requests, comments_count_cache FROM kanban_cards WHERE id = ?", [ids.card]);
+    assert.deepEqual(await editorialState(), editorialBefore);
     assert.equal(counts[0].comments, 1); assert.equal(counts[0].requests, 2); assert.equal(counts[0].comments_count_cache, 1);
     const [version] = await server.query<RowDataPacket[]>("SELECT VERSION() AS version, @@skip_networking AS skipNetworking");
     console.log(version[0]);

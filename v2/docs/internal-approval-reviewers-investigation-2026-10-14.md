@@ -1,6 +1,6 @@
 # Aprovação interna — investigação e correção para revisão
 
-Branch: `codex/internal-approval-reviewers`, criada em worktree própria a partir de `origin/main` atualizado (`e289a7be`). Nenhum arquivo do checkout compartilhado foi editado. Não houve merge, deploy, aplicação de migração ou alteração de usuários/dados em produção.
+Branch: `codex/internal-approval-reviewers`, em worktree própria. Atualizada com o main `f40b36c540d0be8bc6fd89ded0bee7def2580645`, que incorpora o PR #38. Nenhum arquivo do checkout compartilhado foi editado. O PR #39 não foi incorporado ao main; não houve deploy, aplicação de migração ou alteração de usuários/dados em produção.
 
 ## Causa dos cenários A e B
 
@@ -44,15 +44,22 @@ A inbox usa o ID da sessão autenticada, com nova verificação do acesso ao cli
 
 `v2/database/migrations/20261014_internal_approval_requests.sql` cria somente a tabela de solicitações internas. Deve ser aplicada explicitamente em etapa futura, após revisão, antes de disponibilizar este código. Não é executada no startup e não modifica usuários nem reatribui históricos. Exclusão de card/cliente segue o padrão de cascata do schema; exclusão de comentário/usuário preserva a solicitação com vínculo nulo.
 
-Possível sobreposição com o trabalho paralelo: `v2/apps/web/src/App.tsx`, `v2/apps/web/src/api.ts`, `v2/apps/api/src/modules/approvals/approvals.routes.ts` e `v2/apps/api/package.json`. As alterações são pontuais e foram feitas apenas nesta worktree a partir do main. Nenhum conteúdo modificado da outra sessão foi copiado ou sobrescrito. Resolver eventual conflito na revisão dos PRs; nenhum arquivo de Radar, briefing ou template foi alterado.
+Os conflitos após o merge do PR #38 no main foram resolvidos em `v2/apps/web/src/App.tsx`, `v2/apps/web/src/api.ts` e `v2/apps/api/package.json`. Foram preservados os imports e APIs editoriais, os tipos `editorialBrief`, o envio transacional de pautas, a renderização dos snapshots e todos os comandos/listas de testes do main, junto com a seleção e inbox do #39. Fora desses três pontos de integração, os arquivos específicos do PR #38 permanecem idênticos ao main. Nenhuma alteração do checkout de outra sessão foi sobrescrita; o fluxo antigo de aprovação interna no navegador não foi restaurado.
 
 ## Validação
 
 - 8 testes de API/SQL isolados: sessões Aline, Liege e colaborador; super admin sem membership; exclusão própria/demo; preservação de outros revisores e nomes iguais; rejeição de destinatários inválidos/inativos; escopo; IDs do histórico/inbox; rollback.
-- Suíte completa: 636 testes aprovados.
-- MariaDB 10.11.19 local isolado, somente socket Unix e networking desativado: migração real reexecutável, cinco FKs, usuários inalterados, listas das duas sessões, envio, leitura em outra conexão e rollback por falha nativa.
+- Suíte completa combinada no main atualizado: **659 testes aprovados**, zero falhas ou skips.
+- **35 testes MariaDB aprovados**, zero falhas ou skips: 34 de briefing editorial/Radar/MCP/recuperação e 1 de aprovação interna integrada ao briefing. MariaDB 10.11.19 local isolado, somente sockets Unix, UTC e networking desativado. O teste integrado aplica as duas migrations sobre o schema anterior ao briefing, verifica cinco FKs, usuários inalterados, listas Aline/Liege, envio, inbox pelo ID legítimo, inbox demo vazia e rollback por falha nativa. Briefing, legenda, estado/revisão e eventos de aprovação do cliente são comparados integralmente antes/depois do envio interno e da falha.
 - Typecheck de API e web aprovado.
 - Build de API e web aprovado. Apenas aviso de tamanho de bundle já existente.
-- Validação final no runtime declarado: Node 22.23.3, com 636 testes, teste MariaDB, typecheck e build aprovados. As primeiras verificações também passaram em Node 24.14.1.
+- Validação final no runtime declarado: **Node 22.23.3**. Todos os testes, typecheck e build acima foram executados após a resolução dos conflitos. `git diff --check` aprovado.
+- A primeira execução das suítes MariaDB teve 1 falha de horário porque a instância descartável herdou o fuso local. Ajustada apenas a configuração do servidor temporário para UTC, como pressuposto na suíte existente; as suítes completas foram repetidas. Nenhum código de produto foi alterado por essa falha. Não se afirma execução na versão exata do banco de produção.
 
 Esses resultados validam o código e cenários sintéticos; não representam execução das sessões reais em produção. A auditoria remota continua pendente por acesso negado.
+
+## Migrations após a atualização
+
+- Pendente do PR #39: `20261014_internal_approval_requests.sql`, a aplicar somente em etapa autorizada antes da disponibilização do código.
+- Pré-requisito herdado do PR #38: `20261014_radar_editorial_brief.sql`. A aplicação em produção não foi consultada nesta etapa; conferir existência e tipos das colunas antes de qualquer aplicação autorizada.
+- Nenhuma migration nova foi criada nesta atualização. As duas migrations foram aplicadas apenas nos bancos descartáveis dos testes. A auditoria de identidade em produção segue pendente; não houve nova tentativa de conexão remota nesta etapa.

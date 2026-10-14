@@ -40,7 +40,7 @@ export async function ensureApprovalStorage(db: ApprovalDb) {
 }
 
 export async function recordApprovalEvent(db: ApprovalDb, input: {
-  cardId: string; revision: number; action: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "legacy_snapshot";
+  cardId: string; revision: number; action: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "brief_updated" | "legacy_snapshot";
   decision: ApprovalState | null; source: "portal" | "public_link" | "admin" | "legacy";
   actor: { userId: string | null; name: string; role: string };
   commentId?: string | null; commentText?: string; approvalLinkId?: string;

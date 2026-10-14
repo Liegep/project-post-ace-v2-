@@ -14,7 +14,7 @@ export const radarSuggestionInputSchema = z.object({
   contentType: text(80), pillar: optionalText(240), objective: text(4000), rationale: text(8000),
   cta: optionalText(4000), captionSuggestion: optionalText(20000),
   alignmentScore: z.number().int().min(0).max(100).nullable().optional().default(null),
-  sourceTitle: text(500),
+  sourceTitle: text(500), sourceSummary: optionalText(20000),
   sourceUrl: z.string().trim().url().max(4000).refine((value) => {
     const url = new URL(value);
     return ["http:", "https:"].includes(url.protocol) && !url.username && !url.password;
@@ -40,4 +40,4 @@ export type RadarSuggestion = RadarSuggestionInput & {
 };
 
 export type RadarSuggestionSummary = Pick<RadarSuggestion, "id" | "clientAccountId" | "title" | "contentType" | "pillar" | "alignmentScore" | "sourceTitle" | "sourceDate" | "createdAt"> & { clientName: string };
-export type RadarPauta = { id: string; title: string; description: string; caption: string; contentType: string; status: "draft"; createdAt: string; updatedAt: string; createdBy: "radar_ai"; radarSuggestionId: string; radarSource: string; sourceTitle: string; sourceUrl: string | null; pillar: string | null; objective: string };
+export type RadarPauta = { id: string; title: string; description: string; caption: string; contentType: string; status: "draft"; createdAt: string; updatedAt: string; createdBy: "radar_ai"; radarSuggestionId: string; radarSource: string; cta: string | null; basedOn: string[]; alignmentScore: number | null; aiModel: string | null; brandBrainVersion: number | null; brandBrainContextHash: string | null; concept: string; hook: string; rationale: string; sourceSummary: string | null; sourceDate: string | null; sourceTitle: string; sourceUrl: string | null; pillar: string | null; objective: string };
