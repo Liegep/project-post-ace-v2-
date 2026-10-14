@@ -33,3 +33,25 @@ test("complete resulting briefing includes preserved current fields and addition
  assert.match(complete,/Prévia completa/);assert.match(complete,/Existing concept/);assert.match(complete,/Restored hook/);assert.match(complete,/Existing description/);assert.match(complete,/Protected caption/);assert.match(complete,/Current title/);
  assert.match(html,/Conteúdo atual salvo/);assert.match(html,/Conteúdo recuperável/);
 });
+
+test("editorial section starts collapsed and does not load or mount a recovery preview",()=>{
+ const html=renderToStaticMarkup(<AdminEditorialBrief card={{id:"pending",isBriefApproval:true,editorialBrief:{description:"Long content".repeat(100)}} as any} slug="synthetic" onRecovered={()=>{}}/>);
+ assert.match(html,/^<details class="admin-editorial-brief">/);assert.doesNotMatch(html,/\bopen=|<dialog|Prévia completa|previewToken/);
+});
+
+test("approved and terminal pautas keep their briefing without a recovery affordance",()=>{
+ for(const patch of [{approvalState:"approved"},{latestApprovalAction:"approved"},{clientLabel:"Aprovado pelo cliente"},{statusBadges:["Pauta aprovada"]},{tags:["Aprovado"]},{approvalState:"changes_requested"},{publishedAt:"2026-10-15"},{scheduledAt:"2026-10-16"},{archived:true}]){
+  const html=renderToStaticMarkup(<AdminEditorialBrief card={{id:"protected",isBriefApproval:true,editorialBrief:{concept:"Protected editorial text"},...patch} as any} slug="synthetic" onRecovered={()=>{}}/>);
+  assert.match(html,/Protected editorial text/);assert.doesNotMatch(html,/Consultar prévia|Confirmar recuperação|<dialog/);
+ }
+});
+
+test("blocked recovery displays reasons without expanding a technical preview",()=>{
+ const html=renderToStaticMarkup(<RecoveryPreview preview={{eligible:false,blockers:["Existe aprovação anterior"],recoverableBrief:{description:"Do not present as recoverable"},currentCaption:"Long technical preview"} as any}/>);
+ assert.match(html,/Recuperação indisponível|Existe aprovação anterior/);assert.doesNotMatch(html,/Do not present|Long technical preview|<details|Confirmar/);
+});
+
+test("prior approved history also hides recovery on a currently pending card",()=>{
+ const html=renderToStaticMarkup(<AdminEditorialBrief card={{id:"historic",isBriefApproval:true,approvalState:"pending",editorialBrief:{concept:"Current revision"}} as any} hasPreviousApproval slug="synthetic" onRecovered={()=>{}}/>);
+ assert.match(html,/Current revision/);assert.doesNotMatch(html,/Consultar prévia|Confirmar recuperação/);
+});
