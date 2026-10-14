@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { previewBriefRecovery, applyBriefRecovery } from "./brief-recovery.service.js";
 import { editPautaIdea } from "./pauta-edit.service.js";
 import { sendPautaForApproval } from "./pauta-send.service.js";
 import { calculateDashboardStatistics, loadDashboardStatistics } from "./dashboard-statistics.js";
@@ -585,6 +587,28 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     } finally {
       connection.release();
     }
+  });
+
+  // Recovery is never exposed to clients or collaborators; normal client isolation still applies.
+  const recoveryAccess = (request: Parameters<typeof assertInternalAccess>[0]) => {
+    assertInternalAccess(request);
+    if (!request.auth!.user.isActive || !["super_admin", "admin"].includes(request.auth!.user.globalRole)) throw app.httpErrors.forbidden("Recuperação restrita à administração.");
+    const {clientAccountId, cardId} = request.params as {clientAccountId:string;cardId:string};
+    if (!z.string().uuid().safeParse(clientAccountId).success || !z.string().uuid().safeParse(cardId).success) throw app.httpErrors.badRequest("Identificadores inválidos.");
+    assertClientAccess(request, clientAccountId, ["admin"]);
+    return {clientAccountId,cardId};
+  };
+  app.get("/clients/:clientAccountId/cards/:cardId/editorial-brief-recovery/preview", async (request,reply) => {
+    reply.header("Cache-Control","no-store");
+    const {clientAccountId,cardId} = recoveryAccess(request);
+    return previewBriefRecovery(app,clientAccountId,cardId,request.auth!.user);
+  });
+  app.post("/clients/:clientAccountId/cards/:cardId/editorial-brief-recovery", async (request,reply) => {
+    reply.header("Cache-Control","no-store");
+    const {clientAccountId,cardId} = recoveryAccess(request);
+    const body = z.object({previewToken:z.string().min(1).max(2000),confirm:z.literal(true)}).strict().safeParse(request.body);
+    if (!body.success) throw app.httpErrors.badRequest("Gere a prévia e confirme explicitamente a recuperação.");
+    return applyBriefRecovery(app,clientAccountId,cardId,request.auth!.user,body.data.previewToken);
   });
 
   app.post("/clients/:clientAccountId/workspace-drawer/pauta-ideas/:ideaId/send", async request => {

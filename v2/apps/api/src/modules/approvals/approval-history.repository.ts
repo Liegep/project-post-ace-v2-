@@ -40,7 +40,7 @@ export async function ensureApprovalStorage(db: ApprovalDb) {
 }
 
 export async function recordApprovalEvent(db: ApprovalDb, input: {
-  cardId: string; revision: number; action: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "brief_updated" | "legacy_snapshot";
+  eventId?: string; cardId: string; revision: number; action: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "brief_updated" | "brief_restored" | "legacy_snapshot";
   decision: ApprovalState | null; source: "portal" | "public_link" | "admin" | "legacy";
   actor: { userId: string | null; name: string; role: string };
   commentId?: string | null; commentText?: string; approvalLinkId?: string;
@@ -50,7 +50,7 @@ export async function recordApprovalEvent(db: ApprovalDb, input: {
     (id, card_id, revision, action, decision, source, actor_user_id, actor_name, actor_role,
      comment_id, comment_text, approval_link_id, before_json, after_json)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, [
-    crypto.randomUUID(), input.cardId, input.revision, input.action, input.decision, input.source,
+    input.eventId ?? crypto.randomUUID(), input.cardId, input.revision, input.action, input.decision, input.source,
     input.actor.userId, input.actor.name, input.actor.role, input.commentId ?? null,
     input.commentText ?? null, input.approvalLinkId ?? null, JSON.stringify(input.before), JSON.stringify(input.after),
   ]);
