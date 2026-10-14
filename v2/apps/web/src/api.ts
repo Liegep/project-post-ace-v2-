@@ -317,7 +317,7 @@ type ApiBoardCard = {
   editorialBrief?: EditorialBriefData | null;
   approvalRevision?: number;
   approvalState?: "pending" | "approved" | "changes_requested" | null;
-  latestApprovalAction?: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "brief_updated" | "legacy_snapshot" | null;
+  latestApprovalAction?: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "brief_updated" | "brief_restored" | "legacy_snapshot" | null;
   columnId?: string | null;
   archived?: boolean;
   id: string;
@@ -2015,4 +2015,21 @@ export async function listInternalApprovalInbox() {
 export async function sendAdminPautaForApprovalBySlug(slug: string, ideaId: string) {
   const client = await findAdminClientBySlug(slug);
   return sendJson<{card:ApiBoardCard;created:boolean}>(`/api/clients/${client.id}/workspace-drawer/pauta-ideas/${encodeURIComponent(ideaId)}/send`, {method:"POST",body:"{}"});
+}
+
+export type BriefRecoveryPreview = {
+  eligible:boolean; blockers:string[]; previewToken:string|null; revision:number;
+  currentTitle:string;currentCaption:string|null;currentBrief:EditorialBriefData|null; recoverableBrief:EditorialBriefData|null;
+  additions:EditorialBriefData; bankAdditions:EditorialBriefData;
+  divergences:Array<{field:string;pauta:unknown;current:unknown;original:string}>;
+  unavailable:string[];
+  effects:{activeLinksToInvalidate:number;newRevision:number;requiresNewApproval:boolean};
+};
+export async function previewAdminBriefRecovery(slug:string,cardId:string) {
+  const client=await findAdminClientBySlug(slug);
+  return fetchJson<BriefRecoveryPreview>(`/api/clients/${client.id}/cards/${encodeURIComponent(cardId)}/editorial-brief-recovery/preview`);
+}
+export async function applyAdminBriefRecovery(slug:string,cardId:string,previewToken:string) {
+  const client=await findAdminClientBySlug(slug);
+  return sendJson<{applied:boolean;alreadyApplied:boolean;card:ApiBoardCard}>(`/api/clients/${client.id}/cards/${encodeURIComponent(cardId)}/editorial-brief-recovery`,{method:"POST",body:JSON.stringify({previewToken,confirm:true})});
 }

@@ -8,6 +8,10 @@ import type { AuthContext } from "../auth/auth.types.js";
 import { httpErrorsPluginRegistered } from "../../plugins/http-errors.js";
 import { internalApprovalRoutes } from "./internal-approvals.routes.js";
 import { ensureApprovalStorage, recordApprovalEvent } from "./approval-history.repository.js";
+import { clientRoutes } from "../clients/clients.routes.js";
+import { RadarSuggestionsService } from "../radar-suggestions/radar-suggestions.service.js";
+import { RadarSuggestionsRepository } from "../radar-suggestions/radar-suggestions.repository.js";
+import { sample } from "../radar-suggestions/radar-suggestions.test-fixtures.js";
 import { demoReviewer } from "./internal-reviewers.repository.js";
 
 // No .env or TCP fallback. Only a disposable server created for this task.
@@ -94,4 +98,82 @@ test("MariaDB: actual migration, both sessions, real recipient IDs, cross-connec
   } finally {
     await app.close(); await db.end(); await server.query(`DROP DATABASE \`${database}\``); await server.end();
   }
+});
+
+test("MariaDB: administrative recovery and internal approvals cooperate without losing requests or rewriting editorial history", async () => {
+  const server = await mysql.createConnection({ socketPath, user: "root", multipleStatements: true });
+  const database = `internal_recovery_test_${randomUUID().replace(/-/g, "")}`;
+  await server.query(`CREATE DATABASE \`${database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+  const db = mysql.createPool({ socketPath, user: "root", database, multipleStatements: true, timezone: "Z", jsonStrings: true });
+  const app = Fastify();
+  const ids = { aline: randomUUID(), liege: randomUUID(), client: randomUUID(), card: randomUUID(), idea: randomUUID() };
+  let auth: AuthContext;
+  const session = (id: string, globalRole: "admin" | "super_admin") => {
+    auth = { user: { id, fullName: id === ids.aline ? "Aline" : "Liege", email: "session@invalid.test", globalRole, isActive: true, locale: "pt", avatarUrl: null }, memberships: globalRole === "super_admin" ? [] : [{ clientAccountId: ids.client, membershipRole: "admin", portalAccessLevel: "admin", isPrimary: true, clientSlug: "synthetic", clientName: "Synthetic", ownerUserId: null }] };
+  };
+  const query = async (sql: string, params: unknown[] = []) => (await db.query<RowDataPacket[]>(sql, params))[0];
+  try {
+    await db.query(readFileSync(new URL("../../../db/schema.sql", import.meta.url), "utf8").split("-- Additive foundation only.")[0]);
+    for (const name of ["20261007_radar_suggestions_foundation.sql", "20261014_radar_editorial_brief.sql", "20261014_internal_approval_requests.sql"]) {
+      await db.query(readFileSync(new URL(`../../../../../database/migrations/${name}`, import.meta.url), "utf8"));
+    }
+    await ensureApprovalStorage(db);
+    for (const [id, name, email, role] of [[ids.aline, "Aline", "aline@invalid.test", "admin"], [ids.liege, "Liege", "hello@invalid.test", "super_admin"], [demoReviewer.id, "Liege", demoReviewer.email, "super_admin"]]) {
+      await db.query("INSERT INTO users(id,full_name,email,password_hash,global_role) VALUES(?,?,?,'synthetic-not-a-login',?)", [id, name, email, role]);
+    }
+    await db.query("INSERT INTO client_accounts(id,name,slug,portal_title,workspace_drawer_json) VALUES(?,'Synthetic','synthetic','Portal','{}')", [ids.client]);
+    await db.query("INSERT INTO client_memberships(id,user_id,client_account_id,membership_role) VALUES(?,?,?,'admin')", [randomUUID(), ids.aline, ids.client]);
+    const suggestion = (await new RadarSuggestionsService(new RadarSuggestionsRepository(db)).createPending(ids.client, ids.aline, sample({ sourceSummary: "Resumo factual preservado", concept: "Conceito original recuperável" }))).suggestion;
+    await db.query("UPDATE radar_suggestions SET status='accepted',accepted_pauta_id=? WHERE id=?", [ids.idea, suggestion.id]);
+    const idea = { id: ids.idea, cardId: ids.card, radarSuggestionId: suggestion.id, status: "sent", title: suggestion.title, description: suggestion.description, caption: "Legenda humana preservada" };
+    await db.query("UPDATE client_accounts SET workspace_drawer_json=? WHERE id=?", [JSON.stringify({ pautaIdeas: [idea], links: ["preservar"] }), ids.client]);
+    await db.query("INSERT INTO kanban_cards(id,client_account_id,title,caption,is_brief_approval,status_json,tags_json,media_urls_json) VALUES(?,?,?,'Legenda humana preservada',1,'[\"Enviar para Cliente\"]','[]','[\"/synthetic.png\"]')", [ids.card, ids.client, idea.title]);
+    await db.query("INSERT INTO approval_links(id,client_account_id,card_id,token,expires_at,is_active) VALUES(?,?,?,'synthetic-old-link','2099-01-01',1)", [randomUUID(), ids.client, ids.card]);
+    app.decorate("db", db); app.decorate("appEnv", { JWT_SECRET: "synthetic-internal-recovery-test-secret" } as never);
+    await app.register(httpErrorsPluginRegistered);
+    app.addHook("preHandler", async (request) => { request.auth = auth; });
+    await app.register(clientRoutes, { prefix: "/api" });
+    await app.register(internalApprovalRoutes, { prefix: "/api" });
+    session(ids.aline, "admin");
+    const base = `/api/clients/${ids.client}/cards/${ids.card}`;
+    const state = async () => ({
+      card: await query("SELECT title,caption,editorial_brief_json,approval_revision,approval_state,status_json,tags_json,media_urls_json FROM kanban_cards WHERE id=?", [ids.card]),
+      bank: await query("SELECT workspace_drawer_json FROM client_accounts WHERE id=?", [ids.client]),
+      events: await query("SELECT * FROM card_approval_events WHERE card_id=? ORDER BY revision", [ids.card]),
+      links: await query("SELECT * FROM approval_links WHERE card_id=?", [ids.card]),
+      source: await query("SELECT * FROM radar_suggestions WHERE id=?", [suggestion.id]),
+    });
+    const preview = async () => {
+      const response = await app.inject(`${base}/editorial-brief-recovery/preview`);
+      assert.equal(response.statusCode, 200, response.body); assert.equal(response.json().eligible, true);
+      return response.json().previewToken as string;
+    };
+    const before = await state(), staleToken = await preview();
+    assert.deepEqual(await state(), before);
+    const reviewers = (await app.inject(`/api/clients/${ids.client}/internal-approval-reviewers`)).json().items;
+    assert.deepEqual(reviewers.map((u: { id: string }) => u.id), [ids.liege]);
+    const send = () => app.inject({ method: "POST", url: `${base}/internal-approvals`, payload: { recipientIds: [ids.liege], message: "Revisar briefing" } });
+    const first = await send(); assert.equal(first.statusCode, 200, first.body);
+    assert.deepEqual(await state(), before);
+    // Internal comments change the inspected card: an older recovery preview must be refreshed.
+    const stale = await app.inject({ method: "POST", url: `${base}/editorial-brief-recovery`, payload: { previewToken: staleToken, confirm: true } });
+    assert.equal(stale.statusCode, 409, stale.body); assert.deepEqual(await state(), before);
+    const token = await preview();
+    const restored = await app.inject({ method: "POST", url: `${base}/editorial-brief-recovery`, payload: { previewToken: token, confirm: true } });
+    assert.equal(restored.statusCode, 200, restored.body);
+    const recovered = await state();
+    assert.equal(JSON.parse(recovered.card[0].editorial_brief_json).concept, "Conceito original recuperável");
+    assert.equal(recovered.card[0].caption, "Legenda humana preservada"); assert.equal(recovered.card[0].approval_revision, 1);
+    assert.deepEqual(recovered.events.map((event) => event.action), ["legacy_snapshot", "brief_restored"]);
+    assert.equal(recovered.links[0].is_active, 0); assert.deepEqual(recovered.source, before.source);
+    const second = await send(); assert.equal(second.statusCode, 200, second.body); assert.deepEqual(await state(), recovered);
+    const replay = await app.inject({ method: "POST", url: `${base}/editorial-brief-recovery`, payload: { previewToken: token, confirm: true } });
+    assert.equal(replay.statusCode, 200, replay.body); assert.equal(replay.json().alreadyApplied, true); assert.deepEqual(await state(), recovered);
+    session(ids.liege, "super_admin");
+    const inbox = (await app.inject("/api/internal-approvals/inbox")).json().items;
+    assert.equal(inbox.length, 2);
+    assert.ok(inbox.every((item: { recipients: string[]; requestedByUserId: string; cardId: string }) => item.recipients[0] === ids.liege && item.requestedByUserId === ids.aline && item.cardId === ids.card));
+    assert.deepEqual(inbox.map((item: { commentId: string }) => item.commentId).sort(), [first.json().commentId, second.json().commentId].sort());
+    session(demoReviewer.id, "super_admin"); assert.deepEqual((await app.inject("/api/internal-approvals/inbox")).json().items, []);
+  } finally { await app.close(); await db.end(); await server.query(`DROP DATABASE \`${database}\``); await server.end(); }
 });
