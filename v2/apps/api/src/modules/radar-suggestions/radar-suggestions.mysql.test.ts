@@ -47,7 +47,8 @@ test("MariaDB migration is additive/repeatable, with PK, FKs, indexes, checks, d
     console.log(`Temporary database: MariaDB ${version}`);
     await f.pool.query(migration);
     const columns = await rows(f.pool, "SELECT COLUMN_NAME, COLUMN_TYPE, COLUMN_DEFAULT FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'radar_suggestions'", [f.database]);
-    assert.equal(columns.length, 32);
+    assert.equal(columns.length, 33);
+    assert.equal(columns.find((column) => column.COLUMN_NAME === "source_summary")!.COLUMN_TYPE, "mediumtext");
     assert.equal(columns.find((column) => column.COLUMN_NAME === "created_at")!.COLUMN_TYPE, "timestamp(3)");
     const foreignKeys = await rows(f.pool, "SELECT DELETE_RULE, UPDATE_RULE FROM information_schema.REFERENTIAL_CONSTRAINTS WHERE CONSTRAINT_SCHEMA = ? AND TABLE_NAME = 'radar_suggestions'", [f.database]);
     assert.equal(foreignKeys.length, 4); assert.equal(foreignKeys.filter((fk) => fk.DELETE_RULE === "SET NULL").length, 3);

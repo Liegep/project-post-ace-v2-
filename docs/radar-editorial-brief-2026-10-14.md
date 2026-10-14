@@ -31,16 +31,16 @@ Não há branch, regra, ID ou condição por cliente. Clientes atuais e futuros 
 - O fluxo de envio não cria cards de outra conta nem modifica cards existentes. Pauta marcada como enviada/aprovada sem vínculo exige revisão, em vez de gerar automaticamente outra cópia.
 - As edições explícitas e o ciclo de revisão de cards existentes continuam separados da preservação automática dos dados. Uma falha de rede exige repetir a operação/consultar o vínculo; não há repetição de IA.
 
-## Migration proposta — não executada
+## Migration proposta — validada somente em banco descartável
 
 `v2/database/migrations/20261014_radar_editorial_brief.sql` adiciona duas colunas opcionais:
 
 - `radar_suggestions.source_summary MEDIUMTEXT NULL`;
 - `kanban_cards.editorial_brief_json JSON NULL`.
 
-São necessárias para preservar o input factual e um snapshot do conteúdo enviado sem misturá-los à legenda, às notas internas ou aos dados estratégicos. O schema de criação de bancos novos inclui o campo do card. A migration é aditiva, sem UPDATE, backfill, mudanças de FK ou execução automática. **Não foi executada, nem em MariaDB de teste.** Fixtures SQL em memória e mocks verificaram a aplicação; não são prova de execução desse DDL em MariaDB.
+São necessárias para preservar o input factual e um snapshot do conteúdo enviado sem misturá-los à legenda, às notas internas ou aos dados estratégicos. O schema de criação de bancos novos inclui o campo do card. A migration é aditiva, sem UPDATE, backfill, mudanças de FK ou execução automática. **Executada em MariaDB isolado 10.11.19 em 14/10/2026, com autorização específica de validação; nunca em produção.** Reaplicação, falha parcial e preservação histórica foram verificadas no motor real. Detalhes e limite de versão em `docs/radar-editorial-mariadb-validation-2026-10-14.md`.
 
-A aplicação da migration requer aprovação separada e validação isolada antes de produção. As colunas devem existir **antes de ativar este código no ambiente**, pois as consultas passam a referenciá-las. Merge/deploy e migration continuam não autorizados. A presença de `IF NOT EXISTS` permite repetição, mas não substitui conferir tipos/estado do schema autorizado. Reverter o código mantendo os campos opcionais preserva os dados; não apagar colunas/histórico.
+A aplicação em produção ainda requer aprovação separada. As colunas devem existir **antes de ativar este código no ambiente**, pois as consultas passam a referenciá-las. Merge/deploy e migration continuam não autorizados. A presença de `IF NOT EXISTS` permite repetição, mas não substitui conferir tipos/estado do schema autorizado. Reverter o código mantendo os campos opcionais preserva os dados; não apagar colunas/histórico.
 
 ## Validação
 
@@ -54,7 +54,7 @@ Node 22.23.3; todos os arquivos de `scripts.test` da API, incluindo testes web, 
 
 Cobertura nova: retenção na aceitação, metadados legados nulos, input factual na entrada MCP/recuperação, whitelist e URLs, consistência card/snapshot, proteção de aprovação, edição da pauta aprovada, envio transacional e rollback, resultado ambíguo com replay, isolamento por cliente, pauta manual, ausência de reconstrução, deduplicação visual, escape HTML, datas, renderização histórica, edição enviada atômica, revisão desatualizada, aprovação concorrente, rollback do histórico/legenda/vínculo, decisão de alteração preservada, replay da edição, dados editados separadamente no card e rejeição de novos metadados inválidos.
 
-Nenhuma geração real de IA, sugestão real, aprovação real, migration, merge ou deploy foi executado. A leitura da Patrícia é diagnóstico, não implementação específica ou reparação de registros históricos.
+Nenhuma geração real de IA, sugestão real, aprovação real, migration em produção, merge ou deploy foi executado. A leitura da Patrícia é diagnóstico, não implementação específica ou reparação de registros históricos.
 
 ## Arquivos alterados no PR
 
@@ -73,6 +73,8 @@ Nenhuma geração real de IA, sugestão real, aprovação real, migration, merge
 - `v2/apps/api/src/modules/clients/pauta-edit.service.ts`
 - `v2/apps/api/src/modules/clients/pauta-send.service.ts`
 - `v2/apps/api/src/modules/clients/pauta-send.test.ts`
+- `v2/apps/api/src/modules/clients/pauta-editorial.mysql.test.ts`
+- `docs/radar-editorial-mariadb-validation-2026-10-14.md`
 - `v2/apps/api/src/modules/mcp/mcp.radar.mysql.test.ts`
 - `v2/apps/api/src/modules/mcp/mcp.radar.service.ts`
 - `v2/apps/api/src/modules/mcp/mcp.radar.test.ts`

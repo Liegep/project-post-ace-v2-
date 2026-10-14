@@ -1,6 +1,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createPlanningMcpServer } from "./mcp.server.js";
+import { sendPautaForApproval } from "../clients/pauta-send.service.js";
 import { radarSuggestionsRoutes } from "../radar-suggestions/radar-suggestions.routes.js";
 import { httpErrorsPluginRegistered } from "../../plugins/http-errors.js";
 import assert from "node:assert/strict";
@@ -176,7 +177,9 @@ test("MariaDB: MCP tool → Dashboard API → read detail/accept/dismiss uses on
   const created=await client.callTool({name:"create_radar_suggestion",arguments:f.input});assert.ok(!created.isError);const payload=JSON.parse((created.content as {text:string}[])[0].text);assert.equal(payload.status,"pending");assert.equal(f.calls(),1);
   const pending=await app.inject("/api/radar-suggestions");assert.equal(pending.statusCode,200);assert.equal(pending.json().total,1);assert.equal(pending.json().items[0].id,payload.suggestionId);
   const url=`/api/clients/${f.clientId}/radar-suggestions/${payload.suggestionId}`;assert.equal((await app.inject(url)).statusCode,200);const accepted=await app.inject({method:"POST",url:`${url}/accept`});assert.equal(accepted.statusCode,200);assert.equal(accepted.json().pauta.status,"draft");assert.equal(f.calls(),1);
+  assert.equal(accepted.json().pauta.sourceSummary,f.input.sourceSummary);assert.equal(accepted.json().pauta.sourceUrl,f.input.sourceUrl);assert.equal(accepted.json().pauta.sourceDate,f.input.sourceDate);
+  const sent=await sendPautaForApproval(app,f.clientId,accepted.json().pauta.id,f.userId);assert.equal(sent.card!.editorialBrief!.sourceSummary,f.input.sourceSummary);assert.equal(sent.card!.editorialBrief!.sourceUrl,f.input.sourceUrl);assert.equal(sent.card!.editorialBrief!.sourceDate,f.input.sourceDate);assert.equal(f.calls(),1);
   const second=await client.callTool({name:"create_radar_suggestion",arguments:{...f.input,sourceUrl:"https://example.org/second"}});const id=JSON.parse((second.content as {text:string}[])[0].text).suggestionId;assert.equal(f.calls(),2);assert.equal((await app.inject({method:"POST",url:`/api/clients/${f.clientId}/radar-suggestions/${id}/dismiss`})).statusCode,200);assert.equal(f.calls(),2);assert.equal((await app.inject("/api/radar-suggestions")).json().total,0);
-  const audit=await f.query("SELECT arguments_json FROM mcp_audit_log WHERE tool_name='create_radar_suggestion'");assert.equal(audit.length,2);assert.doesNotMatch(JSON.stringify(audit),/Descoberta|Publicado|Legenda|mock/);assert.equal((await f.query("SELECT COUNT(*) AS total FROM kanban_cards"))[0].total,0);
+  const audit=await f.query("SELECT arguments_json FROM mcp_audit_log WHERE tool_name='create_radar_suggestion'");assert.equal(audit.length,2);assert.doesNotMatch(JSON.stringify(audit),/Descoberta|Publicado|Legenda|mock/);assert.equal((await f.query("SELECT COUNT(*) AS total FROM kanban_cards"))[0].total,1);
  }finally{await client.close();await mcp?.close();await app.close();await f.close();}
 });

@@ -28,7 +28,8 @@
     "test:meta:mysql": "tsx --test src/modules/meta/meta.scheduling.mysql.test.ts",
     "test:radar-recovery": "tsx --test src/modules/radar-recovery/radar-recovery.test.ts src/modules/radar-recovery/radar-recovery.repository.test.ts src/modules/mcp/mcp.radar-diagnostics.test.ts",
     "test:radar-recovery:mysql": "tsx --test src/modules/radar-recovery/radar-recovery.mysql.test.ts",
-    "test:editorial-brief": "tsx --test src/modules/cards/editorial-brief.test.ts src/modules/clients/pauta-send.test.ts src/modules/radar-suggestions/radar-editorial.test.ts ../web/tests/editorialBrief.test.tsx"
+    "test:editorial-brief": "tsx --test src/modules/cards/editorial-brief.test.ts src/modules/clients/pauta-send.test.ts src/modules/radar-suggestions/radar-editorial.test.ts ../web/tests/editorialBrief.test.tsx",
+    "test:editorial-brief:mysql": "tsx --test src/modules/clients/pauta-editorial.mysql.test.ts"
   },
   "dependencies": {
     "@fastify/formbody": "^8.0.2",
