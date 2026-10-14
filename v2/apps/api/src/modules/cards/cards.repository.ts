@@ -35,7 +35,7 @@ type CardRow = RowDataPacket & {
   client_label: string;
   approval_revision: number;
   approval_state: "pending" | "approved" | "changes_requested" | null;
-  latest_approval_action: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "legacy_snapshot" | null;
+  latest_approval_action: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "brief_updated" | "legacy_snapshot" | null;
   priority_level: "high" | "medium" | "normal" | null;
   event_color: string | null;
   comments_count_cache: number;

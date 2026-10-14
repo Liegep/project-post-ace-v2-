@@ -1,3 +1,4 @@
+import { editPautaIdea } from "../clients/pauta-edit.service.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
@@ -28,7 +29,7 @@ async function fixture() {
       .map((line) => line.trim().replace(/,$/, "").replace(/ENUM\([^)]*\)/g, "TEXT").replace(/ ON UPDATE CURRENT_TIMESTAMP(?:\(3\))?/g, "").replace(/CURRENT_TIMESTAMP\(3\)/g, "CURRENT_TIMESTAMP").replace(/\bUNSIGNED\b/g, ""));
     sql.exec(`CREATE TABLE ${name} (${columns.join(", ")})`);
   };
-  for (const name of ["kanban_cards", "kanban_columns", "card_comments", "approval_links", "card_calendar_events"]) {
+  for (const name of ["kanban_cards", "kanban_columns", "card_comments", "approval_links", "card_calendar_events", "card_caption_versions"]) {
     create(schema.match(new RegExp(`CREATE TABLE IF NOT EXISTS ${name} \\([\\s\\S]*?\\) ENGINE[^;]*;`))![0]);
   }
   create(approvalHistoryTableSql);
@@ -270,5 +271,80 @@ test("approval decisions and later revisions keep the client briefing snapshot i
   await resubmitCardApproval(f.app,"account","post",admin,1);
   await updateCard(f.pool,"post",{editorialBrief:{concept:"Revised direction"},expectedApprovalRevision:2});
   assert.deepEqual(JSON.parse(f.sql.prepare("SELECT after_json FROM card_approval_events WHERE revision=1").get()!.after_json as string).editorialBrief,original);
+ } finally {await f.close();}
+});
+
+function seedSentPauta(f: Awaited<ReturnType<typeof fixture>>) {
+ const idea={id:"idea",cardId:"post",status:"sent",title:"Post de teste",caption:"Legenda original",description:"Original description",concept:"Original direction",sourceSummary:"Original factual source",sourceDate:"2026-10-14"};
+ f.sql.prepare("UPDATE client_accounts SET workspace_drawer_json=?").run(JSON.stringify({pautaIdeas:[idea],links:["preserve"]}));
+ f.sql.prepare("UPDATE kanban_cards SET is_brief_approval=1,approval_state='pending',editorial_brief_json=?").run(JSON.stringify({concept:idea.concept,description:idea.description,sourceSummary:idea.sourceSummary,sourceDate:idea.sourceDate}));
+ f.sql.exec("INSERT INTO approval_links(id,client_account_id,card_id,token,expires_at,is_active) VALUES('active-link','account','post','old-token','2099-01-01',1)");
+ return idea;
+}
+const editorialActor={id:"admin",fullName:"Equipe",globalRole:"admin"};
+
+test("sent pauta editing updates bank, card and frozen history atomically and fences stale approvals",async()=>{
+ const f=await fixture();try {
+  seedSentPauta(f);
+  const result=await editPautaIdea(f.app,"account","idea",{description:"Revised proposal",caption:"Revised caption",expectedApprovalRevision:0},editorialActor);
+  assert.equal(result.card!.approvalRevision,1);assert.equal(result.card!.editorialBrief!.description,"Revised proposal");
+  assert.equal(result.card!.editorialBrief!.sourceSummary,"Original factual source");
+  const drawer=JSON.parse(f.sql.prepare("SELECT workspace_drawer_json FROM client_accounts").get()!.workspace_drawer_json as string);
+  assert.equal(drawer.pautaIdeas[0].description,"Revised proposal");assert.equal(drawer.pautaIdeas[0].expectedApprovalRevision,undefined);assert.deepEqual(drawer.links,["preserve"]);
+  const event=f.sql.prepare("SELECT action,before_json,after_json FROM card_approval_events WHERE revision=1").get()!;
+  assert.equal(event.action,"brief_updated");assert.equal(JSON.parse(event.before_json as string).editorialBrief.description,"Original description");assert.equal(JSON.parse(event.after_json as string).editorialBrief.description,"Revised proposal");
+  assert.equal(f.sql.prepare("SELECT caption FROM card_caption_versions").get()!.caption,"Legenda original");
+  await assert.rejects(decideCardApproval(f.app,"account","post",client,{approved:true,expectedApprovalRevision:0}),{statusCode:409});
+  await assert.rejects(decideCardApproval(f.app,"account","post",client,{approved:true},"old-token"),{statusCode:403});
+  await assert.rejects(editPautaIdea(f.app,"account","idea",{caption:"Stale edit",expectedApprovalRevision:0},editorialActor),{statusCode:409});
+  const replay=await editPautaIdea(f.app,"account","idea",{description:"Revised proposal",caption:"Revised caption",expectedApprovalRevision:0},editorialActor);
+  assert.equal(replay.card!.approvalRevision,1);assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM card_approval_events").get()!.n,1);
+ } finally {await f.close();}
+});
+test("real card approval blocks a stale bank edit without rewriting either record",async()=>{
+ const f=await fixture();try {
+  seedSentPauta(f);await decideCardApproval(f.app,"account","post",client,{approved:true,expectedApprovalRevision:0});
+  const bank=f.sql.prepare("SELECT workspace_drawer_json FROM client_accounts").get()!.workspace_drawer_json;
+  await assert.rejects(editPautaIdea(f.app,"account","idea",{caption:"Unapproved replacement",expectedApprovalRevision:1},editorialActor),{statusCode:409});
+  assert.equal(f.sql.prepare("SELECT workspace_drawer_json FROM client_accounts").get()!.workspace_drawer_json,bank);
+  assert.equal((await findCardById(f.pool,"post"))!.caption,"Legenda original");
+ } finally {await f.close();}
+});
+test("sent edit audit failure rolls back card, bank, caption history and link invalidation together",async()=>{
+ const f=await fixture();try {
+  seedSentPauta(f);const before=f.sql.prepare("SELECT workspace_drawer_json FROM client_accounts").get()!.workspace_drawer_json;f.failAudit();
+  await assert.rejects(editPautaIdea(f.app,"account","idea",{caption:"Uncommitted caption",expectedApprovalRevision:0},editorialActor),/audit failure/);
+  assert.equal(f.sql.prepare("SELECT workspace_drawer_json FROM client_accounts").get()!.workspace_drawer_json,before);
+  const card=(await findCardById(f.pool,"post"))!;assert.equal(card.approvalRevision,0);assert.equal(card.caption,"Legenda original");
+  assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM card_caption_versions").get()!.n,0);assert.equal(f.sql.prepare("SELECT is_active FROM approval_links").get()!.is_active,1);
+ } finally {await f.close();}
+});
+
+test("editing a requested change preserves the client's decision until explicit resubmission",async()=>{
+ const f=await fixture();try {
+  seedSentPauta(f);await decideCardApproval(f.app,"account","post",client,{approved:false,expectedApprovalRevision:0});
+  const result=await editPautaIdea(f.app,"account","idea",{description:"Addressed requested change",expectedApprovalRevision:1},editorialActor);
+  assert.equal(result.card!.approvalRevision,2);assert.equal(result.card!.approvalState,"changes_requested");
+  const resent=await resubmitCardApproval(f.app,"account","post",admin,2);
+  assert.equal(resent.card.approvalState,"pending");assert.equal(resent.card.approvalRevision,3);
+  const old=f.sql.prepare("SELECT decision FROM card_approval_events WHERE revision=1").get()!;
+  assert.equal(old.decision,"changes_requested");
+ } finally {await f.close();}
+});
+
+test("a pauta context edit preserves caption and media independently edited on the card",async()=>{
+ const f=await fixture();try {
+  seedSentPauta(f);f.sql.prepare("UPDATE kanban_cards SET caption=?,media_urls_json=?,primary_media_url=?").run("Independently edited caption",'["/api/uploads/kept.png"]',"/api/uploads/kept.png");
+  const result=await editPautaIdea(f.app,"account","idea",{description:"Revised contextual direction",mediaUrls:[],expectedApprovalRevision:0},editorialActor);
+  assert.equal(result.card!.caption,"Independently edited caption");assert.deepEqual(result.card!.mediaUrls,["/api/uploads/kept.png"]);
+  assert.equal(result.card!.editorialBrief!.description,"Revised contextual direction");assert.equal(f.sql.prepare("SELECT COUNT(*) n FROM card_caption_versions").get()!.n,0);
+ } finally {await f.close();}
+});
+
+test("invalid new source metadata is rejected without silently dropping the preserved briefing",async()=>{
+ const f=await fixture();try {
+  seedSentPauta(f);const original=f.sql.prepare("SELECT workspace_drawer_json FROM client_accounts").get()!.workspace_drawer_json;
+  await assert.rejects(editPautaIdea(f.app,"account","idea",{sourceUrl:"javascript:alert(1)",expectedApprovalRevision:0},editorialActor),{statusCode:400});
+  assert.equal(f.sql.prepare("SELECT workspace_drawer_json FROM client_accounts").get()!.workspace_drawer_json,original);assert.equal((await findCardById(f.pool,"post"))!.approvalRevision,0);
  } finally {await f.close();}
 });

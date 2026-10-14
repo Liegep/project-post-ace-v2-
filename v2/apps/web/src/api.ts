@@ -317,7 +317,7 @@ type ApiBoardCard = {
   editorialBrief?: EditorialBriefData | null;
   approvalRevision?: number;
   approvalState?: "pending" | "approved" | "changes_requested" | null;
-  latestApprovalAction?: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "legacy_snapshot" | null;
+  latestApprovalAction?: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "brief_updated" | "legacy_snapshot" | null;
   columnId?: string | null;
   archived?: boolean;
   id: string;
@@ -1581,7 +1581,7 @@ export async function saveAdminWorkspaceDrawerBySlug(slug: string, data: unknown
 
 export async function createAdminPautaIdeaBySlug(slug: string, idea: unknown) {
   const matchedClient = await findAdminClientBySlug(slug);
-  return sendJson<{ ok: true; idea: unknown }>(`/api/clients/${matchedClient.id}/workspace-drawer/pauta-ideas`, {
+  return sendJson<{ ok: true; idea: unknown; card?:ApiBoardCard }>(`/api/clients/${matchedClient.id}/workspace-drawer/pauta-ideas`, {
     method: "POST",
     body: JSON.stringify({ idea }),
   });
@@ -1589,7 +1589,7 @@ export async function createAdminPautaIdeaBySlug(slug: string, idea: unknown) {
 
 export async function updateAdminPautaIdeaBySlug(slug: string, ideaId: string, patch: unknown) {
   const matchedClient = await findAdminClientBySlug(slug);
-  return sendJson<{ ok: true; idea: unknown }>(`/api/clients/${matchedClient.id}/workspace-drawer/pauta-ideas/${ideaId}`, {
+  return sendJson<{ ok: true; idea: unknown; card?:ApiBoardCard }>(`/api/clients/${matchedClient.id}/workspace-drawer/pauta-ideas/${ideaId}`, {
     method: "PATCH",
     body: JSON.stringify({ patch }),
   });

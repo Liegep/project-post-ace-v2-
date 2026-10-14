@@ -1,4 +1,4 @@
-import { preservesApprovedPauta } from "./pauta-edit.policy.js";
+import { editPautaIdea } from "./pauta-edit.service.js";
 import { sendPautaForApproval } from "./pauta-send.service.js";
 import { calculateDashboardStatistics, loadDashboardStatistics } from "./dashboard-statistics.js";
 import { validTimeZone } from "../../lib/zoned-date-time.js";
@@ -600,37 +600,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
     assertClientAccess(request, clientAccountId, ["admin", "colaborador"]);
     const body = request.body as { patch?: unknown };
     if (!body.patch || typeof body.patch !== "object" || Array.isArray(body.patch)) throw app.httpErrors.badRequest("Alteração de pauta inválida.");
-    const patch = body.patch as Record<string, unknown>;
-    const connection = await app.db.getConnection();
-    try {
-      await connection.beginTransaction();
-      const [rows] = await connection.query<Array<RowDataPacket & { workspace_drawer_json: unknown }>>(
-        "SELECT workspace_drawer_json FROM client_accounts WHERE id = ? LIMIT 1 FOR UPDATE",
-        [clientAccountId],
-      );
-      if (!rows[0]) throw app.httpErrors.notFound("Conta do cliente não encontrada.");
-      const drawer = parseWorkspaceDrawer(rows[0].workspace_drawer_json);
-      const pautaIdeas = Array.isArray(drawer.pautaIdeas) ? drawer.pautaIdeas : [];
-      let updatedIdea: Record<string, unknown> | null = null;
-      const nextIdeas = pautaIdeas.map((item) => {
-        if (!item || typeof item !== "object" || (item as Record<string, unknown>).id !== ideaId) return item;
-        const existing = item as Record<string, unknown>;
-        if (!preservesApprovedPauta(existing, patch)) {
-          throw app.httpErrors.conflict("O conteúdo desta pauta já foi aprovado e está preservado.");
-        }
-        updatedIdea = { ...existing, ...patch, id: ideaId };
-        return updatedIdea;
-      });
-      if (!updatedIdea) throw app.httpErrors.notFound("Pauta não encontrada.");
-      await connection.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify({ ...drawer, pautaIdeas: nextIdeas }), clientAccountId]);
-      await connection.commit();
-      return { ok: true, idea: updatedIdea };
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
-    }
+    return editPautaIdea(app, clientAccountId, ideaId, body.patch as Record<string,unknown>, request.auth!.user);
   });
 
   app.delete("/clients/:clientAccountId/workspace-drawer/pauta-ideas/:ideaId", async (request) => {

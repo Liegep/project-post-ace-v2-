@@ -19,7 +19,8 @@ Não há branch, regra, ID ou condição por cliente. Clientes atuais e futuros 
 3. O envio usa `POST /api/clients/:clientAccountId/workspace-drawer/pauta-ideas/:ideaId/send`. Reutiliza autenticação e acesso de admin/colaborador ao cliente. Lê a pauta armazenada, bloqueia o cliente e cria o card com briefing e vínculo em **uma transação**. O navegador não fornece o briefing a ser enviado. Repetição com a pauta já vinculada retorna o mesmo card, sem substituí-lo.
 4. `editorial_brief_json` contém somente campos destinados ao cliente: conceito, gancho, descrição, justificativa editorial, objetivo, CTA, título/resumo/URL/data da fonte. Não inclui notas internas, pilares, alinhamento, modelo, hashes, versão ou evidências estratégicas. A leitura aplica a mesma lista explícita; URLs inválidas ou com credenciais não são expostas como links.
 5. O portal e o link público usam `EditorialBrief`. Campos ausentes não criam blocos vazios; textos exatamente iguais à legenda ou a outro campo aparecem uma vez. O título fica no cabeçalho existente. A referência tem link seguro em nova aba e data somente quando válida/disponível. Não há HTML bruto vindo do Radar.
-6. O detalhe interno oferece prévia do briefing no editor de pauta. O detalhe da sugestão também mostra o resumo factual quando disponível. O histórico de aprovação guarda o briefing no snapshot já existente do card; a interface oferece “Briefing desta revisão”. Uma revisão posterior não altera snapshots anteriores.
+6. A edição humana de uma pauta enviada também é transacional: banco, campos explicitamente editados do card, versão da legenda e evento `brief_updated` são salvos ou revertidos juntos. A aprovação real do card é conferida sob bloqueio, mesmo se o status do banco estiver desatualizado. A revisão é incrementada; uma tela antiga não pode aprovar outro conteúdo e os links públicos da versão anterior são encerrados. Solicitação de alteração continua `changes_requested` até reenvio explícito. Repetição do mesmo pacote já salvo retorna a revisão atual sem outro evento. Legenda e mídias editadas independentemente no card não são substituídas por valores antigos do banco.
+7. O detalhe interno oferece prévia do briefing no editor de pauta. O detalhe da sugestão também mostra o resumo factual quando disponível. O histórico de aprovação guarda o briefing no snapshot já existente do card; a interface oferece “Briefing desta revisão”. Uma revisão posterior não altera snapshots anteriores.
 
 ## Compatibilidade e proteção
 
@@ -45,12 +46,48 @@ A aplicação da migration requer aprovação separada e validação isolada ant
 
 Node 22.23.3; todos os arquivos de `scripts.test` da API, incluindo testes web, com `--test-concurrency=2`:
 
-- **645 testes passaram**, zero falhas/skip/TODO; 17 regressões adicionais.
+- **651 testes passaram**, zero falhas/skip/TODO; 23 regressões adicionais.
 - Typecheck API/web aprovado.
 - Build API/web aprovado, com o aviso existente de chunks maiores que 500 kB.
 - `git diff --check` aprovado.
 - Renderização visual local do componente com conteúdo inteiramente sintético; sem conexão à API de produção.
 
-Cobertura nova: retenção na aceitação, metadados legados nulos, input factual na entrada MCP/recuperação, whitelist e URLs, consistência card/snapshot, proteção de aprovação, edição da pauta aprovada, envio transacional e rollback, resultado ambíguo com replay, isolamento por cliente, pauta manual, ausência de reconstrução, deduplicação visual, escape HTML, datas e renderização histórica.
+Cobertura nova: retenção na aceitação, metadados legados nulos, input factual na entrada MCP/recuperação, whitelist e URLs, consistência card/snapshot, proteção de aprovação, edição da pauta aprovada, envio transacional e rollback, resultado ambíguo com replay, isolamento por cliente, pauta manual, ausência de reconstrução, deduplicação visual, escape HTML, datas, renderização histórica, edição enviada atômica, revisão desatualizada, aprovação concorrente, rollback do histórico/legenda/vínculo, decisão de alteração preservada, replay da edição, dados editados separadamente no card e rejeição de novos metadados inválidos.
 
 Nenhuma geração real de IA, sugestão real, aprovação real, migration, merge ou deploy foi executado. A leitura da Patrícia é diagnóstico, não implementação específica ou reparação de registros históricos.
+
+## Arquivos alterados no PR
+
+- `docs/radar-editorial-brief-2026-10-14.md`
+- `v2/apps/api/db/schema.sql`
+- `v2/apps/api/package.json`
+- `v2/apps/api/src/modules/approvals/approval-history.repository.ts`
+- `v2/apps/api/src/modules/approvals/approval-workflow.test.ts`
+- `v2/apps/api/src/modules/cards/cards.repository.ts`
+- `v2/apps/api/src/modules/cards/cards.schemas.ts`
+- `v2/apps/api/src/modules/cards/cards.service.ts`
+- `v2/apps/api/src/modules/cards/editorial-brief.test.ts`
+- `v2/apps/api/src/modules/cards/editorial-brief.ts`
+- `v2/apps/api/src/modules/clients/clients.routes.ts`
+- `v2/apps/api/src/modules/clients/pauta-edit.policy.ts`
+- `v2/apps/api/src/modules/clients/pauta-edit.service.ts`
+- `v2/apps/api/src/modules/clients/pauta-send.service.ts`
+- `v2/apps/api/src/modules/clients/pauta-send.test.ts`
+- `v2/apps/api/src/modules/mcp/mcp.radar.mysql.test.ts`
+- `v2/apps/api/src/modules/mcp/mcp.radar.service.ts`
+- `v2/apps/api/src/modules/mcp/mcp.radar.test.ts`
+- `v2/apps/api/src/modules/radar-recovery/radar-recovery.mysql.test.ts`
+- `v2/apps/api/src/modules/radar-recovery/radar-recovery.service.ts`
+- `v2/apps/api/src/modules/radar-recovery/radar-recovery.test.ts`
+- `v2/apps/api/src/modules/radar-suggestions/radar-editorial.test.ts`
+- `v2/apps/api/src/modules/radar-suggestions/radar-suggestions.mysql.test.ts`
+- `v2/apps/api/src/modules/radar-suggestions/radar-suggestions.repository.ts`
+- `v2/apps/api/src/modules/radar-suggestions/radar-suggestions.schemas.ts`
+- `v2/apps/web/src/App.tsx`
+- `v2/apps/web/src/EditorialBrief.tsx`
+- `v2/apps/web/src/RadarSuggestionsWidget.tsx`
+- `v2/apps/web/src/api.ts`
+- `v2/apps/web/src/styles.css`
+- `v2/apps/web/src/types.ts`
+- `v2/apps/web/tests/editorialBrief.test.tsx`
+- `v2/database/migrations/20261014_radar_editorial_brief.sql`

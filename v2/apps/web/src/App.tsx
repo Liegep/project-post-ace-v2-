@@ -7940,7 +7940,7 @@ ${internalMessage.trim()}`, isInternal: true });
                 </div>
               </EditorField>
             </div>
-            {detail.approvalEvents?.some((event) => event.action !== "legacy_snapshot") ? <section className="approval-history-panel"><h4>Histórico de aprovação</h4>{detail.approvalEvents.filter((event) => event.action !== "legacy_snapshot").map((event) => <article key={event.id}><strong>{event.action === "converted_to_post" ? "Pauta convertida em post — nova aprovação" : event.action === "resubmitted" ? "Enviado novamente para aprovação" : event.action === "approved" ? "Aprovado pelo cliente" : "Alteração solicitada"}</strong><small>{event.actorName} · {event.source === "public_link" ? "Link público" : event.source === "portal" ? "Portal" : "Equipe"} · {new Date(event.createdAt).toLocaleString("pt-BR")}</small>{event.commentText ? <p>{event.commentText}</p> : null}<ApprovalBriefSnapshot snapshot={event.afterSnapshot} /></article>)}</section> : null}
+            {detail.approvalEvents?.some((event) => event.action !== "legacy_snapshot") ? <section className="approval-history-panel"><h4>Histórico de aprovação</h4>{detail.approvalEvents.filter((event) => event.action !== "legacy_snapshot").map((event) => <article key={event.id}><strong>{event.action === "brief_updated" ? "Briefing atualizado — revisar novamente" : event.action === "converted_to_post" ? "Pauta convertida em post — nova aprovação" : event.action === "resubmitted" ? "Enviado novamente para aprovação" : event.action === "approved" ? "Aprovado pelo cliente" : "Alteração solicitada"}</strong><small>{event.actorName} · {event.source === "public_link" ? "Link público" : event.source === "portal" ? "Portal" : "Equipe"} · {new Date(event.createdAt).toLocaleString("pt-BR")}</small>{event.commentText ? <p>{event.commentText}</p> : null}<ApprovalBriefSnapshot snapshot={event.afterSnapshot} /></article>)}</section> : null}
             <section className="editor-comments">
             <h4>Comentários ({detail.comments.length})</h4>
             {detail.comments.map((comment) => (
@@ -9031,20 +9031,16 @@ function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: {
       for (const file of editingMediaFiles) uploadedUrls.push(await uploadAdminMedia(file));
       const mediaUrls = [...(editing.mediaUrls ?? []), ...uploadedUrls];
       const updatedIdea = { ...editing, mediaUrls, updatedAt: new Date().toISOString() };
-      await updateAdminPautaIdeaBySlug(slug, editing.id, updatedIdea);
+      const saved = await updateAdminPautaIdeaBySlug(slug, editing.id, {
+        ...updatedIdea,
+        ...(updatedIdea.cardId ? {expectedApprovalRevision:pautaCards.find(card => card.id === updatedIdea.cardId)?.approvalRevision ?? 0} : {}),
+      });
       setIdeas((current) => current.map((idea) => idea.id === editing.id ? updatedIdea : idea));
-      if (updatedIdea.cardId && updatedIdea.status !== "approved") {
-        await updateAdminCardBySlug(slug, updatedIdea.cardId, {
-          title: updatedIdea.title.trim(),
-          caption: updatedIdea.caption || updatedIdea.description || null,
-          editorialBrief: clientEditorialBrief(updatedIdea),
-          expectedApprovalRevision: pautaCards.find(card => card.id === updatedIdea.cardId)?.approvalRevision ?? 0,
-          primaryMediaUrl: mediaUrls[0] ?? null,
-          mediaUrls,
-          mediaType: "image",
-        });
-        onSent();
+      if (saved.card) {
+        const card = saved.card;
+        setPautaCards(current => current.map(item => item.id === card.id ? {...item,approvalRevision:card.approvalRevision,approvalState:card.approvalState,editorialBrief:card.editorialBrief,title:card.title,subtitle:card.caption ?? undefined,statusBadges:card.status} : item));
       }
+      if (updatedIdea.cardId) onSent();
       setEditing(null);
       setEditingMediaFiles([]);
     } catch (caught) {
