@@ -1987,3 +1987,22 @@ export const refinePautaWithBrandBrain = (slug: string, input: { idea: BrandBrai
 export async function analyzeAdminReport(clientAccountId: string, reportId: string, snapshot: Omit<ClientReport, "id" | "clientAccountId" | "metaDestinationName" | "status" | "publishedAt" | "createdAt" | "updatedAt">) {
   return sendJson<import("./reportAnalysis").ReportAnalysisResult>(`/api/clients/${encodeURIComponent(clientAccountId)}/reports/${encodeURIComponent(reportId)}/ai-analysis`, { method: "POST", body: JSON.stringify({ snapshot }) });
 }
+
+export type InternalApprovalReviewer = Pick<ManagedUser, "id" | "fullName" | "email" | "globalRole">;
+export type InternalApprovalRecord = { id: string; cardId: string; clientSlug: string; cardTitle: string; recipients: string[]; requestedByUserId: string | null; commentId: string | null; message: string; createdAt: string };
+
+export async function listInternalApprovalReviewersBySlug(slug: string) {
+  const client = await findAdminClientBySlug(slug);
+  return fetchJson<{ items: InternalApprovalReviewer[] }>(`/api/clients/${client.id}/internal-approval-reviewers`);
+}
+
+export async function sendInternalApprovalBySlug(slug: string, cardId: string, recipientIds: string[], message: string) {
+  const client = await findAdminClientBySlug(slug);
+  return sendJson<{ ok: true; recipientIds: string[]; commentId: string }>(`/api/clients/${client.id}/cards/${cardId}/internal-approvals`, {
+    method: "POST", body: JSON.stringify({ recipientIds, message }),
+  });
+}
+
+export async function listInternalApprovalInbox() {
+  return fetchJson<{ items: InternalApprovalRecord[] }>("/api/internal-approvals/inbox");
+}
