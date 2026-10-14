@@ -1,3 +1,4 @@
+import { listInternalApprovalInbox, listInternalApprovalReviewersBySlug, sendInternalApprovalBySlug, type InternalApprovalReviewer, type InternalApprovalRecord } from "./api";
 import { AdminEditorialBrief } from "./AdminEditorialBrief";
 import { sendAdminPautaForApprovalBySlug } from "./api";
 import { EditorialBrief, ApprovalBriefSnapshot, clientEditorialBrief, type EditorialBriefData } from "./EditorialBrief";
@@ -660,20 +661,26 @@ function playInternalApprovalChime() {
 
 function WorkspaceNavbar({ session, onLogout, clientKanban = false, workspaceContext, utilityAction }: { session: SessionUser; onLogout: () => void; clientKanban?: boolean; workspaceContext?: ReactNode; utilityAction?: ReactNode }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [messages, setMessages] = useState<InternalApprovalRecord[]>(() => loadInternalApprovalMessages(session.id));
+  const [messages, setMessages] = useState<InternalApprovalRecord[]>([]);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => { try { return JSON.parse(window.localStorage.getItem(`designhub-v2-read-notifications:${session.id}`) ?? "[]") as string[]; } catch { return []; } });
   const notificationMenuRef = useRef<HTMLDivElement>(null);
   const knownNotificationIdsRef = useRef<Set<string>>(new Set(messages.map((item) => item.id)));
   const audioUnlockedRef = useRef(false);
   const unreadMessages = messages.filter((item) => !readNotificationIds.includes(item.id));
   useEffect(() => {
-    knownNotificationIdsRef.current = new Set(loadInternalApprovalMessages(session.id).map((item) => item.id));
+    let active = true;
+    let initialized = false;
+    knownNotificationIdsRef.current = new Set();
+    setMessages([]);
+    if (session.role === "client") return;
     const unlockAudio = () => { audioUnlockedRef.current = true; };
     window.addEventListener("pointerdown", unlockAudio, { once: true });
     window.addEventListener("keydown", unlockAudio, { once: true });
 
-    const sync = () => {
-      const nextMessages = loadInternalApprovalMessages(session.id);
+    const sync = async () => {
+      let nextMessages: InternalApprovalRecord[];
+      try { nextMessages = (await listInternalApprovalInbox()).items; } catch { return; }
+      if (!active) return;
       const newItems = nextMessages.filter((item) => !knownNotificationIdsRef.current.has(item.id));
       nextMessages.forEach((item) => knownNotificationIdsRef.current.add(item.id));
       setMessages(nextMessages);
@@ -682,18 +689,21 @@ function WorkspaceNavbar({ session, onLogout, clientKanban = false, workspaceCon
       } catch {
         setReadNotificationIds([]);
       }
-      if (newItems.length && audioUnlockedRef.current) playInternalApprovalChime();
+      if (initialized && newItems.length && audioUnlockedRef.current) playInternalApprovalChime();
+      initialized = true;
     };
 
+    void sync();
     window.addEventListener("storage", sync);
     const timer = window.setInterval(sync, 5_000);
     return () => {
+      active = false;
       window.removeEventListener("storage", sync);
       window.removeEventListener("pointerdown", unlockAudio);
       window.removeEventListener("keydown", unlockAudio);
       window.clearInterval(timer);
     };
-  }, [session.id]);
+  }, [session.id, session.role]);
   useEffect(() => { const close = (event: MouseEvent) => { if (!notificationMenuRef.current?.contains(event.target as Node)) setNotificationsOpen(false); }; const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setNotificationsOpen(false); }; document.addEventListener("mousedown", close); document.addEventListener("keydown", escape); return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", escape); }; }, []);
   const markNotificationRead = (id: string) => { setReadNotificationIds((current) => { if (current.includes(id)) return current; const next = [...current, id]; window.localStorage.setItem(`designhub-v2-read-notifications:${session.id}`, JSON.stringify(next)); return next; }); };
   return <div className={`dashboard-nav workspace-navbar${clientKanban ? " client-kanban-navbar" : ""}`}>
@@ -1971,12 +1981,7 @@ function DashboardRoutePage({ session, onLogout }: { session: SessionUser | null
 }
 
 
-type InternalApprovalRecord = { id: string; cardId: string; clientSlug?: string; cardTitle: string; recipients: string[]; message: string; createdAt: string };
-const INTERNAL_APPROVALS_STORAGE_KEY = "designhub-v2-internal-approvals";
 const DISMISSED_INTERNAL_MESSAGES_KEY = "designhub-v2-dismissed-internal-messages";
-function loadInternalApprovalMessages(userId?: string) {
-  try { const records = JSON.parse(window.localStorage.getItem(INTERNAL_APPROVALS_STORAGE_KEY) ?? "[]") as InternalApprovalRecord[]; return userId ? records.filter((record) => record.recipients.includes(userId)) : records; } catch { return []; }
-}
 
 const EMPTY_DASHBOARD_STATISTICS: DashboardStatistics = { timeZone: "", month: "", postsThisMonth: 0, postsPreviousMonth: 0, pending: 0, scheduled: 0, published: 0, publishedPreviousMonth: 0 };
 
@@ -2007,7 +2012,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
   const [clientActivities, setClientActivities] = useState<DashboardClientActivity[]>([]);
   const [approvedPautas, setApprovedPautas] = useState<DashboardApprovedPauta[]>([]);
   const [statistics, setStatistics] = useState<DashboardStatistics>(EMPTY_DASHBOARD_STATISTICS);
-  const [internalMessages, setInternalMessages] = useState<InternalApprovalRecord[]>(() => loadInternalApprovalMessages(session.id));
+  const [internalMessages, setInternalMessages] = useState<InternalApprovalRecord[]>([]);
   const [scheduleActivity, setScheduleActivity] = useState<DashboardClientActivity | null>(null);
   const [scheduledNotice, setScheduledNotice] = useState<{ title: string; clientName: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -2214,7 +2219,6 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
         setClientSubmissions(overview.clientSubmissions);
         setClientActivities(overview.clientActivities ?? []);
         setApprovedPautas(overview.approvedPautas ?? []);
-        setInternalMessages(loadInternalApprovalMessages(session.id));
       })
       .catch(() => undefined);
 
@@ -2240,7 +2244,14 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
       document.removeEventListener("visibilitychange", refreshOnVisibility);
     };
   }, [playDashboardNotificationTone, session.id]);
-  useEffect(() => { const sync = () => setInternalMessages(loadInternalApprovalMessages(session.id)); window.addEventListener("storage", sync); const timer = window.setInterval(sync, 5_000); return () => { window.removeEventListener("storage", sync); window.clearInterval(timer); }; }, [session.id]);
+  useEffect(() => {
+    let active = true;
+    setInternalMessages([]);
+    const sync = () => listInternalApprovalInbox().then(({ items }) => { if (active) setInternalMessages(items); }).catch(() => undefined);
+    void sync();
+    const timer = window.setInterval(sync, 5_000);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [session.id]);
 
   const updateForm = (key: keyof typeof form, value: string) => {
     setForm((current) => ({
@@ -7342,7 +7353,9 @@ function AdminCardEditor({
   const [approvalLinkCopied, setApprovalLinkCopied] = useState(false);
   const [creatingApprovalLink, setCreatingApprovalLink] = useState(false);
   const [internalApprovalOpen, setInternalApprovalOpen] = useState(false);
-  const [internalUsers, setInternalUsers] = useState<ManagedUser[]>([]);
+  const [internalUsers, setInternalUsers] = useState<InternalApprovalReviewer[]>([]);
+  const [internalReviewersLoading, setInternalReviewersLoading] = useState(false);
+  const [internalReviewersError, setInternalReviewersError] = useState("");
   const [internalRecipientIds, setInternalRecipientIds] = useState<string[]>([]);
   const [internalMessage, setInternalMessage] = useState("");
   const [internalSending, setInternalSending] = useState(false);
@@ -7392,8 +7405,22 @@ function AdminCardEditor({
   useEffect(() => {
     listAdminTagsBySlug(slug).then((result) => setTagLibrary(result.items)).catch(() => undefined);
     listAdminHashtagGroupsBySlug(slug).then((result) => setHashtagGroups(result.items)).catch(() => undefined);
-    listManagedUsers().then((result) => setInternalUsers(result.items.filter((user) => user.isActive && user.globalRole !== "cliente"))).catch(() => setInternalUsers([]));
+
   }, [slug]);
+
+  useEffect(() => {
+    let active = true;
+    setInternalUsers([]);
+    setInternalRecipientIds([]);
+    setInternalReviewersError("");
+    if (!internalApprovalOpen) return;
+    setInternalReviewersLoading(true);
+    listInternalApprovalReviewersBySlug(slug)
+      .then(({ items }) => { if (active) setInternalUsers(items); })
+      .catch(() => { if (active) setInternalReviewersError("Não foi possível carregar os revisores. Feche e reabra a janela para tentar novamente."); })
+      .finally(() => { if (active) setInternalReviewersLoading(false); });
+    return () => { active = false; };
+  }, [internalApprovalOpen, slug, card.id]);
 
   const refreshMetaPublications = useCallback(async () => {
     if (!canScheduleMeta) return;
@@ -7426,13 +7453,8 @@ function AdminCardEditor({
     if (!internalRecipientIds.length || !internalMessage.trim()) return;
     setInternalSending(true);
     try {
-      const recipients = internalUsers.filter((user) => internalRecipientIds.includes(user.id));
-      await addAdminCardCommentBySlug(slug, card.id, { commentText: `Aprovação interna enviada para ${recipients.map((user) => user.fullName).join(", ")}.
-
-${internalMessage.trim()}`, isInternal: true });
-      const key = "designhub-v2-internal-approvals";
-      const current = JSON.parse(window.localStorage.getItem(key) ?? "[]") as unknown[];
-      window.localStorage.setItem(key, JSON.stringify([{ id: crypto.randomUUID(), cardId: card.id, clientSlug: slug, cardTitle: title, recipients: recipients.map((user) => user.id), message: internalMessage.trim(), createdAt: new Date().toISOString() }, ...current]));
+      await sendInternalApprovalBySlug(slug, card.id, internalRecipientIds, internalMessage.trim());
+      onRefresh();
       setFeedback("Card enviado para aprovação interna."); setInternalApprovalOpen(false); setInternalMessage(""); setInternalRecipientIds([]);
     } catch (error) { setFeedback(error instanceof Error ? error.message : "Não foi possível enviar para aprovação interna."); }
     finally { setInternalSending(false); }
@@ -8011,7 +8033,7 @@ ${internalMessage.trim()}`, isInternal: true });
           </section> : null}
           <button type="button" className={`side-action approval-link-action${approvalLinkCopied ? " copied" : ""}`} onClick={() => void createApprovalLink()} disabled={creatingApprovalLink}><span className="side-action-icon">{approvalLinkCopied ? <UiIcon name="check" /> : "⌁"}</span>{creatingApprovalLink ? "Criando link..." : approvalLinkCopied ? "Link copiado" : "Enviar link para aprovação"}</button>
           <button className="side-action" onClick={() => setInternalApprovalOpen(true)}><span className="side-action-icon">♙</span>Aprovação interna</button>
-          {internalApprovalOpen ? <div className="internal-approval-popover"><header><div><span>REVISÃO DA EQUIPE</span><h4>Enviar para aprovação interna</h4></div><button type="button" onClick={() => setInternalApprovalOpen(false)}>×</button></header><p>Escolha quem deve revisar este card. Clientes não aparecem nesta lista.</p><div className="internal-recipient-list">{internalUsers.length ? internalUsers.map((user) => <label key={user.id}><input type="checkbox" checked={internalRecipientIds.includes(user.id)} onChange={(event) => setInternalRecipientIds((current) => event.target.checked ? [...current, user.id] : current.filter((id) => id !== user.id))} /><span><strong>{user.fullName}</strong><small>{user.globalRole} · {user.email}</small></span></label>) : <small>Nenhum membro interno disponível.</small>}</div><textarea value={internalMessage} onChange={(event) => setInternalMessage(event.target.value)} placeholder="Escreva uma mensagem para quem vai revisar..." /><footer><button type="button" className="ghost-button" onClick={() => setInternalApprovalOpen(false)}>Cancelar</button><button type="button" className="gradient-button" disabled={internalSending || !internalRecipientIds.length || !internalMessage.trim()} onClick={() => void sendInternalApproval()}>{internalSending ? "Enviando..." : "Enviar para revisão"}</button></footer></div> : null}
+          {internalApprovalOpen ? <div className="internal-approval-popover"><header><div><span>REVISÃO DA EQUIPE</span><h4>Enviar para aprovação interna</h4></div><button type="button" onClick={() => setInternalApprovalOpen(false)}>×</button></header><p>Escolha quem deve revisar este card. Clientes não aparecem nesta lista.</p><div className="internal-recipient-list">{internalReviewersLoading ? <small>Carregando revisores...</small> : internalReviewersError ? <small role="alert">{internalReviewersError}</small> : internalUsers.length ? internalUsers.map((user) => <label key={user.id}><input type="checkbox" checked={internalRecipientIds.includes(user.id)} onChange={(event) => setInternalRecipientIds((current) => event.target.checked ? [...current, user.id] : current.filter((id) => id !== user.id))} /><span><strong>{user.fullName}</strong><small>{user.globalRole} · {user.email}</small></span></label>) : <small>Nenhum membro interno disponível.</small>}</div><textarea value={internalMessage} onChange={(event) => setInternalMessage(event.target.value)} placeholder="Escreva uma mensagem para quem vai revisar..." /><footer><button type="button" className="ghost-button" onClick={() => setInternalApprovalOpen(false)}>Cancelar</button><button type="button" className="gradient-button" disabled={internalSending || internalReviewersLoading || !!internalReviewersError || !internalRecipientIds.length || !internalMessage.trim()} onClick={() => void sendInternalApproval()}>{internalSending ? "Enviando..." : "Enviar para revisão"}</button></footer></div> : null}
         </aside>
         <footer className="admin-card-footer">
           <div className="admin-card-feedback">{feedback ? <p className={`editor-feedback${newApprovalUrl && feedback.startsWith("Enviado novamente") ? " approval-success" : ""}`}>{feedback}</p> : null}<AutosaveIndicator state={autosaveState} savedAt={autosavedAt} /></div>

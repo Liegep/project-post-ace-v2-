@@ -1,3 +1,4 @@
+import { internalApprovalRoutes } from "./internal-approvals.routes.js";
 import { resubmitCardApproval } from "./approval-workflow.service.js";
 import type { FastifyPluginAsync } from "fastify";
 import { assertClientAccess, assertInternalAccess } from "../auth/auth.access.js";
@@ -14,6 +15,7 @@ import {
 } from "./approvals.service.js";
 
 export const approvalRoutes: FastifyPluginAsync = async (app) => {
+  await app.register(internalApprovalRoutes);
   app.post("/clients/:clientAccountId/cards/:cardId/resubmit-approval", async (request) => {
     assertInternalAccess(request);
     const params = request.params as { clientAccountId: string; cardId: string };
