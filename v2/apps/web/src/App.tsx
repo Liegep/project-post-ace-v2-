@@ -2,7 +2,7 @@ import { useModalFocus } from "./useModalFocus";
 import { listInternalApprovalInbox, listInternalApprovalReviewersBySlug, sendInternalApprovalBySlug, type InternalApprovalReviewer, type InternalApprovalRecord } from "./api";
 import { AdminEditorialBrief } from "./AdminEditorialBrief";
 import { sendAdminPautaForApprovalBySlug } from "./api";
-import { EditorialBrief, ApprovalBriefSnapshot, clientEditorialBrief, type EditorialBriefData } from "./EditorialBrief";
+import { EditorialBrief, ApprovalBriefSnapshot, clientEditorialBrief, usesEditorialPautaLayout, type EditorialBriefData } from "./EditorialBrief";
 import { normalizeBrandBrainPillars, parseBrandBrainPillars, formatBrandBrainPillars } from "../../../shared/brand-brain-pillars.mjs";
 import { toggleClientPermission } from "../../../shared/client-permissions.mjs";
 import { portalKnowledgeNavigation } from "./portalVisibility";
@@ -5541,7 +5541,7 @@ function ArtworkCarousel({ urls, title, activeIndex, onIndexChange, fullscreen =
   const multiple = urls.length > 1;
   const activeUrlLooksLikeVideo = /\.(mp4|webm|mov)(\?.*)?$/i.test(urls[index] ?? "");
   const activeIsVideo = mediaKinds[index] === "video" || activeUrlLooksLikeVideo;
-  const activeAspect = activeIsVideo && /reels?/i.test(mediaType ?? "") ? 9 / 16 : mediaRatios[index] ?? 1;
+  const activeAspect = preserveMediaSize && mediaRatios[index] ? mediaRatios[index] : activeIsVideo && /reels?/i.test(mediaType ?? "") ? 9 / 16 : mediaRatios[index] ?? 1;
   return <div className={`artwork-carousel${multiple ? " has-multiple" : " single"}${fullscreen ? " fullscreen" : ""}${compact ? " compact" : ""}${preserveMediaSize ? " preserve-media-size" : ""}${/reels?/i.test(mediaType ?? "") ? " reel-media" : ""}`} style={compact || preserveMediaSize ? { "--artwork-aspect": activeAspect } as CSSProperties : undefined} aria-label={`${title}: ${urls.length} ${urls.length === 1 ? "arte" : "artes"}`}>
     <div
       className="artwork-carousel-viewport"
@@ -7068,7 +7068,7 @@ export function CardDetailModal({
       setPortalTagWorking(false);
     }
   }
-  const isEditorialPauta = Boolean(detail.card.isBriefApproval || detail.card.editorialBrief);
+  const isEditorialPauta = usesEditorialPautaLayout(detail.card);
   const hasPortalVisualMedia = portalCardAssets(detail.card).length > 0;
   const isClientSuggestion = detail.card.statusBadges.some((status) => status
     .normalize("NFD")
@@ -9679,8 +9679,9 @@ export function PublicApprovalPage() {
 
   if (!view) return <main className="public-approval-page"><section className="public-approval-card"><h1>{message || "Abrindo seu post..."}</h1></section></main>;
   const card = mapPublicApprovalCard(view.card);
-  const isEditorialPauta = Boolean(view.card.isBriefApproval || view.card.editorialBrief);
-  return <main className="public-approval-page"><section className={`public-approval-card${isEditorialPauta ? " editorial-pauta-public" : ""}`}><p className="eyebrow">{view.account.name}</p><h1>{card.title}</h1>{card.mediaUrl ? <div className={`media-frame ${card.mediaAspect}`}><img src={card.mediaUrl} alt={card.title} /></div> : null}<EditorialBrief brief={view.card.editorialBrief} caption={card.subtitle} locale={view.account.locale || "pt-BR"} />{isEditorialPauta ? (card.subtitle ? <section className="pauta-caption-section"><h2>Legenda sugerida</h2><p className="pauta-caption-copy">{card.subtitle}</p></section> : null) : <div className="public-caption">{card.subtitle || "Sem legenda cadastrada."}</div>}<label>Seu nome<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Como prefere ser identificado?" /></label><label>Comentário<textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Deixe uma observação, se desejar" /></label><div className="public-approval-actions"><button className="gradient-button" disabled={working} onClick={() => decide(true)}>Aprovar</button><button className="danger-button" disabled={working} onClick={() => decide(false)}>Solicitar alteração</button></div>{message ? <p className="form-feedback" role="status">{message}</p> : null}</section></main>;
+  const isEditorialPauta = usesEditorialPautaLayout(view.card);
+  const publicMediaUrls = Array.from(new Set([view.card.primaryMediaUrl, ...view.card.mediaUrls].filter((url): url is string => Boolean(url))));
+  return <main className="public-approval-page"><section className={`public-approval-card${isEditorialPauta ? " editorial-pauta-public" : " produced-post-public"}`}><p className="eyebrow">{view.account.name}</p><h1>{card.title}</h1>{isEditorialPauta ? (card.mediaUrl ? <div className={`media-frame ${card.mediaAspect}`}><img src={card.mediaUrl} alt={card.title} /></div> : null) : <ArtworkCarousel urls={publicMediaUrls} title={card.title} preserveMediaSize mediaType={`${view.card.artType} ${view.card.mediaType}`} />}<EditorialBrief brief={view.card.editorialBrief} caption={card.subtitle} locale={view.account.locale || "pt-BR"} />{isEditorialPauta ? (card.subtitle ? <section className="pauta-caption-section"><h2>Legenda sugerida</h2><p className="pauta-caption-copy">{card.subtitle}</p></section> : null) : <div className="public-caption">{card.subtitle || "Sem legenda cadastrada."}</div>}<label>Seu nome<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Como prefere ser identificado?" /></label><label>Comentário<textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Deixe uma observação, se desejar" /></label><div className="public-approval-actions"><button className="gradient-button" disabled={working} onClick={() => decide(true)}>Aprovar</button><button className="danger-button" disabled={working} onClick={() => decide(false)}>Solicitar alteração</button></div>{message ? <p className="form-feedback" role="status">{message}</p> : null}</section></main>;
 }
 
 function mapPublicApprovalCard(card: { id: string; title: string; caption: string | null; mediaType: string; primaryMediaUrl: string | null; mediaUrls: string[]; externalLinkUrl: string | null; artType: string; status: string[]; tags: string[]; commentsCount: number; scheduledAt: string | null; clientLabel: string }) {

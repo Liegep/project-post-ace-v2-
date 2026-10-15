@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { EditorialBrief, clientEditorialBrief, sourcePublicationDate } from "../src/EditorialBrief";
+import { EditorialBrief, usesEditorialPautaLayout, clientEditorialBrief, sourcePublicationDate } from "../src/EditorialBrief";
 const source = {concept:"Idea", hook:"Hook", description:"Description", rationale:"Editorial reason", objective:"Educate", sourceTitle:"Synthetic report", sourceSummary:"Original factual summary", sourceUrl:"https://example.invalid/news", sourceDate:"2026-10-14"};
 test("one briefing standard preserves content and safe source links for any client", () => {
  const html=renderToStaticMarkup(<EditorialBrief brief={clientEditorialBrief({...source, ...{internalNotes:"SECRET", pillar:"STRATEGY", aiModel:"MODEL"}})} caption="Caption" />);
@@ -29,4 +29,12 @@ test("approval history renders the frozen version instead of today's edited brie
  const snapshot=JSON.stringify({editorialBrief:{concept:"Original reviewed direction",sourceSummary:"Original source context"},caption:"Original caption"});
  const html=renderToStaticMarkup(<ApprovalBriefSnapshot snapshot={snapshot} />);
  assert.match(html,/Original reviewed direction/);assert.match(html,/Original source context/);assert.equal(renderToStaticMarkup(<ApprovalBriefSnapshot snapshot="invalid" />),"");
+});
+
+test("only the explicit pauta stage selects the editorial reader, regardless of retained brief/media", () => {
+ const produced = { isBriefApproval: false, editorialBrief: source, mediaUrls: ["artwork.png"] };
+ assert.equal(usesEditorialPautaLayout(produced), false);
+ assert.equal(usesEditorialPautaLayout({ ...produced, isBriefApproval: undefined }), false);
+ assert.equal(usesEditorialPautaLayout({ ...produced, isBriefApproval: true }), true);
+ assert.equal(usesEditorialPautaLayout({ isBriefApproval: true }), true);
 });

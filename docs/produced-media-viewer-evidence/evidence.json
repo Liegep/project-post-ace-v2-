@@ -1,0 +1,763 @@
+{
+  "baselineCommit": "fa8f6d9ed67c9fc97a9e70fbfc21b968580472b8",
+  "evidence": [
+    {
+      "file": "after-square-desktop-light.jpg",
+      "shape": "square",
+      "size": "desktop",
+      "scheme": "light",
+      "current": {
+        "withinReader": true,
+        "width": 606.625,
+        "height": 606.625,
+        "ratio": 1,
+        "frameRatio": 1,
+        "mediaWidth": 604.625,
+        "mediaHeight": 604.625,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-portrait-desktop-light.jpg",
+      "shape": "portrait",
+      "size": "desktop",
+      "scheme": "light",
+      "current": {
+        "withinReader": true,
+        "width": 512,
+        "height": 640,
+        "ratio": 0.8,
+        "frameRatio": 0.8,
+        "mediaWidth": 510,
+        "mediaHeight": 638,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-story-desktop-light.jpg",
+      "shape": "story",
+      "size": "desktop",
+      "scheme": "light",
+      "current": {
+        "withinReader": true,
+        "width": 360,
+        "height": 640,
+        "ratio": 0.5625,
+        "frameRatio": 0.5625,
+        "mediaWidth": 358,
+        "mediaHeight": 638,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-landscape-desktop-light.jpg",
+      "shape": "landscape",
+      "size": "desktop",
+      "scheme": "light",
+      "current": {
+        "withinReader": true,
+        "width": 606.625,
+        "height": 341.21875,
+        "ratio": 1.7777777777777777,
+        "frameRatio": 1.777818481545929,
+        "mediaWidth": 604.625,
+        "mediaHeight": 340.09375,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-carousel-desktop-light.jpg",
+      "shape": "carousel",
+      "size": "desktop",
+      "scheme": "light",
+      "current": {
+        "withinReader": true,
+        "width": 482.625,
+        "height": 482.625,
+        "ratio": 1,
+        "frameRatio": 1,
+        "mediaWidth": 480.625,
+        "mediaHeight": 480.625,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-video-story-desktop-light.jpg",
+      "shape": "video-story",
+      "size": "desktop",
+      "scheme": "light",
+      "current": {
+        "withinReader": true,
+        "width": 360,
+        "height": 640,
+        "ratio": 0.5625,
+        "frameRatio": 0.5625,
+        "mediaWidth": 358,
+        "mediaHeight": 638,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-video-landscape-desktop-light.jpg",
+      "shape": "video-landscape",
+      "size": "desktop",
+      "scheme": "light",
+      "current": {
+        "withinReader": true,
+        "width": 606.625,
+        "height": 341.21875,
+        "ratio": 1.7777777777777777,
+        "frameRatio": 1.777818481545929,
+        "mediaWidth": 604.609375,
+        "mediaHeight": 1074.875,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-square-desktop-dark.jpg",
+      "shape": "square",
+      "size": "desktop",
+      "scheme": "dark",
+      "current": {
+        "withinReader": true,
+        "width": 606.625,
+        "height": 606.625,
+        "ratio": 1,
+        "frameRatio": 1,
+        "mediaWidth": 604.625,
+        "mediaHeight": 604.625,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-portrait-desktop-dark.jpg",
+      "shape": "portrait",
+      "size": "desktop",
+      "scheme": "dark",
+      "current": {
+        "withinReader": true,
+        "width": 512,
+        "height": 640,
+        "ratio": 0.8,
+        "frameRatio": 0.8,
+        "mediaWidth": 510,
+        "mediaHeight": 638,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-story-desktop-dark.jpg",
+      "shape": "story",
+      "size": "desktop",
+      "scheme": "dark",
+      "current": {
+        "withinReader": true,
+        "width": 360,
+        "height": 640,
+        "ratio": 0.5625,
+        "frameRatio": 0.5625,
+        "mediaWidth": 358,
+        "mediaHeight": 638,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-landscape-desktop-dark.jpg",
+      "shape": "landscape",
+      "size": "desktop",
+      "scheme": "dark",
+      "current": {
+        "withinReader": true,
+        "width": 606.625,
+        "height": 341.21875,
+        "ratio": 1.7777777777777777,
+        "frameRatio": 1.777818481545929,
+        "mediaWidth": 604.625,
+        "mediaHeight": 340.09375,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-carousel-desktop-dark.jpg",
+      "shape": "carousel",
+      "size": "desktop",
+      "scheme": "dark",
+      "current": {
+        "withinReader": true,
+        "width": 482.625,
+        "height": 482.625,
+        "ratio": 1,
+        "frameRatio": 1,
+        "mediaWidth": 480.625,
+        "mediaHeight": 480.625,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-video-story-desktop-dark.jpg",
+      "shape": "video-story",
+      "size": "desktop",
+      "scheme": "dark",
+      "current": {
+        "withinReader": true,
+        "width": 360,
+        "height": 640,
+        "ratio": 0.5625,
+        "frameRatio": 0.5625,
+        "mediaWidth": 358,
+        "mediaHeight": 638,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-video-landscape-desktop-dark.jpg",
+      "shape": "video-landscape",
+      "size": "desktop",
+      "scheme": "dark",
+      "current": {
+        "withinReader": true,
+        "width": 606.625,
+        "height": 341.21875,
+        "ratio": 1.7777777777777777,
+        "frameRatio": 1.777818481545929,
+        "mediaWidth": 604.609375,
+        "mediaHeight": 1074.875,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-square-mobile-light.jpg",
+      "shape": "square",
+      "size": "mobile",
+      "scheme": "light",
+      "current": {
+        "withinReader": true,
+        "width": 349,
+        "height": 349,
+        "ratio": 1,
+        "frameRatio": 1,
+        "mediaWidth": 347,
+        "mediaHeight": 347,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 390,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-portrait-mobile-light.jpg",
+      "shape": "portrait",
+      "size": "mobile",
+      "scheme": "light",
+      "current": {
+        "withinReader": true,
+        "width": 349,
+        "height": 436.25,
+        "ratio": 0.8,
+        "frameRatio": 0.8,
+        "mediaWidth": 347,
+        "mediaHeight": 434.25,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 390,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-story-mobile-light.jpg",
+      "shape": "story",
+      "size": "mobile",
+      "scheme": "light",
+      "current": {
+        "withinReader": true,
+        "width": 336.9375,
+        "height": 599,
+        "ratio": 0.5625,
+        "frameRatio": 0.5625,
+        "mediaWidth": 334.9375,
+        "mediaHeight": 597,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 390,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-landscape-mobile-light.jpg",
+      "shape": "landscape",
+      "size": "mobile",
+      "scheme": "light",
+      "current": {
+        "withinReader": true,
+        "width": 349,
+        "height": 196.3125,
+        "ratio": 1.7777777777777777,
+        "frameRatio": 1.7777777777777777,
+        "mediaWidth": 347,
+        "mediaHeight": 195.1875,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 390,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-carousel-mobile-light.jpg",
+      "shape": "carousel",
+      "size": "mobile",
+      "scheme": "light",
+      "current": {
+        "withinReader": true,
+        "width": 297,
+        "height": 297,
+        "ratio": 1,
+        "frameRatio": 1,
+        "mediaWidth": 295,
+        "mediaHeight": 295,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 390,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-video-story-mobile-light.jpg",
+      "shape": "video-story",
+      "size": "mobile",
+      "scheme": "light",
+      "current": {
+        "withinReader": true,
+        "width": 336.9375,
+        "height": 599,
+        "ratio": 0.5625,
+        "frameRatio": 0.5625,
+        "mediaWidth": 334.9375,
+        "mediaHeight": 597,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 390,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-video-landscape-mobile-light.jpg",
+      "shape": "video-landscape",
+      "size": "mobile",
+      "scheme": "light",
+      "current": {
+        "withinReader": true,
+        "width": 349,
+        "height": 196.3125,
+        "ratio": 1.7777777777777777,
+        "frameRatio": 1.7777777777777777,
+        "mediaWidth": 346.984375,
+        "mediaHeight": 616.875,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 390,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-square-mobile-dark.jpg",
+      "shape": "square",
+      "size": "mobile",
+      "scheme": "dark",
+      "current": {
+        "withinReader": true,
+        "width": 349,
+        "height": 349,
+        "ratio": 1,
+        "frameRatio": 1,
+        "mediaWidth": 347,
+        "mediaHeight": 347,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 390,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-portrait-mobile-dark.jpg",
+      "shape": "portrait",
+      "size": "mobile",
+      "scheme": "dark",
+      "current": {
+        "withinReader": true,
+        "width": 349,
+        "height": 436.25,
+        "ratio": 0.8,
+        "frameRatio": 0.8,
+        "mediaWidth": 347,
+        "mediaHeight": 434.25,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 390,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-story-mobile-dark.jpg",
+      "shape": "story",
+      "size": "mobile",
+      "scheme": "dark",
+      "current": {
+        "withinReader": true,
+        "width": 336.9375,
+        "height": 599,
+        "ratio": 0.5625,
+        "frameRatio": 0.5625,
+        "mediaWidth": 334.9375,
+        "mediaHeight": 597,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 390,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-landscape-mobile-dark.jpg",
+      "shape": "landscape",
+      "size": "mobile",
+      "scheme": "dark",
+      "current": {
+        "withinReader": true,
+        "width": 349,
+        "height": 196.3125,
+        "ratio": 1.7777777777777777,
+        "frameRatio": 1.7777777777777777,
+        "mediaWidth": 347,
+        "mediaHeight": 195.1875,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 390,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-carousel-mobile-dark.jpg",
+      "shape": "carousel",
+      "size": "mobile",
+      "scheme": "dark",
+      "current": {
+        "withinReader": true,
+        "width": 297,
+        "height": 297,
+        "ratio": 1,
+        "frameRatio": 1,
+        "mediaWidth": 295,
+        "mediaHeight": 295,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 390,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-video-story-mobile-dark.jpg",
+      "shape": "video-story",
+      "size": "mobile",
+      "scheme": "dark",
+      "current": {
+        "withinReader": true,
+        "width": 336.9375,
+        "height": 599,
+        "ratio": 0.5625,
+        "frameRatio": 0.5625,
+        "mediaWidth": 334.9375,
+        "mediaHeight": 597,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 390,
+        "overflow": false
+      }
+    },
+    {
+      "file": "after-video-landscape-mobile-dark.jpg",
+      "shape": "video-landscape",
+      "size": "mobile",
+      "scheme": "dark",
+      "current": {
+        "withinReader": true,
+        "width": 349,
+        "height": 196.3125,
+        "ratio": 1.7777777777777777,
+        "frameRatio": 1.7777777777777777,
+        "mediaWidth": 346.984375,
+        "mediaHeight": 616.875,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 390,
+        "overflow": false
+      }
+    },
+    {
+      "file": "before-square-desktop-light.jpg",
+      "shape": "square",
+      "baselineCommit": "fa8f6d9ed67c9fc97a9e70fbfc21b968580472b8",
+      "before": {
+        "withinReader": false,
+        "width": 606.625,
+        "height": 855,
+        "ratio": 1,
+        "frameRatio": 0.7095029239766082,
+        "mediaWidth": 604.625,
+        "mediaHeight": 853,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      },
+      "current": {
+        "withinReader": true,
+        "width": 606.625,
+        "height": 606.625,
+        "ratio": 1,
+        "frameRatio": 1,
+        "mediaWidth": 604.625,
+        "mediaHeight": 604.625,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "before-portrait-desktop-light.jpg",
+      "shape": "portrait",
+      "baselineCommit": "fa8f6d9ed67c9fc97a9e70fbfc21b968580472b8",
+      "before": {
+        "withinReader": false,
+        "width": 606.625,
+        "height": 855,
+        "ratio": 0.8,
+        "frameRatio": 0.7095029239766082,
+        "mediaWidth": 604.625,
+        "mediaHeight": 853,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      },
+      "current": {
+        "withinReader": true,
+        "width": 512,
+        "height": 640,
+        "ratio": 0.8,
+        "frameRatio": 0.8,
+        "mediaWidth": 510,
+        "mediaHeight": 638,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "before-story-desktop-light.jpg",
+      "shape": "story",
+      "baselineCommit": "fa8f6d9ed67c9fc97a9e70fbfc21b968580472b8",
+      "before": {
+        "withinReader": false,
+        "width": 606.625,
+        "height": 855,
+        "ratio": 0.5625,
+        "frameRatio": 0.7095029239766082,
+        "mediaWidth": 604.625,
+        "mediaHeight": 1074.875,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      },
+      "current": {
+        "withinReader": true,
+        "width": 360,
+        "height": 640,
+        "ratio": 0.5625,
+        "frameRatio": 0.5625,
+        "mediaWidth": 358,
+        "mediaHeight": 638,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "before-landscape-desktop-light.jpg",
+      "shape": "landscape",
+      "baselineCommit": "fa8f6d9ed67c9fc97a9e70fbfc21b968580472b8",
+      "before": {
+        "withinReader": true,
+        "width": 606.625,
+        "height": 495,
+        "ratio": 1.7777777777777777,
+        "frameRatio": 1.2255050505050504,
+        "mediaWidth": 604.625,
+        "mediaHeight": 493,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      },
+      "current": {
+        "withinReader": true,
+        "width": 606.625,
+        "height": 341.21875,
+        "ratio": 1.7777777777777777,
+        "frameRatio": 1.777818481545929,
+        "mediaWidth": 604.625,
+        "mediaHeight": 340.09375,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "before-carousel-desktop-light.jpg",
+      "shape": "carousel",
+      "baselineCommit": "fa8f6d9ed67c9fc97a9e70fbfc21b968580472b8",
+      "before": {
+        "withinReader": false,
+        "width": 482.625,
+        "height": 855,
+        "ratio": 1,
+        "frameRatio": 0.5644736842105263,
+        "mediaWidth": 480.625,
+        "mediaHeight": 853,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      },
+      "current": {
+        "withinReader": true,
+        "width": 482.625,
+        "height": 482.625,
+        "ratio": 1,
+        "frameRatio": 1,
+        "mediaWidth": 480.625,
+        "mediaHeight": 480.625,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    },
+    {
+      "file": "before-video-story-desktop-light.jpg",
+      "shape": "video-story",
+      "baselineCommit": "fa8f6d9ed67c9fc97a9e70fbfc21b968580472b8",
+      "before": {
+        "withinReader": false,
+        "width": 606.625,
+        "height": 855,
+        "ratio": 0.5625,
+        "frameRatio": 0.7095029239766082,
+        "mediaWidth": 479.8125,
+        "mediaHeight": 853,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      },
+      "current": {
+        "withinReader": true,
+        "width": 360,
+        "height": 640,
+        "ratio": 0.5625,
+        "frameRatio": 0.5625,
+        "mediaWidth": 358,
+        "mediaHeight": 638,
+        "radius": 12,
+        "fit": "contain",
+        "maxHeight": "none",
+        "viewport": 1440,
+        "overflow": false
+      }
+    }
+  ]
+}
