@@ -1,3 +1,4 @@
+import { DashboardInternalMessagesWidget } from "./DashboardInternalMessagesWidget";
 import { useModalFocus } from "./useModalFocus";
 import { listInternalApprovalInbox, listInternalApprovalReviewersBySlug, sendInternalApprovalBySlug, type InternalApprovalReviewer, type InternalApprovalRecord } from "./api";
 import { AdminEditorialBrief } from "./AdminEditorialBrief";
@@ -1982,16 +1983,7 @@ function DashboardRoutePage({ session, onLogout }: { session: SessionUser | null
 }
 
 
-const DISMISSED_INTERNAL_MESSAGES_KEY = "designhub-v2-dismissed-internal-messages";
-
 const EMPTY_DASHBOARD_STATISTICS: DashboardStatistics = { timeZone: "", month: "", postsThisMonth: 0, postsPreviousMonth: 0, pending: 0, scheduled: 0, published: 0, publishedPreviousMonth: 0 };
-
-function DashboardInternalMessagesWidget({ items, onOpen }: { items: InternalApprovalRecord[]; onOpen: (item: InternalApprovalRecord) => void }) {
-  const [dismissedIds, setDismissedIds] = useState<string[]>(() => { try { return JSON.parse(window.localStorage.getItem(DISMISSED_INTERNAL_MESSAGES_KEY) ?? "[]") as string[]; } catch { return []; } });
-  const visibleItems = items.filter((item) => !dismissedIds.includes(item.id));
-  if (!visibleItems.length) return null;
-  return <section className="dashboard-widget dashboard-internal-messages"><header className="dashboard-widget-head"><div><p className="eyebrow">Equipe</p><h3>Mensagens internas</h3><small>Cards enviados para sua revisão</small></div><span>{visibleItems.length}</span></header>{visibleItems.length ? <div className="dashboard-internal-list">{visibleItems.slice(0, 5).map((item) => <div className="dashboard-internal-row" key={item.id}><button className="dashboard-internal-open" onClick={() => onOpen(item)}><span className="dashboard-item-bullet" aria-hidden="true" /><span className="internal-message-icon">♙</span><div><strong>{item.cardTitle}</strong><small>{item.message}</small></div><time>{new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(item.createdAt))}</time></button><button className="dashboard-internal-dismiss" aria-label="Fechar mensagem" title="Fechar mensagem" onClick={() => setDismissedIds((current) => { const next = [...current, item.id]; window.localStorage.setItem(DISMISSED_INTERNAL_MESSAGES_KEY, JSON.stringify(next)); return next; })}>×</button></div>)}</div> : <div className="dashboard-internal-empty">Nenhuma mensagem interna por enquanto.</div>}</section>;
-}
 
 function useDashboardMasonry() {
   // Keep a stable ref for the dashboard grid. The previous JS masonry algorithm

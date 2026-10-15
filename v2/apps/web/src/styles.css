@@ -9670,10 +9670,7 @@ button {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 
-  .dashboard-layout .dashboard-grid > :is(
-    .commemorative-dashboard-widget,
-    .dashboard-internal-messages
-  ) {
+  .dashboard-layout .dashboard-grid > .commemorative-dashboard-widget {
     grid-column: auto;
   }
 
@@ -9889,6 +9886,7 @@ button {
 
 .dashboard-layout .dashboard-grid {
   grid-template-columns: repeat(12, minmax(0, 1fr));
+  container: dashboard-widgets / inline-size;
   align-items: start;
   gap: 18px;
   margin-top: 24px;
@@ -10937,6 +10935,45 @@ button {
   }
 }
 
+
+/* Internal reviews need two readable columns' worth of the 12-track grid.
+   Match the actual available grid width, including when a sidebar is open. */
+.dashboard-layout .dashboard-grid > .dashboard-internal-messages {
+  grid-column: span 6;
+  min-width: min(100%, 320px);
+  padding: 18px;
+}
+
+@container dashboard-widgets (max-width: 720px) {
+  .dashboard-layout .dashboard-grid > .dashboard-internal-messages {
+    grid-column: 1 / -1;
+  }
+}
+
+.dashboard-internal-messages .dashboard-widget-head { gap: 12px; }
+.dashboard-internal-messages .dashboard-widget-head > div { min-width: 0; }
+.dashboard-internal-messages .dashboard-widget-head > span { flex-shrink: 0; }
+.dashboard-internal-row { grid-template-columns: minmax(0, 1fr) 44px; }
+.dashboard-internal-open {
+  grid-template-columns: 8px 30px minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+}
+.dashboard-internal-open > .dashboard-item-bullet { align-self: start; margin-top: 11px; }
+.dashboard-internal-copy { display: grid; min-width: 0; gap: 4px; }
+.dashboard-internal-copy > strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  line-height: 1.4;
+}
+.dashboard-internal-copy > small { display: block; min-width: 0; }
+.dashboard-internal-copy > time { white-space: normal; overflow-wrap: anywhere; }
+.dashboard-internal-dismiss { min-height: 44px; padding: 0; }
+.dashboard-internal-open:focus-visible,
+.dashboard-internal-dismiss:focus-visible { outline: 2px solid #6557d8; outline-offset: -3px; }
 
 /* Dashboard masonry: preserve existing widget widths and compact only vertical gaps.
    Disabled on mobile so the current single-column experience remains untouched. */
