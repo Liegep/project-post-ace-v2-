@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "preview": "vite preview",
+    "test:rail": "tsx --test tests/floatingRail.test.tsx",
+    "test:rail:browser": "node tests/floatingRail.browser.mjs",
     "test:seasonal": "tsx --test tests/seasonalWorkspace.test.tsx",
     "check": "tsc --noEmit -p tsconfig.json",
     "test:brand-brain-layout": "node --test tests/brandBrainLayout.test.mjs",
