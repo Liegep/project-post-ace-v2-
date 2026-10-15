@@ -163,3 +163,51 @@ test("route access: anonymous, client, foreign workspace and foreign card are de
     assert.equal((await f.app.inject({ method: "POST", url: sendUrl.replace('/card/', '/foreign-card/'), payload: { recipientIds: [liege], message: "Revisar" } })).statusCode, 404);
   } finally { await f.close(); }
 });
+
+// Model distinct client assignments instead of giving every internal member the
+// same membership, so a scoped list cannot be mistaken for a truncated list.
+for (const [name, requester, role, memberships] of [
+  ["super_admin", liege, "super_admin", []],
+  ["admin", aline, "admin", [client, "other"]],
+  ["colaborador", carlos, "colaborador", [client, "other"]],
+] as const) {
+  test(`${name}: each client returns all and only eligible reviewers without changing stored data`, async () => {
+    const f = await fixture();
+    try {
+      f.sql.prepare("INSERT INTO client_memberships VALUES (?, 'other', 'admin')").run(aline);
+      // A global internal role alone does not override a client-only membership.
+      f.sql.prepare("INSERT INTO client_memberships VALUES (?, 'other', 'cliente')").run(sameName);
+      f.sql.prepare("INSERT INTO card_comments (id, card_id, user_id, author_name, author_role, comment_text, is_internal) VALUES ('existing-comment', 'card', ?, 'Aline', 'admin', 'Existing review history', 1)").run(aline);
+      f.sql.prepare("INSERT INTO internal_approval_requests (id, client_account_id, card_id, requested_by_user_id, assigned_to_user_id, comment_id, message) VALUES ('existing-request', 'account', 'card', ?, ?, 'existing-comment', 'Existing request')").run(aline, liege);
+      f.session(requester, role, [...memberships]);
+      const snapshot = () => ["users", "client_memberships", "kanban_cards", "card_comments", "internal_approval_requests"]
+        .map((table) => f.sql.prepare(`SELECT * FROM ${table} ORDER BY rowid`).all());
+      const before = snapshot();
+      for (const [account, expected] of [
+        [client, [aline, carlos, liege, sameName]],
+        ["other", [aline, carlos, liege, otherAdmin]],
+      ] as const) {
+        const response = await f.app.inject(`/api/clients/${account}/internal-approval-reviewers`);
+        assert.equal(response.statusCode, 200, response.body);
+        assert.deepEqual(response.json().items.map((u: { id: string }) => u.id).sort(),
+          expected.filter((id) => id !== requester).sort());
+      }
+      assert.deepEqual(snapshot(), before);
+    } finally { await f.close(); }
+  });
+}
+
+test("only Aline is eligible when super admin requests for a client with only Aline assigned", async () => {
+  const f = await fixture();
+  try {
+    f.sql.prepare("INSERT INTO client_accounts VALUES ('aline-only', 'aline-only', NULL)").run();
+    f.sql.prepare("INSERT INTO client_memberships VALUES (?, 'aline-only', 'admin')").run(aline);
+    f.session(liege, "super_admin", []);
+    const response = await f.app.inject("/api/clients/aline-only/internal-approval-reviewers");
+    assert.equal(response.statusCode, 200);
+    assert.deepEqual(response.json().items.map((u: { id: string }) => u.id), [aline]);
+    // The real super admin still appears for a different requester on this client.
+    f.session(aline, "admin", ["aline-only"]);
+    assert.deepEqual((await f.app.inject("/api/clients/aline-only/internal-approval-reviewers")).json().items.map((u: { id: string }) => u.id), [liege]);
+  } finally { await f.close(); }
+});
