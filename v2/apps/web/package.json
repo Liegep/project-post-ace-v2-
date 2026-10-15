@@ -14,7 +14,8 @@
     "test:media-layout": "node --test tests/producedMediaLayout.test.mjs",
     "test:pauta-state": "node --test tests/pautaPostState.test.mjs",
     "test:dashboard-layout": "node --test tests/dashboardInternalMessagesLayout.test.mjs",
-    "test:notification-sound": "tsx --test tests/notificationSound.test.ts && node --test tests/notificationSound.browser.test.mjs"
+    "test:notification-sound": "tsx --test tests/notificationSound.test.ts && node --test tests/notificationSound.browser.test.mjs",
+    "test:internal-reviewers": "node --test tests/internalReviewers.test.mjs"
   },
   "dependencies": {
     "@types/react": "^18.3.31",
