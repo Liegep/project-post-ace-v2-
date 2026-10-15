@@ -1,3 +1,4 @@
+import { FloatingRailIcon } from "./FloatingRailIcon";
 import { useNotificationSound } from "./useNotificationSound";
 import { DashboardInternalMessagesWidget } from "./DashboardInternalMessagesWidget";
 import { useModalFocus } from "./useModalFocus";
@@ -1086,19 +1087,19 @@ function AdminRail({ session, onCreateClient }: { session: SessionUser; onCreate
     }
   });
   const items = [
-    { icon: "grid" as const, to: "/dashboard", label: "Dashboard" },
-    { icon: "file" as const, to: "/area/relatorios", label: "Relatórios" },
-    { icon: "clock" as const, to: "/area/controle-de-tempo", label: "Controle de tempo" },
+    { icon: "layout-dashboard" as const, to: "/dashboard", label: "Dashboard" },
+    { icon: "chart-no-axes-combined" as const, to: "/area/relatorios", label: "Relatórios" },
+    { icon: "clock-3" as const, to: "/area/controle-de-tempo", label: "Controle de tempo" },
     ...(session.role === "super_admin" || session.role === "admin" ? [
-      { icon: "receipt" as const, to: "/area/faturamento", label: "Faturamento" },
-      { icon: "send" as const, to: "/area/propostas", label: "Propostas" },
-      { icon: "check" as const, to: "/area/contratos", label: "Contratos" },
+      { icon: "wallet" as const, to: "/area/faturamento", label: "Faturamento" },
+      { icon: "clipboard-list" as const, to: "/area/propostas", label: "Propostas" },
+      { icon: "file-signature" as const, to: "/area/contratos", label: "Contratos" },
     ] : []),
-    { icon: "spark" as const, to: "/area/datas-comemorativas", label: "Datas comemorativas" },
-    { icon: "brush" as const, to: "/area/briefs-design", label: "Briefs de design" },
-    { icon: "calendar" as const, to: "/area/calendario-social", label: "Calendário social" },
-    ...(session.role === "super_admin" ? [{ icon: "layers" as const, to: "/area/publicacoes-meta", label: "Publicações Meta" }] : []),
-    { icon: "users" as const, to: "/area/equipe", label: "Equipe" },
+    { icon: "party-popper" as const, to: "/area/datas-comemorativas", label: "Datas comemorativas" },
+    { icon: "palette" as const, to: "/area/briefs-design", label: "Briefs de design" },
+    { icon: "calendar-days" as const, to: "/area/calendario-social", label: "Calendário social" },
+    ...(session.role === "super_admin" ? [{ icon: "calendar-clock" as const, to: "/area/publicacoes-meta", label: "Publicações Meta" }] : []),
+    { icon: "users-round" as const, to: "/area/equipe", label: "Equipe" },
   ];
 
   const toggleRail = () => {
@@ -1132,7 +1133,7 @@ function AdminRail({ session, onCreateClient }: { session: SessionUser; onCreate
               aria-label={`Ir para ${item.label}`}
               title={item.label}
             >
-              <UiIcon name={item.icon} className="admin-rail-glyph" />
+              <FloatingRailIcon name={item.icon} className="admin-rail-glyph" />
             </NavLink>
           )
         ))}
@@ -1143,12 +1144,12 @@ function AdminRail({ session, onCreateClient }: { session: SessionUser; onCreate
             onClick={onCreateClient}
             aria-label="Adicionar novo cliente"
             title="Adicionar novo cliente"
-          ><UiIcon name="plus" className="admin-rail-glyph" /></button> : <NavLink
+          ><FloatingRailIcon name="user-round-plus" className="admin-rail-glyph" /></button> : <NavLink
             to="/dashboard?createClient=1"
             className="admin-rail-button admin-rail-create-client"
             aria-label="Adicionar novo cliente"
             title="Adicionar novo cliente"
-          ><UiIcon name="plus" className="admin-rail-glyph" /></NavLink>
+          ><FloatingRailIcon name="user-round-plus" className="admin-rail-glyph" /></NavLink>
         ) : null}
         <button
           type="button"
@@ -1156,7 +1157,7 @@ function AdminRail({ session, onCreateClient }: { session: SessionUser; onCreate
           onClick={() => setAboutOpen(true)}
           aria-label="Abrir Sobre"
           title="Sobre"
-        ><UiIcon name="help" className="admin-rail-glyph" /></button>
+        ><FloatingRailIcon name="circle-help" className="admin-rail-glyph" /></button>
       </div>
       <div className="admin-rail-foot">
         <button
