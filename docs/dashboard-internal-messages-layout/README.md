@@ -27,3 +27,15 @@ Os testes novos usam Chromium, sem depender da API ou do banco: 320, 390, 768, 1
 Capturas são salvas em pasta temporária. Para escolher o destino: `DASHBOARD_LAYOUT_ARTIFACT_DIR=/caminho/local npm --workspace @design-hub-v2/web run test:dashboard-layout`.
 
 Validação local realizada com Node 24.14.1; o projeto declara Node 22. Nenhuma dependência foi alterada. Nenhum merge, deploy, migration ou alteração em produção foi executado.
+
+## Som das notificações
+
+As duas rotinas antigas foram substituídas pela mesma síntese compartilhada: uma senoide de 880 Hz, um único ataque suave, pico de 0,36 e término em 420 ms. A rotina anterior do dashboard tinha pico de 0,16 e decaía quase imediatamente; a da aprovação interna multiplicava os ganhos e tocava duas notas. A nova forma de onda mantém margem abaixo de 1,0, sem som sobreposto. O teste com `OfflineAudioContext` mediu pico de 0,360 contra 0,158 e RMS 3,75 vezes maior que o tom anterior do dashboard. Isso mede o sinal digital; o volume percebido também depende do aparelho e do volume do sistema.
+
+[Prévia do ding](./design-hub-ding.wav), gerada pela mesma síntese de produção em `OfflineAudioContext`, sem áudio de terceiros. Não é carregada pelo aplicativo.
+
+No menu do sino, “Som das notificações” permite silenciar apenas o áudio. A preferência fica salva por usuário no navegador e sincroniza entre abas. A primeira consulta sempre estabelece uma base silenciosa; histórico limitado a 2000 IDs por fluxo e data mais recente evitam repetir eventos em sincronizações, remoção/reinserção e reconexão. Eventos recebidos com som silenciado ou áudio bloqueado são consumidos sem formar uma fila para tocar depois. Eventos simultâneos são agrupados em um ding, com intervalo mínimo de um segundo para evitar sobreposição.
+
+O contexto de áudio é compartilhado pelo dashboard e pela barra, desbloqueado por interação do usuário, e fechado quando não há mais consumidores. Nenhuma tentativa contorna o bloqueio de autoplay do navegador. As consultas e os intervalos existentes foram mantidos, assim como notificações visuais, contadores, links e permissões. Nenhum dado de cliente é escrito; apenas preferências e IDs/data de notificações ficam no armazenamento local.
+
+Validação adicional: `npm --workspace @design-hub-v2/web run test:notification-sound` — 7 testes de rastreamento e 6 testes de navegador (incluindo o agrupador), cobrindo comentários, solicitações internas, duas fontes simultâneas, silêncio persistente, recarga, reconexão, eventos históricos, ausência de interação, bloqueio de autoplay e forma de onda real sem clipping. Para gerar a prévia: definir `NOTIFICATION_SOUND_ARTIFACT_DIR` ao executar esse comando.

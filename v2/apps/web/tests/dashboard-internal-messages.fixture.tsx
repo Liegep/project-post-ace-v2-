@@ -23,6 +23,8 @@ const items: InternalApprovalRecord[] = Array.from({ length: count }, (_, i) => 
 const state = window as typeof window & { smokeWrites: string[]; openedMessage: InternalApprovalRecord | null };
 state.smokeWrites = [];
 state.openedMessage = null;
+const notificationFixture = { items, comments: [] as Array<{ id: string; title: string; occurredAt: string }>, failInbox: false, failOverview: false, inboxRequests: 0, overviewRequests: 0 };
+Object.assign(window, { notificationFixture });
 const seasonal = seasonalFixture("widget");
 window.fetch = async (input, init) => {
   const url = new URL(String(input), location.origin);
@@ -33,12 +35,20 @@ window.fetch = async (input, init) => {
   }
   const row = { id: "fixture-card", title: titles[0], clientName: "Cliente demonstração", clientSlug: "fixture-client", scheduledAt: timestamp, approvedAt: timestamp, createdAt: timestamp };
   let data: unknown;
-  if (url.pathname === "/api/internal-approvals/inbox") data = { items };
-  else if (url.pathname === "/api/dashboard/overview") data = {
+  if (url.pathname === "/api/internal-approvals/inbox") {
+    notificationFixture.inboxRequests++;
+    if (notificationFixture.failInbox) throw Error("Simulated offline inbox");
+    data = { items: notificationFixture.items };
+  }
+  else if (url.pathname === "/api/dashboard/overview") {
+    notificationFixture.overviewRequests++;
+    if (notificationFixture.failOverview) throw Error("Simulated offline dashboard");
+    data = {
     statistics: { timeZone: "Europe/Stockholm", month: "2026-10", postsThisMonth: 1, postsPreviousMonth: 0, pending: 1, scheduled: 1, published: 0, publishedPreviousMonth: 0 },
     dueTasks: [], upcomingPosts: [row], postsToday: [row], agendaToday: [{ id: "event", title: "Revisão da equipe", startsAt: timestamp, color: "#6557d8", isCompleted: false }],
-    clientSubmissions: [row], approvedPautas: [row], clientActivities: [{ ...row, cardId: row.id, occurredAt: timestamp, activityType: "comment", detail: "Revisar o conteúdo" }],
+    clientSubmissions: [row], approvedPautas: [row], clientActivities: [{ ...row, cardId: row.id, occurredAt: timestamp, activityType: "comment", detail: "Revisar o conteúdo" }, ...notificationFixture.comments.map(comment => ({ ...row, ...comment, cardId: comment.id, activityType: "comment", detail: "Novo comentário recebido" }))],
   };
+  }
   else if (url.pathname === "/api/meta/status") data = { connected: false };
   else return seasonal.fetch(url.pathname + url.search, init);
   return new Response(JSON.stringify(data), { headers: { "Content-Type": "application/json" } });
