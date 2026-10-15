@@ -11724,3 +11724,26 @@ button.agenda-more { border:0;background:transparent;cursor:pointer;padding:5px;
 .editorial-brief footer small { color: #626b80; }
 .editorial-pauta-modal .portal-summary-heading { padding: 0; border: 0; background: none; }
 .editorial-brief h4 { color: #27324b; }
+
+/* Produced artwork follows its intrinsic ratio, independently of the pauta reader.
+   Bound the frame's width as well as its height to avoid empty side panels. */
+:is(.portal-card-detail-modal:not(.editorial-pauta-modal), .produced-post-public) .artwork-carousel.preserve-media-size {
+  --media-max-height: max(180px, min(640px, calc(100dvh - 245px)));
+  width: min(100%, calc(var(--media-max-height) * var(--artwork-aspect, 1)));
+  margin-inline: auto;
+}
+:is(.portal-card-detail-modal:not(.editorial-pauta-modal), .produced-post-public) .artwork-carousel.preserve-media-size.has-multiple {
+  width: min(100%, calc(var(--media-max-height) * var(--artwork-aspect, 1) + 2 * var(--artwork-peek)));
+}
+:is(.portal-card-detail-modal:not(.editorial-pauta-modal), .produced-post-public) .artwork-carousel.preserve-media-size .artwork-carousel-slide {
+  height: auto;
+  max-height: none;
+  aspect-ratio: var(--artwork-aspect, 1);
+}
+:is(.portal-card-detail-modal:not(.editorial-pauta-modal), .produced-post-public) .artwork-carousel.preserve-media-size .artwork-carousel-slide :is(img, video) {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  aspect-ratio: auto;
+  object-fit: contain;
+}

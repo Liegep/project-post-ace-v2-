@@ -10,7 +10,17 @@ const brief = { concept: "Transformar a observação em um cuidado cotidiano.", 
 const injected = { ...brief, internalNotes: "PRIVATE_STRATEGY", alignmentScore: 99, aiModel: "TECHNICAL_MODEL", pillar: "PRIVATE_PILLAR" };
 const detail: CardDetail = { card: { id: "synthetic-card", title, subtitle: params.has("empty") ? undefined : caption, editorialBrief: params.has("empty") ? null : injected, mediaAspect: "square", mediaUrls: [], typeLabel: "Carrossel", statusBadges: params.has("approved") ? ["Aprovado"] : ["Enviar para Cliente", "Design pronto"], tags: ["PRIVATE_TAG"], commentsCount: 1, clientLabel: params.has("approved") ? "Aprovado pelo cliente" : "Pendente", approvalRevision: 2, approvalState: params.has("approved") ? "approved" : "pending", isBriefApproval: true }, comments: [{ id: "comment", authorName: "Marina", authorRole: "cliente", commentText: "Podemos trazer um exemplo da rotina na primeira imagem?", isInternal: false, createdAt: "2026-10-15T09:00:00Z" }], approvalLinks: [], approvalEvents: [] };
 if (params.has("media")) detail.card.mediaUrls = ['data:image/svg+xml,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500"><rect width="800" height="500" fill="#efecf7"/><circle cx="400" cy="250" r="100" fill="#c9c1e0"/></svg>')];
-const apiCard = { ...detail.card, caption: detail.card.subtitle ?? null, mediaType: "image", primaryMediaUrl: null, mediaUrls: detail.card.mediaUrls ?? [], artType: "carousel", status: detail.card.statusBadges, commentsCount: 1, scheduledAt: null };
+// Synthetic produced media retain a briefing, as real posts do after production.
+const shape = params.get("shape");
+if (shape) {
+ detail.card.isBriefApproval = params.has("pauta");
+ detail.card.typeLabel = shape.startsWith("video") ? "Reels" : "Post";
+ detail.card.mediaType = shape.startsWith("video") ? "video" : "image";
+ const image = (width: number, height: number) => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}"><rect width="100%" height="100%" fill="#154653"/><rect x="12" y="12" width="${width-24}" height="${height-24}" rx="24" fill="#e7bf9b"/><circle cx="${width/2}" cy="${height/2}" r="${Math.min(width,height)/4}" fill="#507d85"/><text x="50%" y="18%" text-anchor="middle" font-family="sans-serif" font-size="${Math.min(width,height)/14}" fill="#154653">${width} × ${height}</text></svg>`);
+ const dimensions: Record<string, [number,number]> = { square: [800,800], landscape: [1280,720], portrait: [800,1000], story: [720,1280] };
+ detail.card.mediaUrls = shape.startsWith("video") ? [`/tests/synthetic-${shape}.webm`] : shape === "carousel" ? [image(800,800),image(800,1000),image(1280,720),image(720,1280)] : [image(...(dimensions[shape] ?? dimensions.square))];
+}
+const apiCard = { ...detail.card, caption: detail.card.subtitle ?? null, mediaType: detail.card.mediaType ?? "image", primaryMediaUrl: params.has("primary") ? detail.card.mediaUrls?.[1] ?? null : null, mediaUrls: detail.card.mediaUrls ?? [], artType: "carousel", status: detail.card.statusBadges, commentsCount: 1, scheduledAt: null };
 if (scenario === "authenticated") {
  localStorage.setItem("designhub-v2-access-token", "synthetic-access-token");
  localStorage.setItem("designhub-v2-session", JSON.stringify({id:"synthetic-user",name:"Marina",email:"marina@invalid.test",role:"client",locale:"pt",assignedAdminSlugs:[],assignedPortalSlugs:["synthetic"],source:"api",accessToken:"synthetic-access-token"}));
@@ -37,7 +47,7 @@ window.fetch = async (input, init) => {
  else if (url.endsWith("/board")) data = { client: { id: "synthetic-client", name: "Cliente de demonstração", slug: "synthetic" }, board: { columns: [], withoutColumn: { cards: [] } } };
  else if (url.endsWith("/brand-brain")) data = { data: {}, revisions: [], history: [], comments: [], meta: {} };
  else if (url.endsWith("editorial-brief-recovery/preview")) data = preview;
- else if (url === "/api/portal/approval/synthetic") data = { account: { name: "Cliente de demonstração", locale: "pt-BR" }, card: { ...detail.card, caption: detail.card.subtitle ?? null, mediaType: "image", primaryMediaUrl: null, mediaUrls: [], artType: "carousel", status: detail.card.statusBadges, commentsCount: 1, scheduledAt: null } };
+ else if (url === "/api/portal/approval/synthetic") data = { account: { name: "Cliente de demonstração", locale: "pt-BR" }, card: apiCard };
  else if (url.includes("time-entries")) data = { items: [], active: null, totalSeconds: 0 };
  else if (url.includes("tags") || url.includes("hashtag") || url.includes("reviewers")) data = { items: [] };
  else throw Error(`Unexpected fixture read ${url}`);

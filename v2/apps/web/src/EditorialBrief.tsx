@@ -4,6 +4,11 @@ export type EditorialBriefData = {
   rationale?: string | null; objective?: string | null; sourceTitle?: string | null;
   sourceSummary?: string | null; sourceUrl?: string | null; sourceDate?: string | null;
 };
+/** Produced posts keep their editorial brief after production; only the approval
+ * stage flag selects the pauta reader, including pautas with reference media. */
+export function usesEditorialPautaLayout(card: { isBriefApproval?: boolean }) {
+  return card.isBriefApproval === true;
+}
 const fields = ["concept", "hook", "cta", "description", "rationale", "objective", "sourceTitle", "sourceSummary", "sourceUrl", "sourceDate"] as const;
 /** Copy only client-facing content; never infer missing source text from descriptions/AI. */
 export function clientEditorialBrief(input: EditorialBriefData): EditorialBriefData | null {
