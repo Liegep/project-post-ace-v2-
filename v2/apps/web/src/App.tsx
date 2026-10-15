@@ -1,3 +1,4 @@
+import { useNotificationSound } from "./useNotificationSound";
 import { DashboardInternalMessagesWidget } from "./DashboardInternalMessagesWidget";
 import { useModalFocus } from "./useModalFocus";
 import { listInternalApprovalInbox, listInternalApprovalReviewersBySlug, sendInternalApprovalBySlug, type InternalApprovalReviewer, type InternalApprovalRecord } from "./api";
@@ -626,73 +627,34 @@ function navClass(isActive: boolean) {
 
 type PageMetric = { label: string; value: string | number; note: string; icon: ReactNode; tone?: string };
 
-function playInternalApprovalChime() {
-  try {
-    const AudioContextCtor = window.AudioContext ?? (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextCtor) return;
-    const context = new AudioContextCtor();
-    const now = context.currentTime;
-    const master = context.createGain();
-    master.gain.setValueAtTime(0.0001, now);
-    master.gain.exponentialRampToValueAtTime(0.16, now + 0.02);
-    master.gain.exponentialRampToValueAtTime(0.0001, now + 0.62);
-    master.connect(context.destination);
-
-    const notes = [
-      { frequency: 659.25, start: 0, duration: 0.22 },
-      { frequency: 880, start: 0.19, duration: 0.34 },
-    ];
-    notes.forEach(({ frequency, start, duration }) => {
-      const oscillator = context.createOscillator();
-      const gain = context.createGain();
-      oscillator.type = "sine";
-      oscillator.frequency.setValueAtTime(frequency, now + start);
-      gain.gain.setValueAtTime(0.0001, now + start);
-      gain.gain.exponentialRampToValueAtTime(0.8, now + start + 0.015);
-      gain.gain.exponentialRampToValueAtTime(0.0001, now + start + duration);
-      oscillator.connect(gain);
-      gain.connect(master);
-      oscillator.start(now + start);
-      oscillator.stop(now + start + duration + 0.03);
-    });
-    window.setTimeout(() => { void context.close().catch(() => undefined); }, 900);
-  } catch {
-    // Notification remains visible even if the browser blocks audio.
-  }
-}
-
 function WorkspaceNavbar({ session, onLogout, clientKanban = false, workspaceContext, utilityAction }: { session: SessionUser; onLogout: () => void; clientKanban?: boolean; workspaceContext?: ReactNode; utilityAction?: ReactNode }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [messages, setMessages] = useState<InternalApprovalRecord[]>([]);
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => { try { return JSON.parse(window.localStorage.getItem(`designhub-v2-read-notifications:${session.id}`) ?? "[]") as string[]; } catch { return []; } });
   const notificationMenuRef = useRef<HTMLDivElement>(null);
-  const knownNotificationIdsRef = useRef<Set<string>>(new Set(messages.map((item) => item.id)));
-  const audioUnlockedRef = useRef(false);
+  const { sound, muted, setMuted } = useNotificationSound(session.id);
   const unreadMessages = messages.filter((item) => !readNotificationIds.includes(item.id));
   useEffect(() => {
     let active = true;
-    let initialized = false;
-    knownNotificationIdsRef.current = new Set();
+    let syncing = false;
+    const observeSound = sound.observer("internal-approval");
     setMessages([]);
     if (session.role === "client") return;
-    const unlockAudio = () => { audioUnlockedRef.current = true; };
-    window.addEventListener("pointerdown", unlockAudio, { once: true });
-    window.addEventListener("keydown", unlockAudio, { once: true });
 
     const sync = async () => {
+      if (syncing) return;
+      syncing = true;
       let nextMessages: InternalApprovalRecord[];
       try { nextMessages = (await listInternalApprovalInbox()).items; } catch { return; }
+      finally { syncing = false; }
       if (!active) return;
-      const newItems = nextMessages.filter((item) => !knownNotificationIdsRef.current.has(item.id));
-      nextMessages.forEach((item) => knownNotificationIdsRef.current.add(item.id));
+      observeSound(nextMessages.map(item => ({ id: item.id, createdAt: item.createdAt })));
       setMessages(nextMessages);
       try {
         setReadNotificationIds(JSON.parse(window.localStorage.getItem(`designhub-v2-read-notifications:${session.id}`) ?? "[]") as string[]);
       } catch {
         setReadNotificationIds([]);
       }
-      if (initialized && newItems.length && audioUnlockedRef.current) playInternalApprovalChime();
-      initialized = true;
     };
 
     void sync();
@@ -701,17 +663,15 @@ function WorkspaceNavbar({ session, onLogout, clientKanban = false, workspaceCon
     return () => {
       active = false;
       window.removeEventListener("storage", sync);
-      window.removeEventListener("pointerdown", unlockAudio);
-      window.removeEventListener("keydown", unlockAudio);
       window.clearInterval(timer);
     };
-  }, [session.id, session.role]);
+  }, [session.id, session.role, sound]);
   useEffect(() => { const close = (event: MouseEvent) => { if (!notificationMenuRef.current?.contains(event.target as Node)) setNotificationsOpen(false); }; const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setNotificationsOpen(false); }; document.addEventListener("mousedown", close); document.addEventListener("keydown", escape); return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", escape); }; }, []);
   const markNotificationRead = (id: string) => { setReadNotificationIds((current) => { if (current.includes(id)) return current; const next = [...current, id]; window.localStorage.setItem(`designhub-v2-read-notifications:${session.id}`, JSON.stringify(next)); return next; }); };
   return <div className={`dashboard-nav workspace-navbar${clientKanban ? " client-kanban-navbar" : ""}`}>
     {!clientKanban ? <NavLink to="/dashboard" className="dashboard-nav-brand" aria-label="Abrir dashboard"><span className="brand-badge"><img src={designHubV2Logo} alt="Design Hub" /></span><strong>Design Hub</strong></NavLink> : null}
     {workspaceContext}
-    <div className="dashboard-user">{utilityAction}<div className="notification-menu" ref={notificationMenuRef}><button className={`dashboard-icon-button ${unreadMessages.length ? "has-notification" : ""}`} type="button" aria-label="Notificações" onClick={() => setNotificationsOpen((open) => !open)}><UiIcon name="bell" />{unreadMessages.length ? <span aria-hidden="true">{unreadMessages.length > 9 ? "9+" : unreadMessages.length}</span> : null}</button>{notificationsOpen ? <div className="notification-popover"><header><strong>Notificações</strong><b>{unreadMessages.length}</b></header>{messages.length ? messages.slice(0, 5).map((item) => <button key={item.id} className={readNotificationIds.includes(item.id) ? "read" : ""} onClick={() => { markNotificationRead(item.id); if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; setNotificationsOpen(false); }}><span>♙</span><div><strong>{readNotificationIds.includes(item.id) ? "Aprovação interna" : "Nova aprovação interna"}</strong><small>{item.cardTitle}</small></div></button>) : <p>Nenhuma notificação nova.</p>}</div> : null}</div><ProfileMenu session={session} onLogout={onLogout} /></div>
+    <div className="dashboard-user">{utilityAction}<div className="notification-menu" ref={notificationMenuRef}><button className={`dashboard-icon-button ${unreadMessages.length ? "has-notification" : ""}`} type="button" aria-label="Notificações" onClick={() => setNotificationsOpen((open) => !open)}><UiIcon name="bell" />{unreadMessages.length ? <span aria-hidden="true">{unreadMessages.length > 9 ? "9+" : unreadMessages.length}</span> : null}</button>{notificationsOpen ? <div className="notification-popover"><header><strong>Notificações</strong><b>{unreadMessages.length}</b></header><label className="notification-sound-toggle"><input type="checkbox" checked={!muted} onChange={(event) => setMuted(!event.target.checked)} />Som das notificações</label>{messages.length ? messages.slice(0, 5).map((item) => <button key={item.id} className={readNotificationIds.includes(item.id) ? "read" : ""} onClick={() => { markNotificationRead(item.id); if (item.clientSlug) window.location.hash = `/admin/${item.clientSlug}`; setNotificationsOpen(false); }}><span>♙</span><div><strong>{readNotificationIds.includes(item.id) ? "Aprovação interna" : "Nova aprovação interna"}</strong><small>{item.cardTitle}</small></div></button>) : <p>Nenhuma notificação nova.</p>}</div> : null}</div><ProfileMenu session={session} onLogout={onLogout} /></div>
   </div>;
 }
 
@@ -2037,8 +1997,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
   const [linksOpen, setLinksOpen] = useState(false);
   const [kanbanLinks, setKanbanLinks] = useState<Array<{ slug: string; clientName: string; links: DrawerLink[] }>>([]);
   const [linksLoading, setLinksLoading] = useState(false);
-  const dashboardNotificationIdsRef = useRef<Set<string> | null>(null);
-  const dashboardAudioContextRef = useRef<AudioContext | null>(null);
+  const { sound: dashboardSound } = useNotificationSound(session.id);
 
   useEffect(() => {
     const interval = window.setInterval(() => setCurrentTime(new Date()), 1_000);
@@ -2069,59 +2028,6 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
     return () => { active = false; window.clearInterval(timer); };
   }, [session.role]);
 
-
-  const playDashboardNotificationTone = useCallback(() => {
-    try {
-      const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioContextClass) return;
-      const context = dashboardAudioContextRef.current ?? new AudioContextClass();
-      dashboardAudioContextRef.current = context;
-      const play = () => {
-        const now = context.currentTime;
-        const oscillator = context.createOscillator();
-        const gain = context.createGain();
-        oscillator.type = "sine";
-        oscillator.frequency.setValueAtTime(880, now);
-        oscillator.frequency.exponentialRampToValueAtTime(660, now + 0.18);
-        gain.gain.setValueAtTime(0.0001, now);
-        gain.gain.exponentialRampToValueAtTime(0.16, now + 0.015);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.24);
-        oscillator.connect(gain);
-        gain.connect(context.destination);
-        oscillator.start(now);
-        oscillator.stop(now + 0.26);
-      };
-      if (context.state === "suspended") {
-        void context.resume().then(play).catch(() => undefined);
-      } else {
-        play();
-      }
-    } catch {
-      // Som é complementar; o dashboard continua funcionando sem áudio.
-    }
-  }, []);
-
-  useEffect(() => {
-    const unlockAudio = () => {
-      try {
-        const AudioContextClass = window.AudioContext || (window as typeof window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-        if (!AudioContextClass) return;
-        const context = dashboardAudioContextRef.current ?? new AudioContextClass();
-        dashboardAudioContextRef.current = context;
-        if (context.state === "suspended") void context.resume().catch(() => undefined);
-      } catch {
-        // Alguns navegadores não permitem Web Audio; nada mais precisa ser feito.
-      }
-    };
-    window.addEventListener("pointerdown", unlockAudio, { once: true });
-    window.addEventListener("keydown", unlockAudio, { once: true });
-    return () => {
-      window.removeEventListener("pointerdown", unlockAudio);
-      window.removeEventListener("keydown", unlockAudio);
-      void dashboardAudioContextRef.current?.close().catch(() => undefined);
-      dashboardAudioContextRef.current = null;
-    };
-  }, []);
 
   const greeting = currentTime.getHours() < 12 ? "Bom dia" : currentTime.getHours() < 18 ? "Boa tarde" : "Boa noite";
 
@@ -2190,20 +2096,15 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
       .catch(() => { if (active) setClients([]); })
       .finally(() => { if (active) setLoading(false); });
 
+    const observeSound = dashboardSound.observer("dashboard");
     const refreshOverview = () => loadDashboardOverview()
       .then((overview) => {
         if (!active) return;
-        const nextNotificationIds = new Set<string>([
-          ...(overview.clientActivities ?? []).map((item) => `activity:${item.id}`),
-          ...(overview.approvedPautas ?? []).map((item) => `pauta:${item.id}`),
-          ...(overview.clientSubmissions ?? []).map((item) => `submission:${item.id}`),
+        observeSound([
+          ...(overview.clientActivities ?? []).map(item => ({ id: `activity:${item.id}`, createdAt: item.occurredAt })),
+          ...(overview.approvedPautas ?? []).map(item => ({ id: `pauta:${item.id}`, createdAt: item.approvedAt })),
+          ...(overview.clientSubmissions ?? []).map(item => ({ id: `submission:${item.id}`, createdAt: item.createdAt })),
         ]);
-        const previousIds = dashboardNotificationIdsRef.current;
-        if (previousIds) {
-          const hasNewNotification = Array.from(nextNotificationIds).some((id) => !previousIds.has(id));
-          if (hasNewNotification) playDashboardNotificationTone();
-        }
-        dashboardNotificationIdsRef.current = nextNotificationIds;
 
         setStatistics(overview.statistics ?? EMPTY_DASHBOARD_STATISTICS);
         setUpcomingPosts(overview.upcomingPosts);
@@ -2236,7 +2137,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
       window.removeEventListener("focus", refreshOnFocus);
       document.removeEventListener("visibilitychange", refreshOnVisibility);
     };
-  }, [playDashboardNotificationTone, session.id]);
+  }, [dashboardSound, session.id]);
   useEffect(() => {
     let active = true;
     setInternalMessages([]);
