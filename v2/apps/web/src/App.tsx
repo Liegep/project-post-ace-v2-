@@ -7377,7 +7377,6 @@ function AdminCardEditor({
   const editorMainRef = useRef<HTMLDivElement>(null);
   const editorSideRef = useRef<HTMLElement>(null);
   const saveInFlightRef = useRef(false);
-  const isBriefApprovalRef = useRef(card.isBriefApproval ?? false);
   const lastSavedDraftRef = useRef(JSON.stringify(serverDraft));
   const savedColumnIdRef = useRef(serverDraft.columnId);
   const draft = useMemo<CardRecoveryDraft>(() => ({ approvalRevision, title, caption, artType, columnId, status, clientLabel, priorityLevel, tags, hashtags, scheduledAt, externalLinkUrl, mediaUrls }), [approvalRevision, artType, caption, clientLabel, columnId, externalLinkUrl, hashtags, mediaUrls, priorityLevel, scheduledAt, status, tags, title]);
@@ -7592,27 +7591,39 @@ function AdminCardEditor({
         status: currentDraft.status ? [currentDraft.status, ...statusBadgesRef.current.slice(1)] : [],
         tags: splitValues(currentDraft.tags),
         hashtags: splitValues(currentDraft.hashtags).map((item) => item.startsWith("#") ? item : `#${item}`),
-        isBriefApproval: isBriefApprovalRef.current,
         scheduledAt: currentDraft.scheduledAt || null,
         scheduledTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         clientLabel: currentDraft.clientLabel.trim() || "Pendente",
         priorityLevel: currentDraft.priorityLevel || null,
       });
-      isBriefApprovalRef.current = saved.card.isBriefApproval ?? false;
-      if (saved.card.approvalRevision !== currentDraft.approvalRevision) {
-        const workflow = { approvalRevision: saved.card.approvalRevision ?? 0,
-          status: saved.card.status[0] ?? "", clientLabel: saved.card.clientLabel };
-        statusBadgesRef.current = saved.card.status;
-        currentDraft = { ...currentDraft, ...workflow };
-        latestDraftRef.current = { ...latestDraftRef.current, ...workflow };
-        draftJson = JSON.stringify(currentDraft);
-        setApprovalRevision(workflow.approvalRevision); setStatus(workflow.status); setClientLabel(workflow.clientLabel);
-        onRefresh();
+      // Moving an approved pauta can convert it and advance its revision.
+      // Adopt the final response, not the pre-move PATCH response. Classification
+      // is server-owned and is deliberately absent from ordinary save payloads.
+      let finalCard = saved.card;
+      const movedColumn = currentDraft.columnId !== savedColumnIdRef.current;
+      if (movedColumn) {
+        finalCard = (await moveAdminCardBySlug(slug, card.id, currentDraft.columnId || null)).card;
       }
-      if (currentDraft.columnId !== savedColumnIdRef.current) {
-        await moveAdminCardBySlug(slug, card.id, currentDraft.columnId || null);
-        savedColumnIdRef.current = currentDraft.columnId;
-      }
+      const newerColumn = latestDraftRef.current.columnId !== currentDraft.columnId;
+      const workflow = { approvalRevision: finalCard.approvalRevision ?? 0,
+        status: finalCard.status[0] ?? "", clientLabel: finalCard.clientLabel,
+        columnId: finalCard.columnId ?? "" };
+      statusBadgesRef.current = finalCard.status;
+      savedColumnIdRef.current = workflow.columnId;
+      const revisionChanged = workflow.approvalRevision !== currentDraft.approvalRevision;
+      const refreshWorkflow = movedColumn || revisionChanged;
+      const pendingDraft = latestDraftRef.current;
+      const pendingWorkflowEdits = revisionChanged ? {} : {
+        status: pendingDraft.status !== currentDraft.status ? pendingDraft.status : workflow.status,
+        clientLabel: pendingDraft.clientLabel !== currentDraft.clientLabel ? pendingDraft.clientLabel : workflow.clientLabel,
+      };
+      currentDraft = { ...currentDraft, ...workflow };
+      latestDraftRef.current = { ...pendingDraft, ...workflow, ...pendingWorkflowEdits,
+        ...(newerColumn ? { columnId: latestDraftRef.current.columnId } : {}) };
+      draftJson = JSON.stringify(currentDraft);
+      setApprovalRevision(workflow.approvalRevision); setStatus(latestDraftRef.current.status);
+      setClientLabel(latestDraftRef.current.clientLabel); setColumnId(latestDraftRef.current.columnId);
+      if (refreshWorkflow) onRefresh();
       lastSavedDraftRef.current = draftJson;
       const hasNewerDraft = JSON.stringify(latestDraftRef.current) !== draftJson;
       if (!hasNewerDraft) {

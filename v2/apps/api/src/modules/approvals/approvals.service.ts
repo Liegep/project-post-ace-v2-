@@ -51,6 +51,7 @@ export async function reconcileApprovedCardColumns(app: FastifyInstance) {
       "UPDATE kanban_cards c INNER JOIN client_accounts ca ON ca.id = c.client_account_id",
       "SET c.is_brief_approval = 1",
       "WHERE c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.is_brief_approval = 0 AND c.approval_revision = 0 AND c.approval_reset_at IS NULL",
+      "AND NOT EXISTS (SELECT 1 FROM card_approval_events converted WHERE converted.card_id = c.id AND converted.action = 'converted_to_post')",
       "AND LOWER(c.client_label) LIKE '%aprovad%'",
       "AND CAST(ca.workspace_drawer_json AS CHAR) LIKE CONCAT('%', c.id, '%')",
     ].join(" "),

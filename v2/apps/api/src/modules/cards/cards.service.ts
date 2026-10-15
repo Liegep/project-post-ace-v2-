@@ -23,7 +23,7 @@ import type {
   MoveCardInput,
   UpdateCardInput,
 } from "./cards.schemas.js";
-import { findCaptionVersion, listCaptionVersions, recordCaptionVersion } from "./caption-history.repository.js";
+import { ensureCaptionHistoryTable, findCaptionVersion, listCaptionVersions, recordCaptionVersion } from "./caption-history.repository.js";
 import { instantToWallClock } from "../../lib/zoned-date-time.js";
 
 function normalizeScheduleInput<T extends CreateCardInput | UpdateCardInput>(input: T, fallbackTimeZone: string): T {
@@ -331,6 +331,28 @@ export async function createKanbanCard(
   return findCardById(app.db, created.id);
 }
 
+// Ordinary edits and caption history share a row lock and transaction. A
+// conversion committed after the initial read must reject the whole stale edit.
+async function saveCardEdit(app: FastifyInstance, original: NonNullable<Awaited<ReturnType<typeof findCardById>>>, input: UpdateCardInput, actor: {id:string;fullName:string;globalRole:string}) {
+  if (input.caption !== undefined) await ensureCaptionHistoryTable(app.db); // DDL outside the transaction
+  const db = await app.db.getConnection();
+  try {
+    await db.beginTransaction();
+    await db.query("SELECT id FROM kanban_cards WHERE id = ? FOR UPDATE", [original.id]);
+    const current = await findCardById(db, original.id);
+    if (!current || current.approvalRevision !== original.approvalRevision || current.isBriefApproval !== original.isBriefApproval) {
+      throw app.httpErrors.conflict("O estado deste card mudou. Atualize a aprovação antes de salvar; seu rascunho foi preservado.");
+    }
+    if (input.caption !== undefined && (input.caption ?? null) !== (current.caption ?? null)) {
+      await recordCaptionVersion(db, {cardId:current.id,caption:current.caption,authorUserId:actor.id,authorName:actor.fullName,authorRole:actor.globalRole});
+    }
+    const updated = await updateCard(db, current.id, input);
+    await db.commit();
+    return updated;
+  } catch (error) {await db.rollback();throw error;}
+  finally {db.release();}
+}
+
 export async function updateKanbanCard(
   app: FastifyInstance,
   clientAccountId: string,
@@ -349,6 +371,11 @@ export async function updateKanbanCard(
   if (input.editorialBrief !== undefined && inferredApprovalState(card) === "approved") {
     throw app.httpErrors.conflict("O briefing aprovado está preservado. Reabra a aprovação antes de alterar sua versão.");
   }
+  // The creation/pauta workflow owns classification. A normal edit must never
+  // reassert a stale pauta flag after the server has converted this same card.
+  if (input.isBriefApproval === true && !card.isBriefApproval) {
+    throw app.httpErrors.conflict("Este card já é um post. Reabra o card antes de salvar; a conversão foi preservada.");
+  }
   const convertingBrief = isBriefApprovalConversion(card, input);
   if (card.approvalState && !convertingBrief) {
     if (input.clientLabel !== undefined && input.clientLabel !== card.clientLabel) {
@@ -364,16 +391,6 @@ export async function updateKanbanCard(
   }
   input = { ...input, expectedApprovalRevision: card.approvalRevision };
 
-  if (input.caption !== undefined && (input.caption ?? null) !== (card.caption ?? null)) {
-    await recordCaptionVersion(app.db, {
-      cardId,
-      caption: card.caption,
-      authorUserId: actor.id,
-      authorName: actor.fullName,
-      authorRole: actor.globalRole,
-    });
-  }
-
   const normalizedInput = normalizeScheduleInput(input, app.appEnv.APP_TIMEZONE);
   const isBeingScheduled = typeof normalizedInput.scheduledAt === "string" && normalizedInput.scheduledAt.trim().length > 0;
   const updateInput = isBeingScheduled
@@ -384,7 +401,7 @@ export async function updateKanbanCard(
     : normalizedInput;
   const updated = convertingBrief
     ? await convertBriefApprovalToPost(app, clientAccountId, cardId, actor, updateInput)
-    : await updateCard(app.db, cardId, updateInput);
+    : await saveCardEdit(app, card, updateInput, actor);
   if (!updated) {
     throw app.httpErrors.badRequest("Não foi possível atualizar o card.");
   }

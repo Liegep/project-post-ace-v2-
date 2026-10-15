@@ -11,7 +11,8 @@
     "check": "tsc --noEmit -p tsconfig.json",
     "test:brand-brain-layout": "node --test tests/brandBrainLayout.test.mjs",
     "test:pauta-layout": "node --test tests/editorialPautaLayout.test.mjs",
-    "test:media-layout": "node --test tests/producedMediaLayout.test.mjs"
+    "test:media-layout": "node --test tests/producedMediaLayout.test.mjs",
+    "test:pauta-state": "node --test tests/pautaPostState.test.mjs"
   },
   "dependencies": {
     "@types/react": "^18.3.31",

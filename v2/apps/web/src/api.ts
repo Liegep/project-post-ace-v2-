@@ -1224,7 +1224,7 @@ export async function restoreAdminCaptionVersionBySlug(slug: string, cardId: str
 
 export async function moveAdminCardBySlug(slug: string, cardId: string, columnId: string | null, position?: number) {
   const matchedClient = await findAdminClientBySlug(slug);
-  return sendJson(`/api/clients/${matchedClient.id}/cards/${cardId}/move`, {
+  return sendJson<{ ok: true; card: ApiBoardCard }>(`/api/clients/${matchedClient.id}/cards/${cardId}/move`, {
     method: "POST",
     body: JSON.stringify({ columnId, position }),
   });

@@ -10,7 +10,7 @@ import { approvalHistoryTableSql } from "./approval-history.repository.js";
 import { convertBriefApprovalToPost, decideCardApproval, resubmitCardApproval } from "./approval-workflow.service.js";
 import { approvalStatuses, inferredApprovalState, resendBlockedReason } from "./approval-state.js";
 import { findCardById, updateCard } from "../cards/cards.repository.js";
-import { moveKanbanCard, moveKanbanCardToScheduledColumn } from "../cards/cards.service.js";
+import { updateKanbanCard, moveKanbanCard, moveKanbanCardToScheduledColumn } from "../cards/cards.service.js";
 import { reconcileApprovedCardColumns } from "./approvals.service.js";
 import { approvalRoutes } from "./approvals.routes.js";
 import { portalRoutes } from "../portal/portal.routes.js";
@@ -46,6 +46,7 @@ async function fixture() {
     if (failEvent && statement.includes("INSERT INTO card_approval_events")) throw new Error("simulated audit failure");
     // Legacy pauta recovery is unrelated to these fixtures; no fixture is in the pauta bank.
     if (statement.startsWith("UPDATE kanban_cards c INNER JOIN")) return [{ affectedRows: 0 }, []];
+    if (statement.startsWith("CREATE TABLE IF NOT EXISTS card_caption_versions")) return [{affectedRows:0},[]];
     const translated = statement.replace(/ FOR UPDATE/g, "").replace(/<=>/g, "IS")
       .replace(/DATE_FORMAT\((\w+), '[^']+'\)/g, "$1")
       .replace(/UPDATE kanban_cards c SET c.column_id/g, "UPDATE kanban_cards AS c SET column_id")
@@ -64,6 +65,7 @@ async function fixture() {
   } } as unknown as Pool;
   const app = Fastify();
   app.decorate("db", pool);
+  app.decorate("appEnv", { APP_TIMEZONE: "Europe/Stockholm" } as never);
   await app.register(httpErrorsPluginRegistered);
   await app.ready();
   return { app, sql, pool, failAudit: () => { failEvent = true; }, close: async () => { await app.close(); sql.close(); } };
@@ -347,4 +349,49 @@ test("invalid new source metadata is rejected without silently dropping the pres
   await assert.rejects(editPautaIdea(f.app,"account","idea",{sourceUrl:"javascript:alert(1)",expectedApprovalRevision:0},editorialActor),{statusCode:400});
   assert.equal(f.sql.prepare("SELECT workspace_drawer_json FROM client_accounts").get()!.workspace_drawer_json,original);assert.equal((await findCardById(f.pool,"post"))!.approvalRevision,0);
  } finally {await f.close();}
+});
+
+test("converted post rejects a stale pauta flag even after adopting the current revision; ordinary edits preserve its cycle", async () => {
+ const f = await fixture(); const actor = {id:"admin",fullName:"Equipe",globalRole:"admin"};
+ try {
+  f.sql.exec("UPDATE kanban_cards SET is_brief_approval = 1");
+  await decideCardApproval(f.app,"account","post",client,{approved:true});
+  const converted = await moveKanbanCard(f.app,"account","post",{columnId:"work"},actor);
+  const original = {card:converted, events:f.sql.prepare("SELECT * FROM card_approval_events ORDER BY revision").all(), comments:f.sql.prepare("SELECT * FROM card_comments").all()};
+  for (const expectedApprovalRevision of [undefined,converted.approvalRevision-1,converted.approvalRevision]) {
+   await assert.rejects(updateKanbanCard(f.app,"account","post",{expectedApprovalRevision,isBriefApproval:true,caption:"Must not be saved",status:[]},actor),{statusCode:409});
+   assert.deepEqual(await findCardById(f.pool,"post"),original.card);
+   assert.deepEqual(f.sql.prepare("SELECT * FROM card_approval_events ORDER BY revision").all(),original.events);
+   assert.deepEqual(f.sql.prepare("SELECT * FROM card_comments").all(),original.comments);
+  }
+  const edited = await updateKanbanCard(f.app,"account","post",{expectedApprovalRevision:converted.approvalRevision,caption:"Intended edit"},actor);
+  assert.equal(edited.isBriefApproval,false); assert.equal(edited.approvalRevision,converted.approvalRevision);
+  assert.equal(edited.approvalState,"pending");assert.deepEqual(edited.mediaUrls,converted.mediaUrls);
+  assert.ok(edited.status.includes("Enviar para Cliente"));
+ } finally {await f.close();}
+});
+
+test("SQL flag guard rejects a late stale writer atomically, including without a revision",async()=>{
+ const f=await fixture();try {
+  f.sql.exec("UPDATE kanban_cards SET is_brief_approval=1");
+  await decideCardApproval(f.app,"account","post",client,{approved:true});
+  const converted=await moveKanbanCard(f.app,"account","post",{columnId:"work"},{id:"admin",fullName:"Equipe",globalRole:"admin"});
+  for(const expectedApprovalRevision of [undefined,converted.approvalRevision]){
+   await assert.rejects(updateCard(f.pool,"post",{isBriefApproval:true,expectedApprovalRevision,caption:"Stale",mediaUrls:[]}),{statusCode:409});
+   assert.deepEqual(await findCardById(f.pool,"post"),converted);
+  }
+ }finally{await f.close();}
+});
+
+test("explicit pauta conversion still preserves content and history and stays a post through reconciliation",async()=>{
+ const f=await fixture();try{
+  f.sql.exec("UPDATE kanban_cards SET is_brief_approval=1");
+  const original=await findCardById(f.pool,"post");
+  const converted=await updateKanbanCard(f.app,"account","post",{isBriefApproval:false,expectedApprovalRevision:0},{id:"admin",fullName:"Equipe",globalRole:"admin"});
+  assert.equal(converted.isBriefApproval,false);assert.equal(converted.approvalState,"pending");
+  assert.equal(converted.caption,original!.caption);assert.deepEqual(converted.mediaUrls,original!.mediaUrls);
+  await reconcileApprovedCardColumns(f.app);assert.equal((await findCardById(f.pool,"post"))!.isBriefApproval,false);
+  assert.equal(f.sql.prepare("SELECT COUNT(*) AS n FROM kanban_cards").get()!.n,1);
+  assert.deepEqual(f.sql.prepare("SELECT action FROM card_approval_events ORDER BY revision").all().map(x=>x.action),["legacy_snapshot","converted_to_post"]);
+ }finally{await f.close();}
 });
