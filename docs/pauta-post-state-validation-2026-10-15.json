@@ -1,0 +1,50 @@
+{
+  "baseCommit": "c92e57a617dea4fd7c286548301a47ba350682d2",
+  "branch": "codex/pauta-post-state-guard",
+  "node": "22.23.3",
+  "tests": {
+    "regression": {
+      "tests": 694,
+      "pass": 694,
+      "fail": 0,
+      "skipped": 0
+    },
+    "editor_browser": {
+      "tests": 7,
+      "pass": 7,
+      "fail": 0,
+      "skipped": 0
+    },
+    "mariadb_isolated": {
+      "tests": 5,
+      "pass": 5,
+      "fail": 0,
+      "skipped": 0
+    },
+    "editorial_layout": {
+      "tests": 12,
+      "pass": 12,
+      "fail": 0,
+      "skipped": 0
+    },
+    "media_viewer": {
+      "tests": 9,
+      "pass": 9,
+      "fail": 0,
+      "skipped": 0
+    }
+  },
+  "typecheck": "passed",
+  "build": "passed",
+  "buildWarning": "Existing chunks above 500 kB",
+  "mariadb": {
+    "version": "10.11.19",
+    "socket": "/tmp/pauta-state-mariadb-20261015/server.sock",
+    "networking": false,
+    "syntheticDataOnly": true,
+    "stoppedAfterTests": true
+  },
+  "productionPreviewExecuted": false,
+  "productionRepairExecuted": false,
+  "migrationRequired": false
+}

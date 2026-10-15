@@ -9,6 +9,8 @@ import { createApprovalLink, findApprovalLinkByToken, submitApprovalDecision } f
 import { recordApprovalEvent } from "./approval-history.repository.js";
 import { approvalStatuses, inferredApprovalState, resendBlockedReason } from "./approval-state.js";
 
+import { ensureCaptionHistoryTable, recordCaptionVersion } from "../cards/caption-history.repository.js";
+
 type Actor = { userId: string | null; name: string; role: "super_admin" | "admin" | "colaborador" | "cliente" | "guest" };
 type Card = NonNullable<Awaited<ReturnType<typeof findCardById>>>;
 const normalized = (value: string) => value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim();
@@ -156,6 +158,7 @@ export function isBriefApprovalConversion(card: Card, input: UpdateCardInput) {
 export async function convertBriefApprovalToPost(app: FastifyInstance, clientAccountId: string, cardId: string,
   actor: { id: string; fullName: string; globalRole: string }, input: UpdateCardInput,
 ) {
+  if (input.caption !== undefined) await ensureCaptionHistoryTable(app.db); // never DDL inside the conversion
   const db = await app.db.getConnection();
   try {
     await db.beginTransaction();
@@ -163,6 +166,9 @@ export async function convertBriefApprovalToPost(app: FastifyInstance, clientAcc
     checkRevision(app, card, input.expectedApprovalRevision);
     if (!isBriefApprovalConversion(card, input)) throw app.httpErrors.conflict("A pauta já foi convertida. Atualize o card.");
     await preserveLegacyState(db, card);
+    if (input.caption !== undefined && (input.caption ?? null) !== (card.caption ?? null)) {
+      await recordCaptionVersion(db, {cardId,caption:card.caption,authorUserId:actor.id,authorName:actor.fullName,authorRole:actor.globalRole});
+    }
     // Keep intentional visibility and internal production badges.
     const status = approvalStatuses(input.status ?? card.status, "pending");
     const visible = (input.status ?? card.status).includes("Enviar para Cliente");

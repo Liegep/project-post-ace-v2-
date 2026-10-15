@@ -315,11 +315,14 @@ export async function updateCard(
   }
 
   const guarded = input.expectedApprovalRevision !== undefined;
+  // Fence the flag in the UPDATE itself, including callers without a revision
+  // and a conversion committed after the service's initial SELECT.
+  const preservesPauta = input.isBriefApproval === true;
   const [result] = await db.query<ResultSetHeader>(
-    `UPDATE kanban_cards SET ${fields.join(", ")} WHERE id = ?${guarded ? " AND approval_revision = ?" : ""}${input.editorialBrief !== undefined ? " AND (approval_state IS NULL OR approval_state <> 'approved')" : ""}`,
+    `UPDATE kanban_cards SET ${fields.join(", ")} WHERE id = ?${guarded ? " AND approval_revision = ?" : ""}${input.editorialBrief !== undefined ? " AND (approval_state IS NULL OR approval_state <> 'approved')" : ""}${preservesPauta ? " AND is_brief_approval = 1" : ""}`,
     [...params, cardId, ...(guarded ? [input.expectedApprovalRevision] : [])],
   );
-  if ((guarded || input.editorialBrief !== undefined) && result.affectedRows === 0) {
+  if ((guarded || preservesPauta || input.editorialBrief !== undefined) && result.affectedRows === 0) {
     throw Object.assign(new Error("A aprovação deste post mudou. Reabra o card antes de salvar novamente; seu rascunho foi preservado."), { statusCode: 409 });
   }
 

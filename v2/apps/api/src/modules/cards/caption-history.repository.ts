@@ -13,7 +13,7 @@ type CaptionVersionRow = RowDataPacket & {
 
 let schemaPromise: Promise<void> | null = null;
 
-export async function ensureCaptionHistoryTable(db: Pool) {
+export async function ensureCaptionHistoryTable(db: Pick<Pool, "query">) {
   if (!schemaPromise) {
     schemaPromise = db.query([
       "CREATE TABLE IF NOT EXISTS card_caption_versions (",
@@ -48,7 +48,7 @@ function mapCaptionVersion(row: CaptionVersionRow) {
   };
 }
 
-export async function listCaptionVersions(db: Pool, cardId: string, limit = 50) {
+export async function listCaptionVersions(db: Pick<Pool, "query">, cardId: string, limit = 50) {
   await ensureCaptionHistoryTable(db);
   const safeLimit = Math.max(1, Math.min(100, Math.trunc(limit)));
   const [rows] = await db.query<CaptionVersionRow[]>(
@@ -58,7 +58,7 @@ export async function listCaptionVersions(db: Pool, cardId: string, limit = 50) 
   return rows.map(mapCaptionVersion);
 }
 
-export async function findCaptionVersion(db: Pool, cardId: string, versionId: string) {
+export async function findCaptionVersion(db: Pick<Pool, "query">, cardId: string, versionId: string) {
   await ensureCaptionHistoryTable(db);
   const [rows] = await db.query<CaptionVersionRow[]>(
     "SELECT id, card_id, caption, author_user_id, author_name, author_role, created_at FROM card_caption_versions WHERE id = ? AND card_id = ? LIMIT 1",
@@ -68,7 +68,7 @@ export async function findCaptionVersion(db: Pool, cardId: string, versionId: st
 }
 
 export async function recordCaptionVersion(
-  db: Pool,
+  db: Pick<Pool, "query">,
   input: { cardId: string; caption: string | null; authorUserId?: string | null; authorName: string; authorRole: string },
 ) {
   await ensureCaptionHistoryTable(db);
