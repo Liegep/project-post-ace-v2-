@@ -1,3 +1,4 @@
+import { ExternalMaterialAction, externalMaterialUrl } from "./ExternalMaterialAction";
 import { FloatingRailIcon } from "./FloatingRailIcon";
 import { useNotificationSound } from "./useNotificationSound";
 import { DashboardInternalMessagesWidget } from "./DashboardInternalMessagesWidget";
@@ -5789,8 +5790,11 @@ function portalCardAssets(card: BoardCard) {
   return Array.from(new Set([...(card.mediaUrls ?? []), ...(card.mediaUrl ? [card.mediaUrl] : [])]));
 }
 
-function linkedCardMaterial(card: BoardCard) {
-  return card.externalLinkUrl ?? portalCardAssets(card).find((url) => /(?:drive|docs)\.google\.com/i.test(url)) ?? null;
+function linkedCardMaterial(card: { externalLinkUrl?: string | null; mediaUrls?: string[]; mediaUrl?: string; primaryMediaUrl?: string | null }) {
+  return card.externalLinkUrl ?? [...(card.mediaUrls ?? []), card.mediaUrl, card.primaryMediaUrl].find((value) => {
+    const url = externalMaterialUrl(value);
+    return url && ["drive.google.com", "docs.google.com"].includes(url.hostname.toLowerCase());
+  }) ?? null;
 }
 
 function clientFeedbackToneClass(value: string) {
@@ -6963,6 +6967,7 @@ export function CardDetailModal({
     }
   }
   const isEditorialPauta = usesEditorialPautaLayout(detail.card);
+  const materialUrl = linkedCardMaterial(detail.card);
   const hasPortalVisualMedia = portalCardAssets(detail.card).length > 0;
   const isClientSuggestion = detail.card.statusBadges.some((status) => status
     .normalize("NFD")
@@ -7017,6 +7022,7 @@ export function CardDetailModal({
                 <ResilientCardMedia url={portalCardAssets(detail.card)[0]} title={detail.card.title} />
               </div>
             ) : linkedCardMaterial(detail.card) ? <CardMediaFallback title={detail.card.title} linked /> : null}
+            {mode === "portal" && hasPortalVisualMedia ? <ExternalMaterialAction url={materialUrl} locale={localeTag} /> : null}
             {!isEditorialPauta ? <div className="badge-row">
               {detail.card.statusBadges.map((badge) => (
                 <span key={badge} className="mini-badge status">
@@ -7029,15 +7035,16 @@ export function CardDetailModal({
                 </span>
               ))}
             </div> : null}
-            {linkedCardMaterial(detail.card) ? (
-              <a className="external-card-link portal-linked-material-cta" href={linkedCardMaterial(detail.card) ?? undefined} target="_blank" rel="noreferrer">
+            {mode === "admin" && externalMaterialUrl(materialUrl) ? (
+              <a className="external-card-link portal-linked-material-cta" href={materialUrl ?? undefined} target="_blank" rel="noopener noreferrer">
                 <UiIcon name="link" />
-                <span>{linkedMaterialPortalLabel(localeTag, linkedCardMaterial(detail.card) ?? "")}</span>
+                <span>{linkedMaterialPortalLabel(localeTag, materialUrl ?? "")}</span>
               </a>
             ) : null}
           </div>
 
           <div className="modal-sidebar-copy">
+            {mode === "portal" && !hasPortalVisualMedia ? <ExternalMaterialAction url={materialUrl} locale={localeTag} /> : null}
             <section className="glass-subtle modal-card portal-summary-card">
               <EditorialBrief brief={detail.card.editorialBrief} caption={captionDraft} locale={localeTag} t={t} />{!isEditorialPauta || captionDraft.trim() || editingCaption || editingSuggestion || canEditClientSuggestion || allowEditCaption ? <header className="portal-summary-heading">{!isEditorialPauta ? <span><UiIcon name="file" /></span> : null}<div>{!isEditorialPauta ? <small>{t(isClientSuggestion ? "SUGESTÃO DE PAUTA" : "CONTEÚDO DO POST")}</small> : null}<h4>{t(isEditorialPauta ? "Legenda sugerida" : isClientSuggestion ? "Detalhes da sugestão" : "Legenda")}</h4></div>{canEditClientSuggestion && !editingSuggestion ? <button type="button" className="portal-caption-edit-button" onClick={() => { setEditingCaption(false); setEditingSuggestion(true); }}><UiIcon name="file" />{t("Editar sugestão")}</button> : allowEditCaption && !editingCaption && !isClientSuggestion ? <button type="button" className="portal-caption-edit-button" onClick={() => setEditingCaption(true)}><UiIcon name="file" />{t("Editar legenda")}</button> : null}</header> : null}
               {editingSuggestion ? <div className="portal-suggestion-editor"><label>{t("Título da pauta")}<input autoFocus value={suggestionTitle} onChange={(event) => setSuggestionTitle(event.target.value)} maxLength={255} placeholder={t("Título da sugestão")} /></label><label>{t("Texto da sugestão")}<textarea value={suggestionCaption} onChange={(event) => setSuggestionCaption(event.target.value)} maxLength={5000} placeholder={t("Descreva a ideia da pauta...")} /></label><label>{t("Link de referência")}<input type="url" value={suggestionLink} onChange={(event) => setSuggestionLink(event.target.value)} maxLength={1024} placeholder="https://..." /></label><div className="portal-caption-editor-footer"><small>{suggestionCaption.length}/5000 {t("caracteres")}</small><div><button type="button" className="ghost-button" disabled={suggestionSaving} onClick={resetSuggestionDraft}>{t("Cancelar")}</button></div></div></div> : editingCaption ? <div className="portal-caption-editor"><label htmlFor={`portal-caption-${detail.card.id}`}>{t("Edite o texto abaixo")}</label><textarea id={`portal-caption-${detail.card.id}`} autoFocus value={captionDraft} onChange={(event) => setCaptionDraft(event.target.value)} maxLength={5000} placeholder={t("Escreva a legenda do post...")} /><div className="portal-caption-editor-footer"><small>{captionDraft.length}/5000 {t("caracteres")}</small><div><button type="button" className="ghost-button" disabled={captionSaving} onClick={() => { setCaptionDraft(detail.card.subtitle ?? ""); setEditingCaption(false); }}>{t("Cancelar")}</button><button type="button" className="gradient-button" disabled={captionSaving} onClick={() => void savePortalCaption()}>{t(captionSaving ? "Salvando..." : "Salvar legenda")}</button></div></div></div> : isEditorialPauta ? (captionDraft.trim() ? <p className="pauta-caption-copy">{captionDraft}</p> : null) : <PortalFormattedCaption text={captionDraft} />}
@@ -9586,7 +9593,7 @@ export function PublicApprovalPage() {
   const card = mapPublicApprovalCard(view.card);
   const isEditorialPauta = usesEditorialPautaLayout(view.card);
   const publicMediaUrls = Array.from(new Set([view.card.primaryMediaUrl, ...view.card.mediaUrls].filter((url): url is string => Boolean(url))));
-  return <main className="public-approval-page"><section className={`public-approval-card${isEditorialPauta ? " editorial-pauta-public" : " produced-post-public"}`}><p className="eyebrow">{view.account.name}</p><h1>{card.title}</h1>{isEditorialPauta ? (card.mediaUrl ? <div className={`media-frame ${card.mediaAspect}`}><img src={card.mediaUrl} alt={card.title} /></div> : null) : <ArtworkCarousel urls={publicMediaUrls} title={card.title} preserveMediaSize mediaType={`${view.card.artType} ${view.card.mediaType}`} />}<EditorialBrief brief={view.card.editorialBrief} caption={card.subtitle} locale={view.account.locale || "pt-BR"} />{isEditorialPauta ? (card.subtitle ? <section className="pauta-caption-section"><h2>Legenda sugerida</h2><p className="pauta-caption-copy">{card.subtitle}</p></section> : null) : <div className="public-caption">{card.subtitle || "Sem legenda cadastrada."}</div>}<label>Seu nome<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Como prefere ser identificado?" /></label><label>Comentário<textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Deixe uma observação, se desejar" /></label><div className="public-approval-actions"><button className="gradient-button" disabled={working} onClick={() => decide(true)}>Aprovar</button><button className="danger-button" disabled={working} onClick={() => decide(false)}>Solicitar alteração</button></div>{message ? <p className="form-feedback" role="status">{message}</p> : null}</section></main>;
+  return <main className="public-approval-page"><section className={`public-approval-card${isEditorialPauta ? " editorial-pauta-public" : " produced-post-public"}`}><p className="eyebrow">{view.account.name}</p><h1>{card.title}</h1>{isEditorialPauta ? (card.mediaUrl ? <div className={`media-frame ${card.mediaAspect}`}><img src={card.mediaUrl} alt={card.title} /></div> : null) : <ArtworkCarousel urls={publicMediaUrls} title={card.title} preserveMediaSize mediaType={`${view.card.artType} ${view.card.mediaType}`} />}<ExternalMaterialAction url={linkedCardMaterial(view.card)} locale={view.account.locale || "pt-BR"} /><EditorialBrief brief={view.card.editorialBrief} caption={card.subtitle} locale={view.account.locale || "pt-BR"} />{isEditorialPauta ? (card.subtitle ? <section className="pauta-caption-section"><h2>Legenda sugerida</h2><p className="pauta-caption-copy">{card.subtitle}</p></section> : null) : <div className="public-caption">{card.subtitle || "Sem legenda cadastrada."}</div>}<label>Seu nome<input value={name} onChange={(event) => setName(event.target.value)} placeholder="Como prefere ser identificado?" /></label><label>Comentário<textarea value={comment} onChange={(event) => setComment(event.target.value)} placeholder="Deixe uma observação, se desejar" /></label><div className="public-approval-actions"><button className="gradient-button" disabled={working} onClick={() => decide(true)}>Aprovar</button><button className="danger-button" disabled={working} onClick={() => decide(false)}>Solicitar alteração</button></div>{message ? <p className="form-feedback" role="status">{message}</p> : null}</section></main>;
 }
 
 function mapPublicApprovalCard(card: { id: string; title: string; caption: string | null; mediaType: string; primaryMediaUrl: string | null; mediaUrls: string[]; externalLinkUrl: string | null; artType: string; status: string[]; tags: string[]; commentsCount: number; scheduledAt: string | null; clientLabel: string }) {

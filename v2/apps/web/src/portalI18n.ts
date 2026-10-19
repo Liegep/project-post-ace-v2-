@@ -2,6 +2,10 @@ export type PortalLocale = "pt" | "en" | "es" | "it" | "sv";
 
 const translations: Record<Exclude<PortalLocale, "pt">, Record<string, string>> = {
   en: {
+    "Assistir ao vídeo": "Watch video",
+    "Abrir material": "Open material",
+    "Abre em uma nova aba": "Opens in a new tab",
+
     "CONTRATO": "CONTRACT",
     "Contrato pendente de aceite": "Contract awaiting acceptance",
     "Leia o documento para continuar na área do cliente.": "Read the document to continue to the client area.",
@@ -106,6 +110,10 @@ const translations: Record<Exclude<PortalLocale, "pt">, Record<string, string>> 
     "Ao clicar, você confirma que leu e está de acordo com os termos apresentados.": "By clicking, you confirm that you have read and agree to the terms presented.", "Li e aceito o contrato": "I have read and accept the contract",
   },
   es: {
+    "Assistir ao vídeo": "Ver el vídeo",
+    "Abrir material": "Abrir material",
+    "Abre em uma nova aba": "Se abre en una pestaña nueva",
+
     "CONTRATO": "CONTRATO",
     "Contrato pendente de aceite": "Contrato pendiente de aceptación",
     "Leia o documento para continuar na área do cliente.": "Lee el documento para continuar en el área del cliente.",
@@ -156,6 +164,10 @@ const translations: Record<Exclude<PortalLocale, "pt">, Record<string, string>> 
     "Mês anterior": "Mes anterior", "Próximo mês": "Mes siguiente", "Posts agendados": "Publicaciones programadas", "Post agendado": "Publicación programada", "Compromissos": "Citas", "Nenhum item agendado neste mês.": "No hay elementos programados este mes.", "Use as setas acima para consultar outro mês.": "Usa las flechas de arriba para consultar otro mes.", "Compromisso": "Cita", "Sem detalhes adicionais.": "Sin detalles adicionales.", "Quando": "Cuándo", "VIDEOCHAMADA": "VIDEOLLAMADA", "O link será aberto em uma nova aba.": "El enlace se abrirá en una nueva pestaña.", "Entrar na reunião": "Entrar a la reunión",
   },
   it: {
+    "Assistir ao vídeo": "Guarda il video",
+    "Abrir material": "Apri materiale",
+    "Abre em uma nova aba": "Si apre in una nuova scheda",
+
     "CONTRATO": "CONTRATTO",
     "Contrato pendente de aceite": "Contratto in attesa di accettazione",
     "Leia o documento para continuar na área do cliente.": "Leggi il documento per continuare nell’area cliente.",
@@ -206,6 +218,10 @@ const translations: Record<Exclude<PortalLocale, "pt">, Record<string, string>> 
     "Mês anterior": "Mese precedente", "Próximo mês": "Mese successivo", "Posts agendados": "Post programmati", "Post agendado": "Post programmato", "Compromissos": "Appuntamenti", "Nenhum item agendado neste mês.": "Nessun elemento programmato questo mese.", "Use as setas acima para consultar outro mês.": "Usa le frecce qui sopra per consultare un altro mese.", "Compromisso": "Appuntamento", "Sem detalhes adicionais.": "Nessun dettaglio aggiuntivo.", "Quando": "Quando", "VIDEOCHAMADA": "VIDEOCHIAMATA", "O link será aberto em uma nova aba.": "Il link si aprirà in una nuova scheda.", "Entrar na reunião": "Partecipa alla riunione",
   },
   sv: {
+    "Assistir ao vídeo": "Se videon",
+    "Abrir material": "Öppna material",
+    "Abre em uma nova aba": "Öppnas i en ny flik",
+
     "CONTRATO": "AVTAL",
     "Contrato pendente de aceite": "Avtal väntar på godkännande",
     "Leia o documento para continuar na área do cliente.": "Läs dokumentet för att fortsätta till kundområdet.",
