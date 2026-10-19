@@ -20,10 +20,12 @@ if (shape) {
  const dimensions: Record<string, [number,number]> = { square: [800,800], landscape: [1280,720], portrait: [800,1000], story: [720,1280] };
  detail.card.mediaUrls = shape.startsWith("video") ? [`/tests/synthetic-${shape}.webm`] : shape === "carousel" ? [image(800,800),image(800,1000),image(1280,720),image(720,1280)] : [image(...(dimensions[shape] ?? dimensions.square))];
 }
+if (params.has("material")) detail.card.externalLinkUrl = params.get("material")!;
+if (params.has("hashtags")) { detail.card.hashtags = ["#cotidiano", "#design"]; detail.card.subtitle += "\n\n#cotidiano #design"; }
 const apiCard = { ...detail.card, caption: detail.card.subtitle ?? null, mediaType: detail.card.mediaType ?? "image", primaryMediaUrl: params.has("primary") ? detail.card.mediaUrls?.[1] ?? null : null, mediaUrls: detail.card.mediaUrls ?? [], artType: "carousel", status: detail.card.statusBadges, commentsCount: 1, scheduledAt: null };
 if (scenario === "authenticated") {
  localStorage.setItem("designhub-v2-access-token", "synthetic-access-token");
- localStorage.setItem("designhub-v2-session", JSON.stringify({id:"synthetic-user",name:"Marina",email:"marina@invalid.test",role:"client",locale:"pt",assignedAdminSlugs:[],assignedPortalSlugs:["synthetic"],source:"api",accessToken:"synthetic-access-token"}));
+ localStorage.setItem("designhub-v2-session", JSON.stringify({id:"synthetic-user",name:"Marina",email:"marina@invalid.test",role:"client",locale:params.get("locale") || "pt",assignedAdminSlugs:[],assignedPortalSlugs:["synthetic"],source:"api",accessToken:"synthetic-access-token"}));
 }
 const preview = { eligible: !params.has("blocked"), blockers: params.has("blocked") ? ["Existe aprovação anterior; recuperação exige um fluxo separado de revisão."] : [], previewToken: "synthetic-preview-token", revision: 2, currentTitle: title, currentCaption: caption, currentBrief: detail.card.editorialBrief, recoverableBrief: brief, additions: { hook: brief.hook }, bankAdditions: { hook: brief.hook }, divergences: [], unavailable: [], effects: { activeLinksToInvalidate: 1, newRevision: 3, requiresNewApproval: true, preservesDescriptionCaptionMediaStatus: true } };
 const fixture = window as typeof window & { fixtureCalls: Array<{ url: string; method: string; body?: unknown }>; fixtureActions: unknown[]; fixtureDetail: CardDetail };
@@ -35,9 +37,9 @@ window.fetch = async (input, init) => {
   if (url.endsWith("editorial-brief-recovery") && body?.confirm === true && body?.previewToken === "synthetic-preview-token") data = { applied: true, card: detail.card };
   else if (url === "/api/portal/approval/synthetic/decision") data = { ok: true };
   else throw Error(`Unexpected fixture write ${method} ${url}`);
- } else if (url === "/api/auth/session") data = { authenticated: true, user: { id:"synthetic-user", fullName:"Marina", email:"marina@invalid.test", globalRole:"cliente", locale:"pt", isActive:true }, memberships: [{clientAccountId:"synthetic-client",clientSlug:"synthetic",clientName:"Cliente de demonstração",membershipRole:"cliente"}] };
+ } else if (url === "/api/auth/session") data = { authenticated: true, user: { id:"synthetic-user", fullName:"Marina", email:"marina@invalid.test", globalRole:"cliente", locale:params.get("locale") || "pt", isActive:true }, memberships: [{clientAccountId:"synthetic-client",clientSlug:"synthetic",clientName:"Cliente de demonstração",membershipRole:"cliente"}] };
  else if (url === "/api/portal/accounts") data = { items:[{clientAccountId:"synthetic-client",clientSlug:"synthetic",clientName:"Cliente de demonstração"}] };
- else if (url.endsWith("/home")) data = {account:{name:"Cliente de demonstração",locale:"pt",trackingEnabled:false,showArchivedToClient:false},accessLevel:"approver",permissions:{allowClientEditCaption:false,allowClientCreatePost:false,allowClientCreateTags:false,allowClientViewTexts:false,allowClientViewReports:false,allowClientViewInvoices:false,allowClientViewBrandBrain:false},widgets:{showCalendar:false,showUpcomingPosts:false,showReports:false,showInvoices:false,showTexts:false,showStats:false},postCreationColumns:[],upcomingItems:[],calendarPosts:[]};
+ else if (url.endsWith("/home")) data = {account:{name:"Cliente de demonstração",locale:params.get("locale") || "pt",trackingEnabled:false,showArchivedToClient:false},accessLevel:"approver",permissions:{allowClientEditCaption:false,allowClientCreatePost:false,allowClientCreateTags:false,allowClientViewTexts:false,allowClientViewReports:false,allowClientViewInvoices:false,allowClientViewBrandBrain:false},widgets:{showCalendar:false,showUpcomingPosts:false,showReports:false,showInvoices:false,showTexts:false,showStats:false},postCreationColumns:[],upcomingItems:[],calendarPosts:[]};
  else if (url === "/api/portal/accounts/synthetic-client/board") data = {board:{columns:[{id:"column",name:"Pautas para aprovação",color:"#6953bd",visibleToClient:true,cards:[apiCard]}],withoutColumn:{cards:[]}}};
  else if (url === "/api/portal/accounts/synthetic-client/cards/synthetic-card") data = {card:apiCard,comments:detail.comments,approvalLinks:[]};
  else if (url.endsWith("/contracts/pending")) data = {contract:null};
@@ -47,7 +49,7 @@ window.fetch = async (input, init) => {
  else if (url.endsWith("/board")) data = { client: { id: "synthetic-client", name: "Cliente de demonstração", slug: "synthetic" }, board: { columns: [], withoutColumn: { cards: [] } } };
  else if (url.endsWith("/brand-brain")) data = { data: {}, revisions: [], history: [], comments: [], meta: {} };
  else if (url.endsWith("editorial-brief-recovery/preview")) data = preview;
- else if (url === "/api/portal/approval/synthetic") data = { account: { name: "Cliente de demonstração", locale: "pt-BR" }, card: apiCard };
+ else if (url === "/api/portal/approval/synthetic") data = { account: { name: "Cliente de demonstração", locale: params.get("locale") || "pt-BR" }, card: apiCard };
  else if (url.includes("time-entries")) data = { items: [], active: null, totalSeconds: 0 };
  else if (url.includes("tags") || url.includes("hashtag") || url.includes("reviewers")) data = { items: [] };
  else throw Error(`Unexpected fixture read ${url}`);
