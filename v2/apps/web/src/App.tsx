@@ -1,3 +1,4 @@
+import { prepareAdminDownload } from "./adminMediaDownload";
 import { ExternalMaterialAction, externalMaterialUrl } from "./ExternalMaterialAction";
 import { FloatingRailIcon } from "./FloatingRailIcon";
 import { useNotificationSound } from "./useNotificationSound";
@@ -4578,9 +4579,21 @@ async function downloadEditorMedia(url: string, index: number) {
   try {
     const response = await fetch(url);
     if (!response.ok) throw new Error("download");
-    const blob = await response.blob();
-    triggerPortalDownload(blob, `${baseName}.${portalAssetExtension(url, blob.type)}`);
+    const source = await response.blob();
+    // Conversion failures must not silently download the original WebP.
+    let prepared;
+    try {
+      prepared = await prepareAdminDownload(source, url, baseName);
+    } catch {
+      window.alert("Não foi possível converter a imagem para JPEG. Tente novamente.");
+      return;
+    }
+    triggerPortalDownload(prepared.blob, prepared.fileName ?? `${baseName}.${portalAssetExtension(url, source.type)}`);
   } catch {
+    if (/\.(webp|png|jpe?g|gif|svg|avif|bmp|tiff?)(?:[?#]|$)/i.test(url)) {
+      window.alert("Não foi possível baixar a imagem. Tente novamente.");
+      return;
+    }
     const link = document.createElement("a");
     link.href = url;
     link.download = baseName;
