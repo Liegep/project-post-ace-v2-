@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { getUploadTraces, tracedUpload, uploadReference } from "../src/uploadTrace.js";
+import { getUploadTraces, tracedUpload } from "../src/uploadTrace.js";
 const storage = new Map<string, string>();
 Object.assign(globalThis, { sessionStorage: { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) }, window: new EventTarget() });
 const file = new File(["secret-binary"], "private-person.png", { type: "image/png" });
@@ -16,12 +16,12 @@ test("success, rejection, network failure and replaced HTML preserve local attem
       return new Response(JSON.stringify(kind === "success" ? { url: "/api/uploads/result.webp" } : { message: "private-server-detail" }), { status: kind === "success" ? 200 : 400 });
     };
     if (kind === "success") assert.equal(await tracedUpload(file, "/api/uploads", new Headers(), transport), "/api/uploads/result.webp");
-    else await assert.rejects(tracedUpload(file, "/api/uploads", new Headers(), transport), error => error instanceof Error && error.message.includes(ids.at(-1)!) && !error.message.includes("private-"));
+    else await assert.rejects(tracedUpload(file, "/api/uploads", new Headers(), transport), error => error instanceof Error && error.message === "Não foi possível enviar o arquivo." && !error.message.includes(ids.at(-1)!));
     assert.equal(getUploadTraces().at(-1)?.id, ids.at(-1));
   }
   assert.equal(new Set(ids).size, 4);
   assert.equal(getUploadTraces().at(-1)?.status, 403);
-  assert.ok(uploadReference(getUploadTraces().at(-1)!).includes("Z"));
+  assert.ok(getUploadTraces().at(-1)!.utc.endsWith("Z"));
   assert.ok(!JSON.stringify([...storage.values()]).includes("private-person"));
   storage.set("designhub:upload-trace-header", "off");
   await assert.rejects(tracedUpload(file, "/api/uploads", new Headers(), async (_url, init) => { assert.equal(new Headers(init.headers).has("X-Upload-Trace-Id"), false); throw Error("network"); }));
@@ -30,22 +30,21 @@ test("success, rejection, network failure and replaced HTML preserve local attem
   assert.equal(getUploadTraces().length, 20);
 });
 
-test("failure notice restores the saved reference and copies ID plus UTC time", async () => {
-  const { JSDOM } = await import("jsdom");
-  const React = await import("react");
-  const { createRoot } = await import("react-dom/client");
-  const { UploadTraceNotice } = await import("../src/UploadTraceNotice.js");
-  const dom = new JSDOM("<div id='test-root'></div>", { url: "https://local.invalid" });
-  Object.assign(globalThis, { window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true });
-  let copied = "";
-  Object.defineProperty(globalThis, "navigator", { configurable: true, value: { clipboard: { writeText: async (value: string) => { copied = value; } } } });
-  const root = createRoot(document.getElementById("test-root")!);
-  try {
-    await React.act(async () => root.render(React.createElement(UploadTraceNotice)));
-    assert.ok(document.body.textContent?.includes("Consultar referência"));
-    const button = [...document.querySelectorAll("button")].find(node => node.textContent === "Copiar referência")!;
-    await React.act(async () => button.dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true })));
-    assert.equal(copied, uploadReference(getUploadTraces().at(-1)!));
-    assert.ok(document.body.textContent?.includes("Referência copiada"));
-  } finally { await React.act(async () => root.unmount()); dom.window.close(); }
+test("old diagnostics remain technical only; normal error messages never expose ID or UTC", async () => {
+  const old = { id: crypto.randomUUID(), utc: "2026-10-21T12:32:00.481Z", headerSent: true, status: 403, outcome: "http_error" };
+  storage.set("designhub:upload-traces", JSON.stringify([old]));
+  assert.equal(getUploadTraces()[0].id, old.id);
+  storage.delete("designhub:upload-trace-header");
+  for (const [status, message] of [[413, "O arquivo excede o limite permitido para este formato."], [403, "Não foi possível enviar o arquivo."]] as const) {
+    await assert.rejects(tracedUpload(file, "/api/uploads", new Headers(), async (_url, init) => {
+      assert.match(new Headers(init.headers).get("X-Upload-Trace-Id")!, /^[a-f0-9-]{36}$/);
+      const sent = (init.body as FormData).get("file") as File;
+      assert.match(sent.name, /^upload-[a-f0-9-]{36}\.png$/);
+      return new Response("<html>failure</html>", { status });
+    }), { message });
+    const trace = getUploadTraces().at(-1)!;
+    assert.equal(trace.status, status); assert.equal(trace.outcome, "http_error");
+    assert.ok(trace.utc.endsWith("Z")); assert.ok(trace.headerSent);
+  }
+  assert.equal(getUploadTraces()[0].id, old.id);
 });

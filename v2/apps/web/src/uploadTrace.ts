@@ -1,6 +1,5 @@
 import { createAdminUploadForm } from "./adminUploadForm";
 export type UploadTrace = { id: string; utc: string; headerSent: boolean; status: number | null; outcome: "pending" | "success" | "http_error" | "network_error" | "invalid_response" };
-export const UPLOAD_TRACE_EVENT = "designhub:upload-trace";
 const key = "designhub:upload-traces";
 let traces: UploadTrace[] = [];
 export function getUploadTraces(): UploadTrace[] {
@@ -10,9 +9,7 @@ export function getUploadTraces(): UploadTrace[] {
 function save(trace: UploadTrace) {
   traces = [...traces.filter(t => t.id !== trace.id), { ...trace }].slice(-20);
   try { sessionStorage.setItem(key, JSON.stringify(traces)); } catch { /* Uploads do not depend on storage. */ }
-  window.dispatchEvent(new CustomEvent(UPLOAD_TRACE_EVENT));
 }
-export function uploadReference(trace: UploadTrace) { return `Referência: ${trace.id} · ${trace.utc}`; }
 export async function tracedUpload(file: File, url: string, headers: Headers, transport: (url: string, init: RequestInit) => Promise<Response>): Promise<string> {
   getUploadTraces();
   // Diagnostic opt-out only; never retry a POST automatically. Useful when the
@@ -38,6 +35,6 @@ export async function tracedUpload(file: File, url: string, headers: Headers, tr
   } catch {
     if (trace.outcome === "pending") trace.outcome = "network_error";
     save(trace);
-    throw new Error(`${message} ${uploadReference(trace)}`);
+    throw new Error(message);
   }
 }
