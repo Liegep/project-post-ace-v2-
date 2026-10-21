@@ -1,3 +1,4 @@
+import { createAdminUploadForm } from "./adminUploadForm";
 import { tracedUpload } from "./uploadTrace";
 import type { EditorialBriefData } from "./EditorialBrief";
 import { ACCESS_TOKEN_KEY } from "./authApi";
@@ -1870,8 +1871,7 @@ export async function uploadReceiptSignature(file: File) {
   const headers = new Headers();
   const token = getAccessToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const body = new FormData();
-  body.set("file", file);
+  const body = await createAdminUploadForm(file);
   const response = await fetchWithTimeout(`${getApiBaseUrl()}/api/uploads/receipt-signature`, { method: "POST", headers, body });
   const result = await response.json() as { signatureUrl: string; message?: string };
   if (!response.ok) throw new Error(result.message ?? "Não foi possível salvar a assinatura.");

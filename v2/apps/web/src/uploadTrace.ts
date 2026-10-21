@@ -1,3 +1,4 @@
+import { createAdminUploadForm } from "./adminUploadForm";
 export type UploadTrace = { id: string; utc: string; headerSent: boolean; status: number | null; outcome: "pending" | "success" | "http_error" | "network_error" | "invalid_response" };
 export const UPLOAD_TRACE_EVENT = "designhub:upload-trace";
 const key = "designhub:upload-traces";
@@ -21,9 +22,9 @@ export async function tracedUpload(file: File, url: string, headers: Headers, tr
   const trace: UploadTrace = { id: crypto.randomUUID(), utc: new Date().toISOString(), headerSent, status: null, outcome: "pending" };
   if (headerSent) headers.set("X-Upload-Trace-Id", trace.id);
   save(trace); // Before fetch; does not depend on any response/header.
-  const body = new FormData(); body.set("file", file);
   let message = "Não foi possível enviar o arquivo.";
   try {
+    const body = await createAdminUploadForm(file);
     const response = await transport(url, { method: "POST", headers, body });
     trace.status = response.status;
     if (!response.ok) {
