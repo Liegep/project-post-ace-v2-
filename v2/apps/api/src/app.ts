@@ -1,3 +1,4 @@
+import { uploadTracePluginRegistered } from "./plugins/upload-trace.js";
 import { radarRecoveryRoutes } from "./modules/radar-recovery/radar-recovery.routes.js";
 import { brandBrainAiRoutes } from "./modules/brand-brain-ai/brand-brain-ai.routes.js";
 import { radarSuggestionsRoutes } from "./modules/radar-suggestions/radar-suggestions.routes.js";
@@ -59,6 +60,7 @@ export async function buildApp() {
 
   app.decorate("appEnv", appEnv);
 
+  await app.register(uploadTracePluginRegistered);
   await app.register(httpErrorsPluginRegistered);
   await app.register(fastifyFormbody);
 

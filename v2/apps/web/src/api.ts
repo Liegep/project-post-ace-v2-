@@ -1,3 +1,4 @@
+import { tracedUpload } from "./uploadTrace";
 import type { EditorialBriefData } from "./EditorialBrief";
 import { ACCESS_TOKEN_KEY } from "./authApi";
 import type {
@@ -1748,24 +1749,7 @@ export async function uploadAdminMedia(file: File) {
   const accessToken = getAccessToken();
   if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
 
-  const body = new FormData();
-  body.set("file", file);
-  const response = await fetchWithTimeout(`${getApiBaseUrl()}/api/uploads`, {
-    method: "POST",
-    headers,
-    body,
-  });
-
-  if (!response.ok) {
-    if (response.status === 413) {
-      throw new Error("O arquivo excede o limite permitido para este formato.");
-    }
-    const payload = (await response.json().catch(() => null)) as { message?: string } | null;
-    throw new Error(payload?.message ?? "Não foi possível enviar o arquivo.");
-  }
-
-  const result = (await response.json()) as { url: string };
-  return result.url;
+  return tracedUpload(file, `${getApiBaseUrl()}/api/uploads`, headers, fetchWithTimeout);
 }
 
 export async function uploadPortalMediaBySlug(slug: string, file: File) {
