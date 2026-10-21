@@ -18,6 +18,7 @@
     "backup:legacy-media": "tsx src/scripts/backup-legacy-media.ts",
     "migrate:legacy-media": "tsx src/scripts/migrate-legacy-media.ts",
     "sync:agenda:legacy": "tsx src/scripts/sync-legacy-agenda-to-supabase.ts",
+    "test:time-tracking:mysql": "tsx --test src/modules/time-tracking/time-tracking.mysql.test.ts",
     "test:seasonal:mysql": "tsx --test src/modules/seasonal/seasonal.mysql.test.ts",
     "test:briefs:mysql": "tsx --test src/modules/brief-foundation/brief.mysql.test.ts",
     "test:radar-suggestions:mysql": "tsx --test src/modules/radar-suggestions/radar-suggestions.mysql.test.ts",
