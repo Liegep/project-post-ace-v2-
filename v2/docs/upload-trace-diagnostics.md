@@ -1,6 +1,6 @@
 # Diagnóstico de POST /api/uploads
 
-Cada tentativa do upload administrativo gera um UUID v4 e horário UTC antes do envio. A referência local não depende do cabeçalho ou corpo da resposta: erros de rede e HTML 403 substituído continuam consultáveis/copiáveis no aviso. Guarda no máximo 20 tentativas em sessionStorage da aba, sem nomes, conteúdo, tokens ou dados de clientes; se indisponível, usa memória. Fechar a aba encerra esse histórico. Não há retries automáticos.
+Cada tentativa do upload administrativo gera um UUID v4 e horário UTC antes do envio. A referência local não depende do cabeçalho ou corpo da resposta: erros de rede e HTML 403 substituído continuam registrados tecnicamente, sem painel ou identificador nas mensagens visíveis. Guarda no máximo 20 tentativas em sessionStorage da aba, sem nomes, conteúdo, tokens ou dados de clientes; se indisponível, usa memória. Fechar a aba encerra esse histórico. Não há retries automáticos.
 
 A API registra `received` antes da autenticação e, ao terminar, status, duração, último estágio, MIME permitido normalizado (ou `other`), bytes quando conhecidos e categoria de erro fechada. IDs recebidos só são aceitos como UUID v4; inválidos/ausentes são substituídos. Respostas emitidas pelo Fastify incluem `X-Upload-Trace-Id`. Logs automáticos da rota são silenciados para evitar duplicação e vazamento de query strings/mensagens com nomes de arquivos; as entradas dedicadas usam apenas campos permitidos. Outras rotas, incluindo uploads do Portal, permanecem fora desse diagnóstico.
 
@@ -21,4 +21,8 @@ Somente se necessário para uma comparação controlada, definir no sessionStora
 
 ## Validação local
 
-Em v2: `npm --workspace @design-hub-v2/api test` inclui os testes da rota com Fastify inject e armazenamento temporário, simulações de rede/HTML 403 no frontend e aviso/copiar com DOM simulado. Não exige credenciais ou banco. Verificam também limite de logs e ausência de sentinelas sensíveis em todos os logs capturados.
+Em v2: `npm --workspace @design-hub-v2/api test` inclui os testes da rota com Fastify inject e armazenamento temporário, simulações de rede/HTML 403 no frontend e mensagens normais sem identificadores técnicos. Não exige credenciais ou banco. Verificam também limite de logs e ausência de sentinelas sensíveis em todos os logs capturados.
+
+## Interface administrativa
+
+O painel flutuante, seus estilos e seu evento de atualização foram removidos. Registros antigos em sessionStorage não são renderizados. As mensagens de falha continuam normais (incluindo limite de tamanho), sem UUID/UTC. Diagnóstico permanece disponível tecnicamente em `designhub:upload-traces`, até 20 tentativas por aba; UUID, UTC, cabeçalho e logs Fastify são preservados. A normalização multipart do PR #52 não foi alterada.
