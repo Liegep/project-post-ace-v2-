@@ -1,3 +1,4 @@
+import { uploadTraceStage } from "../../plugins/upload-trace.js";
 import { setReceiptSignature } from "../invoices/billing-settings.repository.js";
 import crypto from "node:crypto";
 import { mkdir, open, readFile, rename, stat, writeFile } from "node:fs/promises";
@@ -39,6 +40,7 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
   });
 
   const storeUpload = async (request: FastifyRequest, signature = false) => {
+    uploadTraceStage(request, "multipart");
     const file = await request.file();
     if (!file) {
       throw app.httpErrors.badRequest("Escolha um arquivo para enviar.");
@@ -47,12 +49,14 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
     if (signature && !["image/png", "image/jpeg", "image/webp"].includes(file.mimetype)) {
       throw app.httpErrors.badRequest("Envie a assinatura em PNG, JPG ou WEBP.");
     }
+    uploadTraceStage(request, "file_received", file.mimetype);
     const format = allowedTypes.get(file.mimetype);
     if (!format) {
       throw app.httpErrors.badRequest("Envie uma imagem, vídeo ou documento PDF válido.");
     }
 
     const buffer = await file.toBuffer();
+    uploadTraceStage(request, "file_received", file.mimetype, buffer.length);
     if (buffer.length === 0) {
       throw app.httpErrors.badRequest("O arquivo enviado esta vazio.");
     }
@@ -79,6 +83,7 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
             throw new Error("Formato de assinatura inválido.");
           }
         }
+        uploadTraceStage(request, "converting");
         output = await sharp(buffer, { animated: file.mimetype === "image/gif" })
           .webp({ quality: 84, effort: 4, lossless: signature })
           .toBuffer();
@@ -88,7 +93,9 @@ export const uploadRoutes: FastifyPluginAsync = async (app) => {
         );
       }
     }
+    uploadTraceStage(request, "storing");
     await writeFile(path.join(directory, fileName), output);
+    uploadTraceStage(request, "stored");
 
     return {
       ok: true,

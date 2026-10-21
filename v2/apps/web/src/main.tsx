@@ -1,3 +1,4 @@
+import { UploadTraceNotice } from "./UploadTraceNotice";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { HashRouter } from "react-router-dom";
@@ -11,11 +12,13 @@ import { ApprovedContentTypeLabels } from "./ApprovedContentTypeLabels";
 import { InitialDataLoadingShield } from "./InitialDataLoadingShield";
 import { PortalTextTagHider } from "./PortalTextTagHider";
 import "./styles.css";
+import "./uploadTrace.css";
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <HashRouter>
       <App />
+      <UploadTraceNotice />
       <AdminKanbanSearch />
       <RoleAccessGuard />
       <TeamPasswordReset />
