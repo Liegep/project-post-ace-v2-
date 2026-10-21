@@ -103,7 +103,7 @@ export async function createTimeEntry(db: Pool, input: { userId: string; clientA
     const id = crypto.randomUUID();
     await connection.query("INSERT INTO time_entries (id, user_id, client_account_id, card_id, description, started_at, last_started_at) VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3), CURRENT_TIMESTAMP(3))", [id, input.userId, input.clientAccountId, input.cardId, input.description]);
     await connection.commit();
-    const [rows] = await db.query<TimeEntryRow[]>(`${selection} WHERE t.id = ? LIMIT 1`, [id]);
+    const [rows] = await connection.query<TimeEntryRow[]>(`${selection} WHERE t.id = ? LIMIT 1`, [id]);
     return mapEntry(rows[0]);
   } catch (error) {
     await connection.rollback();
@@ -135,7 +135,7 @@ export async function resumeTimeEntry(db: Pool, id: string, userId: string) {
     const [result] = await connection.query<import("mysql2/promise").ResultSetHeader>("UPDATE time_entries SET last_started_at = CURRENT_TIMESTAMP(3), ended_at = NULL WHERE id = ? AND user_id = ? AND ended_at IS NOT NULL", [id, userId]);
     if (result.affectedRows === 0) { await connection.rollback(); return null; }
     await connection.commit();
-    const [rows] = await db.query<TimeEntryRow[]>(`${selection} WHERE t.id = ? LIMIT 1`, [id]);
+    const [rows] = await connection.query<TimeEntryRow[]>(`${selection} WHERE t.id = ? LIMIT 1`, [id]);
     return rows[0] ? mapEntry(rows[0]) : null;
   } catch (error) {
     await connection.rollback();
