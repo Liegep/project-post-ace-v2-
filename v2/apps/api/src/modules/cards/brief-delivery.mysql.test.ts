@@ -4,6 +4,8 @@ import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import mysql from "mysql2/promise";
 import Fastify from "fastify";
+import { sendPautaForApproval } from "../clients/pauta-send.service.js";
+import { editPautaIdea } from "../clients/pauta-edit.service.js";
 import { cardRoutes } from "./cards.routes.js";
 import { portalRoutes } from "../portal/portal.routes.js";
 import { commentRoutes } from "../comments/comments.routes.js";
@@ -61,7 +63,7 @@ test("withdrawal, persistence, resend, permissions and serialized client actions
       const before = (await getInternalCardDetail(app,clientId,id));
       await t.test(`${approved ? "approved" : "pending"}: sent → withdraw → reload → explicit resend`, async () => {
         assert.ok(ids(await getPortalBoard(app,clientId,{}, {canUseSearch:true})).includes(id));
-        assert.equal((await app.inject({method:"POST",url:route(id,"withdraw")})).statusCode,200);
+        assert.equal((await app.inject({method:"POST",url:route(id,"withdraw"),payload:{expectedApprovalRevision:(await findCardById(pool,id))!.approvalRevision}})).statusCode,200);
         assert.ok(!ids(await getPortalBoard(app,clientId,{}, {canUseSearch:true})).includes(id));
         const after = await getInternalCardDetail(app,clientId,id);
         for (const key of ["title","caption","mediaUrls","tags","clientAccountId","status"] as const) assert.deepEqual(after.card[key], before.card[key]);
@@ -69,9 +71,8 @@ test("withdrawal, persistence, resend, permissions and serialized client actions
         assert.equal(after.approvalLinks[0].isActive,false);
         assert.deepEqual(after.approvalLinks[0].approvedAt,before.approvalLinks[0].approvedAt);
         assert.ok(after.card.briefWithdrawnAt);
-        await updateCard(pool,id,{title:"Atualizada",isBriefApproval:false,status:["Enviar para Cliente"]});
+        await updateCard(pool,id,{title:"Atualizada",status:["Enviar para Cliente"]});
         assert.ok((await findCardById(pool,id))?.briefWithdrawnAt);
-        await updateCard(pool,id,{isBriefApproval:true});
         for (const suffix of ["","/comments"]) assert.equal((await app.inject({method:"GET",url:portal(id,suffix),headers:{"x-test-role":"cliente"}})).statusCode,404);
         for (const [suffix,body] of [["/decision",{approved:true}],["/comments",{commentText:"Ação atrasada",isInternal:false}]] as const) assert.equal((await app.inject({method:"POST",url:portal(id,suffix),payload:body})).statusCode,404);
         assert.equal((await app.inject({method:"GET",url:`/portal/approval/${token}`})).statusCode,403);
@@ -80,20 +81,49 @@ test("withdrawal, persistence, resend, permissions and serialized client actions
         assert.ok(!(await getPortalHome(app,clientId)).calendarPosts.some((c) => c.id === id));
         await reconcileApprovedCardColumns(app);
         assert.ok((await findCardById(pool,id))?.briefWithdrawnAt);
-        assert.equal((await app.inject({method:"POST",url:route(id,"resend")})).statusCode,200);
+        assert.equal((await app.inject({method:"POST",url:route(id,"resend"),payload:{expectedApprovalRevision:(await findCardById(pool,id))!.approvalRevision}})).statusCode,200);
         await reconcileApprovedCardColumns(app);
         assert.ok(ids(await getPortalBoard(app,clientId,{}, {canUseSearch:true})).includes(id));
-        assert.equal((await findCardById(pool,id))?.clientLabel,"Pauta para aprovação");
+        assert.equal((await findCardById(pool,id))?.clientLabel,"Pendente");
         assert.equal((await app.inject({method:"GET",url:`/portal/approval/${token}`})).statusCode,403);
-        const decision = await app.inject({method:"POST",url:portal(id,"/decision"),payload:{approved:true}});
+        const decision = await app.inject({method:"POST",url:portal(id,"/decision"),payload:{approved:true,expectedApprovalRevision:(await findCardById(pool,id))!.approvalRevision}});
         assert.equal(decision.statusCode,200,decision.body);
-        assert.equal((await app.inject({method:"POST",url:route(id,"withdraw")})).statusCode,200);
+        assert.equal((await app.inject({method:"POST",url:route(id,"withdraw"),payload:{expectedApprovalRevision:(await findCardById(pool,id))!.approvalRevision}})).statusCode,200);
       });
     }
+    await t.test("real send and bank edits keep withdrawal across a new database connection", async () => {
+      const idea = { id: "bank-idea", title: "Bank title", caption: "Caption", description: "Description", status: "draft", mediaUrls: ["https://example.invalid/original-file.png"], internalNotes: "Private notes", tags: ["Bank tag"] };
+      const drawer = { pautaIdeas: [idea], links: ["untouched-link"] };
+      await pool.query("UPDATE client_accounts SET workspace_drawer_json = ? WHERE id = ?", [JSON.stringify(drawer), clientId]);
+      const sent = await sendPautaForApproval(app, clientId, idea.id, userId);
+      const id = sent.card!.id;
+      const withdrawal = await app.inject({ method: "POST", url: route(id, "withdraw"), payload: { expectedApprovalRevision: 0 } });
+      assert.equal(withdrawal.statusCode, 200, withdrawal.body);
+      await assert.rejects(editPautaIdea(app, clientId, idea.id, { caption: "Stale update", expectedApprovalRevision: 0 }, actor), { statusCode: 409 });
+      await editPautaIdea(app, clientId, idea.id, { caption: "Updated internally", expectedApprovalRevision: 1 }, actor);
+      const reopened = mysql.createPool({ socketPath, user: "root", database });
+      try { assert.ok((await findCardById(reopened, id))?.briefWithdrawnAt); } finally { await reopened.end(); }
+      assert.ok(!ids(await getPortalBoard(app, clientId, {}, { canUseSearch: true })).includes(id));
+      await pool.query("UPDATE client_permissions SET allow_client_search = 1 WHERE client_account_id = ?", [clientId]);
+      const search = await app.inject({ method: "GET", url: `/portal/accounts/${clientId}/search?q=Bank` });
+      assert.equal(search.statusCode, 200, search.body);
+      assert.ok(!search.json().items.some((item: {id:string}) => item.id === id));
+      await pool.query("UPDATE kanban_cards SET archived = 1 WHERE id = ?", [id]);
+      await pool.query("UPDATE client_accounts SET show_archived_to_client = 1 WHERE id = ?", [clientId]);
+      assert.ok(!ids(await getPortalBoard(app, clientId, { archived: "true" }, { canUseSearch: true })).includes(id));
+      await pool.query("UPDATE kanban_cards SET archived = 0 WHERE id = ?", [id]);
+      const [rows] = await pool.query<mysql.RowDataPacket[]>("SELECT workspace_drawer_json FROM client_accounts WHERE id = ?", [clientId]);
+      const stored = typeof rows[0].workspace_drawer_json === "string" ? JSON.parse(rows[0].workspace_drawer_json) : rows[0].workspace_drawer_json;
+      assert.deepEqual(stored.links, drawer.links); assert.equal(stored.pautaIdeas[0].internalNotes, idea.internalNotes);
+      assert.deepEqual(stored.pautaIdeas[0].mediaUrls, idea.mediaUrls); assert.deepEqual(stored.pautaIdeas[0].tags, idea.tags);
+      const response = await app.inject({ method: "POST", url: route(id, "resend"), payload: { expectedApprovalRevision: 2 } });
+      assert.equal(response.statusCode, 200, response.body);
+      assert.equal(response.json().card.id, id);
+    });
     await t.test("client and unrelated staff cannot withdraw; ordinary cards unaffected", async () => {
       assert.equal((await app.inject({method:"POST",url:route(untouched,"withdraw"),headers:{"x-test-role":"cliente"}})).statusCode,403);
       assert.equal((await app.inject({method:"POST",url:route(untouched,"withdraw").replace(clientId,otherClientId),headers:{"x-test-role":"colaborador"}})).statusCode,403);
-      assert.equal((await app.inject({method:"POST",url:route(regular,"withdraw")})).statusCode,400);
+      assert.equal((await app.inject({method:"POST",url:route(regular,"withdraw"),payload:{expectedApprovalRevision:0}})).statusCode,400);
       assert.equal((await findCardById(pool,untouched))?.briefWithdrawnAt,null);
       assert.equal((await findCardById(pool,regular))?.briefWithdrawnAt,null);
     });

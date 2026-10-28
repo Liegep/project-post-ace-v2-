@@ -319,7 +319,7 @@ type ApiBoardCard = {
   editorialBrief?: EditorialBriefData | null;
   approvalRevision?: number;
   approvalState?: "pending" | "approved" | "changes_requested" | null;
-  latestApprovalAction?: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "brief_updated" | "brief_restored" | "legacy_snapshot" | null;
+  latestApprovalAction?: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "brief_updated" | "brief_restored" | "withdrawn" | "legacy_snapshot" | null;
   columnId?: string | null;
   archived?: boolean;
   id: string;

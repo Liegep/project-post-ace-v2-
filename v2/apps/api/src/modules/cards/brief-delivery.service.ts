@@ -1,4 +1,7 @@
-import { resubmitCardApproval } from "../approvals/approval-workflow.service.js";
+import type { PoolConnection } from "mysql2/promise";
+import { inferredApprovalState } from "../approvals/approval-state.js";
+import { recordApprovalEvent } from "../approvals/approval-history.repository.js";
+import { preserveLegacyState, resubmitCardApproval } from "../approvals/approval-workflow.service.js";
 import type { FastifyInstance } from "fastify";
 import { findCardById } from "./cards.repository.js";
 import { createComment } from "../comments/comments.repository.js";
@@ -43,10 +46,14 @@ export async function changeBriefDelivery(app: FastifyInstance, clientId: string
     if (card.approvalRevision !== expectedApprovalRevision) throw app.httpErrors.conflict("A aprovação mudou. Atualize a pauta antes de continuar.");
     const withdrawn = isWithdrawnBrief(card);
     if (withdrawn) return { card };
+    await preserveLegacyState(scoped.db as unknown as PoolConnection, card);
     await scoped.db.query("UPDATE approval_links SET is_active = 0 WHERE card_id = ?", [cardId]);
     await scoped.db.query("UPDATE kanban_cards SET brief_withdrawn_at = CURRENT_TIMESTAMP(3), approval_revision = approval_revision + 1 WHERE id = ?", [cardId]);
     await createComment(scoped.db, { cardId, userId: actor.id, authorName: actor.fullName,
       authorRole: actor.globalRole, commentText: `Retirada do cliente. Situação anterior: ${card.clientLabel}. Status: ${card.status.join(", ")}.`, isInternal: true });
-    return { card: await findCardById(scoped.db, cardId) };
+    const after = (await findCardById(scoped.db, cardId))!;
+    await recordApprovalEvent(scoped.db, { cardId, revision: after.approvalRevision, action: "withdrawn",
+      decision: inferredApprovalState(card), source: "admin", actor: { userId: actor.id, name: actor.fullName, role: actor.globalRole }, before: card, after });
+    return { card: after };
   });
 }

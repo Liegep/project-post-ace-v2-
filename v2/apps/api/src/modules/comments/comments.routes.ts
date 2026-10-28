@@ -58,20 +58,20 @@ export const commentRoutes: FastifyPluginAsync = async (app) => {
     const isAdministrativeAuthor = actor.globalRole !== "cliente";
 
     return withLockedCard(app, params.clientAccountId, params.cardId, true, async (app) => {
-    return {
-      ok: true,
-      comment: await addCardComment(app, params.clientAccountId, params.cardId, {
-        ...input,
-        // Even when an administrator opens the portal view, their comment remains
-        // internal. Only client-authored portal comments are client-visible.
-        isInternal: isAdministrativeAuthor ? true : false,
-      }, {
-        userId: actor.id,
-        authorName: actor.fullName,
-        authorRole: actor.globalRole,
-        canCreateInternal: isAdministrativeAuthor,
-      }),
-    };
+      return {
+        ok: true,
+        comment: await addCardComment(app, params.clientAccountId, params.cardId, {
+          ...input,
+          // Even when an administrator opens the portal view, their comment remains
+          // internal. Only client-authored portal comments are client-visible.
+          isInternal: isAdministrativeAuthor ? true : false,
+        }, {
+          userId: actor.id,
+          authorName: actor.fullName,
+          authorRole: actor.globalRole,
+          canCreateInternal: isAdministrativeAuthor,
+        }),
+      };
     });
   });
 };

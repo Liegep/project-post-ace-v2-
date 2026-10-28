@@ -4,7 +4,7 @@ export type CardPriority = "high" | "medium" | "normal";
 export type BoardCard = {
   approvalRevision?: number;
   approvalState?: "pending" | "approved" | "changes_requested" | null;
-  latestApprovalAction?: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "brief_updated" | "brief_restored" | "legacy_snapshot" | null;
+  latestApprovalAction?: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "brief_updated" | "brief_restored" | "withdrawn" | "legacy_snapshot" | null;
   columnId?: string | null;
   archived?: boolean;
   id: string;
@@ -74,7 +74,7 @@ export type ApprovalLink = {
 };
 
 export type ApprovalEvent = {
-  id: string; revision: number; action: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "brief_updated" | "brief_restored" | "legacy_snapshot";
+  id: string; revision: number; action: "approved" | "changes_requested" | "resubmitted" | "converted_to_post" | "brief_updated" | "brief_restored" | "withdrawn" | "legacy_snapshot";
   decision: string | null; actorName: string; actorRole: string; source: string;
   commentText: string | null; createdAt: string;
   beforeSnapshot?: {editorialBrief?:EditorialBriefData | null;caption?:string | null} | string;

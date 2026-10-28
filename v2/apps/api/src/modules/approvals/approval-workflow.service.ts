@@ -29,7 +29,7 @@ function checkRevision(app: FastifyInstance, card: Card, expected: number | unde
   }
 }
 
-async function preserveLegacyState(db: PoolConnection, card: Card) {
+export async function preserveLegacyState(db: PoolConnection, card: Card) {
   if (card.approvalRevision !== 0) return;
   await recordApprovalEvent(db, {
     cardId: card.id, revision: 0, action: "legacy_snapshot", decision: inferredApprovalState(card), source: "legacy",

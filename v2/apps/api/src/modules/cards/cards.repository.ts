@@ -188,7 +188,7 @@ export async function createCard(
   await db.query(
     [
       "INSERT INTO kanban_cards",
-      "(id, client_account_id, column_id, title, caption, editorial_brief_json, media_type, primary_media_url, media_urls_json, external_link_url, art_type, status_json, tags_json, hashtags_json, is_brief_approval, brief_withdrawn_at, keep_files, deadline_at, scheduled_at, scheduled_timezone, client_label, priority_level, event_color, created_by_user_id, position)",
+      "(id, client_account_id, column_id, title, caption, editorial_brief_json, media_type, primary_media_url, media_urls_json, external_link_url, art_type, status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, scheduled_at, scheduled_timezone, client_label, priority_level, event_color, created_by_user_id, position)",
       "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ].join(" "),
     [

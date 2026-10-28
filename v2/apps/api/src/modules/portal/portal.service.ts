@@ -186,7 +186,7 @@ export async function getPortalHome(
         calendarOnly: true,
       };
     });
-  const metaCalendarCards = composePortalMetaCalendarCards(portalCards, metaPublications);
+  const metaCalendarCards = composePortalMetaCalendarCards(portalCards.filter((card) => !card.briefWithdrawnAt), metaPublications);
 
   const metaCalendarCardIds = new Set(metaCalendarCards.map((card) => card.id));
   const calendarPosts = [
