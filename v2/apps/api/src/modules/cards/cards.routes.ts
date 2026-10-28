@@ -1,3 +1,5 @@
+import { z } from "zod";
+import { changeBriefDelivery } from "./brief-delivery.service.js";
 import type { FastifyPluginAsync } from "fastify";
 import { assertClientAccess, assertInternalAccess } from "../auth/auth.access.js";
 import {
@@ -22,6 +24,15 @@ import {
 import { getInternalCardDetail } from "./card-detail.service.js";
 
 export const cardRoutes: FastifyPluginAsync = async (app) => {
+  for (const action of ["withdraw", "resend"] as const) {
+    app.post(`/clients/:clientAccountId/cards/:cardId/brief-delivery/${action}`, async (request) => {
+      assertInternalAccess(request);
+      const { clientAccountId, cardId } = request.params as { clientAccountId: string; cardId: string };
+      assertClientAccess(request, clientAccountId, ["admin", "colaborador"]);
+      const input = z.object({ expectedApprovalRevision: z.number().int().min(0) }).parse(request.body);
+      return changeBriefDelivery(app, clientAccountId, cardId, action, request.auth!.user, input.expectedApprovalRevision);
+    });
+  }
   app.get("/clients/:clientAccountId/board", async (request) => {
     assertInternalAccess(request);
 

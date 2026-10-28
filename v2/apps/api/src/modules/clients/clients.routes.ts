@@ -310,7 +310,7 @@ export const clientRoutes: FastifyPluginAsync = async (app) => {
         "a.name AS clientName, a.slug AS clientSlug, a.logo_url AS clientLogoUrl",
         "FROM kanban_cards c JOIN client_accounts a ON a.id = c.client_account_id",
         "JOIN card_approval_events ae ON ae.card_id = c.id AND ae.revision = c.approval_revision AND ae.action = 'approved' AND ae.decision = 'approved' AND ae.source <> 'legacy'",
-        "WHERE c.archived = 0 AND c.is_brief_approval = 1 AND c.approval_state = 'approved' AND NOT EXISTS (SELECT 1 FROM card_approval_events converted WHERE converted.card_id = c.id AND converted.action = 'converted_to_post') AND NOT EXISTS (SELECT 1 FROM dashboard_dismissals dd WHERE dd.user_id = ? AND dd.item_type = 'approved_pauta' AND dd.item_id = c.id)", scopeSql,
+        "WHERE c.brief_withdrawn_at IS NULL AND c.archived = 0 AND c.is_brief_approval = 1 AND c.approval_state = 'approved' AND NOT EXISTS (SELECT 1 FROM card_approval_events converted WHERE converted.card_id = c.id AND converted.action = 'converted_to_post') AND NOT EXISTS (SELECT 1 FROM dashboard_dismissals dd WHERE dd.user_id = ? AND dd.item_type = 'approved_pauta' AND dd.item_id = c.id)", scopeSql,
         "GROUP BY c.id, c.title, c.updated_at, a.name, a.slug, a.logo_url ORDER BY approvedAt DESC LIMIT 12",
       ].join(" "), [auth.user.id, ...params]),
       app.db.query<DashboardDismissalRow[]>("SELECT item_type AS itemType, item_id AS itemId FROM dashboard_dismissals WHERE user_id = ?", [auth.user.id]),

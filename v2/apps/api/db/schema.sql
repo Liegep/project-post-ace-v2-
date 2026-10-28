@@ -126,6 +126,7 @@ CREATE TABLE IF NOT EXISTS kanban_cards (
   status_json JSON NULL,
   tags_json JSON NULL,
   hashtags_json JSON NULL,
+  brief_withdrawn_at DATETIME(3) NULL,
   is_brief_approval TINYINT(1) NOT NULL DEFAULT 0,
   keep_files TINYINT(1) NOT NULL DEFAULT 0,
   deadline_at DATETIME NULL,

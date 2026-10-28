@@ -1,3 +1,4 @@
+import { withLockedCard } from "../cards/brief-delivery.service.js";
 import type { FastifyPluginAsync } from "fastify";
 import { assertClientAccess, assertInternalAccess, assertPortalAccessLevel } from "../auth/auth.access.js";
 import { createCommentSchema } from "./comments.schemas.js";
@@ -56,6 +57,7 @@ export const commentRoutes: FastifyPluginAsync = async (app) => {
     const actor = request.auth!.user;
     const isAdministrativeAuthor = actor.globalRole !== "cliente";
 
+    return withLockedCard(app, params.clientAccountId, params.cardId, true, async (app) => {
     return {
       ok: true,
       comment: await addCardComment(app, params.clientAccountId, params.cardId, {
@@ -70,5 +72,6 @@ export const commentRoutes: FastifyPluginAsync = async (app) => {
         canCreateInternal: isAdministrativeAuthor,
       }),
     };
+    });
   });
 };

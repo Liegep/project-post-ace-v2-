@@ -42,6 +42,7 @@ import {
   addPortalCardCommentBySlug,
   createAdminColumnBySlug,
   createAdminCardBySlug,
+  changeBriefDeliveryBySlug,
   deleteAdminColumnBySlug,
   deleteAdminCardBySlug,
   loadAdminCardDetailBySlug,
@@ -1211,7 +1212,7 @@ type DrawerLink = { id: string; type: "heading" | "link"; title: string; url?: s
 type DrawerAttachment = { type: "link" | "image" | "video" | "pdf"; url: string; name: string };
 type DrawerDraft = { id: string; text: string; attachmentUrl?: string; createdAt?: string; color?: string };
 type DrawerNote = { id: string; text: string; createdAt: string; color: string; authorName?: string; attachments?: DrawerAttachment[] };
-type PautaIdea = EditorialBriefData & { id: string; title: string; description: string; caption: string; createdAt: string; updatedAt?: string; plannedDate?: string | null; contentType?: string; internalNotes?: string; mediaUrls?: string[]; status?: "draft" | "sent" | "approved"; cardId?: string; radarSuggestionId?: string; createdBy?: string; radarSource?: string; sourceUrl?: string | null; pillar?: string | null; objective?: string };
+type PautaIdea = EditorialBriefData & { id: string; title: string; description: string; caption: string; createdAt: string; updatedAt?: string; plannedDate?: string | null; contentType?: string; internalNotes?: string; mediaUrls?: string[]; status?: "draft" | "sent" | "approved" | "withdrawn"; cardId?: string; radarSuggestionId?: string; createdBy?: string; radarSource?: string; sourceUrl?: string | null; pillar?: string | null; objective?: string };
 type WorkspaceDrawerData = { notes: DrawerNote[]; links: DrawerLink[]; quick: DrawerLink[]; draftsByUser: Record<string, DrawerDraft[]>; pautaIdeas: PautaIdea[] };
 type KanbanAutomation = { id: string; name: string; enabled: boolean; triggerType: "tag_added" | "column_moved"; triggerValue: string; actionType: "add_tag" | "move_column" | "change_color"; actionValue: string };
 
@@ -8887,8 +8888,9 @@ const EMPTY_BRAND_BRAIN: BrandBrain = { mission: "", vision: "", positioning: ""
 export function PautasWorkspace({ slug, clientName, columns, onSent, onCountChange }: { slug: string; clientName: string; columns: BoardColumn[]; onSent: () => void; onCountChange?: (count: number) => void }) {
   const [ideas, setIdeas] = useState<PautaIdea[]>([]);
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<"all" | "draft" | "sent" | "approved">("all");
+  const [filter, setFilter] = useState<"all" | "draft" | "sent" | "approved" | "withdrawn">("all");
   const [sending, setSending] = useState<string | null>(null);
+  const [deliveryError, setDeliveryError] = useState("");
   const [pautaCards, setPautaCards] = useState<BoardCard[]>([]);
   const [editing, setEditing] = useState<PautaIdea | null>(null);
   const [editingMediaFiles, setEditingMediaFiles] = useState<File[]>([]);
@@ -8925,14 +8927,14 @@ export function PautasWorkspace({ slug, clientName, columns, onSent, onCountChan
       if (!linkedCard) return idea;
       claimedCardIds.add(linkedCard.id);
       const approved = /aprovad/i.test(`${linkedCard.clientLabel} ${linkedCard.statusBadges.join(" ")}`);
-      const status = approved ? "approved" as const : "sent" as const;
+      const status = linkedCard.briefWithdrawnAt ? "withdrawn" as const : approved ? "approved" as const : "sent" as const;
       if (idea.cardId === linkedCard.id && idea.status === status) return idea;
       repairs.push({ id: idea.id, patch: { cardId: linkedCard.id, status } });
       return { ...idea, cardId: linkedCard.id, status };
     });
     if (repairs.length) {
       setIdeas(next);
-      void (async () => { for (const repair of repairs) await updateAdminPautaIdeaBySlug(slug, repair.id, repair.patch); })().catch(() => undefined);
+      // Delivery status is derived from the server card, never repaired through drawer writes.
     }
   }, [pautaCards, ideas]);
   useEffect(() => { onCountChange?.(ideas.length); }, [ideas.length, onCountChange]);
@@ -8957,6 +8959,17 @@ export function PautasWorkspace({ slug, clientName, columns, onSent, onCountChan
     } finally {
       setSending(null);
     }
+  };
+  const changeDelivery = async (idea: PautaIdea, action: "withdraw" | "resend") => {
+    if (sending || !idea.cardId) return;
+    if (action === "withdraw" && !window.confirm("Esta pauta deixará de aparecer para o cliente, mas continuará salva no seu banco de pautas. Deseja continuar?")) return;
+    setSending(idea.id); setDeliveryError("");
+    try {
+      const card = await changeBriefDeliveryBySlug(slug, idea.cardId, action, pautaCards.find(item => item.id === idea.cardId)?.approvalRevision ?? 0);
+      setPautaCards(items => [...items.filter(item => item.id !== card.id), card]);
+      onSent();
+    } catch (error) { setDeliveryError(error instanceof Error ? error.message : "Não foi possível atualizar a entrega da pauta."); }
+    finally { setSending(null); }
   };
   const openEdit = (idea: PautaIdea) => {
     setEditing({ ...idea, mediaUrls: [...(idea.mediaUrls ?? [])] });
@@ -9016,10 +9029,11 @@ export function PautasWorkspace({ slug, clientName, columns, onSent, onCountChan
   const avoidHits = brain.avoidWords.filter((word) => text.includes(word.toLocaleLowerCase()));
   return <section className="pautas-workspace">
     <header><span>Banco interno</span><h2>Pautas de {clientName}</h2><p>Organize, revise e envie ideias para o quadro do cliente.</p></header>
-    <div className="pautas-toolbar"><BrandBrainGenerateAction key={slug} slug={slug} onAdded={idea => setIdeas(current => [idea, ...current.filter(item => item.id !== idea.id)])} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar pauta" /><select value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)}><option value="all">Todas</option><option value="draft">Rascunhos</option><option value="sent">Enviadas</option><option value="approved">Aprovadas</option></select></div>
+    <div className="pautas-toolbar"><BrandBrainGenerateAction key={slug} slug={slug} onAdded={idea => setIdeas(current => [idea, ...current.filter(item => item.id !== idea.id)])} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar pauta" /><select value={filter} onChange={(event) => setFilter(event.target.value as typeof filter)}><option value="all">Todas</option><option value="draft">Rascunhos</option><option value="sent">Enviadas</option><option value="approved">Aprovadas</option><option value="withdrawn">Retiradas do cliente</option></select></div>
+    {deliveryError ? <p role="alert" className="form-error">{deliveryError}</p> : null}
     <div className="pautas-table"><div className="pautas-row pautas-head"><span>Cliente</span><span>Título</span><span>Tipo</span><span>Data</span><span>Status</span><span>Ações</span></div>{visible.map((idea) => {
       const status = idea.status ?? "draft";
-      return <div className="pautas-row" key={idea.id}><span>{clientName}</span><strong className="pauta-title-cell">{idea.mediaUrls?.[0] ? <img src={idea.mediaUrls[0]} alt="" /> : null}<span>{idea.title}{idea.mediaUrls?.length ? <small>{idea.mediaUrls.length} {idea.mediaUrls.length === 1 ? "foto" : "fotos"}</small> : null}</span></strong><span>{pautaTypeLabel(idea.contentType)}</span><span>{new Date(idea.plannedDate || idea.createdAt).toLocaleDateString("pt-BR")}</span><span className={`pauta-status ${status}`}>{status === "approved" ? "Aprovada" : status === "sent" ? "Enviada" : "Rascunho"}</span><span className="pauta-actions"><button aria-label="Editar pauta" onClick={() => openEdit(idea)}>✎</button><button className="delete" aria-label="Excluir pauta" onClick={() => deleteIdea(idea.id)}>⌫</button>{status === "draft" ? <button disabled={sending !== null} onClick={() => void send(idea)}>{sending === idea.id ? "..." : "Enviar"}</button> : status === "approved" ? <span className="pauta-approved-mark">✓ Aprovada</span> : "✓"}</span></div>;
+      return <div className="pautas-row" key={idea.id}><span>{clientName}</span><strong className="pauta-title-cell">{idea.mediaUrls?.[0] ? <img src={idea.mediaUrls[0]} alt="" /> : null}<span>{idea.title}{idea.mediaUrls?.length ? <small>{idea.mediaUrls.length} {idea.mediaUrls.length === 1 ? "foto" : "fotos"}</small> : null}</span></strong><span>{pautaTypeLabel(idea.contentType)}</span><span>{new Date(idea.plannedDate || idea.createdAt).toLocaleDateString("pt-BR")}</span><span className={`pauta-status ${status}`}>{status === "withdrawn" ? "Retirada do cliente" : status === "approved" ? "Aprovada" : status === "sent" ? "Enviada" : "Rascunho"}</span><span className="pauta-actions"><button aria-label="Editar pauta" onClick={() => openEdit(idea)}>✎</button><button className="delete" aria-label="Excluir pauta" onClick={() => deleteIdea(idea.id)}>⌫</button>{(status === "sent" || status === "approved") && idea.cardId ? <details><summary aria-label="Menu da pauta">⋯</summary><button disabled={sending !== null} onClick={() => void changeDelivery(idea, "withdraw")}>Retirar do cliente</button></details> : null}{status === "withdrawn" ? <button disabled={sending !== null} onClick={() => void changeDelivery(idea, "resend")}>Reenviar</button> : status === "draft" ? <button disabled={sending !== null} onClick={() => void send(idea)}>{sending === idea.id ? "..." : "Enviar"}</button> : status === "approved" ? <span className="pauta-approved-mark">✓ Aprovada</span> : "✓"}</span></div>;
     })}{visible.length === 0 ? <p className="pautas-empty">Nenhuma pauta encontrada. Use a lâmpada na lateral para criar uma.</p> : null}</div>
     {editing ? <div className="pauta-modal-backdrop" onMouseDown={closeEdit}><section className="pauta-modal" onMouseDown={(event) => event.stopPropagation()}><header><h3>{editing.status === "approved" ? "Pauta aprovada" : "Editar pauta"}</h3><button disabled={editingSaving} onClick={closeEdit}>×</button></header>{editing.status === "approved" ? <p className="drawer-helper">Conteúdo aprovado preservado. Para alterar a versão enviada, reabra a aprovação no card.</p> : null}<label>Título<input value={editing.title} onChange={(event) => setEditing({ ...editing, title: event.target.value })} /></label><label>Descrição<textarea value={editing.description} onChange={(event) => setEditing({ ...editing, description: event.target.value })} /></label><EditorialBrief brief={clientEditorialBrief(editing)} caption={editing.caption || editing.description} /><label>Legenda sugerida<textarea value={editing.caption} onChange={(event) => setEditing({ ...editing, caption: event.target.value })} /></label>{editing.internalNotes ? <label>Notas internas<textarea value={editing.internalNotes} onChange={(event) => setEditing({ ...editing, internalNotes: event.target.value })} /></label> : null}<div className="pauta-media-editor"><div><strong>Fotos da pauta</strong><small>Estas imagens aparecerão para o cliente ao revisar a pauta.</small></div>{editing.mediaUrls?.length ? <div className="pauta-media-grid">{editing.mediaUrls.map((url, index) => <figure key={`${url}-${index}`}><img src={url} alt={`Foto ${index + 1} da pauta`} /><button type="button" onClick={() => setEditing({ ...editing, mediaUrls: editing.mediaUrls?.filter((_, itemIndex) => itemIndex !== index) })} aria-label={`Remover foto ${index + 1}`}>×</button></figure>)}</div> : null}<label className="pauta-photo-picker">+ Adicionar fotos <span>JPG, PNG ou WebP · até 12 MB cada</span><input type="file" accept="image/*" multiple onChange={(event) => setEditingMediaFiles((current) => [...current, ...Array.from(event.target.files ?? [])])} /></label>{editingMediaFiles.length ? <div className="pauta-file-list">{editingMediaFiles.map((file, index) => <span key={`${file.name}-${file.lastModified}-${index}`}><b>{file.name}</b><button type="button" onClick={() => setEditingMediaFiles((files) => files.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remover ${file.name}`}>×</button></span>)}</div> : null}</div><BrandBrainAnalyzePanel key={editing.id} slug={slug} pauta={{ title: editing.title, description: editing.description, caption: editing.caption, contentType: editing.contentType }} /><button className="brain-check" onClick={() => setBrainOpen((open) => !open)}>✧ Brand Brain</button>{brainOpen ? <div className="brain-feedback">{avoidHits.length ? <p>Evite: {avoidHits.join(", ")}.</p> : <p>Sem termos a evitar encontrados.</p>}{brain.expressions.slice(0, 3).length ? <p>Expressões da marca: {brain.expressions.slice(0, 3).join(" · ")}</p> : null}</div> : null}{editingError ? <p className="form-error">{editingError}</p> : null}<footer><button className="drawer-secondary-action" disabled={editingSaving} onClick={closeEdit}>Cancelar</button><button className="gradient-button" disabled={editingSaving || editing.status === "approved" || !editing.title.trim()} onClick={() => void saveEdit()}>{editingSaving ? "Enviando fotos..." : "Salvar alterações"}</button></footer></section></div> : null}
   </section>;

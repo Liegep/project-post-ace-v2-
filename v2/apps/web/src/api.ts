@@ -333,6 +333,7 @@ type ApiBoardCard = {
   status: string[];
   tags: string[];
   hashtags?: string[];
+  briefWithdrawnAt?: string | null;
   isBriefApproval?: boolean;
   keepFiles?: boolean;
   deadlineAt?: string | null;
@@ -756,6 +757,7 @@ function mapCard(card: ApiBoardCard, tagColors: Record<string, string> = {}): Bo
     priorityLevel: card.priorityLevel ?? null,
     hashtags: card.hashtags ?? [],
     isBriefApproval: card.isBriefApproval ?? false,
+    briefWithdrawnAt: card.briefWithdrawnAt ?? null,
     keepFiles: card.keepFiles ?? false,
     deadlineAt: card.deadlineAt,
     calendarOnly: card.calendarOnly ?? false,
@@ -2016,4 +2018,10 @@ export async function previewAdminBriefRecovery(slug:string,cardId:string) {
 export async function applyAdminBriefRecovery(slug:string,cardId:string,previewToken:string) {
   const client=await findAdminClientBySlug(slug);
   return sendJson<{applied:boolean;alreadyApplied:boolean;card:ApiBoardCard}>(`/api/clients/${client.id}/cards/${encodeURIComponent(cardId)}/editorial-brief-recovery`,{method:"POST",body:JSON.stringify({previewToken,confirm:true})});
+}
+
+export async function changeBriefDeliveryBySlug(slug: string, cardId: string, action: "withdraw" | "resend", expectedApprovalRevision: number) {
+  const client = await findAdminClientBySlug(slug);
+  const result = await sendJson<{ card: ApiBoardCard }>(`/api/clients/${client.id}/cards/${cardId}/brief-delivery/${action}`, { method: "POST", body: JSON.stringify({ expectedApprovalRevision }) });
+  return mapCard(result.card);
 }

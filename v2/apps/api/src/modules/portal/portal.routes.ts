@@ -1,3 +1,4 @@
+import { withLockedCard } from "../cards/brief-delivery.service.js";
 import { decideCardApproval } from "../approvals/approval-workflow.service.js";
 import type { FastifyPluginAsync } from "fastify";
 import { assertClientAccess, assertPortalAccessLevel } from "../auth/auth.access.js";
@@ -51,7 +52,7 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
       listCardsByClientAccountId(app.db, params.clientAccountId, { archived: true, search: query.q }),
     ]);
     const visibleActiveCards = activeCards.filter((card) => card.isBriefApproval || card.status.includes("Enviar para Cliente") || /(aprovad|revis[aã]o solicitada)/i.test(`${card.clientLabel} ${card.status.join(" ")}`));
-    return { items: [...visibleActiveCards, ...archivedCards] };
+    return { items: [...visibleActiveCards, ...archivedCards].filter((card) => !card.briefWithdrawnAt) };
   });
 
   app.get("/portal/accounts/:clientAccountId/cards/:cardId", async (request) => {
@@ -131,6 +132,7 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
       throw app.httpErrors.forbidden("A edição de legendas não está habilitada para este cliente.");
     }
 
+    return withLockedCard(app, params.clientAccountId, params.cardId, true, async (app) => {
     const input = updatePortalCardCaptionSchema.parse(request.body);
     const card = await findCardById(app.db, params.cardId);
     if (!card || card.clientAccountId !== params.clientAccountId) {
@@ -154,6 +156,7 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
     });
 
     return { ok: true, card: updatedCard };
+    });
   });
 
   app.patch("/portal/accounts/:clientAccountId/cards/:cardId/suggestion", async (request) => {
@@ -252,6 +255,7 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
     if (!permissions?.allowClientCreateTags) {
       throw app.httpErrors.forbidden("O uso de etiquetas não está habilitado para este cliente.");
     }
+    return withLockedCard(app, params.clientAccountId, params.cardId, true, async (app) => {
     const input = updatePortalCardTagsSchema.parse(request.body);
     const card = await findCardById(app.db, params.cardId);
     if (!card || card.clientAccountId !== params.clientAccountId) {
@@ -274,6 +278,7 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
       canCreateInternal: false,
     });
     return { ok: true, card: updatedCard };
+    });
   });
 
   app.post("/portal/accounts/:clientAccountId/cards/:cardId/decision", async (request) => {

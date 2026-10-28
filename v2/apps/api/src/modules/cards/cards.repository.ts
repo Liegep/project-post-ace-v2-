@@ -25,6 +25,7 @@ type CardRow = RowDataPacket & {
   tags_json: unknown;
   hashtags_json: unknown;
   is_brief_approval: number;
+  brief_withdrawn_at: string | Date | null;
   keep_files: number;
   deadline_at: Date | string | null;
   scheduled_at: Date | string | null;
@@ -82,6 +83,7 @@ function mapCardRow(row: CardRow) {
     tags: parseJsonArray(row.tags_json),
     hashtags: parseJsonArray(row.hashtags_json),
     isBriefApproval: Boolean(row.is_brief_approval),
+    briefWithdrawnAt: row.brief_withdrawn_at ?? null,
     keepFiles: Boolean(row.keep_files),
     deadlineAt: row.deadline_at,
     scheduledAt: zonedWallClockToIso(row.scheduled_at, row.scheduled_timezone),
@@ -108,7 +110,7 @@ export async function findCardById(db: Pick<Pool, "query">, cardId: string) {
   const [rows] = await db.query<CardRow[]>(
     [
       "SELECT id, client_account_id, column_id, title, caption, editorial_brief_json, media_type, primary_media_url, media_urls_json, external_link_url, art_type,",
-      "status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, DATE_FORMAT(scheduled_at, '%Y-%m-%d %H:%i:%s') AS scheduled_at, scheduled_timezone, published_at, archived, archived_at, client_label, approval_revision, approval_state, priority_level, event_color,",
+      "status_json, tags_json, hashtags_json, is_brief_approval, brief_withdrawn_at, keep_files, deadline_at, DATE_FORMAT(scheduled_at, '%Y-%m-%d %H:%i:%s') AS scheduled_at, scheduled_timezone, published_at, archived, archived_at, client_label, approval_revision, approval_state, priority_level, event_color,",
       "comments_count_cache, created_by_user_id, position, legacy_id, created_at, updated_at,",
       "(SELECT e.action FROM card_approval_events e WHERE e.card_id = kanban_cards.id ORDER BY e.revision DESC LIMIT 1) AS latest_approval_action",
       "FROM kanban_cards",
@@ -133,7 +135,7 @@ export async function listCardsByClientAccountId(
 ) {
   let sql = [
     "SELECT id, client_account_id, column_id, title, caption, editorial_brief_json, media_type, primary_media_url, media_urls_json, external_link_url, art_type,",
-    "status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, DATE_FORMAT(scheduled_at, '%Y-%m-%d %H:%i:%s') AS scheduled_at, scheduled_timezone, published_at, archived, archived_at, client_label, approval_revision, approval_state, priority_level, event_color,",
+    "status_json, tags_json, hashtags_json, is_brief_approval, brief_withdrawn_at, keep_files, deadline_at, DATE_FORMAT(scheduled_at, '%Y-%m-%d %H:%i:%s') AS scheduled_at, scheduled_timezone, published_at, archived, archived_at, client_label, approval_revision, approval_state, priority_level, event_color,",
     "comments_count_cache, created_by_user_id, position, legacy_id, created_at, updated_at,",
     "(SELECT e.action FROM card_approval_events e WHERE e.card_id = kanban_cards.id ORDER BY e.revision DESC LIMIT 1) AS latest_approval_action",
     "FROM kanban_cards",
@@ -186,7 +188,7 @@ export async function createCard(
   await db.query(
     [
       "INSERT INTO kanban_cards",
-      "(id, client_account_id, column_id, title, caption, editorial_brief_json, media_type, primary_media_url, media_urls_json, external_link_url, art_type, status_json, tags_json, hashtags_json, is_brief_approval, keep_files, deadline_at, scheduled_at, scheduled_timezone, client_label, priority_level, event_color, created_by_user_id, position)",
+      "(id, client_account_id, column_id, title, caption, editorial_brief_json, media_type, primary_media_url, media_urls_json, external_link_url, art_type, status_json, tags_json, hashtags_json, is_brief_approval, brief_withdrawn_at, keep_files, deadline_at, scheduled_at, scheduled_timezone, client_label, priority_level, event_color, created_by_user_id, position)",
       "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     ].join(" "),
     [
