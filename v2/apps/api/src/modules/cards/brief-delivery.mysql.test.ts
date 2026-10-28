@@ -135,7 +135,8 @@ test("withdrawal, persistence, resend, permissions and serialized client actions
         await scoped.db.query("UPDATE kanban_cards SET brief_withdrawn_at = NOW(3) WHERE id = ?",[id]); acquired(); await wait;
       });
       await locked;
-      const action = app.inject({method:"POST",url:portal(id,"/decision"),payload:{approved:true,commentText:"Race"}});
+      const action = app.inject({method:"POST",url:portal(id,"/decision"),payload:{approved:true,commentText:"Race"}}).then(response => response);
+      await new Promise(resolve => setTimeout(resolve, 20));
       release(); await withdrawal;
       assert.equal((await action).statusCode,404);
       const detail = await getInternalCardDetail(app,clientId,id);

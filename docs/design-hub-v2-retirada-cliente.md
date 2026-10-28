@@ -23,3 +23,5 @@ As notificações encontradas no cabeçalho são de aprovação interna. Não h�
 - Suite geral, typecheck e build executados; resultados finais no PR.
 
 Nenhum banco de produção ou staging foi acessado. Sem merge ou deploy.
+
+Preparação de tabelas de histórico já existentes ocorre antes do bloqueio transacional, para que um DDL implícito não libere a proteção durante uma edição de legenda do Portal.

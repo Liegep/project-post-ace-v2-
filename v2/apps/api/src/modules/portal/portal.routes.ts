@@ -6,7 +6,7 @@ import { addCardComment } from "../comments/comments.service.js";
 import { getPortalCardDetail } from "../cards/card-detail.service.js";
 import { createKanbanCard, deleteKanbanCard } from "../cards/cards.service.js";
 import { findCardById, listCardsByClientAccountId, moveCard, updateCard } from "../cards/cards.repository.js";
-import { recordCaptionVersion } from "../cards/caption-history.repository.js";
+import { ensureCaptionHistoryTable, recordCaptionVersion } from "../cards/caption-history.repository.js";
 import { ensureCardActivityEventsTable } from "../cards/card-activity.service.js";
 import { createColumn, listColumnsByClientAccountId, updateColumn } from "../columns/columns.repository.js";
 import { findClientPermissionsByAccountId } from "../clients/clients.repository.js";
@@ -132,6 +132,8 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
       throw app.httpErrors.forbidden("A edição de legendas não está habilitada para este cliente.");
     }
 
+    // Prepare existing history storage before BEGIN: DDL would release the row lock.
+    await ensureCaptionHistoryTable(app.db);
     return withLockedCard(app, params.clientAccountId, params.cardId, true, async (app) => {
       const input = updatePortalCardCaptionSchema.parse(request.body);
       const card = await findCardById(app.db, params.cardId);
