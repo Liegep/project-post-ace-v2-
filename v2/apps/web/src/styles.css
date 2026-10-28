@@ -11820,3 +11820,7 @@ button.agenda-more { border:0;background:transparent;cursor:pointer;padding:5px;
 
 .notification-sound-toggle { display: flex; align-items: center; gap: 8px; padding: 8px 4px 12px; color: #596680; font-size: .8rem; cursor: pointer; }
 .notification-sound-toggle input { width: 18px; height: 18px; flex-shrink: 0; accent-color: #6557d8; }
+
+.pauta-status.withdrawn { background: #f1f5f9; color: #475569; }
+.pauta-actions details { position: relative; }
+.pauta-actions summary { cursor: pointer; padding: 6px; }

@@ -91,7 +91,7 @@ export async function reconcileApprovedCardColumns(app: FastifyInstance) {
   const [briefRows] = await app.db.query<Array<RowDataPacket & { clientAccountId: string }>>(
     [
       "SELECT DISTINCT c.client_account_id AS clientAccountId FROM kanban_cards c",
-      "WHERE c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.column_id IS NULL AND c.is_brief_approval = 1",
+      "WHERE c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.column_id IS NULL AND c.brief_withdrawn_at IS NULL AND c.is_brief_approval = 1",
       "AND (c.approval_state = 'approved' OR (c.approval_revision = 0 AND LOWER(c.client_label) LIKE '%aprovad%') OR EXISTS (",
       "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL AND c.approval_revision = 0 AND LOWER(c.client_label) NOT LIKE '%altera%' AND LOWER(COALESCE(c.status_json, '')) NOT LIKE '%solicitad%'",
       "AND (c.approval_reset_at IS NULL OR al.created_at >= c.approval_reset_at)",
@@ -104,7 +104,7 @@ export async function reconcileApprovedCardColumns(app: FastifyInstance) {
     const [result] = await app.db.query<ResultSetHeader>(
       [
         "UPDATE kanban_cards c SET c.column_id = ?, c.client_label = 'Aprovado pelo cliente'",
-        "WHERE c.client_account_id = ? AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.is_brief_approval = 1",
+        "WHERE c.brief_withdrawn_at IS NULL AND c.client_account_id = ? AND c.archived = 0 AND c.scheduled_at IS NULL AND c.published_at IS NULL AND c.is_brief_approval = 1",
         "AND (c.approval_state = 'approved' OR (c.approval_revision = 0 AND LOWER(c.client_label) LIKE '%aprovad%') OR EXISTS (",
         "SELECT 1 FROM approval_links al WHERE al.card_id = c.id AND al.approved_at IS NOT NULL AND c.approval_revision = 0 AND LOWER(c.client_label) NOT LIKE '%altera%' AND LOWER(COALESCE(c.status_json, '')) NOT LIKE '%solicitad%'",
         "AND (c.approval_reset_at IS NULL OR al.created_at >= c.approval_reset_at)",
@@ -140,6 +140,7 @@ export async function createCardApprovalLink(
     // Serialize link creation with resubmissions and decisions.
     await db.query("SELECT id FROM kanban_cards WHERE id = ? FOR UPDATE", [cardId]);
     const current = await findCardById(db, cardId);
+    if (current?.briefWithdrawnAt) throw app.httpErrors.notFound("Pauta indisponível para o cliente.");
     if (!current || current.approvalRevision !== (input.expectedApprovalRevision ?? 0)) {
       throw app.httpErrors.conflict("A aprovação mudou. Reabra o card antes de criar um link.");
     }
@@ -185,7 +186,7 @@ export async function getPublicApprovalView(
   await markApprovalLinkViewed(app.db, token);
 
   const card = await findCardById(app.db, link.cardId);
-  if (!card) {
+  if (!card || card.briefWithdrawnAt) {
     throw app.httpErrors.notFound("Card não encontrado.");
   }
 

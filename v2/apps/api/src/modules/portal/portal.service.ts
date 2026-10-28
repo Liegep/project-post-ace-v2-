@@ -80,6 +80,7 @@ function groupPortalCards(
   includeAllCards = false,
 ) {
   const visibleColumns = columns.filter((column) => column.visibleToClient);
+  cards = cards.filter((card) => !card.briefWithdrawnAt);
   const cardsSentToClient = includeAllCards
     ? cards
     : cards.filter((card) => card.status.includes("Enviar para Cliente") || card.isBriefApproval);
@@ -138,7 +139,7 @@ export async function getPortalHome(
   ]);
   const today = currentDateKey(app.appEnv.APP_TIMEZONE);
   const now = Date.now();
-  const nativeCalendarCards = portalCards
+  const nativeCalendarCards = portalCards.filter((card) => !card.briefWithdrawnAt)
     .filter((card) => Boolean(card.scheduledAt || card.publishedAt))
     .map((card) => {
       const calendarDate = card.scheduledAt || card.publishedAt;
@@ -185,7 +186,7 @@ export async function getPortalHome(
         calendarOnly: true,
       };
     });
-  const metaCalendarCards = composePortalMetaCalendarCards(portalCards, metaPublications);
+  const metaCalendarCards = composePortalMetaCalendarCards(portalCards.filter((card) => !card.briefWithdrawnAt), metaPublications);
 
   const metaCalendarCardIds = new Set(metaCalendarCards.map((card) => card.id));
   const calendarPosts = [

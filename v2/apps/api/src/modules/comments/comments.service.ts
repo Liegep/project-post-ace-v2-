@@ -14,6 +14,7 @@ export async function getCardComments(
     throw app.httpErrors.notFound("Card não encontrado nesta conta.");
   }
 
+  if (!options.includeInternal && card.briefWithdrawnAt) throw app.httpErrors.notFound("Pauta indisponível para o cliente.");
   return {
     card,
     comments: await listCommentsByCardId(app.db, cardId, options),

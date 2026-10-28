@@ -29,7 +29,7 @@ function checkRevision(app: FastifyInstance, card: Card, expected: number | unde
   }
 }
 
-async function preserveLegacyState(db: PoolConnection, card: Card) {
+export async function preserveLegacyState(db: PoolConnection, card: Card) {
   if (card.approvalRevision !== 0) return;
   await recordApprovalEvent(db, {
     cardId: card.id, revision: 0, action: "legacy_snapshot", decision: inferredApprovalState(card), source: "legacy",
@@ -75,14 +75,15 @@ export async function resubmitCardApproval(app: FastifyInstance, clientAccountId
     await db.beginTransaction();
     const card = await lockedCard(app, db, clientAccountId, cardId);
     checkRevision(app, card, expectedApprovalRevision);
+    if (card.briefWithdrawnAt && !card.isBriefApproval) throw app.httpErrors.conflict("O vínculo da pauta precisa ser revisado.");
     const blocked = resendBlockedReason(card);
     if (blocked) throw app.httpErrors.conflict(blocked);
-    if (!inferredApprovalState(card) || inferredApprovalState(card) === "pending") {
+    if (!card.briefWithdrawnAt && (!inferredApprovalState(card) || inferredApprovalState(card) === "pending")) {
       throw app.httpErrors.conflict("Este post ainda não tem uma decisão para reabrir ou já está aguardando aprovação.");
     }
     await preserveLegacyState(db, card);
     await updateCard(db, cardId, { status: approvalStatuses(card.status, "pending"), clientLabel: "Pendente" });
-    await db.query("UPDATE kanban_cards SET approval_state = 'pending', approval_revision = approval_revision + 1 WHERE id = ?", [cardId]);
+    await db.query("UPDATE kanban_cards SET brief_withdrawn_at = NULL, approval_state = 'pending', approval_revision = approval_revision + 1 WHERE id = ?", [cardId]);
     await moveWithinTransaction(db, card, await destination(db, card, false));
     // Closing a token never removes its previous decision or timestamps.
     await db.query("UPDATE approval_links SET is_active = 0 WHERE card_id = ? AND is_active = 1", [cardId]);
@@ -106,6 +107,7 @@ export async function decideCardApproval(app: FastifyInstance, clientAccountId: 
   try {
     await db.beginTransaction();
     const card = await lockedCard(app, db, clientAccountId, cardId);
+    if (card.briefWithdrawnAt) throw app.httpErrors.notFound("Pauta indisponível para o cliente.");
     const link = token ? await findApprovalLinkByToken(db, token) : null;
     if (token) {
       if (!link || link.cardId !== cardId || !link.isActive || new Date(link.expiresAt).getTime() <= Date.now()) {

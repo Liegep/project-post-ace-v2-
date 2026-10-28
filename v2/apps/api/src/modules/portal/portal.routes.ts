@@ -1,3 +1,4 @@
+import { withLockedCard } from "../cards/brief-delivery.service.js";
 import { decideCardApproval } from "../approvals/approval-workflow.service.js";
 import type { FastifyPluginAsync } from "fastify";
 import { assertClientAccess, assertPortalAccessLevel } from "../auth/auth.access.js";
@@ -5,7 +6,7 @@ import { addCardComment } from "../comments/comments.service.js";
 import { getPortalCardDetail } from "../cards/card-detail.service.js";
 import { createKanbanCard, deleteKanbanCard } from "../cards/cards.service.js";
 import { findCardById, listCardsByClientAccountId, moveCard, updateCard } from "../cards/cards.repository.js";
-import { recordCaptionVersion } from "../cards/caption-history.repository.js";
+import { ensureCaptionHistoryTable, recordCaptionVersion } from "../cards/caption-history.repository.js";
 import { ensureCardActivityEventsTable } from "../cards/card-activity.service.js";
 import { createColumn, listColumnsByClientAccountId, updateColumn } from "../columns/columns.repository.js";
 import { findClientPermissionsByAccountId } from "../clients/clients.repository.js";
@@ -51,7 +52,7 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
       listCardsByClientAccountId(app.db, params.clientAccountId, { archived: true, search: query.q }),
     ]);
     const visibleActiveCards = activeCards.filter((card) => card.isBriefApproval || card.status.includes("Enviar para Cliente") || /(aprovad|revis[aã]o solicitada)/i.test(`${card.clientLabel} ${card.status.join(" ")}`));
-    return { items: [...visibleActiveCards, ...archivedCards] };
+    return { items: [...visibleActiveCards, ...archivedCards].filter((card) => !card.briefWithdrawnAt) };
   });
 
   app.get("/portal/accounts/:clientAccountId/cards/:cardId", async (request) => {
@@ -131,29 +132,33 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
       throw app.httpErrors.forbidden("A edição de legendas não está habilitada para este cliente.");
     }
 
-    const input = updatePortalCardCaptionSchema.parse(request.body);
-    const card = await findCardById(app.db, params.cardId);
-    if (!card || card.clientAccountId !== params.clientAccountId) {
-      throw app.httpErrors.notFound("Card não encontrado nesta conta.");
-    }
+    // Prepare existing history storage before BEGIN: DDL would release the row lock.
+    await ensureCaptionHistoryTable(app.db);
+    return withLockedCard(app, params.clientAccountId, params.cardId, true, async (app) => {
+      const input = updatePortalCardCaptionSchema.parse(request.body);
+      const card = await findCardById(app.db, params.cardId);
+      if (!card || card.clientAccountId !== params.clientAccountId || card.briefWithdrawnAt) {
+        throw app.httpErrors.notFound("Card não encontrado nesta conta.");
+      }
 
-    const actor = request.auth!.user;
-    if ((card.caption ?? null) !== (input.caption ?? null)) {
-      await recordCaptionVersion(app.db, { cardId: card.id, caption: card.caption, authorUserId: actor.id, authorName: actor.fullName, authorRole: actor.globalRole });
-    }
-    const updatedCard = await updateCard(app.db, params.cardId, { caption: input.caption });
-    const captionFeedback = (input.caption ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    await addCardComment(app, params.clientAccountId, params.cardId, {
-      commentText: captionFeedback ? `Nova legenda: ${captionFeedback.slice(0, 220)}` : "O cliente removeu o texto da legenda.",
-      isInternal: false,
-    }, {
-      userId: actor.id,
-      authorName: actor.fullName,
-      authorRole: actor.globalRole,
-      canCreateInternal: false,
+      const actor = request.auth!.user;
+      if ((card.caption ?? null) !== (input.caption ?? null)) {
+        await recordCaptionVersion(app.db, { cardId: card.id, caption: card.caption, authorUserId: actor.id, authorName: actor.fullName, authorRole: actor.globalRole });
+      }
+      const updatedCard = await updateCard(app.db, params.cardId, { caption: input.caption });
+      const captionFeedback = (input.caption ?? "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+      await addCardComment(app, params.clientAccountId, params.cardId, {
+        commentText: captionFeedback ? `Nova legenda: ${captionFeedback.slice(0, 220)}` : "O cliente removeu o texto da legenda.",
+        isInternal: false,
+      }, {
+        userId: actor.id,
+        authorName: actor.fullName,
+        authorRole: actor.globalRole,
+        canCreateInternal: false,
     });
 
     return { ok: true, card: updatedCard };
+    });
   });
 
   app.patch("/portal/accounts/:clientAccountId/cards/:cardId/suggestion", async (request) => {
@@ -167,7 +172,7 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
 
     const input = updatePortalSuggestionSchema.parse(request.body);
     const card = await findCardById(app.db, params.cardId);
-    if (!card || card.clientAccountId !== params.clientAccountId) {
+    if (!card || card.clientAccountId !== params.clientAccountId || card.briefWithdrawnAt) {
       throw app.httpErrors.notFound("Card não encontrado nesta conta.");
     }
     const isClientSuggestion = card.status.some((status) => status
@@ -202,7 +207,7 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
     }
 
     const card = await findCardById(app.db, params.cardId);
-    if (!card || card.clientAccountId !== params.clientAccountId) {
+    if (!card || card.clientAccountId !== params.clientAccountId || card.briefWithdrawnAt) {
       throw app.httpErrors.notFound("Card não encontrado nesta conta.");
     }
     const isClientSuggestion = card.status.some((status) => status
@@ -252,28 +257,30 @@ export const portalRoutes: FastifyPluginAsync = async (app) => {
     if (!permissions?.allowClientCreateTags) {
       throw app.httpErrors.forbidden("O uso de etiquetas não está habilitado para este cliente.");
     }
-    const input = updatePortalCardTagsSchema.parse(request.body);
-    const card = await findCardById(app.db, params.cardId);
-    if (!card || card.clientAccountId !== params.clientAccountId) {
-      throw app.httpErrors.notFound("Card não encontrado nesta conta.");
-    }
-    const available = await listClientTags(app.db, params.clientAccountId);
-    const selected = Array.from(new Set(input.tags));
-    if (selected.some((name) => !available.some((tag) => tag.name === name))) {
-      throw app.httpErrors.badRequest("Uma das etiquetas selecionadas não pertence a este cliente.");
-    }
-    const updatedCard = await updateCard(app.db, params.cardId, { tags: selected });
-    const actor = request.auth!.user;
-    await addCardComment(app, params.clientAccountId, params.cardId, {
-      commentText: selected.length ? `Etiquetas atualizadas pelo cliente: ${selected.join(", ")}.` : "Etiquetas removidas pelo cliente.",
-      isInternal: false,
-    }, {
-      userId: actor.id,
-      authorName: actor.fullName,
-      authorRole: actor.globalRole,
-      canCreateInternal: false,
+    return withLockedCard(app, params.clientAccountId, params.cardId, true, async (app) => {
+      const input = updatePortalCardTagsSchema.parse(request.body);
+      const card = await findCardById(app.db, params.cardId);
+      if (!card || card.clientAccountId !== params.clientAccountId || card.briefWithdrawnAt) {
+        throw app.httpErrors.notFound("Card não encontrado nesta conta.");
+      }
+      const available = await listClientTags(app.db, params.clientAccountId);
+      const selected = Array.from(new Set(input.tags));
+      if (selected.some((name) => !available.some((tag) => tag.name === name))) {
+        throw app.httpErrors.badRequest("Uma das etiquetas selecionadas não pertence a este cliente.");
+      }
+      const updatedCard = await updateCard(app.db, params.cardId, { tags: selected });
+      const actor = request.auth!.user;
+      await addCardComment(app, params.clientAccountId, params.cardId, {
+        commentText: selected.length ? `Etiquetas atualizadas pelo cliente: ${selected.join(", ")}.` : "Etiquetas removidas pelo cliente.",
+        isInternal: false,
+      }, {
+        userId: actor.id,
+        authorName: actor.fullName,
+        authorRole: actor.globalRole,
+        canCreateInternal: false,
     });
     return { ok: true, card: updatedCard };
+    });
   });
 
   app.post("/portal/accounts/:clientAccountId/cards/:cardId/decision", async (request) => {

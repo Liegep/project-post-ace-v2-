@@ -53,6 +53,7 @@ export async function getPortalCardDetail(
     throw app.httpErrors.notFound("Card não encontrado nesta conta.");
   }
 
+  if (card.briefWithdrawnAt) throw app.httpErrors.notFound("Pauta indisponível para o cliente.");
   const comments = await listCommentsByCardId(app.db, cardId, { includeInternal: false });
 
   return {
