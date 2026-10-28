@@ -25,3 +25,7 @@ As notificações encontradas no cabeçalho são de aprovação interna. Não h�
 Nenhum banco de produção ou staging foi acessado. Sem merge ou deploy.
 
 Preparação de tabelas de histórico já existentes ocorre antes do bloqueio transacional, para que um DDL implícito não libere a proteção durante uma edição de legenda do Portal.
+
+## Validação integrada adicional do PR #54
+
+A validação posterior usou Playwright/Chromium, frontend compilado, API e autenticação reais, MariaDB local descartável e dados exclusivamente sintéticos, sem mocks da API. Passaram 9 verificações integradas (incluindo migração com bloqueio de metadados), 6 testes MariaDB e 703 testes gerais, além de typecheck e build. O staging remoto não pôde ser confirmado com segurança e não foi usado. Relatório, capturas e procedimento reproduzível: [pr54-integrated-validation/README.md](pr54-integrated-validation/README.md). O PR continua em rascunho para revisão humana.

@@ -38,7 +38,8 @@
     "audit:internal-reviewer": "tsx src/scripts/audit-internal-reviewer.ts",
     "preview:kynagogi-produced-post": "tsx src/scripts/preview-kynagogi-produced-post.ts",
     "test:pauta-state:mysql": "tsx --test src/modules/approvals/pauta-post-state.mysql.test.ts",
-    "test:brief-withdrawal:mysql": "tsx --test src/modules/cards/brief-delivery.mysql.test.ts"
+    "test:brief-withdrawal:mysql": "tsx --test src/modules/cards/brief-delivery.mysql.test.ts",
+    "test:brief-withdrawal:browser": "tsx src/modules/cards/brief-delivery.browser.test.ts"
   },
   "dependencies": {
     "@fastify/formbody": "^8.0.2",

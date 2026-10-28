@@ -1,0 +1,38 @@
+{
+  "environment": "local-disposable",
+  "nodeVersion": "v22.23.4",
+  "startedAt": "2026-10-28T12:38:31.273Z",
+  "socketPath": "/tmp/brief-mariadb-FhEsdo/server.sock",
+  "tcpDatabase": false,
+  "realClientData": false,
+  "externalServices": false,
+  "workersStarted": false,
+  "checks": [
+    "proposed INSTANT/NONE migration preserves existing rows and fails safely on metadata-lock timeout",
+    "real browser login, create/upload synthetic pauta and explicit send",
+    "pauta visible in real client Portal before withdrawal",
+    "withdraw confirmation; Portal, search, archives, direct detail/comments and public link unavailable",
+    "administrative content, image bytes, comments/history and withdrawal survive full browser reload",
+    "real JWT user/client/foreign/viewer/anonymous permissions; editing withdrawn pauta never republishes it",
+    "explicit resend reuses card and existing approval cycle; old links remain invalid",
+    "browser approval → withdraw approved pauta → resend preserves the original approval event",
+    "concurrent client action serialized/rejected; ordinary card and synthetic Meta publication byte-for-byte unchanged"
+  ],
+  "browserErrors": [],
+  "unexpectedApiResponses": [],
+  "externalRequests": [],
+  "database": {
+    "version": "10.11.19-MariaDB",
+    "socket": "/tmp/brief-mariadb-FhEsdo/server.sock",
+    "skipNetworking": 1,
+    "db": "brief_browser_36f814829cc94990b68d886828ad61b4"
+  },
+  "httpOrigin": "http://127.0.0.1:52164",
+  "browserVersion": "151.0.7922.34",
+  "concurrentStatuses": {
+    "withdraw": 200,
+    "decision": 404
+  },
+  "result": "passed",
+  "finishedAt": "2026-10-28T12:38:52.708Z"
+}
