@@ -1165,6 +1165,8 @@ export async function createAdminCardBySlug(
     scheduledTimeZone?: string | null;
     clientLabel?: string;
     isBriefApproval?: boolean;
+    eventColor?: string | null;
+    keepFiles?: boolean;
     priorityLevel?: "high" | "medium" | "normal" | null;
   },
 ) {

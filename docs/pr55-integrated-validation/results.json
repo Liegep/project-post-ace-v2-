@@ -1,0 +1,86 @@
+{
+  "environment": "local-disposable",
+  "nodeVersion": "v22.23.4",
+  "startedAt": "2026-10-29T12:57:40.231Z",
+  "socketPath": "/tmp/brief-mariadb-rbVW3n/server.sock",
+  "tcpDatabase": false,
+  "realClientData": false,
+  "externalServices": false,
+  "workersStarted": false,
+  "checks": [
+    "copy without timezone: chosen column and persistence after reload",
+    "caption, image and attachment references and bytes, editorial brief, tags, hashtags and priority preserved",
+    "valid timezone preserved",
+    "creation API failure leaves modal open with clear message",
+    "move creation failure preserves original",
+    "deletion failure reports partial move, keeps original and blocks repeat in same dialog",
+    "successful move removes original only after destination creation",
+    "no approval credentials, Meta publications or schedules copied; invalid input is HTTP 400; no unhandled browser errors"
+  ],
+  "browserErrors": [],
+  "unexpectedApiResponses": [
+    {
+      "url": "http://127.0.0.1:56669/api/internal-approvals/inbox",
+      "status": 500
+    },
+    {
+      "url": "http://127.0.0.1:56669/api/internal-approvals/inbox",
+      "status": 500
+    },
+    {
+      "url": "http://127.0.0.1:56669/api/internal-approvals/inbox",
+      "status": 500
+    },
+    {
+      "url": "http://127.0.0.1:56669/api/clients/9091adc5-9737-419a-8b0e-aefe655b03b2/texts",
+      "status": 500
+    },
+    {
+      "url": "http://127.0.0.1:56669/api/internal-approvals/inbox",
+      "status": 500
+    },
+    {
+      "url": "http://127.0.0.1:56669/api/internal-approvals/inbox",
+      "status": 500
+    },
+    {
+      "url": "http://127.0.0.1:56669/api/internal-approvals/inbox",
+      "status": 500
+    },
+    {
+      "url": "http://127.0.0.1:56669/api/clients/e0317f7a-d442-44aa-9c46-3b07eb3f6927/cards",
+      "status": 503
+    },
+    {
+      "url": "http://127.0.0.1:56669/api/internal-approvals/inbox",
+      "status": 500
+    },
+    {
+      "url": "http://127.0.0.1:56669/api/clients/e0317f7a-d442-44aa-9c46-3b07eb3f6927/cards",
+      "status": 503
+    },
+    {
+      "url": "http://127.0.0.1:56669/api/internal-approvals/inbox",
+      "status": 500
+    },
+    {
+      "url": "http://127.0.0.1:56669/api/clients/9091adc5-9737-419a-8b0e-aefe655b03b2/cards/1e7ecac9-01d7-49f0-bb80-24f7a148c3d3",
+      "status": 503
+    },
+    {
+      "url": "http://127.0.0.1:56669/api/internal-approvals/inbox",
+      "status": 500
+    }
+  ],
+  "externalRequests": [],
+  "database": {
+    "version": "10.11.19-MariaDB",
+    "socket": "/tmp/brief-mariadb-rbVW3n/server.sock",
+    "skipNetworking": 1,
+    "db": "brief_browser_03a54c61f0a84836908b7a55464ebf3e"
+  },
+  "httpOrigin": "http://127.0.0.1:56669",
+  "browserVersion": "151.0.7922.34",
+  "result": "passed",
+  "finishedAt": "2026-10-29T12:57:54.865Z"
+}
