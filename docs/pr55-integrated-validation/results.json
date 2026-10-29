@@ -1,0 +1,127 @@
+{
+  "environment": "local-disposable",
+  "nodeVersion": "v22.23.4",
+  "startedAt": "2026-10-29T13:27:18.884Z",
+  "socketPath": "/tmp/brief-mariadb-uCuuMj/server.sock",
+  "tcpDatabase": false,
+  "realClientData": false,
+  "externalServices": false,
+  "workersStarted": false,
+  "checks": [
+    "auxiliary errors diagnosed on separate base schema; current fixture inbox and concurrent texts return 200",
+    "copy without timezone: chosen column and persistence after reload",
+    "caption, image and attachment references and bytes, editorial brief, tags, hashtags and priority preserved",
+    "valid timezone preserved",
+    "same persistent key replayed concurrently returns one destination",
+    "new key permits a legitimate second copy",
+    "UUID case canonicalized; deleted destinations are not recreated; 255-character title preserved",
+    "concurrent first reservations and execution deduplicate across independent API instances",
+    "response lost after commit recovered after reload and fresh login, without local operation state",
+    "pending reservation discoverable and resumable from persistent history",
+    "move deletion failure rolls back destination; same operation safely recovers and replays after lost successful response",
+    "creation failure preserves source and same key is safely retried",
+    "key binding, destination column, actor isolation, revoked access, changed source, linked move, cancellation and disabled feature enforced",
+    "no credentials, schedules or Meta copied; original publication preserved; auxiliary HTTP 500s absent with complete fixture; no browser rejections"
+  ],
+  "browserErrors": [],
+  "unexpectedApiResponses": [],
+  "externalRequests": [],
+  "database": {
+    "version": "10.11.19-MariaDB",
+    "socket": "/tmp/brief-mariadb-uCuuMj/server.sock",
+    "skipNetworking": 1,
+    "db": "brief_browser_fd0046dcc2ff4d1e98489129c191c40e"
+  },
+  "httpOrigin": "http://127.0.0.1:64593",
+  "auxiliaryDiagnosis": {
+    "baseInboxStatus": 500,
+    "baseTextsStatuses": [
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "errors": [
+      {
+        "url": "/api/internal-approvals/inbox",
+        "code": "ER_NO_SUCH_TABLE",
+        "message": "Table 'brief_browser_fd0046dcc2ff4d1e98489129c191c40e_base.internal_approval_requests' doesn't exist"
+      }
+    ],
+    "currentFixtureInboxStatus": 200,
+    "currentFixtureTextsStatuses": [
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200
+    ]
+  },
+  "browserVersion": "151.0.7922.34",
+  "sqlErrors": [
+    {
+      "url": "/api/clients/aa074388-c758-4aa0-a9d3-9574ce8f060f/card-transfers/execute",
+      "code": "ER_SIGNAL_EXCEPTION",
+      "message": "Não foi possível confirmar a transferência. Consulte o histórico e retome a mesma operação."
+    },
+    {
+      "url": "/api/clients/aa074388-c758-4aa0-a9d3-9574ce8f060f/card-transfers/execute",
+      "code": "ER_SIGNAL_EXCEPTION",
+      "message": "Não foi possível confirmar a transferência. Consulte o histórico e retome a mesma operação."
+    },
+    {
+      "url": "/api/clients/aa074388-c758-4aa0-a9d3-9574ce8f060f/card-transfers/execute",
+      "code": "ER_SIGNAL_EXCEPTION",
+      "message": "Não foi possível confirmar a transferência. Consulte o histórico e retome a mesma operação."
+    },
+    {
+      "url": "/api/clients/aa074388-c758-4aa0-a9d3-9574ce8f060f/card-transfers/execute",
+      "message": "Esta chave já identifica outra transferência."
+    },
+    {
+      "url": "/api/clients/aa074388-c758-4aa0-a9d3-9574ce8f060f/card-transfers/execute",
+      "message": "A coluna não pertence ao cliente de destino."
+    },
+    {
+      "url": "/api/clients/aa074388-c758-4aa0-a9d3-9574ce8f060f/card-transfers/execute",
+      "message": "O original mudou. Revise o cartão e inicie uma nova operação."
+    },
+    {
+      "url": "/api/clients/aa074388-c758-4aa0-a9d3-9574ce8f060f/card-transfers/execute",
+      "message": "Operação encerrada. Inicie uma nova transferência com outra chave."
+    },
+    {
+      "url": "/api/clients/aa074388-c758-4aa0-a9d3-9574ce8f060f/card-transfers/execute",
+      "message": "Operação encerrada. Inicie uma nova transferência com outra chave."
+    },
+    {
+      "url": "/api/clients/aa074388-c758-4aa0-a9d3-9574ce8f060f/card-transfers/execute",
+      "message": "O original possui publicação Meta ou aprovação ativa. Resolva esses vínculos antes de mover; copiar continua disponível."
+    },
+    {
+      "url": "/api/clients/aa074388-c758-4aa0-a9d3-9574ce8f060f/card-transfers/execute",
+      "message": "Você não tem acesso a esta conta."
+    },
+    {
+      "url": "/api/clients/aa074388-c758-4aa0-a9d3-9574ce8f060f/card-transfers/execute",
+      "message": "Operação não encontrada para este usuário."
+    },
+    {
+      "url": "/api/clients/aa074388-c758-4aa0-a9d3-9574ce8f060f/card-transfers/execute",
+      "message": "Você não tem acesso a esta conta."
+    },
+    {
+      "url": "/api/clients/aa074388-c758-4aa0-a9d3-9574ce8f060f/card-transfers/reserve",
+      "message": "Transferências aguardam ativação segura. Nenhum cartão foi alterado."
+    }
+  ],
+  "result": "passed",
+  "finishedAt": "2026-10-29T13:27:37.567Z"
+}

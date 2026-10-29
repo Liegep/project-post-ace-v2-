@@ -10,14 +10,28 @@ const tagsFromDatabase = (value: TextRow["tags_json"]) => { try { const parsed =
 const mapText = (row: TextRow) => ({ id: row.id, clientAccountId: row.client_account_id, title: row.title, contentHtml: row.content_html, contentType: row.content_type, status: row.status, tags: tagsFromDatabase(row.tags_json), coverImageUrl: row.cover_image_url, plannedAt: row.planned_at, internalNotes: row.internal_notes, isSentToClient: Boolean(row.is_sent_to_client), sentAt: row.sent_at, createdByUserId: row.created_by_user_id, createdAt: row.created_at, updatedAt: row.updated_at });
 const mapComment = (row: CommentRow) => ({ id: row.id, textId: row.text_id, userId: row.user_id, authorName: row.author_name, authorRole: row.author_role, authorAvatarUrl: row.author_avatar_url, commentText: row.comment_text, isInternal: Boolean(row.is_internal), createdAt: row.created_at, updatedAt: row.updated_at });
 
-const preparedPools = new WeakSet<Pool>();
+const preparedPools = new WeakMap<Pool, Promise<void>>();
 async function ensureTextStorage(db: Pool) {
-  if (preparedPools.has(db)) return;
-  const [tagRows] = await db.query<RowDataPacket[]>("SHOW COLUMNS FROM client_texts LIKE 'tags_json'");
-  if (!tagRows.length) await db.query("ALTER TABLE client_texts ADD COLUMN tags_json JSON NULL AFTER status");
-  const [coverRows] = await db.query<RowDataPacket[]>("SHOW COLUMNS FROM client_texts LIKE 'cover_image_url'");
-  if (!coverRows.length) await db.query("ALTER TABLE client_texts ADD COLUMN cover_image_url VARCHAR(2048) NULL AFTER tags_json");
-  preparedPools.add(db);
+  let preparation = preparedPools.get(db);
+  if (!preparation) {
+    preparation = (async () => {
+      for (const [column, definition] of [["tags_json", "JSON NULL AFTER status"], ["cover_image_url", "VARCHAR(2048) NULL AFTER tags_json"]]) {
+        const [rows] = await db.query<RowDataPacket[]>(`SHOW COLUMNS FROM client_texts LIKE '${column}'`);
+        if (rows.length) continue;
+        try { await db.query(`ALTER TABLE client_texts ADD COLUMN ${column} ${definition}`); }
+        catch (error) {
+          // Another pool/process can win the same existing lazy initialization.
+          // Suppress only a verified duplicate-column race, never other DDL errors.
+          if ((error as {code?:string}).code !== "ER_DUP_FIELDNAME") throw error;
+          const [present] = await db.query<RowDataPacket[]>(`SHOW COLUMNS FROM client_texts LIKE '${column}'`);
+          if (!present.length) throw error;
+        }
+      }
+    })();
+    preparedPools.set(db, preparation);
+    preparation.catch(() => { if (preparedPools.get(db) === preparation) preparedPools.delete(db); });
+  }
+  await preparation;
 }
 export async function listTexts(db: Pool, clientAccountId: string, sentOnly = false) { await ensureTextStorage(db); const [rows] = await db.query<TextRow[]>(`SELECT ${columns} FROM client_texts WHERE client_account_id = ?${sentOnly ? " AND is_sent_to_client = 1" : ""} ORDER BY updated_at DESC`, [clientAccountId]); return rows.map(mapText); }
 export async function findText(db: Pool, textId: string) { await ensureTextStorage(db); const [rows] = await db.query<TextRow[]>(`SELECT ${columns} FROM client_texts WHERE id = ? LIMIT 1`, [textId]); return rows[0] ? mapText(rows[0]) : null; }

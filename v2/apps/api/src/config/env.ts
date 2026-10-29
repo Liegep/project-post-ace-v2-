@@ -15,6 +15,7 @@ const optionalEmail = z.preprocess(
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
+  CARD_TRANSFERS_ENABLED: z.preprocess(value => value === true || value === "true" || value === "1", z.boolean()).default(false),
   APP_NAME: z.string().default("design-hub-v2"),
   APP_URL: z.string().url().default("http://localhost:3000"),
   API_URL: z.string().url().default("http://localhost:4000"),

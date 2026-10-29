@@ -1,3 +1,4 @@
+import { cardTransferRoutes } from "./card-transfers.routes.js";
 import type { FastifyPluginAsync } from "fastify";
 import { assertClientAccess, assertInternalAccess } from "../auth/auth.access.js";
 import {
@@ -22,6 +23,7 @@ import {
 import { getInternalCardDetail } from "./card-detail.service.js";
 
 export const cardRoutes: FastifyPluginAsync = async (app) => {
+  await app.register(cardTransferRoutes);
   app.get("/clients/:clientAccountId/board", async (request) => {
     assertInternalAccess(request);
 
@@ -65,12 +67,14 @@ export const cardRoutes: FastifyPluginAsync = async (app) => {
     return { ok: true, ...(await restoreKanbanCaptionVersion(app, params.clientAccountId, params.cardId, params.versionId, request.auth!.user)) };
   });
 
-  app.post("/clients/:clientAccountId/cards", async (request) => {
+  app.post("/clients/:clientAccountId/cards", async (request, reply) => {
     assertInternalAccess(request);
 
     const params = request.params as { clientAccountId: string };
     assertClientAccess(request, params.clientAccountId, ["admin", "colaborador"]);
-    const input = createCardSchema.parse(request.body);
+    const parsed = createCardSchema.safeParse(request.body);
+    if (!parsed.success) return reply.code(400).send({ ok: false, message: "Dados do cartão inválidos.", issues: parsed.error.issues });
+    const input = parsed.data;
 
     return {
       ok: true,

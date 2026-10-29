@@ -165,7 +165,7 @@ export async function listCardsByClientAccountId(
 }
 
 export async function createCard(
-  db: Pool,
+  db: Pick<Pool, "query">,
   clientAccountId: string,
   createdByUserId: string,
   input: CreateCardInput,
@@ -220,7 +220,7 @@ export async function createCard(
   return findCardById(db, cardId);
 }
 
-export async function deleteCard(db: Pool, cardId: string) {
+export async function deleteCard(db: Pick<Pool, "query">, cardId: string) {
   const [result] = await db.query<ResultSetHeader>("DELETE FROM kanban_cards WHERE id = ?", [cardId]);
   return result.affectedRows > 0;
 }

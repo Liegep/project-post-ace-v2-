@@ -1,3 +1,4 @@
+import { CardTransferDialog } from "./CardTransferDialog";
 import { prepareAdminDownload } from "./adminMediaDownload";
 import { ExternalMaterialAction, externalMaterialUrl } from "./ExternalMaterialAction";
 import { FloatingRailIcon } from "./FloatingRailIcon";
@@ -3312,6 +3313,7 @@ function AdminWorkspacePage({
   const [cardMenu, setCardMenu] = useState<{ card: BoardCard; columnId: string | null; x: number; y: number; openLeft: boolean } | null>(null);
   const [cardColumnDialog, setCardColumnDialog] = useState<{ card: BoardCard; mode: "copy" | "move" } | null>(null);
   const [cardClientDialog, setCardClientDialog] = useState<BoardCard | null>(null);
+  const [transferHistoryOpen, setTransferHistoryOpen] = useState(false);
   const [restoreDialog, setRestoreDialog] = useState<BoardCard | null>(null);
   const [draggedCard, setDraggedCard] = useState<{ cardId: string; columnId: string | null } | null>(null);
   const [dropTarget, setDropTarget] = useState<{ columnId: string | null; index: number } | null>(null);
@@ -3686,6 +3688,7 @@ function AdminWorkspacePage({
   const unassignedCards = filterCardsByTags(data.withoutColumn);
 
   const boardActions = boardView === "board" ? <div className="board-actions">
+    <button className="ghost-button" aria-label="Transferências entre clientes" onClick={() => setTransferHistoryOpen(true)}>Transferências</button>
     <button className={selectionMode ? "ghost-button active" : "ghost-button"} onClick={() => {
       setSelectionMode((active) => !active);
       setSelectedCardIds([]);
@@ -4167,7 +4170,7 @@ function AdminWorkspacePage({
           onDelete={() => deleteAdminCardBySlug(slug, cardMenu.card.id).then(() => setRefreshKey((value) => value + 1))}
         />
       ) : null}
-      {cardClientDialog ? <CardClientDialog card={cardClientDialog} clients={clientOptions.filter((client) => client.slug !== slug)} onClose={() => setCardClientDialog(null)} onConfirm={async (targetSlug, mode, columnId) => { await createAdminCardBySlug(targetSlug, { columnId, title: `${cardClientDialog.title}${mode === "copy" ? " (copia)" : ""}`, caption: cardClientDialog.subtitle ?? null, primaryMediaUrl: cardClientDialog.mediaUrl ?? null, externalLinkUrl: cardClientDialog.externalLinkUrl ?? null, artType: cardClientDialog.typeLabel, status: cardClientDialog.statusBadges, tags: cardClientDialog.tags, mediaUrls: cardClientDialog.mediaUrls, hashtags: cardClientDialog.hashtags, deadlineAt: cardClientDialog.deadlineAt, scheduledAt: cardClientDialog.scheduledAt, scheduledTimeZone: cardClientDialog.scheduledTimeZone, clientLabel: cardClientDialog.clientLabel }); if (mode === "move") await deleteAdminCardBySlug(slug, cardClientDialog.id); setRefreshKey((value) => value + 1); }} /> : null}
+      {cardClientDialog || transferHistoryOpen ? <CardTransferDialog sourceSlug={slug} card={cardClientDialog} clients={clientOptions.filter(client => client.slug !== slug)} onClose={() => { setCardClientDialog(null); setTransferHistoryOpen(false); }} onSuccess={() => setRefreshKey(value => value + 1)} /> : null}
 
       {!isDesktopKanban ? bulkActionBar : null}
 
@@ -5064,15 +5067,6 @@ function CardColumnDialog({
   );
 }
 
-function CardClientDialog({ card, clients, onClose, onConfirm }: { card: BoardCard; clients: AdminClientOption[]; onClose: () => void; onConfirm: (targetSlug: string, mode: "copy" | "move", columnId: string | null) => Promise<void> }) {
-  const [targetSlug, setTargetSlug] = useState(clients[0]?.slug ?? "");
-  const [columns, setColumns] = useState<BoardColumn[]>([]);
-  const [columnId, setColumnId] = useState("");
-  const [mode, setMode] = useState<"copy" | "move">("copy");
-  const [saving, setSaving] = useState(false);
-  useEffect(() => { let active = true; setColumns([]); setColumnId(""); if (!targetSlug) return; void loadAdminWorkspaceBySlug(targetSlug).then((result) => { if (active) { setColumns(result.columns); setColumnId(result.columns[0]?.id ?? ""); } }).catch(() => { if (active) setColumns([]); }); return () => { active = false; }; }, [targetSlug]);
-  return <div className="card-column-modal-backdrop" role="presentation" onMouseDown={onClose}><section className="card-column-modal card-client-dialog" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}><button className="card-column-modal-close" onClick={onClose} aria-label="Fechar">×</button><h3>Enviar card para outro cliente</h3><p>Escolha se deseja copiar ou transferir <strong>“{card.title}”</strong>.</p><fieldset className="card-transfer-options"><legend>Ação</legend><label><input type="radio" checked={mode === "copy"} onChange={() => setMode("copy")} />Copiar (duplicar)</label><label><input type="radio" checked={mode === "move"} onChange={() => setMode("move")} />Mover (transferir)</label></fieldset><label className="card-column-select-label">Cliente destino<select value={targetSlug} onChange={(event) => setTargetSlug(event.target.value)}>{clients.map((client) => <option key={client.id} value={client.slug}>{client.name}</option>)}</select></label><label className="card-column-select-label">Coluna destino<select value={columnId} onChange={(event) => setColumnId(event.target.value)}><option value="">Sem coluna</option>{columns.map((column) => <option key={column.id} value={column.id}>{column.name}</option>)}</select></label><div className="modal-actions"><button className="ghost-button" onClick={onClose} disabled={saving}>Cancelar</button><button className="gradient-button" disabled={saving || !targetSlug} onClick={async () => { setSaving(true); try { await onConfirm(targetSlug, mode, columnId || null); onClose(); } finally { setSaving(false); } }}>{saving ? "Enviando..." : mode === "copy" ? "Copiar card" : "Mover card"}</button></div></section></div>;
-}
 
 function BulkActionBar({ selectedCount, onCancel, onDelete, onArchive, onSendToClient, onStatus, onCopy, onMove }: {
   selectedCount: number; onCancel: () => void; onDelete: () => Promise<void>; onArchive: () => Promise<void>;
