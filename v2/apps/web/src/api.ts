@@ -2019,3 +2019,13 @@ export async function applyAdminBriefRecovery(slug:string,cardId:string,previewT
   const client=await findAdminClientBySlug(slug);
   return sendJson<{applied:boolean;alreadyApplied:boolean;card:ApiBoardCard}>(`/api/clients/${client.id}/cards/${encodeURIComponent(cardId)}/editorial-brief-recovery`,{method:"POST",body:JSON.stringify({previewToken,confirm:true})});
 }
+
+export type CardTransferOperation = { createdAt?:string; operationKey:string; sourceCardId:string; sourceClientId:string; targetClientId:string; columnId:string|null; mode:"copy"|"move"; status:"pending"|"completed"|"cancelled"; destinationCardId:string|null };
+export async function loadCardTransfers(slug:string) {
+  const client=await findAdminClientBySlug(slug);
+  return fetchJson<{items:CardTransferOperation[]}>(`/api/clients/${client.id}/card-transfers`);
+}
+export async function runCardTransfer(slug:string, operation:Pick<CardTransferOperation,"operationKey"|"sourceCardId"|"targetClientId"|"columnId"|"mode">, action:"reserve"|"execute"|"cancel") {
+  const client=await findAdminClientBySlug(slug);
+  return sendJson<{ok:true;operation:CardTransferOperation}>(`/api/clients/${client.id}/card-transfers/${action}`,{method:"POST",body:JSON.stringify(operation)});
+}

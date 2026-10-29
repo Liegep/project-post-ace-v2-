@@ -1,3 +1,4 @@
+import { cardTransferRoutes } from "./card-transfers.routes.js";
 import type { FastifyPluginAsync } from "fastify";
 import { assertClientAccess, assertInternalAccess } from "../auth/auth.access.js";
 import {
@@ -22,6 +23,7 @@ import {
 import { getInternalCardDetail } from "./card-detail.service.js";
 
 export const cardRoutes: FastifyPluginAsync = async (app) => {
+  await app.register(cardTransferRoutes);
   app.get("/clients/:clientAccountId/board", async (request) => {
     assertInternalAccess(request);
 

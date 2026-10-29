@@ -1,0 +1,76 @@
+{
+  "nodeVersion": "v22.23.4",
+  "database": {
+    "version": "10.11.19-MariaDB",
+    "socket": "/tmp/brief-mariadb-xqXsvG/server.sock",
+    "skipNetworking": 1,
+    "db": "brief_browser_a0442a46e95b4f68b8770ddfca6302b6"
+  },
+  "diagnosis": {
+    "baseInboxStatus": 500,
+    "baseTextsStatuses": [
+      200,
+      500,
+      500,
+      500,
+      500,
+      500,
+      500,
+      500
+    ],
+    "errors": [
+      {
+        "url": "/api/internal-approvals/inbox",
+        "code": "ER_NO_SUCH_TABLE",
+        "message": "Table 'brief_browser_a0442a46e95b4f68b8770ddfca6302b6_base.internal_approval_requests' doesn't exist"
+      },
+      {
+        "url": "/api/clients/f4825bd8-d3d4-4614-add2-e22ffd7de769/texts",
+        "code": "ER_DUP_FIELDNAME",
+        "message": "Duplicate column name 'cover_image_url'"
+      },
+      {
+        "url": "/api/clients/f4825bd8-d3d4-4614-add2-e22ffd7de769/texts",
+        "code": "ER_DUP_FIELDNAME",
+        "message": "Duplicate column name 'cover_image_url'"
+      },
+      {
+        "url": "/api/clients/f4825bd8-d3d4-4614-add2-e22ffd7de769/texts",
+        "code": "ER_DUP_FIELDNAME",
+        "message": "Duplicate column name 'cover_image_url'"
+      },
+      {
+        "url": "/api/clients/f4825bd8-d3d4-4614-add2-e22ffd7de769/texts",
+        "code": "ER_DUP_FIELDNAME",
+        "message": "Duplicate column name 'cover_image_url'"
+      },
+      {
+        "url": "/api/clients/f4825bd8-d3d4-4614-add2-e22ffd7de769/texts",
+        "code": "ER_DUP_FIELDNAME",
+        "message": "Duplicate column name 'cover_image_url'"
+      },
+      {
+        "url": "/api/clients/f4825bd8-d3d4-4614-add2-e22ffd7de769/texts",
+        "code": "ER_DUP_FIELDNAME",
+        "message": "Duplicate column name 'cover_image_url'"
+      },
+      {
+        "url": "/api/clients/f4825bd8-d3d4-4614-add2-e22ffd7de769/texts",
+        "code": "ER_DUP_FIELDNAME",
+        "message": "Duplicate column name 'cover_image_url'"
+      }
+    ],
+    "currentFixtureInboxStatus": 200,
+    "currentFixtureTextsStatuses": [
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200
+    ]
+  },
+  "note": "Captured before the scoped texts concurrency fix, from eight real concurrent route requests against an independent base fixture."
+}
