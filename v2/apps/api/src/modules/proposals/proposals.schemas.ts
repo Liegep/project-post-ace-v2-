@@ -15,14 +15,14 @@ export const proposalFieldsSchema = z.object({
   pieces: z.coerce.number().int().min(0).max(100_000).default(0),
   scope: z.string().max(250_000).default(""),
   investment: z.string().max(100_000).default(""),
-  currency: z.string().trim().min(1).max(10).default("R$"),
+  currency: z.string().trim().min(1).max(10).default("BRL"),
   expiresAt: z.string().datetime(),
   status: z.enum(["draft", "sent", "viewed", "accepted", "refused", "expired"]).default("draft"),
   services: z.array(serviceSchema).max(200).default([]),
 });
 
 export const createProposalSchema = proposalFieldsSchema;
-export const updateProposalSchema = proposalFieldsSchema.partial();
+export const updateProposalSchema = proposalFieldsSchema.partial().extend({ currency: z.string().trim().min(1).max(10).optional() });
 export const decideProposalSchema = z.object({ status: z.enum(["accepted", "refused"]) });
 
 export type CreateProposalInput = z.infer<typeof createProposalSchema>;

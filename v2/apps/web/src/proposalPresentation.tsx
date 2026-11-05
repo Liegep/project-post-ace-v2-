@@ -1,3 +1,4 @@
+import { formatProposalMoney } from "./proposalCurrency";
 import React from "react";
 import type { ProposalRecord as LocalProposal } from "./api";
 
@@ -14,7 +15,7 @@ export function getProposalLocale(locale: string) { return proposalLocales[local
 export function ProposalClientPreview({ proposal, brandLogo }: { proposal: LocalProposal; brandLogo?: string }) {
   const total = proposal.services.reduce((sum, service) => sum + Number(service.value || 0), 0);
   const copy = getProposalLocale(proposal.locale);
-  const money = (value: number) => `${proposal.currency} ${value.toLocaleString(copy.code, { minimumFractionDigits: 2 })}`;
+  const money = (value: number) => formatProposalMoney(value, proposal.currency);
   const validity = new Date(proposal.expiresAt).toLocaleDateString(copy.code);
   return <article className="proposal-client-preview proposal-document" lang={copy.code}>
     <header className="proposal-document-brand">{brandLogo ? <img src={brandLogo} alt="Liege Paschoalini Studio" /> : null}<span>LIEGE PASCHOALINI<br /><b>STUDIO</b></span><small>{copy.commercial}</small></header>
