@@ -16,7 +16,7 @@ for (const currency of ['BRL', 'USD', 'EUR', 'SEK']) test(`${currency}: create, 
  assert.equal(saved?.currency, currency); assert.equal(saved?.services[0].value, 1234.56);
  const updated = await updateProposal(db, saved!.id, updateProposalSchema.parse({ currency }));
  assert.equal(updated?.currency, currency); assert.equal(updated?.services[0].value, 1234.56);
- const copied = await createProposal(db, 'user', createProposalSchema.parse(updated));
+ const copied = await createProposal(db, 'user', createProposalSchema.parse({ ...updated, expiresAt: new Date(updated!.expiresAt).toISOString() }));
  assert.equal(copied?.currency, currency); assert.equal(copied?.services[0].value, 1234.56);
  assert.match(formatProposalMoney(1234.56, currency), { BRL: /R\$/, USD: /US\$/, EUR: /€/, SEK: /kr/ }[currency]!);
 });

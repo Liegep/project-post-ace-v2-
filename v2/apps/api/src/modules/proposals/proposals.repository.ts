@@ -138,7 +138,7 @@ async function createProposalRaw(
       input.scope,
       input.investment,
       input.currency,
-      input.expiresAt,
+      new Date(input.expiresAt),
       input.status,
       JSON.stringify(input.services),
       userId,
@@ -169,7 +169,9 @@ async function updateProposalRaw(
   for (const [key, column] of entries)
     if (typeof input[key] !== "undefined") {
       fields.push(`${column}=?`);
-      values.push(input[key]);
+      values.push(
+        key === "expiresAt" ? new Date(input.expiresAt!) : input[key],
+      );
     }
   if (input.services) {
     fields.push("services_json=?");
