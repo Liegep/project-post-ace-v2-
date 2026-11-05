@@ -1,3 +1,4 @@
+import { PublicPremiumProposalPage } from "./PublicPremiumProposalPage";
 import { CardTransferDialog } from "./CardTransferDialog";
 import { prepareAdminDownload } from "./adminMediaDownload";
 import { ExternalMaterialAction, externalMaterialUrl } from "./ExternalMaterialAction";
@@ -23,7 +24,6 @@ import { SocialCalendarWorkspace } from "./SocialCalendarWorkspace";
 import { SeasonalWorkspace, SeasonalDashboardWidget } from "./SeasonalWorkspace";
 import { ContractsWorkspace, ContractAcceptanceGate } from "./ContractsWorkspace";
 import { ProposalsWorkspace } from "./ProposalsWorkspace";
-import { ProposalClientPreview, getProposalLocale } from "./proposalPresentation";
 import { createPrintableTextFrame, printWhenImagesReady } from "./printDocument";
 import { DashboardMetrics } from "./DashboardMetrics";
 import { MetaPreflightPanel } from "./MetaPreflightPanel";
@@ -98,9 +98,6 @@ import {
   deleteDashboardNote,
   type DashboardNote,
   type DashboardNoteColor,
-  loadPublicProposal,
-  decidePublicProposal,
-  type ProposalRecord,
   listAdminDesignBriefs,
   createAdminDesignBrief,
   updateAdminDesignBrief,
@@ -9191,32 +9188,7 @@ export function BrandBrainExperience({ slug, clientName, portal = false, allowEd
 function BrandBrainWorkspaceV2({ slug, clientName }: { slug: string; clientName: string }) { return <BrandBrainExperience slug={slug} clientName={clientName} />; }
 function ClientBrandBrainView({ slug, clientName, allowEdit }: { slug: string; clientName: string; allowEdit: boolean }) { return <BrandBrainExperience slug={slug} clientName={clientName} portal allowEdit={allowEdit} />; }
 
-type LocalProposal = ProposalRecord;
-
-function PublicProposalPage() {
-  const { token = "" } = useParams();
-  const [proposal, setProposal] = useState<LocalProposal | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(false);
-  const [decision, setDecision] = useState<"accepted" | "refused" | null>(null);
-  useEffect(() => { setLoading(true); setLoadError(false); void loadPublicProposal(token).then((result)=>setProposal(result.proposal)).catch(()=>setLoadError(true)).finally(()=>setLoading(false)); }, [token]);
-  useEffect(() => {
-    const elements = Array.from(document.querySelectorAll(".public-proposal-page .proposal-client-content > section, .public-proposal-decision"));
-    const observer = new IntersectionObserver((entries) => entries.forEach((entry) => { if (entry.isIntersecting) entry.target.classList.add("in-view"); }), { threshold: 0.16 });
-    elements.forEach((element) => observer.observe(element));
-    return () => observer.disconnect();
-  }, [token, proposal?.id]);
-  if (loading) return <main className="public-proposal-page"><section><span>DESIGN HUB</span><h1>Carregando proposta...</h1></section></main>;
-  if (!proposal || loadError) return <main className="public-proposal-page"><section><span>DESIGN HUB</span><h1>Esta proposta não está disponível.</h1><p>O link pode ter expirado ou ter sido removido.</p></section></main>;
-  const expired = proposal.status === "expired" || new Date(proposal.expiresAt).getTime() < Date.now();
-  if (expired) return <main className="public-proposal-page"><section><span>DESIGN HUB</span><h1>Esta proposta expirou.</h1><p>Peça à equipe uma nova versão para continuar.</p></section></main>;
-  const copy = getProposalLocale(proposal.locale);
-  const decide = async (status: "accepted" | "refused") => {
-    try { const result=await decidePublicProposal(token,status); setProposal(result.proposal); setDecision(status); }
-    catch { setLoadError(true); }
-  };
-  return <main className="public-proposal-page proposal-premium-page"><ProposalClientPreview proposal={proposal} brandLogo={liegePaschoaliniLogo} /><section className="public-proposal-decision">{decision || proposal.status === "accepted" || proposal.status === "refused" ? <><span className={decision ?? proposal.status}>✓</span><h2>{(decision ?? proposal.status) === "accepted" ? copy.accepted : copy.refused}</h2><p>{copy.answer}</p></> : <><p>{copy.until} {new Date(proposal.expiresAt).toLocaleDateString(copy.code)}.</p><h2>{copy.continueTogether}</h2><div><button className="gradient-button" onClick={() => void decide("accepted")}>{copy.accept}</button><button className="public-proposal-refuse" onClick={() => void decide("refused")}>{copy.refuse}</button></div></>}</section></main>;
-}
+function PublicProposalPage() { return <PublicPremiumProposalPage brandLogo={liegePaschoaliniLogo} />; }
 
 function ClientContractAcceptance({ slug, accountName, canAccept = true, onExit }: { slug: string; accountName: string; canAccept?: boolean; onExit: () => void }) {
   const { t } = usePortalTranslation();
