@@ -47,7 +47,23 @@ Verificação em Chromium a 1440px e 390px: editor e apresentação sem overflow
 
 Não foi usado banco real nem executada migration; homologação do SQL em MySQL continua pendente para a etapa de aprovação. PDF e duplicação por interface não existem no módulo atual e não foram acrescentados neste redesign.
 
-O pedido recebido termina em “## 7. Test”. Não foi fornecido um arquivo identificável do mockup aprovado; o visual segue a direção escrita (branco, lilás, roxo profundo e hierarquia editorial).
+O pedido completo, incluindo as seções 7 (testes) e 8 (entrega), foi recebido e conferido. Não foi fornecido um arquivo identificável do mockup aprovado; o visual segue a direção escrita (branco, lilás, roxo profundo e hierarquia editorial).
+
+### Cobertura dos testes obrigatórios
+
+| Requisito | Evidência |
+| --- | --- |
+| Proposta única existente e integridade dos dados antigos | Regressões em `proposalsWorkspace.test.tsx` e `proposalCurrency.test.ts`; serviços e valores anteriores preservados. Sem acesso ou alteração de registros de produção. |
+| Duas alternativas sem soma automática | `proposalPremium.test.tsx`: preços independentes, ausência de total antes da seleção e total somente da alternativa escolhida. |
+| Salvar e recarregar | Teste de criação, atualização e reabertura pelo repositório, com todos os campos premium e valores legados, usando banco simulado. |
+| Exibição pública e seleção no aceite | Renderização pública e teste de interação: botão bloqueado sem escolha, envio do ID e revisão, confirmação após aceite. |
+| Valor e termos aceitos | Testes de snapshot completo, preço determinado no servidor, concorrência, aceite repetido e bloqueio de alterações após aprovação. |
+| BRL, USD, EUR e SEK | Hotfix de moedas preservado e matriz de renderização nas quatro moedas e cinco idiomas. |
+| Elementos fixos em inglês | Renderização em inglês sem os padrões portugueses “Projeto” e “Personalizado”; conteúdo livre preservado. |
+| Responsividade | Chromium em 1440px e 390px, sem overflow horizontal ou erros JavaScript; imagens anexadas. |
+| Typecheck, builds e suíte existente | Node 22.23.4: API e frontend aprovados, 722 testes aprovados incluindo as novas funcionalidades. |
+
+A validação com MySQL real continua pendente; os testes com banco simulado não substituem a homologação da migration. Branch exclusiva: `codex/proposals-premium`. PR #58 permanece em rascunho. A análise do modelo e a necessidade da tabela complementar foram apresentadas antes da implementação. Nenhuma autorização de merge, deploy ou alteração em produção foi inferida do reenvio do pedido.
 
 ![Desktop](public-desktop.png)
 ![Celular](public-mobile.png)
