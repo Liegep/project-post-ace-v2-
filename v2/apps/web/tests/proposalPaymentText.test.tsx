@@ -3,7 +3,7 @@ import test from "node:test";
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { JSDOM } from "jsdom";
-import { ProposalPaymentText } from "../src/ProposalPaymentText";
+import { ProposalPaymentText, ProposalPaymentBlock } from "../src/ProposalPaymentText";
 test("payment text preserves amounts and paragraphs while displaying lists and bold headings", () => {
   const value =
     "50% upon acceptance: US$225.\n\n**Additional Terms**\n- USD only\n- **No source files**\n\nBalance: US$350.";
@@ -32,3 +32,5 @@ test("payment text escapes HTML and hides empty content", () => {
   assert.equal(renderToStaticMarkup(<ProposalPaymentText value={"  "} />), "");
   dom.window.close();
 });
+
+test("payment disclosure starts compact and retains the full conditions",()=>{const value="50% upon acceptance.\n\nBalance: US$350.\n- Source files are excluded.";const dom=new JSDOM(renderToStaticMarkup(<ProposalPaymentBlock title="Payment schedule" value={value}/>));const details=dom.window.document.querySelector("details")!;assert.equal(details.open,false);assert.equal(details.querySelector("summary strong")!.textContent,"Payment schedule");assert.equal(details.querySelector("summary small")!.textContent,"50% upon acceptance.");assert.ok(details.querySelector(".proposal-payment-text")!.textContent!.includes("US$350"));assert.equal(details.querySelectorAll("li").length,1);dom.window.close();});

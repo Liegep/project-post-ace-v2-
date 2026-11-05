@@ -55,3 +55,39 @@ export function ProposalPaymentText({ value }: { value?: string }) {
     </div>
   );
 }
+
+export function ProposalPaymentBlock({
+  title,
+  value,
+}: {
+  title: string;
+  value?: string;
+}) {
+  if (!value?.trim()) return null;
+  const preview = value
+    .split(/\r?\n/)
+    .find((line) => line.trim())
+    ?.replace(/\*\*/g, "");
+  return (
+    <details className="proposal-payment-block">
+      <summary>
+        <span>
+          <strong>{title}</strong>
+          <small>{preview}</small>
+        </span>
+      </summary>
+      <ProposalPaymentText value={value} />
+    </details>
+  );
+}
+export function paymentBlockLabels(locale: string) {
+  const labels: Record<string, [string, string]> = {
+    Português: ["Detalhes do investimento", "Condições de pagamento"],
+    English: ["Investment details", "Payment schedule"],
+    Español: ["Detalles de inversión", "Condiciones de pago"],
+    Italiano: ["Dettagli dell’investimento", "Condizioni di pagamento"],
+    Svenska: ["Investeringsdetaljer", "Betalningsvillkor"],
+  };
+  const [investment, schedule] = labels[locale] ?? labels.Português;
+  return { investment, schedule };
+}
