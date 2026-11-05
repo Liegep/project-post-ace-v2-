@@ -980,4 +980,109 @@
   white-space: normal;
   overflow-wrap: anywhere;
 }
-.proposal-document.proposal-document-mockup .proposal-document-investment::before{display:none}
+.proposal-document.proposal-document-mockup
+  .proposal-document-investment::before {
+  display: none;
+}
+/* Payment content grows vertically; it never stretches an empty price column. */
+.proposal-document.proposal-document-mockup .proposal-investment-band,
+.proposal-document.proposal-document-mockup
+  .proposal-investment-band:has(.proposal-chosen-package) {
+  display: block;
+  padding: 0;
+  border: 1px solid #ebe3f0;
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+.proposal-document-mockup .proposal-investment-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  padding: 24px 28px;
+  background: linear-gradient(115deg, #faf6fd, #f2ebf8);
+  border-bottom: 1px solid #ece3f2;
+}
+.proposal-document-mockup
+  .proposal-investment-summary:has(.proposal-chosen-package) {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+.proposal-document-mockup
+  .proposal-investment-summary
+  .proposal-chosen-package {
+  border: 0;
+  padding: 0;
+  gap: 8px;
+}
+.proposal-document-mockup
+  .proposal-investment-summary
+  .proposal-investment-price {
+  align-self: start;
+}
+.proposal-document-mockup .proposal-investment-summary p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #82658e;
+}
+.proposal-document-mockup .proposal-investment-band .proposal-payment-details {
+  padding: 12px 28px 26px;
+  border: 0;
+  min-width: 0;
+}
+.proposal-document-mockup
+  .proposal-investment-band
+  .proposal-payment-details:empty {
+  display: none;
+}
+.proposal-document-mockup .proposal-payment-details .proposal-payment-text {
+  max-width: 80ch;
+  overflow-wrap: anywhere;
+}
+.proposal-document-mockup .proposal-payment-details .proposal-payment-text p {
+  margin: 14px 0;
+  font-size: 13px;
+  line-height: 1.8;
+  white-space: pre-line;
+  color: #65556e;
+}
+.proposal-document-mockup .proposal-payment-details .proposal-payment-text ul {
+  margin: 12px 0 20px;
+  padding-left: 20px;
+  list-style: disc;
+}
+.proposal-document-mockup .proposal-payment-details .proposal-payment-text li {
+  padding-left: 4px;
+  margin: 7px 0;
+  font-size: 13px;
+  line-height: 1.75;
+  color: #65556e;
+}
+.proposal-document-mockup .proposal-payment-details h3,
+.proposal-document-mockup .proposal-payment-details .proposal-payment-text h4 {
+  margin: 24px 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: #533c60;
+}
+.proposal-document-mockup .proposal-payment-details > p {
+  margin: 14px 0;
+  font-size: 13px;
+}
+@media (max-width: 760px) {
+  .proposal-document-mockup .proposal-investment-summary,
+  .proposal-document-mockup
+    .proposal-investment-summary:has(.proposal-chosen-package) {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 20px;
+    gap: 18px;
+  }
+  .proposal-document-mockup
+    .proposal-investment-band
+    .proposal-payment-details {
+    padding: 6px 20px 20px;
+  }
+}

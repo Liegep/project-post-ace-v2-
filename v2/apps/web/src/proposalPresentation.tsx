@@ -1,3 +1,4 @@
+import { ProposalPaymentText } from "./ProposalPaymentText";
 import { hasProposalPackages } from "./proposalDocument";
 import { useProposalReveal } from "./useProposalReveal";
 import { premiumCopy, proposalTypeLabel } from "./proposalPremiumCopy";
@@ -426,41 +427,36 @@ export function ProposalClientPreview({
         {section(
           doc ? extra.payment : copy.investment,
           <div className="proposal-investment-band">
-            {chosen && (
-              <div className="proposal-chosen-package">
-                <span>{extra.selected}</span>
-                <strong>{chosen.name}</strong>
-              </div>
-            )}
-            <div className="proposal-investment-price">
-              {total !== undefined && (
-                <div
-                  className="proposal-document-investment-amount"
-                  aria-live="polite"
-                  aria-atomic="true"
-                >
-                  <span>{copy.total}</span>
-                  <strong>{money(total)}</strong>
+            <div className="proposal-investment-summary">
+              {chosen && (
+                <div className="proposal-chosen-package">
+                  <span>{extra.selected}</span>
+                  <strong>{chosen.name}</strong>
                 </div>
               )}
-              {alternatives && !chosen && !proposal.acceptance && (
-                <p role="status" aria-live="polite">
-                  {extra.neutralInvestment}
-                </p>
-              )}
+              <div className="proposal-investment-price">
+                {total !== undefined && (
+                  <div
+                    className="proposal-document-investment-amount"
+                    aria-live="polite"
+                    aria-atomic="true"
+                  >
+                    <span>{copy.total}</span>
+                    <strong>{money(total)}</strong>
+                  </div>
+                )}
+                {alternatives && !chosen && !proposal.acceptance && (
+                  <p role="status" aria-live="polite">
+                    {extra.neutralInvestment}
+                  </p>
+                )}
+              </div>
             </div>
             <div className="proposal-payment-details">
-              {doc &&
-                (doc.paymentTerms ||
-                  doc.deposit !== null ||
-                  doc.balance ||
-                  doc.paymentMethods ||
-                  doc.financialNotes ||
-                  proposal.investment) && <h3>{extra.payment}</h3>}
-              {text(proposal.investment)}
+              <ProposalPaymentText value={proposal.investment} />
               {doc && (
                 <>
-                  {text(doc.paymentTerms)}
+                  <ProposalPaymentText value={doc.paymentTerms} />
                   {doc.deposit !== null && (
                     <p>
                       {extra.deposit}: {doc.deposit}%
@@ -469,16 +465,16 @@ export function ProposalClientPreview({
                   {doc.balance && (
                     <>
                       <h3>{extra.balance}</h3>
-                      {text(doc.balance)}
+                      <ProposalPaymentText value={doc.balance} />
                     </>
                   )}
                   {doc.paymentMethods && (
                     <>
                       <h3>{extra.methods}</h3>
-                      {text(doc.paymentMethods)}
+                      <ProposalPaymentText value={doc.paymentMethods} />
                     </>
                   )}
-                  {text(doc.financialNotes)}
+                  <ProposalPaymentText value={doc.financialNotes} />
                 </>
               )}
             </div>
