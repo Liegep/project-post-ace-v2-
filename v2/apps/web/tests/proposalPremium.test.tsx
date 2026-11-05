@@ -639,3 +639,19 @@ test("scroll reveal respects live reduced-motion changes and disconnects observe
     Object.assign(globalThis, saved);
   }
 });
+test('badges require explicit nonblank text, regardless of legacy recommendation flags',async()=>{
+ const server=await createServer({root:new URL('..',import.meta.url).pathname,server:{middlewareMode:true,hmr:false}});
+ try{
+  const {ProposalClientPreview}=await server.ssrLoadModule('/src/proposalPresentation.tsx');
+  const legacy=options.map(option=>({...option,recommended:true}));
+  const original=JSON.stringify(legacy);
+  const badgeText=(items:any[])=>{const dom=new JSDOM(renderToStaticMarkup(<ProposalClientPreview proposal={{...proposal,document:{...document,options:items}}}/>));const labels=[...dom.window.document.querySelectorAll('.proposal-option-overline b')].map(node=>node.textContent);dom.window.close();return labels;};
+  assert.deepEqual(badgeText(legacy),[]);
+  assert.deepEqual(badgeText(legacy.map(option=>({...option,badge:'  '}))),[]);
+  assert.deepEqual(badgeText([{...legacy[0],recommended:false,badge:'Most popular'},legacy[1]]),['Most popular']);
+  assert.deepEqual(badgeText([{...legacy[0],badge:''},legacy[1]]),[]);
+  assert.deepEqual(badgeText([{...legacy[0],badge:'Mais escolhido'},legacy[1]]),['Mais escolhido']);
+  assert.equal(JSON.stringify(legacy),original);
+  const {ProposalPremiumEditor}=await server.ssrLoadModule('/src/ProposalPremiumEditor.tsx');const editor=new JSDOM(renderToStaticMarkup(<ProposalPremiumEditor draft={proposal} update={()=>{}}/>));assert.equal(editor.window.document.querySelectorAll('input[type=checkbox]').length,0);editor.window.close();
+ }finally{await server.close();}
+});

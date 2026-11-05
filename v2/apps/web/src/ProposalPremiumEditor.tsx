@@ -378,6 +378,7 @@ export function ProposalPremiumEditor({
                         value={option.badge ?? ""}
                         onChange={(e) => edit({ badge: e.target.value })}
                         placeholder="Ex.: Most popular"
+                        aria-description="Se ficar vazio, nenhum selo será exibido."
                       />
                     </label>
                     <label>
@@ -414,16 +415,6 @@ export function ProposalPremiumEditor({
                           edit({ value: Number(e.target.value) })
                         }
                       />
-                    </label>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={option.recommended}
-                        onChange={(e) =>
-                          edit({ recommended: e.target.checked })
-                        }
-                      />
-                      Recomendada
                     </label>
                     <div className="proposal-item-actions">
                       <button
