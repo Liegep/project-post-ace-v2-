@@ -204,7 +204,7 @@ export function ProposalClientPreview({
   return (
     <article
       ref={revealRef}
-      className="proposal-client-preview proposal-document proposal-document-premium"
+      className="proposal-client-preview proposal-document proposal-document-premium proposal-document-mockup"
       lang={copy.code}
     >
       <header className="proposal-document-brand">
@@ -214,41 +214,48 @@ export function ProposalClientPreview({
           <br />
           <b>STUDIO</b>
         </span>
-        <small>{copy.commercial}</small>
+        <small>DESIGN HUB V2</small>
       </header>
       <section className="proposal-document-cover">
-        <p className="proposal-document-eyebrow">
-          {copy.commercial} ·{" "}
-          {proposalTypeLabel(proposal.proposalType, proposal.locale)}
-        </p>
-        <h1>
-          {doc?.title ||
-            proposal.plan ||
-            proposalTypeLabel(proposal.proposalType, proposal.locale)}
-        </h1>
-        <div className="proposal-document-recipient">
-          <span>{copy.prepared}</span>
-          <strong>{proposal.clientName || "…"}</strong>
+        <div className="proposal-cover-intro">
+          <p className="proposal-document-eyebrow">
+            {copy.commercial} ·{" "}
+            {proposalTypeLabel(proposal.proposalType, proposal.locale)}
+          </p>
+          <h1>
+            {doc?.title ||
+              proposal.plan ||
+              proposalTypeLabel(proposal.proposalType, proposal.locale)}
+          </h1>
+          <div className="proposal-document-recipient">
+            <span>{copy.prepared}</span>
+            <strong>{proposal.clientName || "…"}</strong>
+          </div>
+          <div className="proposal-document-cover-bottom">
+            {proposal.plan && (
+              <span>
+                {copy.plan}
+                <b>{proposal.plan}</b>
+              </span>
+            )}
+            {proposal.pieces > 0 && (
+              <span>
+                {copy.pieces}
+                <b>
+                  {proposal.pieces} {copy.deliveries}
+                </b>
+              </span>
+            )}
+          </div>
         </div>
-        <div className="proposal-document-cover-bottom">
-          {proposal.plan && (
-            <span>
-              {copy.plan}
-              <b>{proposal.plan}</b>
-            </span>
-          )}
-          {proposal.pieces > 0 && (
-            <span>
-              {copy.pieces}
-              <b>
-                {proposal.pieces} {copy.deliveries}
-              </b>
-            </span>
-          )}
-        </div>
+        {doc?.summary.trim() && (
+          <div className="proposal-cover-summary">
+            <h2>{extra.summary}</h2>
+            {text(doc.summary)}
+          </div>
+        )}
       </section>
       <div className="proposal-document-body">
-        {doc?.summary.trim() && section(extra.summary, text(doc.summary))}
         {(proposal.scope?.trim() ||
           doc?.objectives.trim() ||
           doc?.included.trim() ||
@@ -288,49 +295,58 @@ export function ProposalClientPreview({
                     key={option.id}
                     className={`proposal-option-card ${selected === option.id ? "selected" : ""}`}
                   >
-                    <div className="proposal-option-overline">
-                      <span>
-                        {extra.option} {String(index + 1).padStart(2, "0")}
-                      </span>
-                      {(option.badge?.trim() || option.recommended) && (
-                        <b>{option.badge?.trim() || extra.recommended}</b>
+                    <div className="proposal-package-identity">
+                      <div className="proposal-option-overline">
+                        <span>
+                          {extra.option} {String(index + 1).padStart(2, "0")}
+                        </span>
+                        {(option.badge?.trim() || option.recommended) && (
+                          <b>{option.badge?.trim() || extra.recommended}</b>
+                        )}
+                      </div>
+                      <h3>{option.name}</h3>
+                      {text(option.subtitle)}
+                      {text(option.description)}
+                    </div>
+                    <div className="proposal-package-inclusions">
+                      {option.items.some((item) => item.trim()) && (
+                        <>
+                          <h4>{extra.included}</h4>
+                          {list(option.items.join("\n"))}
+                        </>
+                      )}
+                      {option.excludedItems?.some((item) => item.trim()) && (
+                        <>
+                          <h4>{extra.excluded}</h4>
+                          {list(option.excludedItems.join("\n"))}
+                        </>
                       )}
                     </div>
-                    <h3>{option.name}</h3>
-                    {text(option.subtitle)}
-                    {text(option.description)}
-                    <strong className="proposal-option-price">
-                      {money(option.value)}
-                    </strong>
-                    {option.items.some((item) => item.trim()) && (
-                      <>
-                        <h4>{extra.included}</h4>
-                        {list(option.items.join("\n"))}
-                      </>
-                    )}
-                    {option.excludedItems?.some((item) => item.trim()) && (
-                      <>
-                        <h4>{extra.excluded}</h4>
-                        {list(option.excludedItems.join("\n"))}
-                      </>
-                    )}
-                    {onSelectOption && !proposal.acceptance ? (
-                      <span className="proposal-option-select">
-                        <input
-                          type="radio"
-                          name="proposal-option"
-                          aria-label={`${extra.option} ${index + 1}: ${option.name}`}
-                          value={option.id}
-                          checked={selected === option.id}
-                          onChange={() => onSelectOption(option.id)}
-                        />
-                        {selected === option.id
-                          ? extra.selected
-                          : extra.selectPackage}
+                    <div className="proposal-package-investment">
+                      <span className="proposal-package-price-label">
+                        {copy.investment}
                       </span>
-                    ) : selected === option.id ? (
-                      <p>{extra.selected}</p>
-                    ) : null}
+                      <strong className="proposal-option-price">
+                        {money(option.value)}
+                      </strong>
+                      {onSelectOption && !proposal.acceptance ? (
+                        <span className="proposal-option-select">
+                          <input
+                            type="radio"
+                            name="proposal-option"
+                            aria-label={`${extra.option} ${index + 1}: ${option.name}`}
+                            value={option.id}
+                            checked={selected === option.id}
+                            onChange={() => onSelectOption(option.id)}
+                          />
+                          {selected === option.id
+                            ? extra.selected
+                            : extra.selectPackage}
+                        </span>
+                      ) : selected === option.id ? (
+                        <p>{extra.selected}</p>
+                      ) : null}
+                    </div>
                   </label>
                 ))}
               </div>,
@@ -369,6 +385,7 @@ export function ProposalClientPreview({
                   </li>
                 ))}
             </ul>,
+            doc?.timelineValue ? "proposal-paired-section" : "",
           )}
         {doc?.timelineValue &&
           section(
@@ -384,6 +401,9 @@ export function ProposalClientPreview({
               {text(doc.timelineStart)}
               {text(doc.timelineNotes)}
             </>,
+            doc.deliverables.some((item) => item.name.trim())
+              ? "proposal-paired-section"
+              : "",
           )}
         {doc?.addons.some((item) => item.name.trim()) &&
           section(
@@ -405,50 +425,64 @@ export function ProposalClientPreview({
           )}
         {section(
           doc ? extra.payment : copy.investment,
-          <>
-            {total !== undefined && (
-              <div
-                className="proposal-document-investment-amount"
-                aria-live="polite"
-                aria-atomic="true"
-              >
-                <span>
-                  {copy.total}
-                  {chosen && <small>{chosen.name}</small>}
-                </span>
-                <strong>{money(total)}</strong>
+          <div className="proposal-investment-band">
+            {chosen && (
+              <div className="proposal-chosen-package">
+                <span>{extra.selected}</span>
+                <strong>{chosen.name}</strong>
               </div>
             )}
-            {alternatives && !chosen && !proposal.acceptance && (
-              <p role="status" aria-live="polite">
-                {extra.neutralInvestment}
-              </p>
-            )}
-            {text(proposal.investment)}
-            {doc && (
-              <>
-                {text(doc.paymentTerms)}
-                {doc.deposit !== null && (
-                  <p>
-                    {extra.deposit}: {doc.deposit}%
-                  </p>
-                )}
-                {doc.balance && (
-                  <>
-                    <h3>{extra.balance}</h3>
-                    {text(doc.balance)}
-                  </>
-                )}
-                {doc.paymentMethods && (
-                  <>
-                    <h3>{extra.methods}</h3>
-                    {text(doc.paymentMethods)}
-                  </>
-                )}
-                {text(doc.financialNotes)}
-              </>
-            )}
-          </>,
+            <div className="proposal-investment-price">
+              {total !== undefined && (
+                <div
+                  className="proposal-document-investment-amount"
+                  aria-live="polite"
+                  aria-atomic="true"
+                >
+                  <span>{copy.total}</span>
+                  <strong>{money(total)}</strong>
+                </div>
+              )}
+              {alternatives && !chosen && !proposal.acceptance && (
+                <p role="status" aria-live="polite">
+                  {extra.neutralInvestment}
+                </p>
+              )}
+            </div>
+            <div className="proposal-payment-details">
+              {doc &&
+                (doc.paymentTerms ||
+                  doc.deposit !== null ||
+                  doc.balance ||
+                  doc.paymentMethods ||
+                  doc.financialNotes ||
+                  proposal.investment) && <h3>{extra.payment}</h3>}
+              {text(proposal.investment)}
+              {doc && (
+                <>
+                  {text(doc.paymentTerms)}
+                  {doc.deposit !== null && (
+                    <p>
+                      {extra.deposit}: {doc.deposit}%
+                    </p>
+                  )}
+                  {doc.balance && (
+                    <>
+                      <h3>{extra.balance}</h3>
+                      {text(doc.balance)}
+                    </>
+                  )}
+                  {doc.paymentMethods && (
+                    <>
+                      <h3>{extra.methods}</h3>
+                      {text(doc.paymentMethods)}
+                    </>
+                  )}
+                  {text(doc.financialNotes)}
+                </>
+              )}
+            </div>
+          </div>,
           "proposal-document-investment",
         )}
         {doc &&
@@ -482,7 +516,11 @@ export function ProposalClientPreview({
         </footer>
         {showApproval &&
           doc?.approvalText &&
-          section(extra.approval, text(doc.approvalText))}
+          section(
+            extra.approval,
+            text(doc.approvalText),
+            "proposal-approval-copy",
+          )}
       </div>
     </article>
   );

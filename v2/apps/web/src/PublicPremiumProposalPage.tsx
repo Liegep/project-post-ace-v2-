@@ -105,7 +105,7 @@ export function PublicPremiumProposalPage({
       <ProposalClientPreview
         proposal={proposal}
         brandLogo={brandLogo}
-        showApproval={false}
+        showApproval={true}
         selectedOptionId={option}
         onSelectOption={
           !terminal && !expired ? (id) => setOption(id) : undefined
@@ -119,13 +119,16 @@ export function PublicPremiumProposalPage({
               : copy.refused
             : expired
               ? extra.expired
-              : extra.approval}
+              : copy.continueTogether}
         </h2>
         {terminal ? (
           <p>{copy.answer}</p>
         ) : expired ? null : (
           <>
-            <p>{proposal.document?.approvalText || copy.continueTogether}</p>
+            <p>
+              {copy.until}{" "}
+              {new Date(proposal.expiresAt).toLocaleDateString(copy.code)}.
+            </p>
             {hasProposalPackages(proposal.document) && !option && (
               <p>{extra.select}</p>
             )}
