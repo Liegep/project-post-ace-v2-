@@ -1,0 +1,39 @@
+{
+  "migrationSha256": "7144412615f0a726bdfab5b146486cb76d5e6f56d6dcfe59095f88ba7d918b4b",
+  "productionAccessed": false,
+  "syntheticDataOnly": true,
+  "modes": [
+    "NO_AUTO_CREATE_USER,NO_ENGINE_SUBSTITUTION",
+    "STRICT_ALL_TABLES,ERROR_FOR_DIVISION_BY_ZERO,NO_ZERO_IN_DATE,NO_ZERO_DATE,NO_ENGINE_SUBSTITUTION"
+  ],
+  "passed": [
+    "DDL both modes; legacy rows/schema unchanged; FK/JSON/PK; repeat safely fails without changes",
+    "no migration fallback and atomic failure",
+    "legacy CRUD/public acceptance, immutable history and server amount",
+    "BRL/single: full HTTP lifecycle and independent reload",
+    "BRL/alternatives: full HTTP lifecycle and independent reload",
+    "USD/single: full HTTP lifecycle and independent reload",
+    "USD/alternatives: full HTTP lifecycle and independent reload",
+    "EUR/single: full HTTP lifecycle and independent reload",
+    "EUR/alternatives: full HTTP lifecycle and independent reload",
+    "SEK/single: full HTTP lifecycle and independent reload",
+    "SEK/alternatives: full HTTP lifecycle and independent reload",
+    "invalid and foreign options, two-connection locking, terminal states, expiry, authorization",
+    "trigger-forced transaction rollback and DDL rollback leave legacy intact"
+  ],
+  "server": {
+    "version": "11.8.9-MariaDB",
+    "versionComment": "Homebrew",
+    "collationName": "utf8mb4_unicode_ci",
+    "charsetName": "utf8mb4",
+    "engine": "InnoDB",
+    "lowerCaseTableNames": 2,
+    "timeZone": "+00:00",
+    "foreignKeys": 1,
+    "jsonChecks": 1,
+    "skipNetworking": 1
+  },
+  "testDatabasesRemaining": 0,
+  "temporaryServerStopped": true,
+  "temporaryDataDirectoryRemoved": true
+}

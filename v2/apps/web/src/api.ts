@@ -251,6 +251,7 @@ export type ContractRecord = {
 };
 export type ContractTemplateRecord = { id: string; name: string; bodyHtml: string; language: string; description: string; draft: Partial<Omit<ContractRecord, "id" | "clientAccountId" | "clientName" | "clientSlug" | "status" | "createdAt" | "updatedAt" | "acceptedAt" | "acceptedByUserId">>; custom: true; createdAt: string; updatedAt: string };
 export type ProposalRecord = {
+  document?: import("./proposalDocument").ProposalDocument | null; revision?: number; acceptance?: { optionId: string | null; optionName: string | null; value: number; currency: string; revision: number; acceptedAt: string } | null;
   id: string; token: string; clientName: string; email: string; locale: string; proposalType: string; plan: string;
   pieces: number; scope: string; investment: string; currency: string; expiresAt: string;
   status: "draft" | "sent" | "viewed" | "accepted" | "refused" | "expired";
@@ -942,7 +943,7 @@ export async function createAdminProposal(input: Omit<ProposalRecord, "id" | "to
 export async function updateAdminProposal(proposalId: string, input: Partial<Omit<ProposalRecord, "id" | "token" | "acceptedAt" | "viewedAt" | "createdAt" | "updatedAt">>) { return sendJson<{ proposal: ProposalRecord }>(`/api/proposals/${proposalId}`, { method: "PATCH", body: JSON.stringify(input) }); }
 export async function deleteAdminProposal(proposalId: string) { return sendJson<{ ok: boolean }>(`/api/proposals/${proposalId}`, { method: "DELETE" }); }
 export async function loadPublicProposal(token: string) { return fetchJson<{ proposal: ProposalRecord }>(`/api/public/proposals/${encodeURIComponent(token)}`); }
-export async function decidePublicProposal(token: string, status: "accepted" | "refused") { return sendJson<{ proposal: ProposalRecord }>(`/api/public/proposals/${encodeURIComponent(token)}/decision`, { method: "POST", body: JSON.stringify({ status }) }); }
+export async function decidePublicProposal(token: string, status: "accepted" | "refused", optionId?: string, revision?: number) { return sendJson<{ proposal: ProposalRecord }>(`/api/public/proposals/${encodeURIComponent(token)}/decision`, { method: "POST", body: JSON.stringify({ status, optionId, revision }) }); }
 export async function listAdminDesignBriefs() { return fetchJson<{ items: DesignBriefRecord[] }>("/api/design-briefs"); }
 export async function createAdminDesignBrief(input: Omit<DesignBriefRecord, "id" | "submittedAt" | "createdAt" | "updatedAt">) { return sendJson<{ brief: DesignBriefRecord }>("/api/design-briefs", { method: "POST", body: JSON.stringify(input) }); }
 export async function updateAdminDesignBrief(briefId: string, input: Partial<Omit<DesignBriefRecord, "id" | "submittedAt" | "createdAt" | "updatedAt">>) { return sendJson<{ brief: DesignBriefRecord }>(`/api/design-briefs/${briefId}`, { method: "PATCH", body: JSON.stringify(input) }); }

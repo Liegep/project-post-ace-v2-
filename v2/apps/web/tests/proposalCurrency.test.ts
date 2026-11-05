@@ -5,7 +5,8 @@ import { createProposalSchema, updateProposalSchema } from '../../api/src/module
 import { createProposal, updateProposal } from '../../api/src/modules/proposals/proposals.repository';
 for (const currency of ['BRL', 'USD', 'EUR', 'SEK']) test(`${currency}: create, edit, reload and copy preserve currency and amounts`, async () => {
  let row: any;
- const db: any = { query: async (sql: string, values: any[]) => {
+ const db: any = { getConnection: async () => db, beginTransaction: async()=>{}, commit: async()=>{}, rollback: async()=>{}, release:()=>{}, query: async (sql: string, values: any[]) => {
+  if (sql.includes("proposal_documents")) return [[]];
   if (sql.startsWith('INSERT')) row = { id: values[0], token: values[1], client_name: values[2], client_email: values[3], locale: values[4], proposal_type: values[5], plan: values[6], pieces_quantity: values[7], scope_description: values[8], investment_description: values[9], expires_at: values[11], status: values[12], currency: values[10], services_json: values[13] };
   if (sql.startsWith('UPDATE')) row.currency = values[sql.slice(sql.indexOf('SET ') + 4, sql.indexOf(' WHERE')).split(',').findIndex((field) => field === 'currency=?')];
   return [[row]];
@@ -15,7 +16,7 @@ for (const currency of ['BRL', 'USD', 'EUR', 'SEK']) test(`${currency}: create, 
  assert.equal(saved?.currency, currency); assert.equal(saved?.services[0].value, 1234.56);
  const updated = await updateProposal(db, saved!.id, updateProposalSchema.parse({ currency }));
  assert.equal(updated?.currency, currency); assert.equal(updated?.services[0].value, 1234.56);
- const copied = await createProposal(db, 'user', createProposalSchema.parse(updated));
+ const copied = await createProposal(db, 'user', createProposalSchema.parse({ ...updated, expiresAt: new Date(updated!.expiresAt).toISOString() }));
  assert.equal(copied?.currency, currency); assert.equal(copied?.services[0].value, 1234.56);
  assert.match(formatProposalMoney(1234.56, currency), { BRL: /R\$/, USD: /US\$/, EUR: /€/, SEK: /kr/ }[currency]!);
 });

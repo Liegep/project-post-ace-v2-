@@ -1,36 +1,455 @@
+import { premiumCopy, proposalTypeLabel } from "./proposalPremiumCopy";
+import "./proposalPremium.css";
 import { formatProposalMoney } from "./proposalCurrency";
 import React from "react";
 import type { ProposalRecord as LocalProposal } from "./api";
 
 export const proposalLocales = {
-  "Português": { code: "pt-BR", label: "Português", commercial: "Proposta comercial", prepared: "Preparada para", plan: "Plano", validity: "Validade", pieces: "Peças", deliveries: "entregas", scope: "Escopo do projeto", investment: "Investimento", services: "Serviços inclusos", total: "Investimento total", until: "Válida até", continueTogether: "Vamos seguir juntos?", emptyScope: "Descreva o escopo, objetivos e entregas desta proposta.", emptyInvestment: "Detalhe aqui as condições comerciais e observações.", emptyServices: "Os serviços aparecerão aqui.", accept: "Aceitar proposta", refuse: "Não aceitar", accepted: "Proposta aceita", refused: "Proposta recusada", answer: "Sua resposta foi registrada. Nossa equipe entrará em contato em breve." },
-  "English": { code: "en-US", label: "English", commercial: "Commercial proposal", prepared: "Prepared for", plan: "Plan", validity: "Validity", pieces: "Pieces", deliveries: "deliverables", scope: "Project scope", investment: "Investment", services: "Included services", total: "Total investment", until: "Valid until", continueTogether: "Shall we move forward together?", emptyScope: "Describe the scope, objectives and deliverables for this proposal.", emptyInvestment: "Add payment terms, notes and next steps here.", emptyServices: "Services will appear here.", accept: "Accept proposal", refuse: "Decline proposal", accepted: "Proposal accepted", refused: "Proposal declined", answer: "Your answer has been recorded. Our team will be in touch soon." },
-  "Español": { code: "es-ES", label: "Español", commercial: "Propuesta comercial", prepared: "Preparada para", plan: "Plan", validity: "Validez", pieces: "Piezas", deliveries: "entregables", scope: "Alcance del proyecto", investment: "Inversión", services: "Servicios incluidos", total: "Inversión total", until: "Válida hasta", continueTogether: "¿Seguimos juntos?", emptyScope: "Describa el alcance, los objetivos y las entregas de esta propuesta.", emptyInvestment: "Detalle las condiciones de pago, observaciones y próximos pasos.", emptyServices: "Los servicios aparecerán aquí.", accept: "Aceptar propuesta", refuse: "No aceptar", accepted: "Propuesta aceptada", refused: "Propuesta rechazada", answer: "Su respuesta fue registrada. Nuestro equipo se pondrá en contacto pronto." },
-  "Italiano": { code: "it-IT", label: "Italiano", commercial: "Proposta commerciale", prepared: "Preparata per", plan: "Piano", validity: "Validità", pieces: "Pezzi", deliveries: "consegne", scope: "Ambito del progetto", investment: "Investimento", services: "Servizi inclusi", total: "Investimento totale", until: "Valida fino al", continueTogether: "Andiamo avanti insieme?", emptyScope: "Descrivi l'ambito, gli obiettivi e le consegne di questa proposta.", emptyInvestment: "Inserisci le condizioni di pagamento, le note e i prossimi passi.", emptyServices: "I servizi appariranno qui.", accept: "Accetta proposta", refuse: "Rifiuta", accepted: "Proposta accettata", refused: "Proposta rifiutata", answer: "La tua risposta è stata registrata. Il nostro team ti contatterà presto." },
-  "Svenska": { code: "sv-SE", label: "Svenska", commercial: "Kommersiellt förslag", prepared: "Förberett för", plan: "Plan", validity: "Giltighet", pieces: "Delar", deliveries: "leveranser", scope: "Projektets omfattning", investment: "Investering", services: "Inkluderade tjänster", total: "Total investering", until: "Giltigt till", continueTogether: "Ska vi gå vidare tillsammans?", emptyScope: "Beskriv omfattning, mål och leveranser för detta förslag.", emptyInvestment: "Lägg till betalningsvillkor, anteckningar och nästa steg här.", emptyServices: "Tjänsterna visas här.", accept: "Acceptera förslag", refuse: "Avböj", accepted: "Förslag accepterat", refused: "Förslag avböjt", answer: "Ditt svar har registrerats. Vårt team kontaktar dig snart." },
+  Português: {
+    code: "pt-BR",
+    label: "Português",
+    commercial: "Proposta comercial",
+    prepared: "Preparada para",
+    plan: "Plano",
+    validity: "Validade",
+    pieces: "Peças",
+    deliveries: "entregas",
+    scope: "Escopo do projeto",
+    investment: "Investimento",
+    services: "Serviços inclusos",
+    total: "Investimento total",
+    until: "Válida até",
+    continueTogether: "Vamos seguir juntos?",
+    emptyScope: "Descreva o escopo, objetivos e entregas desta proposta.",
+    emptyInvestment: "Detalhe aqui as condições comerciais e observações.",
+    emptyServices: "Os serviços aparecerão aqui.",
+    accept: "Aceitar proposta",
+    refuse: "Não aceitar",
+    accepted: "Proposta aceita",
+    refused: "Proposta recusada",
+    answer:
+      "Sua resposta foi registrada. Nossa equipe entrará em contato em breve.",
+  },
+  English: {
+    code: "en-US",
+    label: "English",
+    commercial: "Commercial proposal",
+    prepared: "Prepared for",
+    plan: "Plan",
+    validity: "Validity",
+    pieces: "Pieces",
+    deliveries: "deliverables",
+    scope: "Project scope",
+    investment: "Investment",
+    services: "Included services",
+    total: "Total investment",
+    until: "Valid until",
+    continueTogether: "Shall we move forward together?",
+    emptyScope:
+      "Describe the scope, objectives and deliverables for this proposal.",
+    emptyInvestment: "Add payment terms, notes and next steps here.",
+    emptyServices: "Services will appear here.",
+    accept: "Accept proposal",
+    refuse: "Decline proposal",
+    accepted: "Proposal accepted",
+    refused: "Proposal declined",
+    answer: "Your answer has been recorded. Our team will be in touch soon.",
+  },
+  Español: {
+    code: "es-ES",
+    label: "Español",
+    commercial: "Propuesta comercial",
+    prepared: "Preparada para",
+    plan: "Plan",
+    validity: "Validez",
+    pieces: "Piezas",
+    deliveries: "entregables",
+    scope: "Alcance del proyecto",
+    investment: "Inversión",
+    services: "Servicios incluidos",
+    total: "Inversión total",
+    until: "Válida hasta",
+    continueTogether: "¿Seguimos juntos?",
+    emptyScope:
+      "Describa el alcance, los objetivos y las entregas de esta propuesta.",
+    emptyInvestment:
+      "Detalle las condiciones de pago, observaciones y próximos pasos.",
+    emptyServices: "Los servicios aparecerán aquí.",
+    accept: "Aceptar propuesta",
+    refuse: "No aceptar",
+    accepted: "Propuesta aceptada",
+    refused: "Propuesta rechazada",
+    answer:
+      "Su respuesta fue registrada. Nuestro equipo se pondrá en contacto pronto.",
+  },
+  Italiano: {
+    code: "it-IT",
+    label: "Italiano",
+    commercial: "Proposta commerciale",
+    prepared: "Preparata per",
+    plan: "Piano",
+    validity: "Validità",
+    pieces: "Pezzi",
+    deliveries: "consegne",
+    scope: "Ambito del progetto",
+    investment: "Investimento",
+    services: "Servizi inclusi",
+    total: "Investimento totale",
+    until: "Valida fino al",
+    continueTogether: "Andiamo avanti insieme?",
+    emptyScope:
+      "Descrivi l'ambito, gli obiettivi e le consegne di questa proposta.",
+    emptyInvestment:
+      "Inserisci le condizioni di pagamento, le note e i prossimi passi.",
+    emptyServices: "I servizi appariranno qui.",
+    accept: "Accetta proposta",
+    refuse: "Rifiuta",
+    accepted: "Proposta accettata",
+    refused: "Proposta rifiutata",
+    answer:
+      "La tua risposta è stata registrata. Il nostro team ti contatterà presto.",
+  },
+  Svenska: {
+    code: "sv-SE",
+    label: "Svenska",
+    commercial: "Kommersiellt förslag",
+    prepared: "Förberett för",
+    plan: "Plan",
+    validity: "Giltighet",
+    pieces: "Delar",
+    deliveries: "leveranser",
+    scope: "Projektets omfattning",
+    investment: "Investering",
+    services: "Inkluderade tjänster",
+    total: "Total investering",
+    until: "Giltigt till",
+    continueTogether: "Ska vi gå vidare tillsammans?",
+    emptyScope: "Beskriv omfattning, mål och leveranser för detta förslag.",
+    emptyInvestment:
+      "Lägg till betalningsvillkor, anteckningar och nästa steg här.",
+    emptyServices: "Tjänsterna visas här.",
+    accept: "Acceptera förslag",
+    refuse: "Avböj",
+    accepted: "Förslag accepterat",
+    refused: "Förslag avböjt",
+    answer: "Ditt svar har registrerats. Vårt team kontaktar dig snart.",
+  },
 } as const;
 
-export function getProposalLocale(locale: string) { return proposalLocales[locale as keyof typeof proposalLocales] ?? proposalLocales["Português"]; }
+export function getProposalLocale(locale: string) {
+  return (
+    proposalLocales[locale as keyof typeof proposalLocales] ??
+    proposalLocales["Português"]
+  );
+}
 
-export function ProposalClientPreview({ proposal, brandLogo }: { proposal: LocalProposal; brandLogo?: string }) {
-  const total = proposal.services.reduce((sum, service) => sum + Number(service.value || 0), 0);
-  const copy = getProposalLocale(proposal.locale);
-  const money = (value: number) => formatProposalMoney(value, proposal.currency);
-  const validity = new Date(proposal.expiresAt).toLocaleDateString(copy.code);
-  return <article className="proposal-client-preview proposal-document" lang={copy.code}>
-    <header className="proposal-document-brand">{brandLogo ? <img src={brandLogo} alt="Liege Paschoalini Studio" /> : null}<span>LIEGE PASCHOALINI<br /><b>STUDIO</b></span><small>{copy.commercial}</small></header>
-    <section className="proposal-document-cover">
-      <div className="proposal-document-cover-art" aria-hidden="true"><i /><i /><i /></div>
-      <p className="proposal-document-eyebrow">{copy.commercial} · {proposal.proposalType}</p>
-      <h1>{proposal.plan || proposal.proposalType || "Projeto criativo"}</h1>
-      <div className="proposal-document-recipient"><span>{copy.prepared}</span><strong>{proposal.clientName || "..."}</strong></div>
-      <div className="proposal-document-cover-bottom"><span>{copy.plan}<b>{proposal.plan || "Personalizado"}</b></span><span>{copy.pieces}<b>{proposal.pieces || 0} {copy.deliveries}</b></span></div>
+export function ProposalClientPreview({
+  proposal,
+  brandLogo,
+  selectedOptionId,
+  onSelectOption,
+}: {
+  proposal: LocalProposal;
+  brandLogo?: string;
+  selectedOptionId?: string;
+  onSelectOption?: (id: string) => void;
+}) {
+  const doc = proposal.document;
+  const copy = getProposalLocale(proposal.locale),
+    extra = premiumCopy(proposal.locale);
+  const money = (value: number) =>
+    formatProposalMoney(value, proposal.currency);
+  const alternatives = doc?.mode === "alternatives";
+  const selected = proposal.acceptance?.optionId ?? selectedOptionId;
+  const chosen = alternatives
+    ? doc.options.find((option) => option.id === selected)
+    : null;
+  const total =
+    proposal.acceptance?.value ??
+    (alternatives
+      ? chosen?.value
+      : proposal.services.reduce(
+          (sum, item) => sum + Number(item.value || 0),
+          0,
+        ));
+  let number = 0;
+  const section = (title: string, content: React.ReactNode, className = "") => (
+    <section className={className}>
+      <header className="proposal-document-section-heading">
+        <span>{String(++number).padStart(2, "0")}</span>
+        <h2>{title}</h2>
+      </header>
+      {content}
     </section>
-    <div className="proposal-document-body">
-      <section className="proposal-document-scope"><header className="proposal-document-section-heading"><span>01</span><h2>{copy.scope}</h2></header><div className="proposal-document-text">{proposal.scope || copy.emptyScope}</div></section>
-      <section className="proposal-document-services"><header className="proposal-document-section-heading"><span>02</span><h2>{copy.services}</h2></header><div className="proposal-document-service-list">{proposal.services.filter((service) => service.name).map((service, index) => <div key={`${service.name}-${index}`}><span className="proposal-document-service-number">{String(index + 1).padStart(2, "0")}</span><div><h3>{service.name}</h3>{service.description ? <p>{service.description}</p> : null}</div><strong>{money(Number(service.value || 0))}</strong></div>)}{!proposal.services.some((service) => service.name) ? <p>{copy.emptyServices}</p> : null}</div></section>
-      <section className="proposal-document-investment"><header className="proposal-document-section-heading"><span>03</span><h2>{copy.investment}</h2></header><div className="proposal-document-investment-amount"><span>{copy.total}</span><strong>{money(total)}</strong></div><div className="proposal-document-text">{proposal.investment || copy.emptyInvestment}</div></section>
-      <footer className="proposal-document-validity"><span>{copy.validity}<strong>{copy.until} {validity}</strong></span><b>LIEGE PASCHOALINI STUDIO</b></footer>
-    </div>
-  </article>;
+  );
+  const text = (value?: string) =>
+    value?.trim() ? (
+      <div className="proposal-document-text">{value}</div>
+    ) : null;
+  const list = (value: string) => (
+    <ul>
+      {value
+        .split("\n")
+        .filter((line) => line.trim())
+        .map((line, i) => (
+          <li key={i}>{line}</li>
+        ))}
+    </ul>
+  );
+  return (
+    <article
+      className="proposal-client-preview proposal-document proposal-document-premium"
+      lang={copy.code}
+    >
+      <header className="proposal-document-brand">
+        {brandLogo && <img src={brandLogo} alt="Liege Paschoalini Studio" />}
+        <span>
+          LIEGE PASCHOALINI
+          <br />
+          <b>STUDIO</b>
+        </span>
+        <small>{copy.commercial}</small>
+      </header>
+      <section className="proposal-document-cover">
+        <p className="proposal-document-eyebrow">
+          {copy.commercial} ·{" "}
+          {proposalTypeLabel(proposal.proposalType, proposal.locale)}
+        </p>
+        <h1>
+          {doc?.title ||
+            proposal.plan ||
+            proposalTypeLabel(proposal.proposalType, proposal.locale)}
+        </h1>
+        <div className="proposal-document-recipient">
+          <span>{copy.prepared}</span>
+          <strong>{proposal.clientName || "…"}</strong>
+        </div>
+        <div className="proposal-document-cover-bottom">
+          {proposal.plan && (
+            <span>
+              {copy.plan}
+              <b>{proposal.plan}</b>
+            </span>
+          )}
+          {proposal.pieces > 0 && (
+            <span>
+              {copy.pieces}
+              <b>
+                {proposal.pieces} {copy.deliveries}
+              </b>
+            </span>
+          )}
+        </div>
+      </section>
+      <div className="proposal-document-body">
+        {doc?.summary.trim() && section(extra.summary, text(doc.summary))}
+        {(proposal.scope?.trim() ||
+          doc?.objectives.trim() ||
+          doc?.included.trim() ||
+          doc?.excluded.trim()) &&
+          section(
+            doc?.scopeTitle || copy.scope,
+            <>
+              {text(proposal.scope)}
+              {doc?.objectives && (
+                <>
+                  <h3>{extra.objectives}</h3>
+                  {text(doc.objectives)}
+                </>
+              )}
+              {doc?.included && (
+                <>
+                  <h3>{extra.included}</h3>
+                  {list(doc.included)}
+                </>
+              )}
+              {doc?.excluded && (
+                <>
+                  <h3>{extra.excluded}</h3>
+                  {text(doc.excluded)}
+                </>
+              )}
+            </>,
+            "proposal-document-scope",
+          )}
+        {alternatives
+          ? section(
+              extra.options,
+              <div className="proposal-option-grid">
+                {doc.options.map((option, index) => (
+                  <div
+                    key={option.id}
+                    className={`proposal-option-card ${selected === option.id ? "selected" : ""}`}
+                  >
+                    <div className="proposal-option-overline">
+                      <span>
+                        {extra.option} {String.fromCharCode(65 + index)}
+                      </span>
+                      {option.recommended && <b>{extra.recommended}</b>}
+                    </div>
+                    <h3>{option.name}</h3>
+                    {text(option.description)}
+                    <strong className="proposal-option-price">
+                      {money(option.value)}
+                    </strong>
+                    {list(option.items.join("\n"))}
+                    {onSelectOption && !proposal.acceptance ? (
+                      <label className="proposal-option-select">
+                        <input
+                          type="radio"
+                          name="proposal-option"
+                          value={option.id}
+                          checked={selected === option.id}
+                          onChange={() => onSelectOption(option.id)}
+                        />
+                        {extra.option} {String.fromCharCode(65 + index)} —{" "}
+                        {option.name}
+                      </label>
+                    ) : selected === option.id ? (
+                      <p>{extra.selected}</p>
+                    ) : null}
+                  </div>
+                ))}
+              </div>,
+            )
+          : proposal.services.some((service) => service.name) &&
+            section(
+              copy.services,
+              <div className="proposal-document-service-list">
+                {proposal.services
+                  .filter((service) => service.name)
+                  .map((service, index) => (
+                    <div key={index}>
+                      <span className="proposal-document-service-number">
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <div>
+                        <h3>{service.name}</h3>
+                        {text(service.description)}
+                      </div>
+                      <strong>{money(Number(service.value || 0))}</strong>
+                    </div>
+                  ))}
+              </div>,
+              "proposal-document-services",
+            )}
+        {doc?.deliverables.some((item) => item.name.trim()) &&
+          section(
+            doc.deliverablesTitle || extra.deliverables,
+            <ul className="proposal-deliverable-list">
+              {doc.deliverables
+                .filter((item) => item.name.trim())
+                .map((item, i) => (
+                  <li key={i}>
+                    <h3>{item.name}</h3>
+                    {text(item.description)}
+                  </li>
+                ))}
+            </ul>,
+          )}
+        {doc?.timelineValue &&
+          section(
+            doc.timelineTitle || extra.timeline,
+            <>
+              <p className="proposal-timeline-value">
+                {doc.timelineUnit === "date"
+                  ? new Date(
+                      doc.timelineValue + "T12:00:00",
+                    ).toLocaleDateString(copy.code)
+                  : `${doc.timelineValue} ${doc.timelineUnit === "business" ? extra.business : extra.calendar}`}
+              </p>
+              {text(doc.timelineStart)}
+              {text(doc.timelineNotes)}
+            </>,
+          )}
+        {doc?.addons.some((item) => item.name.trim()) &&
+          section(
+            extra.addons,
+            <>
+              <p>{extra.addonNote}</p>
+              {doc.addons
+                .filter((item) => item.name.trim())
+                .map((item, i) => (
+                  <div className="proposal-addon" key={i}>
+                    <div>
+                      <h3>{item.name}</h3>
+                      {text(item.description)}
+                    </div>
+                    <strong>{money(item.value)}</strong>
+                  </div>
+                ))}
+            </>,
+          )}
+        {section(
+          doc ? extra.payment : copy.investment,
+          <>
+            {total !== undefined && (
+              <div className="proposal-document-investment-amount">
+                <span>{chosen ? chosen.name : copy.total}</span>
+                <strong>{money(total)}</strong>
+              </div>
+            )}
+            {alternatives && !chosen && !proposal.acceptance && (
+              <p>{extra.select}</p>
+            )}
+            {text(proposal.investment)}
+            {doc && (
+              <>
+                {text(doc.paymentTerms)}
+                {doc.deposit !== null && (
+                  <p>
+                    {extra.deposit}: {doc.deposit}%
+                  </p>
+                )}
+                {doc.balance && (
+                  <>
+                    <h3>{extra.balance}</h3>
+                    {text(doc.balance)}
+                  </>
+                )}
+                {doc.paymentMethods && (
+                  <>
+                    <h3>{extra.methods}</h3>
+                    {text(doc.paymentMethods)}
+                  </>
+                )}
+                {text(doc.financialNotes)}
+              </>
+            )}
+          </>,
+          "proposal-document-investment",
+        )}
+        {doc &&
+          (doc.terms || doc.revisions !== null || doc.clientMaterials) &&
+          section(
+            extra.terms,
+            <>
+              {doc.revisions !== null && (
+                <p>
+                  {extra.revisions}: {doc.revisions}
+                </p>
+              )}
+              {text(doc.terms)}
+              {doc.clientMaterials && (
+                <>
+                  <h3>{extra.materials}</h3>
+                  {text(doc.clientMaterials)}
+                </>
+              )}
+            </>,
+          )}
+        <footer className="proposal-document-validity">
+          <span>
+            {copy.validity}
+            <strong>
+              {copy.until}{" "}
+              {new Date(proposal.expiresAt).toLocaleDateString(copy.code)}
+            </strong>
+          </span>
+          <b>LIEGE PASCHOALINI STUDIO</b>
+        </footer>
+        {doc?.approvalText && section(extra.approval, text(doc.approvalText))}
+      </div>
+    </article>
+  );
 }

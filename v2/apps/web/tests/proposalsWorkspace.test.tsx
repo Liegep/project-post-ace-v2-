@@ -72,7 +72,7 @@ test("proposal workspace persistence and existing commercial flows", async (t) =
   await t.test("existing preview uses current edited values without a write from toggling", async () => {
    await act(async () => button("Editar").click()); await change("Plano", "Plano atualizado"); const before = calls.length;
    await act(async () => button("Prévia do cliente").click()); assert.equal(document.querySelector('.proposal-document h1')!.textContent, "Plano atualizado");
-   await act(async () => button("Editar").click()); assert.equal(document.querySelector<HTMLInputElement>('.proposal-fields.three input')!.value, "Plano atualizado"); assert.equal(calls.length, before);
+   await act(async () => button("Editar").click()); assert.equal([...document.querySelectorAll('label')].find(label=>label.textContent?.startsWith('Plano'))!.querySelector('input')!.value, "Plano atualizado"); assert.equal(calls.length, before);
   });
   await t.test("shared client document preserves commercial content, totals, validity and five languages", async () => {
    const { ProposalClientPreview, getProposalLocale } = await server.ssrLoadModule("/src/proposalPresentation.tsx");
@@ -80,7 +80,7 @@ test("proposal workspace persistence and existing commercial flows", async (t) =
     const proposal = { ...emptyProposal(), locale, clientName: "Cliente & Exemplo", proposalType: "Mensalidade", plan: "Plano editorial", pieces: 12, scope: "Escopo completo\nSegunda linha", investment: "Condições e observações finais", services: [{ name: "Conteúdo", value: 1200, description: "12 posts" }, { name: "Planejamento", value: 300, description: "Calendário editorial" }] };
     const rendered = new JSDOM(renderToStaticMarkup(<ProposalClientPreview proposal={proposal} brandLogo="logo.png" />));
     const doc = rendered.window.document, text = doc.body.textContent!;
-    for (const value of ["Cliente & Exemplo", "Plano editorial", "Mensalidade", "12", "Escopo completo\nSegunda linha", "Condições e observações finais", "12 posts", "Calendário editorial", getProposalLocale(locale).until]) assert.ok(text.includes(value));
+    for (const value of ["Cliente & Exemplo", "Plano editorial", "12", "Escopo completo\nSegunda linha", "Condições e observações finais", "12 posts", "Calendário editorial", getProposalLocale(locale).until]) assert.ok(text.includes(value));
     assert.equal(doc.querySelectorAll('.proposal-document-service-list>div').length, 2);
     assert.equal(doc.querySelector('.proposal-document-investment-amount strong')!.textContent, new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(1500));
     assert.equal(doc.querySelectorAll('input,textarea,select').length, 0); assert.equal(doc.querySelector('article')?.getAttribute('lang'), getProposalLocale(locale).code); assert.equal(doc.querySelector('img')?.getAttribute('src'), 'logo.png'); rendered.window.close();

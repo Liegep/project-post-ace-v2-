@@ -1,0 +1,317 @@
+/* Scoped to commercial proposals. */
+.commercial-proposals .proposal-premium-editor-section {
+  border: 1px solid #ece8f2;
+  border-radius: 14px;
+  background: #fff;
+  margin: 0 0 14px;
+  overflow: hidden;
+}
+.commercial-proposals .proposal-premium-editor-section summary {
+  padding: 22px;
+  cursor: pointer;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  font-size: 16px;
+  font-weight: 600;
+  color: #332348;
+  list-style: none;
+}
+.commercial-proposals .proposal-premium-editor-section summary::after {
+  content: "+";
+  margin-left: auto;
+  color: #8e76aa;
+  font-size: 22px;
+  font-weight: 400;
+}
+.commercial-proposals .proposal-premium-editor-section[open] summary::after {
+  content: "−";
+}
+.commercial-proposals .proposal-premium-editor-section summary > span {
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  color: #947ab0;
+}
+.commercial-proposals .proposal-premium-editor-fields {
+  padding: 0 22px 24px;
+  display: grid;
+  gap: 18px;
+}
+.commercial-proposals .proposal-premium-editor-fields label {
+  display: grid;
+  gap: 8px;
+  font-size: 13px;
+  color: #5c506b;
+}
+.commercial-proposals .proposal-premium-editor-fields input,
+.commercial-proposals .proposal-premium-editor-fields textarea,
+.commercial-proposals .proposal-premium-editor-fields select {
+  width: 100%;
+  box-sizing: border-box;
+  min-width: 0;
+  border: 1px solid #e7e1ed;
+  border-radius: 8px;
+  padding: 11px;
+  background: #fff;
+  color: #30273c;
+  font: inherit;
+}
+.commercial-proposals .proposal-premium-editor-fields textarea {
+  min-height: 100px;
+  resize: vertical;
+  line-height: 1.6;
+}
+.commercial-proposals .proposal-premium-editor-fields input[type="checkbox"] {
+  width: auto;
+  justify-self: start;
+}
+.commercial-proposals .proposal-premium-editor-fields :focus-visible,
+.proposal-document-premium input:focus-visible {
+  outline: 2px solid #9071b1;
+  outline-offset: 3px;
+}
+.commercial-proposals .proposal-premium-editor-fields button {
+  justify-self: start;
+  border: 1px solid #e4dcec;
+  border-radius: 8px;
+  padding: 9px 13px;
+  background: #faf8fc;
+  color: #563b73;
+  cursor: pointer;
+}
+.commercial-proposals .proposal-premium-editor-fields button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.commercial-proposals .proposal-premium-item {
+  border: 1px solid #eee8f4;
+  border-radius: 10px;
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+.commercial-proposals .proposal-item-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.commercial-proposals .proposal-premium-editor-fields p,
+.commercial-proposals .proposal-premium-editor-fields small {
+  font-size: 12px;
+  color: #887994;
+  line-height: 1.6;
+  margin: 0;
+}
+.proposal-document.proposal-document-premium {
+  background: #fff;
+  color: #352745;
+  max-width: 1040px;
+  margin: auto;
+}
+.proposal-document-premium .proposal-document-cover {
+  min-height: 380px;
+  background: #faf8fd;
+  border-bottom: 1px solid #eee7f4;
+  padding: 60px 64px;
+}
+.proposal-document-premium .proposal-document-cover h1 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 400;
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+  font-size: clamp(34px, 5vw, 62px);
+  max-width: 800px;
+  color: #342044;
+  overflow-wrap: anywhere;
+}
+.proposal-document-premium .proposal-document-cover::before,
+.proposal-document-premium .proposal-document-cover::after {
+  display: none;
+}
+.proposal-document-premium .proposal-document-body {
+  padding: 14px 64px 50px;
+}
+.proposal-document-premium .proposal-document-body > section {
+  padding: 36px 0;
+  border-bottom: 1px solid #eee8f2;
+}
+.proposal-document-premium .proposal-document-section-heading {
+  margin-bottom: 24px;
+  display: flex;
+  align-items: baseline;
+  gap: 18px;
+}
+.proposal-document-premium .proposal-document-section-heading h2 {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 400;
+  color: #3e2853;
+  font-size: 29px;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+.proposal-document-premium .proposal-document-section-heading > span {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: #a48eb8;
+}
+.proposal-document-premium .proposal-document-text {
+  white-space: pre-wrap;
+  line-height: 1.85;
+  color: #6b6075;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+.proposal-document-premium h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 20px 0 10px;
+  color: #453154;
+}
+.proposal-document-premium p,
+.proposal-document-premium li {
+  font-size: 14px;
+  line-height: 1.8;
+  color: #6b6075;
+}
+.proposal-document-premium ul {
+  padding-left: 20px;
+  margin: 18px 0;
+}
+.proposal-document-premium .proposal-option-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+}
+.proposal-document-premium .proposal-option-card {
+  border: 1px solid #e8e0ef;
+  border-radius: 12px;
+  padding: 26px;
+  background: #fff;
+  display: flex;
+  flex-direction: column;
+  overflow-wrap: anywhere;
+}
+.proposal-document-premium .proposal-option-card.selected {
+  border-color: #806397;
+  background: #fcfaff;
+  box-shadow: 0 0 0 1px #806397;
+}
+.proposal-document-premium .proposal-option-overline {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: #8b709f;
+}
+.proposal-document-premium .proposal-option-overline b {
+  font-weight: 500;
+  background: #f2eafa;
+  border-radius: 20px;
+  padding: 3px 9px;
+}
+.proposal-document-premium .proposal-option-price {
+  font-family: Georgia, serif;
+  font-size: 34px;
+  font-weight: 400;
+  color: #412551;
+  margin-top: 24px;
+}
+.proposal-document-premium .proposal-option-select {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-top: auto;
+  padding-top: 18px;
+  font-size: 12px;
+  color: #63447c;
+  cursor: pointer;
+}
+.proposal-document-premium .proposal-option-select input {
+  accent-color: #79578f;
+  margin-top: 3px;
+  flex-shrink: 0;
+}
+.proposal-document-premium .proposal-addon {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 16px 0;
+  border-bottom: 1px solid #f1edf5;
+}
+.proposal-document-premium .proposal-addon h3 {
+  margin-top: 0;
+}
+.proposal-document-premium .proposal-addon > strong {
+  white-space: nowrap;
+  font-weight: 500;
+}
+.proposal-document-premium .proposal-deliverable-list {
+  list-style: none;
+  padding: 0;
+}
+.proposal-document-premium .proposal-timeline-value {
+  font-family: Georgia, serif;
+  font-size: 26px;
+  color: #4d3562;
+}
+@media (max-width: 680px) {
+  .proposal-document-premium .proposal-document-cover {
+    padding: 38px 24px;
+    min-height: 300px;
+  }
+  .proposal-document-premium .proposal-document-body {
+    padding: 6px 24px 30px;
+  }
+  .proposal-document-premium .proposal-option-grid {
+    grid-template-columns: 1fr;
+  }
+  .proposal-document-premium .proposal-option-card {
+    padding: 22px;
+  }
+  .proposal-document-premium .proposal-document-section-heading h2 {
+    font-size: 25px;
+  }
+  .commercial-proposals .proposal-premium-editor-section summary {
+    padding: 18px;
+    font-size: 14px;
+  }
+  .commercial-proposals .proposal-premium-editor-fields {
+    padding: 0 16px 20px;
+  }
+  .commercial-proposals .proposal-fields.two {
+    grid-template-columns: 1fr;
+  }
+  .proposal-document-premium .proposal-addon {
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+.proposal-document.proposal-document-premium .proposal-document-cover h1,
+.proposal-document.proposal-document-premium
+  .proposal-document-section-heading
+  h2,
+.proposal-document.proposal-document-premium .proposal-option-price,
+.proposal-document.proposal-document-premium
+  .proposal-document-investment-amount
+  strong {
+  font-family: Georgia, "Times New Roman", serif !important;
+  font-weight: 400;
+}
+.proposal-document.proposal-document-premium
+  .proposal-document-recipient
+  > strong {
+  color: #49305d;
+}
+.proposal-document.proposal-document-premium
+  .proposal-document-recipient
+  > span,
+.proposal-document.proposal-document-premium
+  .proposal-document-cover-bottom
+  > span {
+  color: #8c789e;
+}
+.proposal-document.proposal-document-premium .proposal-document-cover-bottom b {
+  color: #65506f;
+}
