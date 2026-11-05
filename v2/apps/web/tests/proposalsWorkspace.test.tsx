@@ -82,7 +82,7 @@ test("proposal workspace persistence and existing commercial flows", async (t) =
     const doc = rendered.window.document, text = doc.body.textContent!;
     for (const value of ["Cliente & Exemplo", "Plano editorial", "Mensalidade", "12", "Escopo completo\nSegunda linha", "Condições e observações finais", "12 posts", "Calendário editorial", getProposalLocale(locale).until]) assert.ok(text.includes(value));
     assert.equal(doc.querySelectorAll('.proposal-document-service-list>div').length, 2);
-    assert.equal(doc.querySelector('.proposal-document-investment-amount strong')!.textContent, `R$ ${(1500).toLocaleString(getProposalLocale(locale).code, { minimumFractionDigits: 2 })}`);
+    assert.equal(doc.querySelector('.proposal-document-investment-amount strong')!.textContent, new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(1500));
     assert.equal(doc.querySelectorAll('input,textarea,select').length, 0); assert.equal(doc.querySelector('article')?.getAttribute('lang'), getProposalLocale(locale).code); assert.equal(doc.querySelector('img')?.getAttribute('src'), 'logo.png'); rendered.window.close();
    }
   });

@@ -1,3 +1,4 @@
+import { proposalCurrencies, proposalCurrency, formatProposalMoney } from "./proposalCurrency";
 import React, { useEffect, useRef, useState } from "react";
 import { createAdminProposal, deleteAdminProposal, listAdminProposals, updateAdminProposal, type ProposalRecord } from "./api";
 import { getProposalLocale, proposalLocales, ProposalClientPreview } from "./proposalPresentation";
@@ -8,14 +9,14 @@ const statuses: Record<ProposalRecord["status"], string> = {
 };
 export const emptyProposal = (): ProposalRecord => ({
   id: "", token: "", clientName: "", email: "", locale: "Português", proposalType: "Projeto", plan: "", pieces: 0,
-  scope: "", investment: "", currency: "R$", expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
+  scope: "", investment: "", currency: "BRL", expiresAt: new Date(Date.now() + 7 * 86400000).toISOString(),
   status: "draft", services: [{ name: "", value: 0, description: "" }],
 });
 function editable(proposal: ProposalRecord): ProposalInput {
   const { id: _id, token: _token, acceptedAt: _acceptedAt, viewedAt: _viewedAt, createdAt: _createdAt, updatedAt: _updatedAt, ...input } = proposal;
   return input;
 }
-const amount = (proposal: ProposalRecord) => `${proposal.currency} ${proposal.services.reduce((sum, item) => sum + Number(item.value || 0), 0).toLocaleString(getProposalLocale(proposal.locale).code, { minimumFractionDigits: 2 })}`;
+const amount = (proposal: ProposalRecord) => formatProposalMoney(proposal.services.reduce((sum, item) => sum + Number(item.value || 0), 0), proposal.currency);
 
 export function ProposalsWorkspace({ newProposalSignal = 0, brandLogo }: { newProposalSignal?: number; brandLogo: string }) {
   const [proposals, setProposals] = useState<ProposalRecord[]>([]);
@@ -131,9 +132,10 @@ export function ProposalsWorkspace({ newProposalSignal = 0, brandLogo }: { newPr
           </section>
           <section className="proposal-editor-section"><header><h3>Escopo e entregas</h3><p>Defina o que faz parte do trabalho.</p></header><label className="proposal-pieces">Qtd. de peças<input type="number" min="0" value={draft.pieces} onChange={(event) => update({ pieces: Number(event.target.value) })} /></label><label className="proposal-rich-field"><span>Escopo do projeto</span><textarea value={draft.scope} onChange={(event) => update({ scope: event.target.value })} placeholder="Descreva objetivos, serviços e entregas…" /></label></section>
           <section className="proposal-editor-section proposal-services"><header><div><h3>Serviços e investimento</h3><p>Monte os itens e as condições comerciais.</p></div><button onClick={() => update({ services: [...draft.services, { name: "", value: 0, description: "" }] })}>+ Adicionar</button></header>
+            <label>Moeda<select value={proposalCurrency(draft.currency)} onChange={(event) => update({ currency: event.target.value })}>{!Object.prototype.hasOwnProperty.call(proposalCurrencies, proposalCurrency(draft.currency)) ? <option value={draft.currency}>{draft.currency}</option> : null}{Object.entries(proposalCurrencies).map(([code, label]) => <option key={code} value={code}>{code} — {label}</option>)}</select><small>Alterar a moeda não converte os valores digitados.</small></label>
             {draft.services.map((service, index) => <div className="proposal-service-edit" key={index}>
               <label>Serviço<input value={service.name} onChange={(event) => update({ services: draft.services.map((item, itemIndex) => itemIndex === index ? { ...item, name: event.target.value } : item) })} placeholder="Nome do serviço" /></label>
-              <label>Valor ({draft.currency})<input type="number" value={service.value} onChange={(event) => update({ services: draft.services.map((item, itemIndex) => itemIndex === index ? { ...item, value: Number(event.target.value) } : item) })} /></label>
+              <label>Valor ({proposalCurrency(draft.currency)})<input type="number" value={service.value} onChange={(event) => update({ services: draft.services.map((item, itemIndex) => itemIndex === index ? { ...item, value: Number(event.target.value) } : item) })} /></label>
               <label>Descrição<input value={service.description} onChange={(event) => update({ services: draft.services.map((item, itemIndex) => itemIndex === index ? { ...item, description: event.target.value } : item) })} placeholder="Descrição (opcional)" /></label><button aria-label={`Remover serviço ${index + 1}`} onClick={() => update({ services: draft.services.filter((_, itemIndex) => itemIndex !== index) })}>×</button>
             </div>)}
             <div className="proposal-editor-total"><span>Investimento total</span><strong>{amount(draft)}</strong></div><label className="proposal-rich-field"><span>Descrição do investimento</span><textarea value={draft.investment} onChange={(event) => update({ investment: event.target.value })} placeholder="Condições de pagamento, observações e próximos passos…" /></label>
