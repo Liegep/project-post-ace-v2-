@@ -305,8 +305,8 @@ export function ProposalClientPreview({
                         <span>
                           {extra.option} {String(index + 1).padStart(2, "0")}
                         </span>
-                        {(option.badge?.trim() || option.recommended) && (
-                          <b>{option.badge?.trim() || extra.recommended}</b>
+                        {option.badge?.trim() && (
+                          <b>{option.badge.trim()}</b>
                         )}
                       </div>
                       <h3>{option.name}</h3>
