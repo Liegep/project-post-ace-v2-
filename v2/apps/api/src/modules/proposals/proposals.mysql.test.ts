@@ -76,6 +76,9 @@ const document = () => ({
       id: randomUUID(),
       name: "Design Only",
       description: "Design",
+      subtitle: "Eight-page brochure",
+      excludedItems: ["Printing"],
+      badge: "Most popular",
       items: ["Eight pages"],
       value: 450,
       recommended: false,
@@ -155,7 +158,10 @@ async function fixture(apply = true, mode = productionMode) {
   };
   try {
     const session = await rows("SELECT @@sql_mode AS configuredMode");
-    assert.deepEqual(String(session[0].configuredMode).split(",").sort(), mode.split(",").sort());
+    assert.deepEqual(
+      String(session[0].configuredMode).split(",").sort(),
+      mode.split(",").sort(),
+    );
     for (const table of ["users", "client_accounts"])
       await pool.query(
         schema.match(
@@ -202,7 +208,9 @@ async function fixture(apply = true, mode = productionMode) {
         .code(
           error instanceof ZodError ? 400 : ((error as any).statusCode ?? 500),
         )
-        .send({ message: error instanceof Error ? error.message : String(error) });
+        .send({
+          message: error instanceof Error ? error.message : String(error),
+        });
     });
     await app.register(proposalRoutes, { prefix: "/api" });
     await app.ready();
@@ -388,11 +396,12 @@ test("legacy proposal: edit preserves money and token; public view/accept record
   pass("legacy CRUD/public acceptance, immutable history and server amount");
 });
 for (const currency of ["BRL", "USD", "EUR", "SEK"])
-  for (const mode of ["single", "alternatives"])
+  for (const mode of ["single", "alternatives", "packages"])
     test(`${currency}/${mode}: create/edit/reload/public/accept and exact financial snapshot`, async () => {
       const f = await fixture(true, strictMode);
       try {
         const doc = { ...document(), mode };
+        if (mode === "packages") doc.options = doc.options.slice(0, 1);
         const created = ok(
           await f.admin(
             "POST",
@@ -429,7 +438,12 @@ for (const currency of ["BRL", "USD", "EUR", "SEK"])
             "SELECT document_json,revision FROM proposal_documents WHERE proposal_id=?",
             [created.id],
           );
-          assert.deepEqual(typeof rows[0].document_json === "string" ? JSON.parse(rows[0].document_json) : rows[0].document_json, editedDoc);
+          assert.deepEqual(
+            typeof rows[0].document_json === "string"
+              ? JSON.parse(rows[0].document_json)
+              : rows[0].document_json,
+            editedDoc,
+          );
           assert.equal(rows[0].revision, 2);
         } finally {
           await peer.end();
@@ -439,7 +453,7 @@ for (const currency of ["BRL", "USD", "EUR", "SEK"])
         assert.equal(viewed.currency, currency);
         assert.equal(viewed.document.title, "Revised proposal");
         assert.equal(viewed.token, created.token);
-        if (mode === "alternatives")
+        if (mode !== "single")
           assert.equal(
             (await f.decide(created.token, { status: "accepted", revision: 2 }))
               .statusCode,
@@ -450,7 +464,7 @@ for (const currency of ["BRL", "USD", "EUR", "SEK"])
             await f.decide(created.token, {
               status: "accepted",
               revision: 1,
-              optionId: mode === "alternatives" ? doc.options[0].id : undefined,
+              optionId: mode !== "single" ? doc.options[0].id : undefined,
             })
           ).statusCode,
           409,
@@ -459,13 +473,13 @@ for (const currency of ["BRL", "USD", "EUR", "SEK"])
           await f.decide(created.token, {
             status: "accepted",
             revision: 2,
-            ...(mode === "alternatives" ? { optionId: doc.options[0].id } : {}),
+            ...(mode !== "single" ? { optionId: doc.options[0].id } : {}),
             value: 0,
           }),
         );
         assert.equal(
           accepted.acceptance.value,
-          mode === "alternatives" ? 450 : 123.45,
+          mode !== "single" ? 450 : 123.45,
         );
         assert.equal(accepted.acceptance.currency, currency);
         assert.equal(accepted.acceptance.revision, 2);
@@ -480,7 +494,7 @@ for (const currency of ["BRL", "USD", "EUR", "SEK"])
         );
         assert.equal(
           accepted.acceptance.optionId,
-          mode === "alternatives" ? doc.options[0].id : null,
+          mode !== "single" ? doc.options[0].id : null,
         );
         const reloaded = ok(await f.publicGet(created.token));
         assert.deepEqual(reloaded.acceptance, accepted.acceptance);

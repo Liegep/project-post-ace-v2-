@@ -8,6 +8,9 @@ const optionSchema = z.object({
   items: z.array(text).max(100),
   value: z.number().finite().min(0).max(1e12),
   recommended: z.boolean(),
+  subtitle: z.string().max(255).optional(),
+  excludedItems: z.array(text).max(100).optional(),
+  badge: z.string().max(80).optional(),
 });
 export const proposalDocumentSchema = z
   .object({
@@ -17,7 +20,7 @@ export const proposalDocumentSchema = z
     objectives: text,
     included: text,
     excluded: text,
-    mode: z.enum(["single", "alternatives"]),
+    mode: z.enum(["single", "alternatives", "packages"]),
     options: z.array(optionSchema).max(20),
     deliverablesTitle: text,
     deliverables: z.array(z.object({ name: text, description: text })).max(100),
@@ -46,6 +49,12 @@ export const proposalDocumentSchema = z
     approvalText: text,
   })
   .superRefine((doc, ctx) => {
+    if (doc.mode === "packages" && doc.options.length < 1)
+      ctx.addIssue({
+        code: "custom",
+        message: "Adicione pelo menos um pacote.",
+        path: ["options"],
+      });
     if (doc.mode === "alternatives" && doc.options.length < 2)
       ctx.addIssue({
         code: "custom",
@@ -99,20 +108,18 @@ export const proposalFieldsSchema = z.object({
 });
 
 export const createProposalSchema = proposalFieldsSchema;
-export const updateProposalSchema = proposalFieldsSchema
-  .partial()
-  .extend(
-    Object.fromEntries(
-      Object.entries(proposalFieldsSchema.shape).map(([key, schema]) => [
-        key,
-        (schema instanceof z.ZodDefault ? schema.unwrap() : schema).optional(),
-      ]),
-    ) as unknown as {
-      [K in keyof typeof proposalFieldsSchema.shape]: z.ZodOptional<
-        z.ZodType<z.infer<(typeof proposalFieldsSchema.shape)[K]>>
-      >;
-    },
-  );
+export const updateProposalSchema = proposalFieldsSchema.partial().extend(
+  Object.fromEntries(
+    Object.entries(proposalFieldsSchema.shape).map(([key, schema]) => [
+      key,
+      (schema instanceof z.ZodDefault ? schema.unwrap() : schema).optional(),
+    ]),
+  ) as unknown as {
+    [K in keyof typeof proposalFieldsSchema.shape]: z.ZodOptional<
+      z.ZodType<z.infer<(typeof proposalFieldsSchema.shape)[K]>>
+    >;
+  },
+);
 export const decideProposalSchema = z.object({
   status: z.enum(["accepted", "refused"]),
   optionId: z.string().uuid().optional(),

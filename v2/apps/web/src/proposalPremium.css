@@ -315,3 +315,74 @@
 .proposal-document.proposal-document-premium .proposal-document-cover-bottom b {
   color: #65506f;
 }
+.proposal-document-premium .proposal-option-card {
+  position: relative;
+  cursor: default;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.25s ease;
+}
+.proposal-document-premium .proposal-option-card:has(input) {
+  cursor: pointer;
+}
+.proposal-document-premium .proposal-option-card:has(input):hover {
+  border-color: #ac91c0;
+  box-shadow: 0 8px 22px #4327530a;
+}
+.proposal-document-premium .proposal-option-card:focus-within {
+  outline: 2px solid #79578f;
+  outline-offset: 4px;
+}
+.proposal-document-premium .proposal-option-card h4 {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: #80688f;
+  margin: 22px 0 0;
+}
+.proposal-document-premium .proposal-option-select {
+  border-top: 1px solid #eee7f3;
+  font-weight: 600;
+}
+.proposal-document-premium
+  .proposal-option-card.selected
+  .proposal-option-select {
+  color: #56336c;
+}
+.proposal-document-premium .proposal-document-investment-amount small {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  font-weight: 400;
+}
+.proposal-premium-page [data-proposal-reveal] {
+  transition:
+    opacity 0.3s ease,
+    transform 0.3s ease;
+}
+.proposal-premium-page .proposal-reveal-pending {
+  opacity: 0;
+  transform: translateY(10px);
+}
+.proposal-premium-page .proposal-reveal-pending:focus-within {
+  opacity: 1;
+  transform: none;
+}
+@media (prefers-reduced-motion: reduce) {
+  .proposal-premium-page [data-proposal-reveal],
+  .proposal-premium-page .proposal-option-card {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+    opacity: 1 !important;
+  }
+}
+@media print {
+  .proposal-premium-page [data-proposal-reveal] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+.proposal-document-premium .proposal-option-card:only-child {
+  grid-column: 1/-1;
+}

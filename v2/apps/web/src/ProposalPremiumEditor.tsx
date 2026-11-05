@@ -1,3 +1,4 @@
+import { premiumCopy } from "./proposalPremiumCopy";
 import React from "react";
 import type { ProposalRecord } from "./api";
 import {
@@ -142,12 +143,12 @@ export function ProposalPremiumEditor({
               />
             </label>
           </div>
-          {field("Resumo executivo", "summary")}
         </>,
         true,
       )}
+      {section("02", "Resumo do projeto", field("Resumo executivo", "summary"))}
       {section(
-        "02",
+        "03",
         "Escopo do projeto",
         <>
           {field("Título da seção", "scopeTitle", false)}
@@ -173,8 +174,8 @@ export function ProposalPremiumEditor({
         </>,
       )}
       {section(
-        "03",
-        "Opções de investimento",
+        "04",
+        "Opções e pacotes",
         <>
           <label>
             Modo de proposta
@@ -184,11 +185,16 @@ export function ProposalPremiumEditor({
                 change({
                   mode: e.target.value as ProposalDocument["mode"],
                   options:
-                    e.target.value === "alternatives" && doc.options.length < 2
+                    e.target.value !== "single" &&
+                    doc.options.length < (e.target.value === "packages" ? 1 : 2)
                       ? [
                           ...doc.options,
                           ...Array.from(
-                            { length: 2 - doc.options.length },
+                            {
+                              length:
+                                (e.target.value === "packages" ? 1 : 2) -
+                                doc.options.length,
+                            },
                             (_, i) => ({
                               id: crypto.randomUUID(),
                               name: String.fromCharCode(
@@ -206,9 +212,51 @@ export function ProposalPremiumEditor({
               }
             >
               <option value="single">Proposta única</option>
-              <option value="alternatives">Alternativas independentes</option>
+              <option value="packages">Pacotes — seleção de uma opção</option>
+              {doc.mode === "alternatives" && (
+                <option value="alternatives">Alternativas independentes</option>
+              )}
             </select>
           </label>
+          <p>
+            A moeda de cada pacote é a moeda geral da proposta:{" "}
+            {proposalCurrency(draft.currency)}. Alterar a moeda não converte os
+            valores.
+          </p>
+          {doc.mode === "single" &&
+            draft.services.some(
+              (service) => service.name.trim() || service.value > 0,
+            ) && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    change({
+                      mode: "packages",
+                      options: draft.services
+                        .filter(
+                          (service) => service.name.trim() || service.value > 0,
+                        )
+                        .map((service) => ({
+                          id: crypto.randomUUID(),
+                          name:
+                            service.name || premiumCopy(draft.locale).option,
+                          description: service.description,
+                          items: [],
+                          value: service.value,
+                          recommended: false,
+                        })),
+                    })
+                  }
+                >
+                  Usar cada serviço atual como um pacote
+                </button>
+                <p>
+                  Use somente quando os serviços forem alternativas comerciais.
+                  Os preços e a lista original serão preservados.
+                </p>
+              </div>
+            )}
           {doc.mode === "single" ? (
             <>
               {draft.services.map((service, index) => (
@@ -311,10 +359,34 @@ export function ProposalPremiumEditor({
                   <div className="proposal-premium-item" key={option.id}>
                     <h4>Opção {String.fromCharCode(65 + index)}</h4>
                     <label>
-                      Nome
+                      Título do pacote
                       <input
                         value={option.name}
                         onChange={(e) => edit({ name: e.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Subtítulo (opcional)
+                      <input
+                        value={option.subtitle ?? ""}
+                        onChange={(e) => edit({ subtitle: e.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Badge (opcional)
+                      <input
+                        value={option.badge ?? ""}
+                        onChange={(e) => edit({ badge: e.target.value })}
+                        placeholder="Ex.: Most popular"
+                      />
+                    </label>
+                    <label>
+                      Itens não incluídos (um por linha, opcional)
+                      <textarea
+                        value={(option.excludedItems ?? []).join("\n")}
+                        onChange={(e) =>
+                          edit({ excludedItems: e.target.value.split("\n") })
+                        }
                       />
                     </label>
                     <label>
@@ -384,7 +456,10 @@ export function ProposalPremiumEditor({
                       </button>
                       <button
                         type="button"
-                        disabled={doc.options.length <= 2}
+                        disabled={
+                          doc.options.length <=
+                          (doc.mode === "packages" ? 1 : 2)
+                        }
                         onClick={() =>
                           change({
                             options: doc.options.filter((_, i) => i !== index),
@@ -422,7 +497,7 @@ export function ProposalPremiumEditor({
         </>,
       )}
       {section(
-        "04",
+        "05",
         "Entregáveis",
         <>
           {field("Título da seção", "deliverablesTitle", false)}
@@ -484,7 +559,7 @@ export function ProposalPremiumEditor({
         </>,
       )}
       {section(
-        "05",
+        "06",
         "Cronograma",
         <>
           {field("Título da seção", "timelineTitle", false)}
@@ -521,7 +596,7 @@ export function ProposalPremiumEditor({
         </>,
       )}
       {section(
-        "06",
+        "07",
         "Serviços adicionais",
         <>
           <p>
@@ -588,7 +663,7 @@ export function ProposalPremiumEditor({
         </>,
       )}
       {section(
-        "07",
+        "08",
         "Investimento e pagamento",
         <>
           <label>
@@ -620,7 +695,7 @@ export function ProposalPremiumEditor({
         </>,
       )}
       {section(
-        "08",
+        "09",
         "Termos e aprovação",
         <>
           <p>

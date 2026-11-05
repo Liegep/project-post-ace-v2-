@@ -75,7 +75,9 @@ export function acceptanceSelection(
     proposalError("Esta proposta não está disponível para aprovação.");
   if (proposal.document && revision !== proposal.revision)
     proposalError("A proposta foi atualizada. Recarregue antes de aprovar.");
-  const alternatives = proposal.document?.mode === "alternatives";
+  const alternatives = ["alternatives", "packages"].includes(
+    proposal.document?.mode,
+  );
   const option = alternatives
     ? proposal.document.options.find((item: any) => item.id === optionId)
     : null;

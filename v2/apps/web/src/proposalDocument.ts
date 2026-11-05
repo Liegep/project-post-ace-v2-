@@ -5,6 +5,9 @@ export type ProposalOption = {
   items: string[];
   value: number;
   recommended: boolean;
+  subtitle?: string;
+  excludedItems?: string[];
+  badge?: string;
 };
 export type ProposalDocument = {
   title: string;
@@ -13,7 +16,7 @@ export type ProposalDocument = {
   objectives: string;
   included: string;
   excluded: string;
-  mode: "single" | "alternatives";
+  mode: "single" | "alternatives" | "packages";
   options: ProposalOption[];
   deliverablesTitle: string;
   deliverables: Array<{ name: string; description: string }>;
@@ -60,3 +63,6 @@ export const emptyProposalDocument = (): ProposalDocument => ({
   clientMaterials: "",
   approvalText: "",
 });
+
+export const hasProposalPackages = (document?: ProposalDocument | null) =>
+  document?.mode === "packages" || document?.mode === "alternatives";

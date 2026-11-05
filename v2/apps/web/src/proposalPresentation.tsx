@@ -1,3 +1,5 @@
+import { hasProposalPackages } from "./proposalDocument";
+import { useProposalReveal } from "./useProposalReveal";
 import { premiumCopy, proposalTypeLabel } from "./proposalPremiumCopy";
 import "./proposalPremium.css";
 import { formatProposalMoney } from "./proposalCurrency";
@@ -148,9 +150,11 @@ export function ProposalClientPreview({
   brandLogo,
   selectedOptionId,
   onSelectOption,
+  showApproval = true,
 }: {
   proposal: LocalProposal;
   brandLogo?: string;
+  showApproval?: boolean;
   selectedOptionId?: string;
   onSelectOption?: (id: string) => void;
 }) {
@@ -159,10 +163,11 @@ export function ProposalClientPreview({
     extra = premiumCopy(proposal.locale);
   const money = (value: number) =>
     formatProposalMoney(value, proposal.currency);
-  const alternatives = doc?.mode === "alternatives";
+  const alternatives = hasProposalPackages(doc);
+  const revealRef = useProposalReveal(`${proposal.id}:${proposal.revision}`);
   const selected = proposal.acceptance?.optionId ?? selectedOptionId;
   const chosen = alternatives
-    ? doc.options.find((option) => option.id === selected)
+    ? doc!.options.find((option) => option.id === selected)
     : null;
   const total =
     proposal.acceptance?.value ??
@@ -174,7 +179,7 @@ export function ProposalClientPreview({
         ));
   let number = 0;
   const section = (title: string, content: React.ReactNode, className = "") => (
-    <section className={className}>
+    <section className={className} data-proposal-reveal>
       <header className="proposal-document-section-heading">
         <span>{String(++number).padStart(2, "0")}</span>
         <h2>{title}</h2>
@@ -198,6 +203,7 @@ export function ProposalClientPreview({
   );
   return (
     <article
+      ref={revealRef}
       className="proposal-client-preview proposal-document proposal-document-premium"
       lang={copy.code}
     >
@@ -248,7 +254,7 @@ export function ProposalClientPreview({
           doc?.included.trim() ||
           doc?.excluded.trim()) &&
           section(
-            doc?.scopeTitle || copy.scope,
+            doc?.scopeTitle || (doc ? extra.scope : copy.scope),
             <>
               {text(proposal.scope)}
               {doc?.objectives && (
@@ -276,39 +282,56 @@ export function ProposalClientPreview({
           ? section(
               extra.options,
               <div className="proposal-option-grid">
-                {doc.options.map((option, index) => (
-                  <div
+                {doc!.options.map((option, index) => (
+                  <label
+                    data-proposal-reveal
                     key={option.id}
                     className={`proposal-option-card ${selected === option.id ? "selected" : ""}`}
                   >
                     <div className="proposal-option-overline">
                       <span>
-                        {extra.option} {String.fromCharCode(65 + index)}
+                        {extra.option} {String(index + 1).padStart(2, "0")}
                       </span>
-                      {option.recommended && <b>{extra.recommended}</b>}
+                      {(option.badge?.trim() || option.recommended) && (
+                        <b>{option.badge?.trim() || extra.recommended}</b>
+                      )}
                     </div>
                     <h3>{option.name}</h3>
+                    {text(option.subtitle)}
                     {text(option.description)}
                     <strong className="proposal-option-price">
                       {money(option.value)}
                     </strong>
-                    {list(option.items.join("\n"))}
+                    {option.items.some((item) => item.trim()) && (
+                      <>
+                        <h4>{extra.included}</h4>
+                        {list(option.items.join("\n"))}
+                      </>
+                    )}
+                    {option.excludedItems?.some((item) => item.trim()) && (
+                      <>
+                        <h4>{extra.excluded}</h4>
+                        {list(option.excludedItems.join("\n"))}
+                      </>
+                    )}
                     {onSelectOption && !proposal.acceptance ? (
-                      <label className="proposal-option-select">
+                      <span className="proposal-option-select">
                         <input
                           type="radio"
                           name="proposal-option"
+                          aria-label={`${extra.option} ${index + 1}: ${option.name}`}
                           value={option.id}
                           checked={selected === option.id}
                           onChange={() => onSelectOption(option.id)}
                         />
-                        {extra.option} {String.fromCharCode(65 + index)} —{" "}
-                        {option.name}
-                      </label>
+                        {selected === option.id
+                          ? extra.selected
+                          : extra.selectPackage}
+                      </span>
                     ) : selected === option.id ? (
                       <p>{extra.selected}</p>
                     ) : null}
-                  </div>
+                  </label>
                 ))}
               </div>,
             )
@@ -384,13 +407,22 @@ export function ProposalClientPreview({
           doc ? extra.payment : copy.investment,
           <>
             {total !== undefined && (
-              <div className="proposal-document-investment-amount">
-                <span>{chosen ? chosen.name : copy.total}</span>
+              <div
+                className="proposal-document-investment-amount"
+                aria-live="polite"
+                aria-atomic="true"
+              >
+                <span>
+                  {copy.total}
+                  {chosen && <small>{chosen.name}</small>}
+                </span>
                 <strong>{money(total)}</strong>
               </div>
             )}
             {alternatives && !chosen && !proposal.acceptance && (
-              <p>{extra.select}</p>
+              <p role="status" aria-live="polite">
+                {extra.neutralInvestment}
+              </p>
             )}
             {text(proposal.investment)}
             {doc && (
@@ -448,7 +480,9 @@ export function ProposalClientPreview({
           </span>
           <b>LIEGE PASCHOALINI STUDIO</b>
         </footer>
-        {doc?.approvalText && section(extra.approval, text(doc.approvalText))}
+        {showApproval &&
+          doc?.approvalText &&
+          section(extra.approval, text(doc.approvalText))}
       </div>
     </article>
   );
