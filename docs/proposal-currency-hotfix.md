@@ -22,4 +22,4 @@ Nenhuma alteração em faturas, pagamentos, contratos, relatórios ou Hostinger.
 - Build API e frontend: passaram (Vite avisa sobre tamanho de chunks).
 - Testes focados: 18/18 passaram, incluindo os seis novos testes e regressões do editor.
 - package.json da API inclui a nova cobertura no comando de testes existente.
-- Suíte geral API e testes frontend associados: 507/507 passaram. A nova cobertura também passou separadamente.
+- Suíte geral API e testes frontend associados: 715/715 passaram. Inclui a nova cobertura, após atualização com main.
