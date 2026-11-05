@@ -1,3 +1,7 @@
+import {
+  ProposalPaymentBlock,
+  paymentBlockLabels,
+} from "./ProposalPaymentText";
 import { hasProposalPackages } from "./proposalDocument";
 import { useProposalReveal } from "./useProposalReveal";
 import { premiumCopy, proposalTypeLabel } from "./proposalPremiumCopy";
@@ -161,6 +165,7 @@ export function ProposalClientPreview({
   const doc = proposal.document;
   const copy = getProposalLocale(proposal.locale),
     extra = premiumCopy(proposal.locale);
+  const paymentLabels = paymentBlockLabels(proposal.locale);
   const money = (value: number) =>
     formatProposalMoney(value, proposal.currency);
   const alternatives = hasProposalPackages(doc);
@@ -426,59 +431,59 @@ export function ProposalClientPreview({
         {section(
           doc ? extra.payment : copy.investment,
           <div className="proposal-investment-band">
-            {chosen && (
-              <div className="proposal-chosen-package">
-                <span>{extra.selected}</span>
-                <strong>{chosen.name}</strong>
+            <div className="proposal-investment-summary">
+              <div className="proposal-investment-price">
+                {total !== undefined && (
+                  <div
+                    className="proposal-document-investment-amount"
+                    aria-live="polite"
+                    aria-atomic="true"
+                  >
+                    <span>{copy.total}</span>
+                    <strong>{money(total)}</strong>
+                    {chosen && (
+                      <small className="proposal-payment-selection">
+                        {chosen.name}
+                      </small>
+                    )}
+                  </div>
+                )}
+                {alternatives && !chosen && !proposal.acceptance && (
+                  <p role="status" aria-live="polite">
+                    {extra.neutralInvestment}
+                  </p>
+                )}
               </div>
-            )}
-            <div className="proposal-investment-price">
-              {total !== undefined && (
-                <div
-                  className="proposal-document-investment-amount"
-                  aria-live="polite"
-                  aria-atomic="true"
-                >
-                  <span>{copy.total}</span>
-                  <strong>{money(total)}</strong>
-                </div>
-              )}
-              {alternatives && !chosen && !proposal.acceptance && (
-                <p role="status" aria-live="polite">
-                  {extra.neutralInvestment}
-                </p>
-              )}
             </div>
-            <div className="proposal-payment-details">
-              {doc &&
-                (doc.paymentTerms ||
-                  doc.deposit !== null ||
-                  doc.balance ||
-                  doc.paymentMethods ||
-                  doc.financialNotes ||
-                  proposal.investment) && <h3>{extra.payment}</h3>}
-              {text(proposal.investment)}
+            <div className="proposal-payment-details proposal-payment-grid">
+              <ProposalPaymentBlock
+                title={paymentLabels.investment}
+                value={proposal.investment}
+              />
               {doc && (
                 <>
-                  {text(doc.paymentTerms)}
+                  <ProposalPaymentBlock
+                    title={paymentLabels.schedule}
+                    value={doc.paymentTerms}
+                  />
                   {doc.deposit !== null && (
-                    <p>
-                      {extra.deposit}: {doc.deposit}%
-                    </p>
+                    <div className="proposal-payment-deposit">
+                      <span>{extra.deposit}</span>
+                      <strong>{doc.deposit}%</strong>
+                    </div>
                   )}
-                  {doc.balance && (
-                    <>
-                      <h3>{extra.balance}</h3>
-                      {text(doc.balance)}
-                    </>
-                  )}
-                  {doc.paymentMethods && (
-                    <>
-                      <h3>{extra.methods}</h3>
-                      {text(doc.paymentMethods)}
-                    </>
-                  )}
-                  {text(doc.financialNotes)}
+                  <ProposalPaymentBlock
+                    title={extra.balance}
+                    value={doc.balance}
+                  />
+                  <ProposalPaymentBlock
+                    title={extra.methods}
+                    value={doc.paymentMethods}
+                  />
+                  <ProposalPaymentBlock
+                    title={extra.notes}
+                    value={doc.financialNotes}
+                  />
                 </>
               )}
             </div>
