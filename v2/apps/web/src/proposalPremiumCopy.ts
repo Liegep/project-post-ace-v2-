@@ -212,10 +212,13 @@ const rows = {
 };
 export function premiumCopy(locale: string) {
   const row = rows[locale as keyof typeof rows] ?? rows["Português"];
-  return Object.fromEntries(keys.map((key, i) => [key, row[i]])) as Record<
-    (typeof keys)[number],
-    string
-  >;
+  return {
+    ...(Object.fromEntries(keys.map((key, i) => [key, row[i]])) as Record<
+      (typeof keys)[number],
+      string
+    >),
+    ...packageCopy(locale),
+  };
 }
 export function proposalTypeLabel(value: string, locale: string) {
   const c = premiumCopy(locale);
@@ -230,4 +233,77 @@ export function proposalTypeLabel(value: string, locale: string) {
     value ||
     c.project
   );
+}
+
+const packageRows = {
+  Português: [
+    "Opções de pacotes",
+    "Pacote",
+    "O que está incluído",
+    "O que não está incluído",
+    "Selecione um pacote antes de continuar.",
+    "Selecione um pacote para ver o investimento total",
+    "Selecionar pacote",
+    "Pacote selecionado",
+    "Escopo e entregáveis",
+  ],
+  English: [
+    "Package Options",
+    "Package",
+    "What’s included",
+    "What’s not included",
+    "Please select a package before continuing.",
+    "Select a package to see the total investment",
+    "Select package",
+    "Selected package",
+    "Project Scope & Deliverables",
+  ],
+  Español: [
+    "Opciones de paquetes",
+    "Paquete",
+    "Qué incluye",
+    "Qué no incluye",
+    "Seleccione un paquete antes de continuar.",
+    "Seleccione un paquete para ver la inversión total",
+    "Seleccionar paquete",
+    "Paquete seleccionado",
+    "Alcance y entregables",
+  ],
+  Italiano: [
+    "Opzioni dei pacchetti",
+    "Pacchetto",
+    "Cosa è incluso",
+    "Cosa non è incluso",
+    "Seleziona un pacchetto prima di continuare.",
+    "Seleziona un pacchetto per vedere l’investimento totale",
+    "Seleziona pacchetto",
+    "Pacchetto selezionato",
+    "Ambito e consegne",
+  ],
+  Svenska: [
+    "Paketalternativ",
+    "Paket",
+    "Detta ingår",
+    "Detta ingår inte",
+    "Välj ett paket innan du fortsätter.",
+    "Välj ett paket för att se den totala investeringen",
+    "Välj paket",
+    "Valt paket",
+    "Omfattning och leveranser",
+  ],
+};
+function packageCopy(locale: string) {
+  const row =
+    packageRows[locale as keyof typeof packageRows] ?? packageRows.Português;
+  return {
+    options: row[0],
+    option: row[1],
+    included: row[2],
+    excluded: row[3],
+    select: row[4],
+    neutralInvestment: row[5],
+    selectPackage: row[6],
+    selected: row[7],
+    scope: row[8],
+  };
 }

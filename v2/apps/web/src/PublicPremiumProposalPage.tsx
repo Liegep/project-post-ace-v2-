@@ -1,3 +1,5 @@
+import { hasProposalPackages } from "./proposalDocument";
+import { useProposalReveal } from "./useProposalReveal";
 import React, { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
@@ -44,6 +46,10 @@ export function PublicPremiumProposalPage({
       active = false;
     };
   }, [token]);
+  const revealRef = useProposalReveal(
+    `${token}:${proposal?.revision}:${loading}`,
+    ".public-proposal-decision",
+  );
   const locale = proposal?.locale ?? "English",
     copy = getProposalLocale(locale),
     extra = premiumCopy(locale);
@@ -69,9 +75,8 @@ export function PublicPremiumProposalPage({
     !expired &&
     !terminal &&
     ["sent", "viewed"].includes(proposal.status) &&
-    (!proposal.document ||
-      proposal.document.mode !== "alternatives" ||
-      !!option);
+    (!hasProposalPackages(proposal.document) ||
+      !!proposal.document?.options.some((item) => item.id === option));
   const decide = async (status: "accepted" | "refused") => {
     if (decisionLock.current) return;
     decisionLock.current = true;
@@ -93,16 +98,20 @@ export function PublicPremiumProposalPage({
     }
   };
   return (
-    <main className="public-proposal-page proposal-premium-page">
+    <main
+      ref={revealRef}
+      className="public-proposal-page proposal-premium-page"
+    >
       <ProposalClientPreview
         proposal={proposal}
         brandLogo={brandLogo}
+        showApproval={false}
         selectedOptionId={option}
         onSelectOption={
           !terminal && !expired ? (id) => setOption(id) : undefined
         }
       />
-      <section className="public-proposal-decision">
+      <section className="public-proposal-decision" data-proposal-reveal>
         <h2>
           {terminal
             ? proposal.status === "accepted"
@@ -117,7 +126,7 @@ export function PublicPremiumProposalPage({
         ) : expired ? null : (
           <>
             <p>{proposal.document?.approvalText || copy.continueTogether}</p>
-            {proposal.document?.mode === "alternatives" && !option && (
+            {hasProposalPackages(proposal.document) && !option && (
               <p>{extra.select}</p>
             )}
             <div>

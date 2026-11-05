@@ -172,7 +172,7 @@ test("public document and editor support premium data in all currencies and lang
         <ProposalPremiumEditor draft={proposal} update={() => {}} />,
       ),
     );
-    assert.equal(editor.window.document.querySelectorAll("details").length, 8);
+    assert.equal(editor.window.document.querySelectorAll("details").length, 9);
     assert.equal(
       editor.window.document.querySelectorAll('select option[value="USD"]')
         .length,
@@ -268,98 +268,151 @@ test("transactional acceptance stores a snapshot once and serializes competing d
   assert.equal(acceptance.snapshot.scope, "Original scope");
 });
 test("public approval requires an option and sends its ID and revision once", async () => {
-  const { act } = await import("react");
-  const { createRoot } = await import("react-dom/client");
-  const { MemoryRouter, Routes, Route } = await import("react-router-dom");
-  const previous = {
-    window: globalThis.window,
-    document: globalThis.document,
-    fetch: globalThis.fetch,
-    localStorage: globalThis.localStorage,
-    CustomEvent: globalThis.CustomEvent,
-  };
-  const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost" });
-  Object.assign(globalThis, {
-    window: dom.window,
-    document: dom.window.document,
-    localStorage: dom.window.localStorage,
-    CustomEvent: dom.window.CustomEvent,
-    IS_REACT_ACT_ENVIRONMENT: true,
-  });
-  const server = await createServer({
-    root: new URL("..", import.meta.url).pathname,
-    server: { middlewareMode: true, hmr: false },
-  });
-  const root = createRoot(globalThis.document.getElementById("root")!);
-  const decisions: any[] = [];
-  globalThis.fetch = async (_url, init) => {
-    if (!init?.method || init.method === "GET")
-      return new Response(JSON.stringify({ proposal }));
-    const body = JSON.parse(String(init.body));
-    decisions.push(body);
-    return new Response(
-      JSON.stringify({
-        proposal: {
-          ...proposal,
-          status: "accepted",
-          acceptance: {
-            optionId: body.optionId,
-            value: 700,
-            currency: "USD",
-            revision: 3,
+  for (const mode of ["alternatives", "packages"] as const) {
+    const current = {
+      ...proposal,
+      document: {
+        ...document,
+        mode,
+        options: mode === "packages" ? [options[1]] : options,
+      },
+    };
+    const { act } = await import("react");
+    const { createRoot } = await import("react-dom/client");
+    const { MemoryRouter, Routes, Route } = await import("react-router-dom");
+    const previous = {
+      window: globalThis.window,
+      document: globalThis.document,
+      fetch: globalThis.fetch,
+      localStorage: globalThis.localStorage,
+      CustomEvent: globalThis.CustomEvent,
+    };
+    const dom = new JSDOM('<div id="root"></div>', { url: "http://localhost" });
+    Object.assign(globalThis, {
+      window: dom.window,
+      document: dom.window.document,
+      localStorage: dom.window.localStorage,
+      CustomEvent: dom.window.CustomEvent,
+      IS_REACT_ACT_ENVIRONMENT: true,
+    });
+    const server = await createServer({
+      root: new URL("..", import.meta.url).pathname,
+      server: { middlewareMode: true, hmr: false },
+    });
+    const root = createRoot(globalThis.document.getElementById("root")!);
+    const decisions: any[] = [];
+    globalThis.fetch = async (_url, init) => {
+      if (!init?.method || init.method === "GET")
+        return new Response(JSON.stringify({ proposal: current }));
+      const body = JSON.parse(String(init.body));
+      decisions.push(body);
+      return new Response(
+        JSON.stringify({
+          proposal: {
+            ...current,
+            status: "accepted",
+            acceptance: {
+              optionId: body.optionId,
+              value: 700,
+              currency: "USD",
+              revision: 3,
+            },
           },
-        },
-      }),
-    );
-  };
-  try {
-    const { PublicPremiumProposalPage } = await server.ssrLoadModule(
-      "/src/PublicPremiumProposalPage.tsx",
-    );
-    await act(async () => {
-      root.render(
-        <MemoryRouter initialEntries={["/proposal/token"]}>
-          <Routes>
-            <Route
-              path="/proposal/:token"
-              element={<PublicPremiumProposalPage brandLogo="" />}
-            />
-          </Routes>
-        </MemoryRouter>,
+        }),
       );
-      await new Promise((r) => setTimeout(r, 20));
-    });
-    const accept = [
-      ...globalThis.document.querySelectorAll<HTMLButtonElement>("button"),
-    ].find((b) => b.textContent === "Accept proposal")!;
-    assert.equal(accept.disabled, true);
-    await act(async () => {
-      globalThis.document
-        .querySelectorAll<HTMLInputElement>("input[type=radio]")[1]
-        .click();
-    });
-    assert.equal(accept.disabled, false);
-    await act(async () => {
-      accept.click();
-      accept.click();
-      await new Promise((r) => setTimeout(r, 10));
-    });
-    assert.equal(decisions.length, 1);
-    assert.equal(decisions[0].optionId, options[1].id);
-    assert.equal(decisions[0].revision, 3);
-    assert.ok(
-      globalThis.document.body.textContent!.includes("Proposal accepted"),
-    );
-    assert.match(
-      globalThis.document.querySelector(".proposal-document-investment-amount")!
-        .textContent!,
-      /700/,
-    );
-  } finally {
-    await act(async () => root.unmount());
-    await server.close();
-    dom.window.close();
-    Object.assign(globalThis, previous);
+    };
+    try {
+      const { PublicPremiumProposalPage } = await server.ssrLoadModule(
+        "/src/PublicPremiumProposalPage.tsx",
+      );
+      await act(async () => {
+        root.render(
+          <MemoryRouter initialEntries={["/proposal/token"]}>
+            <Routes>
+              <Route
+                path="/proposal/:token"
+                element={<PublicPremiumProposalPage brandLogo="" />}
+              />
+            </Routes>
+          </MemoryRouter>,
+        );
+        await new Promise((r) => setTimeout(r, 20));
+      });
+      const accept = [
+        ...globalThis.document.querySelectorAll<HTMLButtonElement>("button"),
+      ].find((b) => b.textContent === "Accept proposal")!;
+      assert.equal(accept.disabled, true);
+      await act(async () => {
+        globalThis.document
+          .querySelectorAll<HTMLInputElement>("input[type=radio]")
+          [mode === "packages" ? 0 : 1].click();
+      });
+      assert.equal(accept.disabled, false);
+      await act(async () => {
+        accept.click();
+        accept.click();
+        await new Promise((r) => setTimeout(r, 10));
+      });
+      assert.equal(decisions.length, 1);
+      assert.equal(decisions[0].optionId, options[1].id);
+      assert.equal(decisions[0].revision, 3);
+      assert.ok(
+        globalThis.document.body.textContent!.includes("Proposal accepted"),
+      );
+      assert.match(
+        globalThis.document.querySelector(
+          ".proposal-document-investment-amount",
+        )!.textContent!,
+        /700/,
+      );
+      if (mode === "packages") {
+        const { ProposalPremiumEditor } = await server.ssrLoadModule(
+          "/src/ProposalPremiumEditor.tsx",
+        );
+        const legacyServices = [
+          { name: "Design", description: "Design only", value: 450 },
+          { name: "Copy", description: "With copy", value: 700 },
+          { name: "", description: "Preserve unnamed value", value: 20.5 },
+        ];
+        let patch: any;
+        await act(async () =>
+          root.render(
+            <ProposalPremiumEditor
+              draft={{
+                ...proposal,
+                document: { ...document, mode: "single" },
+                services: legacyServices,
+              }}
+              update={(value: any) => {
+                patch = value;
+              }}
+            />,
+          ),
+        );
+        const convert = [
+          ...globalThis.document.querySelectorAll<HTMLButtonElement>("button"),
+        ].find(
+          (button) =>
+            button.textContent === "Usar cada serviço atual como um pacote",
+        )!;
+        await act(async () => convert.click());
+        assert.equal(patch.document.mode, "packages");
+        assert.deepEqual(
+          patch.document.options.map((item: any) => item.value),
+          [450, 700, 20.5],
+        );
+        assert.equal(patch.services, undefined);
+        assert.deepEqual(
+          legacyServices.map((item) => item.value),
+          [450, 700, 20.5],
+        );
+      }
+    } finally {
+      await act(async () => root.unmount());
+      await server.close();
+      dom.window.close();
+      Object.assign(globalThis, previous);
+    }
   }
 });
 test("all premium fields persist through create, update and reload without changing legacy amounts", async () => {
@@ -453,4 +506,136 @@ test("all premium fields persist through create, update and reload without chang
     /outra sessão/,
   );
   assert.deepEqual(stored, changed);
+});
+test("single package and optional package metadata preserve compatibility without migration", () => {
+  const option = {
+    ...options[0],
+    subtitle: "Eight-page brochure",
+    excludedItems: ["Printing"],
+    badge: "Most popular",
+  };
+  const doc = { ...document, mode: "packages", options: [option] };
+  assert.deepEqual(proposalDocumentSchema.parse(doc), doc);
+  assert.equal(
+    proposalDocumentSchema.safeParse({ ...doc, options: [] }).success,
+    false,
+  );
+  assert.throws(() =>
+    acceptanceSelection({ ...proposal, document: doc }, undefined, 3),
+  );
+  const accepted = acceptanceSelection(
+    { ...proposal, document: doc },
+    option.id,
+    3,
+  );
+  assert.equal(accepted.value, 450);
+  assert.equal(accepted.optionId, option.id);
+  assert.deepEqual(accepted.snapshot.document.options[0], option);
+  const old = proposalDocumentSchema.parse(document);
+  assert.equal(old.options[0].subtitle, undefined);
+  assert.equal(old.options[0].badge, undefined);
+});
+test("scroll reveal respects live reduced-motion changes and disconnects observers", async () => {
+  const { act } = await import("react");
+  const { createRoot } = await import("react-dom/client");
+  const saved = {
+    window: globalThis.window,
+    document: globalThis.document,
+    IntersectionObserver: globalThis.IntersectionObserver,
+  };
+  const dom = new JSDOM('<div id="root"></div>');
+  let listener: () => void = () => {};
+  let callback: any;
+  let disconnects = 0;
+  const motion = {
+    matches: false,
+    addEventListener: (_event: string, fn: () => void) => {
+      listener = fn;
+    },
+    removeEventListener: () => {
+      listener = () => {};
+    },
+  };
+  class Observer {
+    constructor(fn: any) {
+      callback = fn;
+    }
+    observe() {}
+    unobserve() {}
+    disconnect() {
+      disconnects++;
+    }
+  }
+  Object.assign(dom.window, {
+    matchMedia: () => motion,
+    IntersectionObserver: Observer,
+  });
+  dom.window.HTMLElement.prototype.getBoundingClientRect = () => ({
+    top: 2000,
+    bottom: 2100,
+    left: 0,
+    right: 100,
+    x: 0,
+    y: 2000,
+    width: 100,
+    height: 100,
+    toJSON: () => ({}),
+  });
+  Object.assign(globalThis, {
+    window: dom.window,
+    document: dom.window.document,
+    IntersectionObserver: Observer,
+    IS_REACT_ACT_ENVIRONMENT: true,
+  });
+  const root = createRoot(globalThis.document.getElementById("root")!);
+  const server = await createServer({
+    root: new URL("..", import.meta.url).pathname,
+    server: { middlewareMode: true, hmr: false },
+  });
+  try {
+    const { useProposalReveal } = await server.ssrLoadModule(
+      "/src/useProposalReveal.ts",
+    );
+    function Demo() {
+      const ref = useProposalReveal("test");
+      return (
+        <article ref={ref}>
+          <section data-proposal-reveal>Visible content</section>
+        </article>
+      );
+    }
+    await act(async () => root.render(<Demo />));
+    assert.equal(
+      globalThis.document.querySelectorAll(".proposal-reveal-pending").length,
+      1,
+    );
+    motion.matches = true;
+    listener();
+    assert.equal(
+      globalThis.document.querySelectorAll(".proposal-reveal-pending").length,
+      0,
+    );
+    motion.matches = false;
+    listener();
+    assert.equal(
+      globalThis.document.querySelectorAll(".proposal-reveal-pending").length,
+      1,
+    );
+    callback([
+      {
+        target: globalThis.document.querySelector("section"),
+        isIntersecting: true,
+      },
+    ]);
+    assert.equal(
+      globalThis.document.querySelectorAll(".proposal-reveal-pending").length,
+      0,
+    );
+    assert.ok(disconnects >= 2);
+  } finally {
+    await act(async () => root.unmount());
+    await server.close();
+    dom.window.close();
+    Object.assign(globalThis, saved);
+  }
 });

@@ -1,3 +1,4 @@
+import { hasProposalPackages } from "./proposalDocument";
 import { ProposalPremiumEditor } from "./ProposalPremiumEditor";
 import "./proposalPremium.css";
 import {
@@ -63,8 +64,8 @@ const amount = (proposal: ProposalRecord) =>
         proposal.acceptance.value,
         proposal.acceptance.currency,
       )
-    : proposal.document?.mode === "alternatives"
-      ? `${proposal.document.options.length} alternativas`
+    : hasProposalPackages(proposal.document)
+      ? `${proposal.document!.options.length} alternativas`
       : formatProposalMoney(
           proposal.services.reduce(
             (sum, item) => sum + Number(item.value || 0),
@@ -276,12 +277,18 @@ export function ProposalsWorkspace({
       setMessage("Não foi possível copiar o link.");
     }
   };
+  const [previewPackage, setPreviewPackage] = useState<string>();
   const preview = (
     <section
       className="proposal-preview-shell proposal-premium-page"
       aria-label="Prévia da proposta para o cliente"
     >
-      <ProposalClientPreview proposal={draft} brandLogo={brandLogo} />
+      <ProposalClientPreview
+        proposal={draft}
+        brandLogo={brandLogo}
+        selectedOptionId={previewPackage}
+        onSelectOption={setPreviewPackage}
+      />
       <section className="public-proposal-decision">
         {draft.status === "accepted" || draft.status === "refused" ? (
           <>
