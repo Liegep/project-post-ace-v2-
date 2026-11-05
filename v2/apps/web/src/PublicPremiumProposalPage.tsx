@@ -111,44 +111,43 @@ export function PublicPremiumProposalPage({
           !terminal && !expired ? (id) => setOption(id) : undefined
         }
       />
-      <section className="public-proposal-decision" data-proposal-reveal>
-        <h2>
-          {terminal
-            ? proposal.status === "accepted"
-              ? copy.accepted
-              : copy.refused
-            : expired
-              ? extra.expired
-              : copy.continueTogether}
-        </h2>
-        {terminal ? (
-          <p>{copy.answer}</p>
-        ) : expired ? null : (
-          <>
-            <p>
-              {copy.until}{" "}
-              {new Date(proposal.expiresAt).toLocaleDateString(copy.code)}.
-            </p>
-            {hasProposalPackages(proposal.document) && !option && (
-              <p>{extra.select}</p>
-            )}
-            <div>
-              <button
-                className="gradient-button"
-                disabled={busy || !canAccept}
-                onClick={() => void decide("accepted")}
-              >
-                {busy ? extra.saving : copy.accept}
-              </button>
-              <button
-                className="public-proposal-refuse"
-                disabled={busy || !["sent", "viewed"].includes(proposal.status)}
-                onClick={() => void decide("refused")}
-              >
-                {copy.refuse}
-              </button>
-            </div>
-          </>
+      <section
+        className="public-proposal-decision proposal-decision-footer"
+        data-proposal-reveal
+      >
+        <div className="proposal-decision-copy">
+          <h2>
+            {terminal
+              ? proposal.status === "accepted"
+                ? copy.accepted
+                : copy.refused
+              : expired
+                ? extra.expired
+                : copy.continueTogether}
+          </h2>
+          {terminal && <p>{copy.answer}</p>}
+          {!terminal &&
+            !expired &&
+            hasProposalPackages(proposal.document) &&
+            !option && <p>{extra.select}</p>}
+        </div>
+        {!terminal && !expired && (
+          <div className="proposal-decision-actions">
+            <button
+              className="gradient-button"
+              disabled={busy || !canAccept}
+              onClick={() => void decide("accepted")}
+            >
+              {busy ? extra.saving : copy.accept}
+            </button>
+            <button
+              className="public-proposal-refuse"
+              disabled={busy || !["sent", "viewed"].includes(proposal.status)}
+              onClick={() => void decide("refused")}
+            >
+              {copy.refuse}
+            </button>
+          </div>
         )}
         {error && <p role="alert">{extra.reload}</p>}
       </section>

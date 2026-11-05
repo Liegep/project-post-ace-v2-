@@ -509,23 +509,25 @@ export function ProposalClientPreview({
               )}
             </>,
           )}
-        <footer className="proposal-document-validity">
-          <span>
-            {copy.validity}
-            <strong>
-              {copy.until}{" "}
-              {new Date(proposal.expiresAt).toLocaleDateString(copy.code)}
-            </strong>
-          </span>
-          <b>LIEGE PASCHOALINI STUDIO</b>
-        </footer>
-        {showApproval &&
-          doc?.approvalText &&
-          section(
-            extra.approval,
-            text(doc.approvalText),
-            "proposal-approval-copy",
-          )}
+        <div className="proposal-document-closing">
+          <footer className="proposal-document-validity">
+            <span>
+              <small>{copy.validity}</small>
+              <strong>
+                {copy.until}{" "}
+                {new Date(proposal.expiresAt).toLocaleDateString(copy.code)}
+              </strong>
+            </span>
+            <b>LIEGE PASCHOALINI STUDIO</b>
+          </footer>
+          {showApproval &&
+            doc?.approvalText &&
+            section(
+              extra.approval,
+              text(doc.approvalText),
+              "proposal-approval-copy",
+            )}
+        </div>
       </div>
     </article>
   );

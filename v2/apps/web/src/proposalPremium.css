@@ -1195,7 +1195,219 @@
     display: block !important;
   }
 }
-.proposal-document-mockup .proposal-investment-band .proposal-payment-grid{display:flex;flex-wrap:wrap;align-items:flex-start}
-.proposal-document-mockup .proposal-payment-grid>.proposal-payment-block{flex:1 1 calc(50% - 12px)}
-.proposal-document-mockup .proposal-payment-grid>.proposal-payment-deposit,.proposal-document-mockup .proposal-payment-grid>.proposal-payment-block[open]{flex-basis:100%}
-@media(max-width:760px){.proposal-document-mockup .proposal-payment-grid>.proposal-payment-block{flex-basis:100%}}
+.proposal-document-mockup .proposal-investment-band .proposal-payment-grid {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.proposal-document-mockup .proposal-payment-grid > .proposal-payment-block {
+  flex: 1 1 calc(50% - 12px);
+}
+.proposal-document-mockup .proposal-payment-grid > .proposal-payment-deposit,
+.proposal-document-mockup
+  .proposal-payment-grid
+  > .proposal-payment-block[open] {
+  flex-basis: 100%;
+}
+@media (max-width: 760px) {
+  .proposal-document-mockup .proposal-payment-grid > .proposal-payment-block {
+    flex-basis: 100%;
+  }
+}
+/* A single, aligned closing area; validity appears only once. */
+.proposal-document-mockup .proposal-document-closing {
+  grid-column: 1/-1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 28px;
+  padding: 26px 0;
+  border-top: 1px solid #ebe4f0;
+}
+.proposal-document-mockup
+  .proposal-document-closing:has(.proposal-approval-copy) {
+  grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.3fr);
+}
+.proposal-document-mockup
+  .proposal-document-closing
+  .proposal-document-validity {
+  display: block;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  align-self: start;
+}
+.proposal-document-mockup
+  .proposal-document-closing
+  .proposal-document-validity
+  > span {
+  display: grid;
+  gap: 10px;
+}
+.proposal-document-mockup
+  .proposal-document-closing
+  .proposal-document-validity
+  small,
+.proposal-document.proposal-document-mockup
+  .proposal-document-closing
+  .proposal-document-section-heading
+  h2 {
+  font-family: var(--v1-font, Arial, sans-serif) !important;
+  font-size: 10px;
+  line-height: 1.5;
+  font-weight: 600;
+  color: #8a6d9d;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  margin: 0;
+}
+.proposal-document-mockup
+  .proposal-document-closing
+  .proposal-document-validity
+  strong {
+  font-size: 13px;
+  line-height: 1.7;
+  font-weight: 500;
+  color: #5b4667;
+}
+.proposal-document-mockup .proposal-document-closing .proposal-approval-copy {
+  padding: 0 0 0 28px;
+  border: 0;
+  border-left: 1px solid #ebe4f0;
+  margin: 0;
+  align-self: start;
+}
+.proposal-document-mockup
+  .proposal-document-closing
+  .proposal-document-section-heading {
+  margin: 0 0 10px;
+  display: block;
+}
+.proposal-document-mockup
+  .proposal-document-closing
+  .proposal-document-section-heading
+  > span {
+  display: none;
+}
+.proposal-document-mockup .proposal-document-closing .proposal-document-text {
+  font-size: 12px;
+  line-height: 1.75;
+  color: #796685;
+}
+.public-proposal-page.proposal-premium-page:has(> .proposal-document-mockup)
+  > .proposal-decision-footer {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  padding: 28px 48px;
+  margin: 0 auto;
+  border-top: 1px solid #eee6f3;
+  background: linear-gradient(110deg, #fcfaff, #f6f1fa);
+  text-align: left;
+}
+.public-proposal-page.proposal-premium-page:has(> .proposal-document-mockup)
+  > .proposal-decision-footer
+  .proposal-decision-copy {
+  display: block;
+  min-width: 0;
+  flex: 1;
+}
+.public-proposal-page.proposal-premium-page:has(> .proposal-document-mockup)
+  > .proposal-decision-footer
+  h2 {
+  font-size: 23px;
+  line-height: 1.3;
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.035em;
+}
+.public-proposal-page.proposal-premium-page:has(> .proposal-document-mockup)
+  > .proposal-decision-footer
+  p {
+  font-size: 12px;
+  line-height: 1.6;
+  margin: 10px 0 0;
+  color: #8c7599;
+}
+.public-proposal-page.proposal-premium-page:has(> .proposal-document-mockup)
+  > .proposal-decision-footer
+  .proposal-decision-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: 0;
+  flex-shrink: 0;
+}
+.public-proposal-page.proposal-premium-page:has(> .proposal-document-mockup)
+  > .proposal-decision-footer
+  button {
+  margin: 0;
+  min-height: 46px;
+  min-width: 150px;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.public-proposal-page.proposal-premium-page:has(> .proposal-document-mockup)
+  > .proposal-decision-footer
+  .gradient-button {
+  box-shadow: 0 4px 12px #74518518;
+}
+.public-proposal-page.proposal-premium-page:has(> .proposal-document-mockup)
+  > .proposal-decision-footer
+  [role="alert"] {
+  flex-basis: 100%;
+}
+@media (max-width: 900px) {
+  .public-proposal-page.proposal-premium-page:has(> .proposal-document-mockup)
+    > .proposal-decision-footer {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .public-proposal-page.proposal-premium-page:has(> .proposal-document-mockup)
+    > .proposal-decision-footer
+    .proposal-decision-actions {
+    justify-content: flex-start;
+  }
+}
+@media (max-width: 760px) {
+  .proposal-document-mockup .proposal-document-closing,
+  .proposal-document-mockup
+    .proposal-document-closing:has(.proposal-approval-copy) {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 20px;
+  }
+  .proposal-document-mockup .proposal-document-closing .proposal-approval-copy {
+    padding: 20px 0 0;
+    border-left: 0;
+    border-top: 1px solid #ebe4f0;
+  }
+  .public-proposal-page.proposal-premium-page:has(> .proposal-document-mockup)
+    > .proposal-decision-footer {
+    padding: 24px;
+    gap: 20px;
+  }
+  .public-proposal-page.proposal-premium-page:has(> .proposal-document-mockup)
+    > .proposal-decision-footer
+    h2 {
+    font-size: 22px;
+  }
+  .public-proposal-page.proposal-premium-page:has(> .proposal-document-mockup)
+    > .proposal-decision-footer
+    .proposal-decision-actions {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+  .public-proposal-page.proposal-premium-page:has(> .proposal-document-mockup)
+    > .proposal-decision-footer
+    button {
+    width: 100%;
+    min-height: 48px;
+  }
+}
+.public-proposal-page.proposal-premium-page:has(>.proposal-document-mockup)>.proposal-decision-footer{flex-wrap:wrap}
