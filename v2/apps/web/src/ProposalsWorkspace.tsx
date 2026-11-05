@@ -302,13 +302,6 @@ export function ProposalsWorkspace({
           </>
         ) : (
           <>
-            <p>
-              {getProposalLocale(draft.locale).until}{" "}
-              {new Date(draft.expiresAt).toLocaleDateString(
-                getProposalLocale(draft.locale).code,
-              )}
-              .
-            </p>
             <h2>{getProposalLocale(draft.locale).continueTogether}</h2>
             <div>
               <button className="gradient-button" disabled>

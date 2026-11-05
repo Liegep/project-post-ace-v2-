@@ -1411,3 +1411,6 @@
   }
 }
 .public-proposal-page.proposal-premium-page:has(>.proposal-document-mockup)>.proposal-decision-footer{flex-wrap:wrap}
+/* The editor preview uses the same page width as its proposal, including CTA. */
+.proposal-preview-shell.proposal-premium-page:has(>.proposal-document-mockup)>.public-proposal-decision{box-sizing:border-box;width:100%;max-width:1100px;margin:0 auto;border-radius:0;padding:28px 48px}
+@media(max-width:760px){.proposal-preview-shell.proposal-premium-page:has(>.proposal-document-mockup)>.public-proposal-decision{padding:24px}}

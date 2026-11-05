@@ -46,6 +46,9 @@ test("proposal workspace persistence and existing commercial flows", async (t) =
    assert.match(document.querySelector(".proposal-document")!.textContent!, /Cliente Exemplo/);
    assert.match(document.querySelector(".proposal-document")!.textContent!, /Conteúdo mensal/);
    assert.equal(document.querySelectorAll('.proposal-preview-shell input,.proposal-preview-shell textarea').length, 0);
+   assert.equal(document.querySelector('.proposal-preview-shell')!.textContent!.split('Válida até').length - 1, 1);
+   assert.doesNotMatch(document.querySelector('.proposal-preview-shell .public-proposal-decision')!.textContent!, /Válida até/);
+   assert.match(document.querySelector('.proposal-preview-shell .proposal-document-validity')!.textContent!, /Válida até/);
    assert.ok([...document.querySelectorAll<HTMLButtonElement>('.public-proposal-decision button')].every((item) => item.disabled));
    await act(async () => document.querySelector('#proposal-preview-tab')!.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
    assert.equal(document.activeElement?.id, "proposal-edit-tab");
