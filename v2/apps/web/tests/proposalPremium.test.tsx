@@ -655,3 +655,22 @@ test('badges require explicit nonblank text, regardless of legacy recommendation
   const {ProposalPremiumEditor}=await server.ssrLoadModule('/src/ProposalPremiumEditor.tsx');const editor=new JSDOM(renderToStaticMarkup(<ProposalPremiumEditor draft={proposal} update={()=>{}}/>));assert.equal(editor.window.document.querySelectorAll('input[type=checkbox]').length,0);editor.window.close();
  }finally{await server.close();}
 });
+
+test("item-per-line fields normalize markers without changing stored text; subtitles are distinct", async () => {
+  const server = await createServer({root: new URL("..", import.meta.url).pathname, server: {middlewareMode: true, hmr: false}});
+  try {
+    const {ProposalClientPreview} = await server.ssrLoadModule("/src/proposalPresentation.tsx");
+    const lines = "First item\r\n- Second item\n\n• Third item\n1. Fourth item";
+    const current = {...proposal, document: {...document, objectives: lines, included: lines, excluded: lines, clientMaterials: lines, options: [{...options[0], subtitle: "Premium editorial design", items: ["- Included"], excludedItems: ["• Printing"]}, options[1]]}};
+    const before = JSON.stringify(current);
+    const dom = new JSDOM(renderToStaticMarkup(<ProposalClientPreview proposal={current}/>));
+    const lists = [...dom.window.document.querySelectorAll(".proposal-document-scope ul, .proposal-document-body > section:last-of-type ul")];
+    assert.equal(lists.length, 4);
+    for (const list of lists) assert.deepEqual([...list.querySelectorAll("li")].map(li=>li.textContent), ["First item", "Second item", "Third item", "Fourth item"]);
+    assert.equal(dom.window.document.querySelector(".proposal-package-subtitle")?.textContent, "Premium editorial design");
+    assert.equal(dom.window.document.querySelectorAll(".proposal-package-subtitle").length, 1);
+    assert.deepEqual([...dom.window.document.querySelectorAll(".proposal-package-inclusions li")].slice(0,2).map(li=>li.textContent), ["Included", "Printing"]);
+    assert.equal(JSON.stringify(current), before);
+    dom.window.close();
+  } finally {await server.close();}
+});

@@ -159,9 +159,9 @@ export function ProposalPremiumEditor({
               onChange={(e) => update({ scope: e.target.value })}
             />
           </label>
-          {field("Objetivos", "objectives")}
+          {field("Objetivos (um por linha)", "objectives")}
           {field("Itens incluídos (um por linha)", "included")}
-          {field("Limitações / não incluídos", "excluded")}
+          {field("Limitações / não incluídos (um por linha)", "excluded")}
           <label>
             Qtd. de peças
             <input
@@ -708,7 +708,7 @@ export function ProposalPremiumEditor({
             />
           </label>
           {field("Termos e condições", "terms")}
-          {field("Materiais fornecidos pelo cliente", "clientMaterials")}
+          {field("Materiais fornecidos pelo cliente (um por linha)", "clientMaterials")}
           {field("Texto de aprovação", "approvalText")}
         </>,
       )}
