@@ -197,9 +197,10 @@ export function ProposalClientPreview({
       <div className="proposal-document-text">{value}</div>
     ) : null;
   const list = (value: string) => (
-    <ul>
+    <ul className="proposal-item-list">
       {value
-        .split("\n")
+        .split(/\r?\n/)
+        .map((line) => line.trim().replace(/^(?:[-*•–—]\s+|\d+[.)]\s+)/, "").trim())
         .filter((line) => line.trim())
         .map((line, i) => (
           <li key={i}>{line}</li>
@@ -272,7 +273,7 @@ export function ProposalClientPreview({
               {doc?.objectives && (
                 <>
                   <h3>{extra.objectives}</h3>
-                  {text(doc.objectives)}
+                  {list(doc.objectives)}
                 </>
               )}
               {doc?.included && (
@@ -284,7 +285,7 @@ export function ProposalClientPreview({
               {doc?.excluded && (
                 <>
                   <h3>{extra.excluded}</h3>
-                  {text(doc.excluded)}
+                  {list(doc.excluded)}
                 </>
               )}
             </>,
@@ -310,7 +311,9 @@ export function ProposalClientPreview({
                         )}
                       </div>
                       <h3>{option.name}</h3>
-                      {text(option.subtitle)}
+                      {option.subtitle?.trim() && (
+                        <p className="proposal-package-subtitle">{option.subtitle.trim()}</p>
+                      )}
                       {text(option.description)}
                     </div>
                     <div className="proposal-package-inclusions">
@@ -504,7 +507,7 @@ export function ProposalClientPreview({
               {doc.clientMaterials && (
                 <>
                   <h3>{extra.materials}</h3>
-                  {text(doc.clientMaterials)}
+                  {list(doc.clientMaterials)}
                 </>
               )}
             </>,
