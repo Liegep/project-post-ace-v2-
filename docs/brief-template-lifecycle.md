@@ -69,3 +69,9 @@ O teste de interface usa React e JSDOM com respostas HTTP simuladas. Ele comprov
 ## Limites de entrega
 
 PR em rascunho até concluir as duas homologações pendentes. Sem merge, deploy, alteração na Hostinger ou acesso ao banco de produção. PR #54 não alterado. Alterações preexistentes do checkout original preservadas.
+
+## Nova tentativa de homologação — 11/11/2026
+
+A execução real foi tentada novamente no MariaDB 11.8.9, isolado e sem TCP. O servidor abortou com `Bind on unix socket: Operation not permitted`, antes dos quatro cenários SQL. Não foram executadas migrations da aplicação. A verificação em navegador real a 1440 px e 390 px também permanece não executada: navegador local ausente, nenhuma prévia disponível no navegador integrado e rejeição prévia da URL local pela política do navegador. Nenhuma simulação foi utilizada para substituir essas validações.
+
+[Evidências, log e matriz de resultados desta tentativa](pr66-homologation/README.md). **Manter o PR em rascunho; homologação incompleta.**

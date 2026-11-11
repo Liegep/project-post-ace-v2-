@@ -1,0 +1,1 @@
+/opt/homebrew/opt/mariadb@11.8/bin/mariadbd  Ver 11.8.9-MariaDB for osx10.20 on arm64 (Homebrew)
