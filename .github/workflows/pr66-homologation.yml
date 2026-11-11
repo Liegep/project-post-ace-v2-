@@ -1,0 +1,125 @@
+name: PR66 manual isolated homologation
+
+# Manual trigger: apply label "homologate-pr66" to PR66. No push/open/sync trigger.
+# workflow_dispatch requires a file on main, which this isolated PR cannot add.
+on:
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr66-isolated-homologation
+  cancel-in-progress: false
+
+jobs:
+  homologate:
+    if: >-
+      github.event.pull_request.number == 66 &&
+      github.event.label.name == 'homologate-pr66' &&
+      github.event.pull_request.head.ref == 'codex/brief-template-archive-delete' &&
+      github.event.pull_request.head.repo.full_name == 'Liegep/project-post-ace-v2-' &&
+      github.repository == 'Liegep/project-post-ace-v2-'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: bash
+        working-directory: v2
+    env:
+      BRIEF_TEST_SOCKET: /tmp/briefs-mariadb-foundation/server.sock
+      PR66_CI_SCHEMA: '1'
+      PR66_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/pr66-chromium
+    steps:
+      - name: Checkout only the PR66 head, without persistent credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Node 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '22'
+
+      - name: Create evidence directory
+        run: |
+          mkdir -p artifacts/pr66
+          node --version | tee artifacts/pr66/node-version.txt
+          printf '%s\n' "$PR66_HEAD_SHA" > artifacts/pr66/tested-head.txt
+
+      - name: Install locked test dependencies without lifecycle/build scripts
+        id: dependencies
+        run: npm ci --ignore-scripts --include=dev 2>&1 | tee artifacts/pr66/npm-ci.log
+
+      - name: Install runner-only Chromium and OS dependencies
+        id: chromium
+        run: ./node_modules/.bin/playwright install --with-deps chromium 2>&1 | tee artifacts/pr66/chromium-install.log
+
+      - name: Start isolated MariaDB 11.8.9 without TCP or network access
+        id: database
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/briefs-mariadb-foundation
+          chmod 0777 /tmp/briefs-mariadb-foundation
+          image='mariadb:11.8.9@sha256:c4124d1afa875e47f2892edf26b482fa54f796e2f342d3717a04ca091a22a9bd'
+          docker pull "$image" 2>&1 | tee artifacts/pr66/mariadb-pull.log
+          docker run -d --name pr66-mariadb --network none \
+            --tmpfs /var/lib/mysql:rw \
+            --mount type=bind,source=/tmp/briefs-mariadb-foundation,target=/run/mysqld \
+            -e MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=1 -e MARIADB_ROOT_HOST=localhost \
+            "$image" --skip-networking --socket=/run/mysqld/server.sock
+          ready=0
+          for attempt in $(seq 1 60); do
+            if docker exec pr66-mariadb mariadb --no-defaults -uroot --socket=/run/mysqld/server.sock \
+              -N -e 'SELECT VERSION(), @@skip_networking' > artifacts/pr66/mariadb-version.txt 2>/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = 1
+          cat artifacts/pr66/mariadb-version.txt
+          grep -E '^11\.8\.9-MariaDB[^[:space:]]*[[:space:]]+1$' artifacts/pr66/mariadb-version.txt
+          test -S "$BRIEF_TEST_SOCKET"
+
+      - name: Run the four real SQL cases only
+        id: sql
+        run: |
+          node --import tsx --test --test-reporter=tap \
+            --test-name-pattern='^(template archive and restore preserve all configured fields and legacy definitions|physical deletion removes only unused template definitions and their metadata and versions|deletion rejects draft, sent, answered and archived dependencies preserving complete response history|concurrent create and delete serialize without losing instances or leaving partial definitions)$' \
+            apps/api/src/modules/brief-foundation/brief.mysql.test.ts \
+            2>&1 | tee artifacts/pr66/sql-tests.tap
+
+      - name: Real Chromium, real local API and real MariaDB at 1440px and 390px
+        id: visual
+        if: >-
+          !cancelled() && steps.dependencies.outcome == 'success' &&
+          steps.chromium.outcome == 'success' && steps.database.outcome == 'success'
+        run: node --import tsx tests/pr66/visual.mts 2>&1 | tee artifacts/pr66/visual.log
+
+      - name: Collect database logs and remove the disposable container
+        if: always()
+        run: |
+          docker logs pr66-mariadb > artifacts/pr66/mariadb-container.log 2>&1 || true
+          docker rm -f -v pr66-mariadb || true
+
+      - name: Write execution outcomes, without converting skipped tests into approvals
+        if: always()
+        env:
+          SQL_OUTCOME: ${{ steps.sql.outcome }}
+          VISUAL_OUTCOME: ${{ steps.visual.outcome }}
+        run: |
+          printf 'PR66 head: %s\nSQL: %s\nChromium: %s\n' "$PR66_HEAD_SHA" "$SQL_OUTCOME" "$VISUAL_OUTCOME" | tee artifacts/pr66/outcomes.txt
+          printf '### PR66 isolated homologation\n\nHead: `%s`\n\nSQL: **%s**\n\nChromium 1440/390: **%s**\n\nSee the artifacts for TAP, real screenshots, HTTP errors and database logs. No production, Hostinger, deployment or merge.\n' "$PR66_HEAD_SHA" "$SQL_OUTCOME" "$VISUAL_OUTCOME" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload logs, structured results and actual screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: pr66-homologation-${{ github.run_id }}-${{ github.event.pull_request.head.sha }}
+          path: v2/artifacts/pr66/
+          retention-days: 14
+          if-no-files-found: error

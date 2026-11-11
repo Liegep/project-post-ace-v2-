@@ -75,6 +75,12 @@ before(async () => {
     charset: "utf8mb4",
     timezone: "Z",
   });
+  if (process.env.PR66_CI_SCHEMA === "1") {
+    assert.equal(process.env.GITHUB_ACTIONS, "true", "PR66 CI fixture is restricted to Actions");
+    const [version] = await server.query<RowDataPacket[]>("SELECT VERSION() AS version, @@skip_networking AS isolated");
+    assert.match(version[0].version, /^11\.8\.9-MariaDB/);
+    assert.equal(Number(version[0].isolated), 1);
+  }
   await server.query(
     `CREATE DATABASE \`${database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
   );
@@ -91,6 +97,10 @@ before(async () => {
   await pool.query(
     readFileSync(new URL("../../../db/schema.sql", import.meta.url), "utf8"),
   );
+  // This fixture is a newly generated database on the guarded disposable socket.
+  // It permits selecting the four PR66 cases without running the migration test.
+  // No deployment migration command, .env, or external database is used.
+  if (process.env.PR66_CI_SCHEMA === "1") await pool.query(migration);
   await pool.query(
     "INSERT INTO users(id,full_name,email,password_hash,global_role,locale) VALUES(?,'Equipe','team@invalid.test','unused','super_admin','pt'),(?,'Cliente','client@invalid.test','unused','cliente','pt')",
     [actor, respondent],
