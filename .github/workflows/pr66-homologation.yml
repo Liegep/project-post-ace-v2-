@@ -73,7 +73,10 @@ jobs:
             "$image" --skip-networking --socket=/run/mysqld/server.sock
           ready=0
           for attempt in $(seq 1 60); do
-            if docker exec pr66-mariadb mariadb --no-defaults -uroot --socket=/run/mysqld/server.sock \
+            # The image briefly starts a bootstrap server, then restarts it.
+            # Only PID1=mariadbd identifies the final server, not the bootstrap.
+            if docker exec pr66-mariadb sh -c 'test "$(cat /proc/1/comm)" = mariadbd' && \
+              docker exec pr66-mariadb mariadb --no-defaults -uroot --socket=/run/mysqld/server.sock \
               -N -e 'SELECT VERSION(), @@skip_networking' > artifacts/pr66/mariadb-version.txt 2>/dev/null; then
               ready=1
               break
