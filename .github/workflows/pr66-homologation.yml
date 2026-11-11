@@ -31,7 +31,6 @@ jobs:
       BRIEF_TEST_SOCKET: /tmp/briefs-mariadb-foundation/server.sock
       PR66_CI_SCHEMA: '1'
       PR66_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-      PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}/pr66-chromium
     steps:
       - name: Checkout only the PR66 head, without persistent credentials
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -47,6 +46,7 @@ jobs:
       - name: Create evidence directory
         run: |
           mkdir -p artifacts/pr66
+          printf 'PLAYWRIGHT_BROWSERS_PATH=%s/pr66-chromium\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
           node --version | tee artifacts/pr66/node-version.txt
           printf '%s\n' "$PR66_HEAD_SHA" > artifacts/pr66/tested-head.txt
 
