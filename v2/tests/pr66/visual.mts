@@ -95,8 +95,9 @@ try {
       const counts = async (active: number, archivedCount: number) => {
         await page!.waitForFunction(({ active, archivedCount }) => {
           const items = [...document.querySelectorAll('[role="tab"]')];
-          const count = (name: string) => items.find(item => item.textContent?.startsWith(name))?.querySelector("span")?.textContent;
-          return count("Templates") === String(active) && count("Arquivados") === String(archivedCount);
+          const activeTab = items.find(item => item.textContent?.startsWith("Templates"));
+          const archivedTab = items.find(item => item.textContent?.startsWith("Arquivados"));
+          return activeTab?.querySelector("span")?.textContent === String(active) && archivedTab?.querySelector("span")?.textContent === String(archivedCount);
         }, { active, archivedCount });
       };
       const card = (name: string) => page!.locator(".brief-template-card").filter({ has: page!.getByRole("heading", { name, exact: true }) });
