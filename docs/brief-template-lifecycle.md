@@ -2,6 +2,10 @@
 
 Data: 11/11/2026. Base conferida: `main` em `770cc38c3e4a4a574164c625a8823568392dfd85`.
 
+## Resultado atual da homologação via Actions
+
+[Run 43067237312](https://github.com/Liegep/project-post-ace-v2-/actions/runs/43067237312) concluído com sucesso em 11/11/2026 (18:22, Europe/Stockholm), testando `48e32cc57c194d525b6af7d57758b790620c37f1`: **4 testes SQL reais passaram em MariaDB 11.8.9**, e os fluxos de Chromium passaram em **1440 px e 390 px**. Foram salvos [29 arquivos de artifacts, incluindo 18 screenshots reais](https://github.com/Liegep/project-post-ace-v2-/actions/runs/43067237312/artifacts/13876282655). [Matriz de resultados e histórico das tentativas](pr66-homologation/actions-results.md). A revisão manual das screenshots permanece pendente: o download local falhou. PR mantido em rascunho por instrução, sem merge/deploy. As seções de bloqueio local abaixo são históricas e foram superadas pela execução automatizada de CI.
+
 ## Resultado
 
 A biblioteca apresenta quatro abas: Templates, Briefs enviados, Respostas recebidas e Arquivados. Templates mostra somente ativos; Arquivados mostra somente templates arquivados. Os dois contadores consideram toda a coleção, independentemente da busca.
@@ -45,7 +49,7 @@ Endpoints novos:
 - `v2/apps/api/src/modules/brief-foundation/brief.mysql.test.ts`: quatro novos cenários SQL para homologação.
 - `v2/apps/api/package.json`: inclusão dos novos testes na suíte padrão.
 
-## Validação executada
+## Validação local inicial (histórico)
 
 Node **22.23.4**.
 
@@ -66,11 +70,11 @@ Os quatro novos cenários SQL estão implementados e passam no typecheck, mas **
 
 O teste de interface usa React e JSDOM com respostas HTTP simuladas. Ele comprova as interações e o estado; não comprova renderização responsiva em navegador real. A estrutura e as media queries existentes foram preservadas, mas a homologação visual deve ser concluída em desktop e celular antes do merge.
 
-## Limites de entrega
+## Limites de entrega inicial (histórico)
 
 PR em rascunho até concluir as duas homologações pendentes. Sem merge, deploy, alteração na Hostinger ou acesso ao banco de produção. PR #54 não alterado. Alterações preexistentes do checkout original preservadas.
 
-## Nova tentativa de homologação — 11/11/2026
+## Tentativa local posterior — histórico de 11/11/2026
 
 A execução real foi tentada novamente no MariaDB 11.8.9, isolado e sem TCP. O servidor abortou com `Bind on unix socket: Operation not permitted`, antes dos quatro cenários SQL. Não foram executadas migrations da aplicação. A verificação em navegador real a 1440 px e 390 px também permanece não executada: navegador local ausente, nenhuma prévia disponível no navegador integrado e rejeição prévia da URL local pela política do navegador. Nenhuma simulação foi utilizada para substituir essas validações.
 

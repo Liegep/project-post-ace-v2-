@@ -1,0 +1,54 @@
+{
+  "pr": 66,
+  "date": "2026-11-11",
+  "run_id": 43067237312,
+  "job_id": 130685342196,
+  "tested_head": "48e32cc57c194d525b6af7d57758b790620c37f1",
+  "conclusion": "success",
+  "run_url": "https://github.com/Liegep/project-post-ace-v2-/actions/runs/43067237312",
+  "manual_trigger": "pull_request:labeled / homologate-pr66",
+  "node": "22.23.4",
+  "mariadb": "11.8.9-MariaDB-ubu2404",
+  "database_networking": "none, skip_networking=1, Unix socket only",
+  "sql": {
+    "tests": 4,
+    "passed": 4,
+    "failed": 0,
+    "skipped": 0
+  },
+  "chromium": "151.0.7922.34",
+  "browser_api": "real local Fastify and MariaDB; no API response mocks",
+  "visual": [
+    {
+      "width": 1440,
+      "height": 1000,
+      "checks_passed": 6,
+      "screenshots": 9,
+      "status": "passed"
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "checks_passed": 6,
+      "screenshots": 9,
+      "status": "passed"
+    }
+  ],
+  "manual_screenshot_review": "not completed: local artifact download failed",
+  "artifact": {
+    "id": 13876282655,
+    "url": "https://github.com/Liegep/project-post-ace-v2-/actions/runs/43067237312/artifacts/13876282655",
+    "files": 29,
+    "screenshots": 18,
+    "size_bytes": 3993936,
+    "sha256": "b837562af194c64ea634ac07c91d167bda1a54ad40bdf7063268a146b27eb36c",
+    "expires_at": "2026-11-25T17:21:59Z"
+  },
+  "production_accessed": false,
+  "hostinger_secrets_used": false,
+  "production_migrations": false,
+  "merge": false,
+  "deploy": false,
+  "pr54_modified": false,
+  "keep_draft": true
+}

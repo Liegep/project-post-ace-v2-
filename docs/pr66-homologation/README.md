@@ -1,8 +1,10 @@
-# PR #66 — tentativa de conclusão da homologação
+# PR #66 — tentativas locais (histórico)
 
 Data: 11/11/2026. Código conferido: `a3f6c6480077799d0a3eb33dcf559061e27b6170`. O PR permanece aberto em rascunho, sem merge.
 
-**Resultado: homologação incompleta por bloqueios do ambiente.** Esta tentativa não gerou aprovação SQL nem visual. Os 742 testes automatizados da entrega anterior não substituem essas verificações.
+**Registro histórico.** As tentativas locais abaixo foram superadas pela [execução de CI bem-sucedida](https://github.com/Liegep/project-post-ace-v2-/actions/runs/43067237312). Consulte [os resultados atuais](actions-results.md): SQL real e Chromium 1440/390 aprovados por testes automatizados; revisão manual das capturas ainda pendente.
+
+**Resultado desta tentativa local: homologação incompleta por bloqueios do ambiente.** Esta tentativa não gerou aprovação SQL nem visual. Os 742 testes automatizados da entrega anterior não substituem essas verificações.
 
 ## MariaDB real
 
