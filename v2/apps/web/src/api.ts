@@ -1941,6 +1941,9 @@ export type BriefDetail = {brief:BriefInstance;response:null|{id:string;status:"
 export const listBriefTemplates = ()=>fetchJson<{items:BriefTemplate[]}>("/api/briefs/templates");
 export const saveBriefTemplate = (input:{id?:string;name:string;description:string;form:BriefForm;expectedVersion?:number},id?:string)=>sendJson<{template:BriefTemplate}>(`/api/briefs/templates${id?`/${id}`:""}`,{method:id?"PATCH":"POST",body:JSON.stringify(input)});
 export const archiveBriefTemplate = (template:BriefTemplate)=>sendJson<{template:BriefTemplate}>(`/api/briefs/templates/${template.id}/archive`,{method:"POST",body:JSON.stringify({expectedVersion:template.version})});
+export const restoreBriefTemplate = (template:BriefTemplate)=>sendJson<{template:BriefTemplate}>(`/api/briefs/templates/${template.id}/restore`,{method:"POST",body:JSON.stringify({expectedVersion:template.version})});
+export const deleteBriefTemplate = (template:BriefTemplate)=>sendJson<{ok:boolean}>(`/api/briefs/templates/${template.id}`,{method:"DELETE",body:JSON.stringify({expectedVersion:template.version,confirmation:"DELETE"})});
+
 export const listBriefInstances = ()=>fetchJson<{items:BriefInstance[]}>("/api/briefs");
 export const getBriefDetail = (id:string)=>fetchJson<BriefDetail>(`/api/briefs/${id}`);
 export const saveBriefInstance = (input:{id?:string;clientAccountId:string|null;templateId?:string|null;templateVersion?:number|null;form:BriefForm;expectedVersion?:number},id?:string)=>sendJson<BriefDetail>(`/api/briefs${id?`/${id}`:""}`,{method:id?"PATCH":"POST",body:JSON.stringify(input)});

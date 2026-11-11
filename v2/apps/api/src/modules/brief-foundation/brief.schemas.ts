@@ -233,3 +233,7 @@ export function validateAnswers(
     if (!valid) throw briefError(`Resposta inválida: ${field.label}.`, 400);
   }
 }
+
+export const templateDeleteSchema = versionSchema.extend({
+  confirmation: z.literal("DELETE"),
+});

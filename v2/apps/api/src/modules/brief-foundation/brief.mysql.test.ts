@@ -75,6 +75,12 @@ before(async () => {
     charset: "utf8mb4",
     timezone: "Z",
   });
+  if (process.env.PR66_CI_SCHEMA === "1") {
+    assert.equal(process.env.GITHUB_ACTIONS, "true", "PR66 CI fixture is restricted to Actions");
+    const [version] = await server.query<RowDataPacket[]>("SELECT VERSION() AS version, @@skip_networking AS isolated");
+    assert.match(version[0].version, /^11\.8\.9-MariaDB/);
+    assert.equal(Number(version[0].isolated), 1);
+  }
   await server.query(
     `CREATE DATABASE \`${database}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
   );
@@ -91,6 +97,10 @@ before(async () => {
   await pool.query(
     readFileSync(new URL("../../../db/schema.sql", import.meta.url), "utf8"),
   );
+  // This fixture is a newly generated database on the guarded disposable socket.
+  // It permits selecting the four PR66 cases without running the migration test.
+  // No deployment migration command, .env, or external database is used.
+  if (process.env.PR66_CI_SCHEMA === "1") await pool.query(migration);
   await pool.query(
     "INSERT INTO users(id,full_name,email,password_hash,global_role,locale) VALUES(?,'Equipe','team@invalid.test','unused','super_admin','pt'),(?,'Cliente','client@invalid.test','unused','cliente','pt')",
     [actor, respondent],
@@ -690,4 +700,52 @@ test("tracker persists Brand Brain View and fresh portal home reads it, includin
     const [legacy] = await pool.query<RowDataPacket[]>("SELECT allow_client_view_brand_brain FROM client_permissions WHERE client_account_id=?", [account]);
     assert.equal(legacy[0].allow_client_view_brand_brain, 0, "read must not mutate stored legacy data");
   } finally { await app.close(); }
+});
+
+test("template archive and restore preserve all configured fields and legacy definitions", async () => {
+ const t=await repo.saveTemplate(actor,templateSchema.parse({id:randomUUID(),name:"Restorable",description:"Keep description",form:form({locale:"sv",category:"branding",introduction:"Keep instructions"})}));
+ const archived=await repo.archiveTemplate(t.id,actor,t.version);
+ assert.equal(archived.status,"archived");assert.deepEqual(archived.form,t.form);
+ await assert.rejects(repo.restoreTemplate(t.id,actor,t.version),{statusCode:409});
+ const restored=await repo.restoreTemplate(t.id,actor,archived.version);
+ assert.equal(restored.status,"active");assert.equal(restored.version,t.version+2);assert.deepEqual(restored.form,t.form);assert.equal(restored.description,t.description);
+ const legacyId=randomUUID();await pool.query("INSERT INTO design_brief_templates(id,name,introduction,fields_json) VALUES(?,'Legacy','Original','[]')",[legacyId]);
+ const legacy=await repo.archiveTemplate(legacyId,actor,1);assert.deepEqual((await repo.restoreTemplate(legacyId,actor,legacy.version)).form,legacy.form);
+});
+
+test("physical deletion removes only unused template definitions and their metadata and versions",async()=>{
+ for(const archive of [false,true]) {
+  let t=await repo.saveTemplate(actor,templateSchema.parse({id:randomUUID(),name:"Unused",form:form()}));
+  t=await repo.saveTemplate(actor,templateUpdateSchema.parse({name:"Updated unused",form:form(),expectedVersion:t.version}),t.id);
+  if(archive)t=await repo.archiveTemplate(t.id,actor,t.version);
+  await assert.rejects(repo.deleteTemplate(t.id,t.version-1),{statusCode:409});
+  assert.deepEqual(await repo.deleteTemplate(t.id,t.version),{ok:true});
+  for(const [table,column] of [["design_brief_templates","id"],["design_brief_template_metadata","template_id"],["design_brief_template_versions","template_id"]]) {
+   const [rows]=await pool.query<RowDataPacket[]>(`SELECT * FROM ${table} WHERE ${column}=?`,[t.id]);assert.equal(rows.length,0);
+  }
+  await assert.rejects(repo.deleteTemplate(t.id,t.version),{statusCode:404});
+ }
+});
+
+test("deletion rejects draft, sent, answered and archived dependencies preserving complete response history",async()=>{
+ for(const state of ["draft","sent","answered","archived"]) {
+  const t=await repo.saveTemplate(actor,templateSchema.parse({id:randomUUID(),name:`Used ${state}`,form:form()}));
+  let b=await repo.createInstance(actor,instanceSchema.parse({id:randomUUID(),clientAccountId:client,templateId:t.id,templateVersion:t.version,form:t.form}));
+  if(state!=="draft")b=await repo.transition(b.brief.id,actor,"send",b.brief.version);
+  if(state==="answered"||state==="archived")b=await repo.saveResponse(b.brief.id,client,respondent,{answers:{name:"Preserved"},expectedVersion:b.response!.version,idempotencyKey:randomUUID()},true);
+  if(state==="archived")b=await repo.transition(b.brief.id,actor,"archive",b.brief.version);
+  const before=await repo.getDetail(b.brief.id);
+  await assert.rejects(repo.deleteTemplate(t.id,t.version),{statusCode:409,message:/briefs vinculados/});assert.deepEqual(await repo.getDetail(b.brief.id),before);
+ }
+});
+
+test("concurrent create and delete serialize without losing instances or leaving partial definitions",async()=>{
+ const t=await repo.saveTemplate(actor,templateSchema.parse({id:randomUUID(),name:"Concurrent",form:form()}));
+ const results=await Promise.allSettled([
+  repo.createInstance(actor,instanceSchema.parse({id:randomUUID(),clientAccountId:client,templateId:t.id,templateVersion:t.version,form:t.form})),
+  repo.deleteTemplate(t.id,t.version),
+ ]);
+ assert.equal(results.filter(r=>r.status==="fulfilled").length,1);
+ const [instances]=await pool.query<RowDataPacket[]>("SELECT id FROM design_brief_instances WHERE template_id=?",[t.id]);
+ const [templates]=await pool.query<RowDataPacket[]>("SELECT id FROM design_brief_templates WHERE id=?",[t.id]);assert.equal(templates.length,instances.length);
 });

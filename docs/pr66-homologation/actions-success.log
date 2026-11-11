@@ -1,0 +1,25 @@
+2026-11-11T17:21:32.4375754Z Downloading Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-shell v1234) from https://cdn.playwright.dev/builds/cft/151.0.7922.34/linux64/chrome-headless-shell-linux64.zip
+2026-11-11T17:21:35.6968151Z Chrome Headless Shell 151.0.7922.34 (playwright chromium-headless-shell v1234) downloaded to /home/runner/work/_temp/pr66-chromium/chromium_headless_shell-1234
+2026-11-11T17:21:49.3165923Z 11.8.9-MariaDB-ubu2404	1
+2026-11-11T17:21:49.3178518Z 11.8.9-MariaDB-ubu2404	1
+2026-11-11T17:21:50.1139040Z # tests 4
+2026-11-11T17:21:50.1139985Z # pass 4
+2026-11-11T17:21:50.1140910Z # fail 0
+2026-11-11T17:21:50.1162122Z # skipped 0
+2026-11-11T17:21:53.5195118Z PASS 1440px active-only cards and initial counters
+2026-11-11T17:21:53.8020175Z PASS 1440px archive persisted and counters updated
+2026-11-11T17:21:54.4619500Z PASS 1440px restore persisted and preserved every form setting
+2026-11-11T17:21:55.6013075Z PASS 1440px cancel is safe; explicit confirmation deletes real unused rows
+2026-11-11T17:21:56.0714770Z PASS 1440px dependency error visible; sent brief and response history unchanged
+2026-11-11T17:21:56.5990453Z PASS 1440px archived deletion, empty state, messages and no horizontal page overflow
+2026-11-11T17:21:57.3428306Z PASS 390px active-only cards and initial counters
+2026-11-11T17:21:57.5539676Z PASS 390px archive persisted and counters updated
+2026-11-11T17:21:58.0285802Z PASS 390px restore persisted and preserved every form setting
+2026-11-11T17:21:58.6292111Z PASS 390px cancel is safe; explicit confirmation deletes real unused rows
+2026-11-11T17:21:58.8802077Z PASS 390px dependency error visible; sent brief and response history unchanged
+2026-11-11T17:21:59.1990628Z PASS 390px archived deletion, empty state, messages and no horizontal page overflow
+2026-11-11T17:21:59.4962107Z SQL: success
+2026-11-11T17:21:59.4962351Z Chromium: success
+2026-11-11T17:21:59.6744543Z With the provided path, there will be 29 files uploaded
+2026-11-11T17:22:01.6192552Z Artifact pr66-homologation-43067237312-48e32cc57c194d525b6af7d57758b790620c37f1.zip successfully finalized. Artifact ID 13876282655
+2026-11-11T17:22:01.6195113Z Artifact pr66-homologation-43067237312-48e32cc57c194d525b6af7d57758b790620c37f1 has been successfully uploaded! Final size is 3993936 bytes. Artifact ID is 13876282655

@@ -1,0 +1,11 @@
+PR #66 — tentativa real de inicialização MariaDB
+Fonte: saída direta do binário e log de erro do servidor.
+
+/opt/homebrew/opt/mariadb@11.8/bin/mariadbd  Ver 11.8.9-MariaDB for osx10.20 on arm64 (Homebrew)
+
+2026-11-11 17:54:19 0 [ERROR] Can't start server : Bind on unix socket: Operation not permitted
+2026-11-11 17:54:19 0 [ERROR] Do you already have another server running on socket: /tmp/briefs-mariadb-foundation/server.sock ?
+2026-11-11 17:54:19 0 [ERROR] Aborting
+
+Código de saída do servidor: 1.
+Socket não criado. Nenhum cenário SQL executado.

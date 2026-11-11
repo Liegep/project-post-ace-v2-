@@ -2326,3 +2326,13 @@
 .brief-detail-workspace .brief-response-heading p {
   display: none;
 }
+
+/* Scoped template deletion confirmation. */
+.brief-template-delete p { line-height: 1.6; overflow-wrap: anywhere; }
+.brief-template-delete label { display: flex; gap: 10px; align-items: flex-start; line-height: 1.5; margin: 20px 0; }
+.brief-template-delete input { flex: 0 0 auto; margin-top: 4px; }
+.brief-template-delete footer { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; margin-top: 24px; }
+.brief-template-delete-confirm { background: #c9364b; color: #fff; border: 0; border-radius: 10px; padding: 11px 16px; font: inherit; font-weight: 600; }
+.brief-template-delete-confirm:disabled { opacity: .45; cursor: not-allowed; }
+.brief-template-delete-confirm:not(:disabled):hover { background: #ae263a; }
+.brief-template-delete-confirm:focus-visible { outline: 3px solid #e9a0ac; outline-offset: 3px; }

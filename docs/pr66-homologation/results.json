@@ -1,0 +1,57 @@
+{
+  "pr": 66,
+  "tested_head": "a3f6c6480077799d0a3eb33dcf559061e27b6170",
+  "date": "2026-11-11",
+  "node": "22.23.4",
+  "mariadb_binary": "11.8.9",
+  "database": {
+    "scope": "temporary local datadir only",
+    "networking": "disabled",
+    "defaults_files": "disabled",
+    "initialized": true,
+    "server_start_exit_code": 1,
+    "socket_created": false,
+    "blocking_error": "Bind on unix socket: Operation not permitted",
+    "scenarios": [
+      {
+        "name": "archive_restore_preserve_settings_and_legacy",
+        "status": "blocked_not_executed"
+      },
+      {
+        "name": "physical_delete_unused_template",
+        "status": "blocked_not_executed"
+      },
+      {
+        "name": "block_dependencies_preserve_responses_and_history",
+        "status": "blocked_not_executed"
+      },
+      {
+        "name": "concurrent_create_and_delete",
+        "status": "blocked_not_executed"
+      }
+    ]
+  },
+  "visual": {
+    "status": "blocked_not_executed",
+    "viewports": [
+      {
+        "width": 1440,
+        "status": "not_executed"
+      },
+      {
+        "width": 390,
+        "status": "not_executed"
+      }
+    ],
+    "playwright_browser_installed": false,
+    "available_iab_preview_tabs": 0,
+    "prior_local_file_preview": "rejected by browser URL policy",
+    "screenshots_created": false
+  },
+  "production_accessed": false,
+  "migrations_executed": false,
+  "merge_performed": false,
+  "deploy_performed": false,
+  "pr54_modified": false,
+  "release_status": "homologation_incomplete_keep_draft"
+}

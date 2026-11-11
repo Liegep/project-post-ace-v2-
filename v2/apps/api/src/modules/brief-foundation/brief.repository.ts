@@ -227,22 +227,48 @@ export class BriefRepository {
     );
   }
   async archiveTemplate(id: string, actor: string, expected: number) {
+    return this.setTemplateStatus(id, actor, expected, "archived");
+  }
+  async restoreTemplate(id: string, actor: string, expected: number) {
+    return this.setTemplateStatus(id, actor, expected, "active");
+  }
+  private async setTemplateStatus(id: string, actor: string, expected: number, status: "active" | "archived") {
     return this.transaction(async (db) => {
       const template = await this.template(db, id, true);
       this.checkVersion(template.version, expected);
+      if (template.status === status) return template;
       await db.query(
-        "INSERT INTO design_brief_template_metadata(template_id,category,description,locale,version,status,updated_by_user_id) VALUES(?,?,?,?,?,'archived',?) ON DUPLICATE KEY UPDATE status='archived',version=version+1,updated_by_user_id=VALUES(updated_by_user_id),updated_at=CURRENT_TIMESTAMP(3)",
-        [
-          id,
-          template.form.category,
-          template.description,
-          template.form.locale,
-          template.version + 1,
-          actor,
-        ],
+        "INSERT INTO design_brief_template_metadata(template_id,category,description,locale,version,status,updated_by_user_id) VALUES(?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE status=VALUES(status),version=version+1,updated_by_user_id=VALUES(updated_by_user_id),updated_at=CURRENT_TIMESTAMP(3)",
+        [id, template.form.category, template.description, template.form.locale, template.version + 1, status, actor],
       );
       return this.template(db, id);
     });
+  }
+  async deleteTemplate(id: string, expected: number) {
+    try {
+      return await this.transaction(async (db) => {
+        // createInstance and saveTemplate take this same parent lock. Keep it
+        // through dependency validation and deletion to serialize concurrent use.
+        const template = await this.template(db, id, true);
+        this.checkVersion(template.version, expected);
+        const dependencies = await rows(db,
+          "SELECT id FROM design_brief_instances WHERE template_id=? LIMIT 1 FOR UPDATE", [id]);
+        if (dependencies.length)
+          throw briefError("Este template possui briefs vinculados, incluindo rascunhos ou envios anteriores, e não pode ser excluído permanentemente. Arquive-o para preservar os envios e as respostas.");
+        // Only unused definitions. Never delete an instance, response, revision,
+        // event, attachment or any other commercial record.
+        await db.query("DELETE FROM design_brief_template_metadata WHERE template_id=?", [id]);
+        await db.query("DELETE FROM design_brief_template_versions WHERE template_id=?", [id]);
+        await db.query("DELETE FROM design_brief_templates WHERE id=?", [id]);
+        return { ok: true };
+      });
+    } catch (error) {
+      // Restrictive FKs remain a final safety net for additional dependencies.
+      // The transaction has already rolled back before this error is translated.
+      if ((error as { code?: string }).code === "ER_ROW_IS_REFERENCED_2")
+        throw briefError("Este template possui registros vinculados e não pode ser excluído permanentemente. Arquive-o para preservar o histórico.");
+      throw error;
+    }
   }
   async createInstance(actor: string, input: z.infer<typeof instanceSchema>) {
     return this.transaction(async (db) => {
