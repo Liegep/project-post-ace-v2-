@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import {
   archiveBriefTemplate,
+  restoreBriefTemplate,
+  deleteBriefTemplate,
   briefPortalBase,
   changeBriefStatus,
   downloadBriefAttachment,
@@ -64,7 +66,7 @@ export function BriefsFoundationWorkspace({
     [message, setMessage] = useState(""),
     [dirty, setDirty] = useState(false),
     [legacyOpen, setLegacyOpen] = useState<DesignBriefRecord | null>(null);
-  const [tab, setTab] = useState<"templates" | "briefs" | "responses">(
+  const [tab, setTab] = useState<"templates" | "briefs" | "responses" | "archived">(
       "templates",
     ),
     [query, setQuery] = useState(""),
@@ -76,6 +78,13 @@ export function BriefsFoundationWorkspace({
     [loading, setLoading] = useState(true),
     [responsesLoading, setResponsesLoading] = useState(false),
     [responses, setResponses] = useState<Record<string, BriefDetail>>({});
+  const [templatePreview, setTemplatePreview] = useState<BriefTemplate | null>(null),
+    [deleteTarget, setDeleteTarget] = useState<BriefTemplate | null>(null),
+    [deleteConfirmed, setDeleteConfirmed] = useState(false),
+    [deleteError, setDeleteError] = useState("");
+  const templateTab = tab === "templates" || tab === "archived";
+  const activeTemplates = templates.filter((t) => t.status === "active");
+  const archivedTemplates = templates.filter((t) => t.status === "archived");
   const seenKey = viewerId ? `designhub:briefs:seen:${viewerId}` : null;
   const [seen, setSeen] = useState<Record<string, string>>(() => {
     try {
@@ -285,7 +294,7 @@ export function BriefsFoundationWorkspace({
   const visibleTemplates = templates.filter(
     (t) =>
       matches(`${t.name} ${t.description} ${t.form.category}`) &&
-      (!statusFilter || t.status === statusFilter),
+      t.status === (tab === "archived" ? "archived" : "active"),
   );
   const visibleBriefs = briefs.filter(
     (b) =>
@@ -368,7 +377,7 @@ export function BriefsFoundationWorkspace({
                 {
                   key: "templates",
                   label: "Templates",
-                  count: templates.length,
+                  count: activeTemplates.length,
                 },
                 {
                   key: "briefs",
@@ -380,6 +389,7 @@ export function BriefsFoundationWorkspace({
                   label: "Respostas recebidas",
                   count: received.length,
                 },
+                { key: "archived", label: "Arquivados", count: archivedTemplates.length },
               ] as const
             ).map((item) => (
               <button
@@ -401,14 +411,14 @@ export function BriefsFoundationWorkspace({
             <div className="brief-library-heading">
               <div>
                 <h2>
-                  {tab === "templates"
+                  {tab === "archived" ? "Templates arquivados" : tab === "templates"
                     ? "Sua biblioteca criativa"
                     : tab === "briefs"
                       ? "Do planejamento à resposta"
                       : "O que seus clientes compartilharam"}
                 </h2>
                 <p>
-                  {tab === "templates"
+                  {tab === "archived" ? "Consulte ou restaure seus modelos. Os envios e as respostas permanecem preservados." : tab === "templates"
                     ? "Formulários que você prepara uma vez e reutiliza em novos projetos."
                     : tab === "briefs"
                       ? "Continue os rascunhos e acompanhe os formulários enviados."
@@ -433,7 +443,7 @@ export function BriefsFoundationWorkspace({
                   type="search"
                   aria-label="Buscar briefs e templates"
                   placeholder={
-                    tab === "templates"
+                    templateTab
                       ? "Buscar template…"
                       : "Buscar por brief ou cliente…"
                   }
@@ -441,7 +451,7 @@ export function BriefsFoundationWorkspace({
                   onChange={(e) => setQuery(e.target.value)}
                 />
               </label>
-              {tab !== "templates" && (
+              {!templateTab && (
                 <select
                   aria-label="Filtrar por cliente"
                   value={clientFilter}
@@ -455,25 +465,16 @@ export function BriefsFoundationWorkspace({
                   ))}
                 </select>
               )}
-              {tab !== "responses" && (
+              {tab === "briefs" && (
                 <select
                   aria-label="Filtrar por status"
                   value={statusFilter}
                   onChange={(e) => setStatusFilter(e.target.value)}
                 >
                   <option value="">Todos os status</option>
-                  {tab === "templates" ? (
-                    <>
-                      <option value="active">Ativos</option>
-                      <option value="archived">Arquivados</option>
-                    </>
-                  ) : (
-                    Object.entries(statusNames).map(([value, label]) => (
-                      <option value={value} key={value}>
-                        {label}
-                      </option>
-                    ))
-                  )}
+                  {Object.entries(statusNames).map(([value, label]) => (
+                    <option value={value} key={value}>{label}</option>
+                  ))}
                 </select>
               )}
               <button
@@ -490,7 +491,7 @@ export function BriefsFoundationWorkspace({
               <p className="brief-loading" role="status">
                 Carregando {tab === "responses" ? "respostas" : "biblioteca"}…
               </p>
-            ) : tab === "templates" ? (
+            ) : templateTab ? (
               visibleTemplates.length ? (
                 <div className="brief-template-grid">
                   {visibleTemplates.map((template) => (
@@ -530,89 +531,47 @@ export function BriefsFoundationWorkspace({
                         </span>
                       </div>
                       <div className="brief-template-actions">
-                        {template.status === "active" && (
-                          <>
-                            <button
-                              className="brief-use-button"
-                              disabled={busy}
-                              onClick={() => start(template)}
-                            >
-                              Usar <BriefIcon name="arrow" />
-                            </button>
-                            <button
-                              className="brief-icon-button"
-                              disabled={busy}
-                              aria-label={`Editar template ${template.name}`}
-                              onClick={() => start(template, true)}
-                            >
-                              <BriefIcon name="edit" />
-                            </button>
-                          </>
-                        )}
-                        <button
-                          className="brief-icon-button"
-                          disabled={busy}
-                          aria-label={`Duplicar template ${template.name}`}
-                          onClick={() => {
+                        {template.status === "active" ? <>
+                          <button className="brief-use-button" disabled={busy} title="Usar template" onClick={() => start(template)}>
+                            Usar <BriefIcon name="arrow" />
+                          </button>
+                          <button className="brief-icon-button" disabled={busy} title="Editar" aria-label={`Editar template ${template.name}`} onClick={() => start(template, true)}><BriefIcon name="edit" /></button>
+                          <button className="brief-icon-button" disabled={busy} title="Duplicar" aria-label={`Duplicar template ${template.name}`} onClick={() => {
                             if (start(template, true)) {
                               setTemplateEditing(null);
-                              setForm({
-                                ...structuredClone(template.form),
-                                title: `${template.name.slice(0, 247)} (cópia)`,
-                              });
+                              setForm({ ...structuredClone(template.form), title: `${template.name.slice(0, 247)} (cópia)` });
                               setDirty(true);
                             }
-                          }}
-                        >
-                          <BriefIcon name="copy" />
-                        </button>
-                        {template.status === "active" && (
-                          <button
-                            className="brief-icon-button"
-                            disabled={busy}
-                            aria-label={`Arquivar template ${template.name}`}
-                            onClick={() =>
-                              void run(async () => {
-                                if (
-                                  !window.confirm(
-                                    "Arquivar este template? Os briefs enviados serão preservados.",
-                                  )
-                                )
-                                  return;
-                                await archiveBriefTemplate(template);
-                                await refresh();
-                              })
-                            }
-                          >
-                            <BriefIcon name="file" />
-                          </button>
-                        )}
+                          }}><BriefIcon name="copy" /></button>
+                          <button className="brief-icon-button" disabled={busy} title="Arquivar" aria-label={`Arquivar template ${template.name}`} onClick={() => void run(async () => {
+                            if (!window.confirm("Arquivar este template? Os briefs enviados serão preservados.")) return;
+                            const result = await archiveBriefTemplate(template);
+                            setTemplates((items) => items.map((t) => t.id === template.id ? result.template : t));
+                            await refresh();
+                            setMessage("Template arquivado. Envios e respostas preservados.");
+                          })}><BriefIcon name="file" /></button>
+                        </> : <>
+                          <button className="brief-use-button" disabled={busy} title="Visualizar template" onClick={() => setTemplatePreview(template)}>Visualizar <BriefIcon name="eye" /></button>
+                          <button className="brief-icon-button" disabled={busy} title="Restaurar" aria-label={`Restaurar template ${template.name}`} onClick={() => void run(async () => {
+                            const result = await restoreBriefTemplate(template);
+                            setTemplates((items) => items.map((t) => t.id === template.id ? result.template : t));
+                            await refresh();
+                            setMessage("Template restaurado na aba Templates.");
+                          })}><BriefIcon name="clock" /></button>
+                        </>}
+                        <button className="brief-icon-button" disabled={busy} title="Excluir permanentemente" aria-label={`Excluir permanentemente template ${template.name}`} onClick={() => {
+                          setDeleteTarget(template); setDeleteConfirmed(false); setDeleteError("");
+                        }}><BriefIcon name="trash" /></button>
                       </div>
                     </article>
                   ))}
                 </div>
               ) : (
                 <BriefEmpty
-                  title={
-                    query || statusFilter
-                      ? "Nenhum template encontrado"
-                      : "Sua próxima boa ideia começa aqui."
-                  }
-                  description={
-                    query || statusFilter
-                      ? "Tente outra busca ou limpe os filtros."
-                      : "Crie um modelo com as perguntas certas para cada tipo de projeto."
-                  }
-                  action={
-                    query || statusFilter
-                      ? "Limpar filtros"
-                      : "Criar primeiro template"
-                  }
-                  onAction={() =>
-                    query || statusFilter
-                      ? (setQuery(""), setStatusFilter(""))
-                      : start(null, true)
-                  }
+                  title={query ? "Nenhum template encontrado" : tab === "archived" ? "Nenhum template arquivado" : "Sua próxima boa ideia começa aqui."}
+                  description={query ? "Tente outra busca ou limpe os filtros." : tab === "archived" ? "Os modelos que você arquivar aparecerão aqui e poderão ser restaurados." : "Crie um modelo com as perguntas certas para cada tipo de projeto."}
+                  action={query ? "Limpar filtros" : tab === "archived" ? "Ver templates ativos" : "Criar primeiro template"}
+                  onAction={() => query ? setQuery("") : tab === "archived" ? chooseTab("templates") : start(null, true)}
                 />
               )
             ) : tab === "briefs" ? (
@@ -1077,6 +1036,31 @@ export function BriefsFoundationWorkspace({
           )}
         </div>
       )}
+      {templatePreview && <BriefDialog title={templatePreview.name} onClose={() => setTemplatePreview(null)} wide>
+        <p className="brief-dialog-intro">Template arquivado · {templatePreview.description}</p>
+        <BriefResponseForm form={templatePreview.form} answers={{}} readOnly definitionOnly attachments={[]} />
+      </BriefDialog>}
+      {deleteTarget && <BriefDialog title="Excluir template permanentemente?" onClose={() => { if (!busy) setDeleteTarget(null); }}>
+        <div className="brief-template-delete">
+          <p>Você está prestes a excluir <strong>{deleteTarget.name}</strong>.</p>
+          <p>Esta ação é irreversível. O template e suas configurações serão apagados definitivamente.</p>
+          <p>Templates vinculados a briefs não podem ser excluídos. Envios e respostas de clientes serão preservados.</p>
+          <label><input type="checkbox" checked={deleteConfirmed} disabled={busy} onChange={(e) => setDeleteConfirmed(e.target.checked)} />Confirmo que quero excluir este template permanentemente.</label>
+          {deleteError && <p className="brief-feedback" role="alert">{deleteError}</p>}
+          <footer>
+            <button className="ghost-button" disabled={busy} onClick={() => setDeleteTarget(null)}>Cancelar</button>
+            <button className="brief-template-delete-confirm" disabled={busy || !deleteConfirmed} onClick={() => void run(async () => {
+              setDeleteError("");
+              try { await deleteBriefTemplate(deleteTarget); }
+              catch (error) { setDeleteError(failure(error)); return; }
+              setTemplates((items) => items.filter((t) => t.id !== deleteTarget.id));
+              setDeleteTarget(null);
+              await refresh();
+              setMessage("Template excluído permanentemente.");
+            })}>{busy ? "Excluindo…" : "Excluir permanentemente"}</button>
+          </footer>
+        </div>
+      </BriefDialog>}
       {chooser && (
         <BriefDialog
           title="Como você quer começar?"

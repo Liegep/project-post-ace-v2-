@@ -13,6 +13,7 @@ import {
 import { getUploadDirectory } from "../uploads/uploads.storage.js";
 import { BriefRepository } from "./brief.repository.js";
 import {
+  templateDeleteSchema,
   templateSchema,
   templateUpdateSchema,
   instanceSchema,
@@ -96,6 +97,19 @@ export const briefFoundationRoutes: FastifyPluginAsync = async (app) => {
         versionSchema.parse(r.body).expectedVersion,
       ),
     };
+  });
+  app.post("/briefs/templates/:templateId/restore", async (r) => {
+    assertSuperAdmin(r);
+    return { template: await repo.restoreTemplate(
+      z.object({ templateId: z.string().uuid() }).parse(r.params).templateId,
+      actor(r), versionSchema.parse(r.body).expectedVersion,
+    ) };
+  });
+  app.delete("/briefs/templates/:templateId", async (r) => {
+    assertSuperAdmin(r);
+    const id = z.object({ templateId: z.string().uuid() }).parse(r.params).templateId;
+    const input = templateDeleteSchema.parse(r.body);
+    return repo.deleteTemplate(id, input.expectedVersion);
   });
   app.get("/briefs", async (r) => {
     assertSuperAdmin(r);
