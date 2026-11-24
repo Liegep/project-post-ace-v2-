@@ -1956,7 +1956,7 @@ export async function downloadBriefAttachment(base:string,id:string,attachment:B
 export type RadarSuggestionSummary = { id: string; clientAccountId: string; clientName: string; title: string; contentType: string; pillar: string | null; alignmentScore: number | null; sourceTitle: string; sourceDate: string | null; createdAt: string };
 export type RadarSuggestionDetail = RadarSuggestionSummary & { concept: string; hook: string; description: string; objective: string; rationale: string; cta: string | null; captionSuggestion: string | null; sourceUrl: string | null; sourceSummary?: string | null; radarName: string; basedOn: string[] };
 export type RadarSuggestionsPage = { items: RadarSuggestionSummary[]; total: number; hasMore: boolean; limit: number; offset: number };
-export function loadRadarSuggestions(offset = 0) { return fetchJson<RadarSuggestionsPage>(`/api/radar-suggestions?limit=3&offset=${offset}`); }
+export function loadRadarSuggestions(offset = 0, limit = 3) { return fetchJson<RadarSuggestionsPage>(`/api/radar-suggestions?limit=${limit}&offset=${offset}`); }
 export function loadRadarSuggestion(clientId: string, id: string) { return fetchJson<{ suggestion: RadarSuggestionDetail }>(`/api/clients/${encodeURIComponent(clientId)}/radar-suggestions/${encodeURIComponent(id)}`); }
 export function resolveRadarSuggestion(clientId: string, id: string, action: "accept" | "dismiss") { return sendJson<{ status: "accepted" | "dismissed"; created: boolean; pauta?: { id: string; status: string } }>(`/api/clients/${encodeURIComponent(clientId)}/radar-suggestions/${encodeURIComponent(id)}/${action}`, { method: "POST" }); }
 

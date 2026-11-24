@@ -8,23 +8,28 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 test("Radar human review: pending-only widget, on-demand detail, decisions, errors and persisted sessions", async (t) => {
-  const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: "http://localhost/#/dashboard" });
+  const dom = new JSDOM('<!doctype html><div id="root"></div>', { url: "http://localhost/#/dashboard", pretendToBeVisual: true });
   const saved = { window: globalThis.window, document: globalThis.document, fetch: globalThis.fetch, localStorage: globalThis.localStorage, CustomEvent: globalThis.CustomEvent };
   Object.assign(globalThis, { window: dom.window, document: dom.window.document, localStorage: dom.window.localStorage, CustomEvent: dom.window.CustomEvent, IS_REACT_ACT_ENVIRONMENT: true });
+  const polls = new Map<number, () => void>();
+  let timerId = 0;
+  window.setInterval = ((callback: () => void, delay: number) => { assert.equal(delay, 60_000); polls.set(++timerId, callback); return timerId; }) as typeof window.setInterval;
+  window.clearInterval = (id) => { polls.delete(id); };
   const server = await createServer({ root: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."), server: { middlewareMode: true, hmr: false } });
   const { RadarSuggestionsWidget } = await server.ssrLoadModule("/src/RadarSuggestionsWidget.tsx");
   let root = createRoot(document.getElementById("root")!);
   const all: any[] = []; const calls: Array<{ method: string; url: string }> = [];
-  let failure = false, detailFailure = false, allowed = ["client-a", "client-b"];
+  let failure = false, detailFailure = false, listFailure = false, allowed = ["client-a", "client-b"];
   let releaseDecision: (() => void) | null = null;
   globalThis.fetch = async (input, init) => {
     const url = String(input); const method = init?.method ?? "GET"; calls.push({ url, method });
     const response = (value: unknown, status = 200) => new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json" } });
     const pending = all.filter((item) => item.status === "pending" && allowed.includes(item.clientAccountId));
     if (url.startsWith("/api/radar-suggestions")) {
-      const params = new URL(url, "http://localhost").searchParams; const offset = Number(params.get("offset"));
-      const summaries = pending.slice(offset, offset + 3).map(({ concept, hook, description, objective, rationale, cta, captionSuggestion, sourceUrl, radarName, basedOn, ...item }) => item);
-      return response({ items: summaries, total: pending.length, hasMore: offset + 3 < pending.length, offset, limit: 3 });
+      if (listFailure) return response({ message: "Listagem indisponível" }, 503);
+      const params = new URL(url, "http://localhost").searchParams; const offset = Number(params.get("offset")), limit = Number(params.get("limit"));
+      const summaries = pending.slice(offset, offset + limit).map(({ concept, hook, description, objective, rationale, cta, captionSuggestion, sourceUrl, radarName, basedOn, ...item }) => item);
+      return response({ items: summaries, total: pending.length, hasMore: offset + limit < pending.length, offset, limit });
     }
     const match = url.match(/\/clients\/([^/]+)\/radar-suggestions\/([^/]+)(?:\/(accept|dismiss))?$/);
     if (!match) throw new Error(`Unexpected API: ${url}`);
@@ -44,15 +49,51 @@ test("Radar human review: pending-only widget, on-demand detail, decisions, erro
   const text = () => document.body.textContent!;
   try {
     await t.test("no pending suggestions means no permanent empty widget", async () => { await mount(); assert.equal(document.querySelector(".radar-suggestions-widget"), null); });
+    await t.test("new arrivals appear on a focused dashboard without remount or focus event", async () => {
+      fill(1); calls.length = 0;
+      assert.equal(polls.size, 1, "StrictMode must leave exactly one polling timer");
+      await act(async () => { for (const poll of polls.values()) poll(); }); await flush();
+      assert.match(text(), /1 nova sugestão/);
+      assert.equal(calls.length, 1); assert.equal(calls[0].method, "GET");
+    });
+    await t.test("hidden dashboard does not poll and visibility return fetches new arrivals", async () => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+      fill(2); calls.length = 0;
+      await act(async () => { for (const poll of polls.values()) poll(); }); await flush();
+      assert.equal(calls.length, 0);
+      Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+      await act(async () => document.dispatchEvent(new dom.window.Event("visibilitychange"))); await flush();
+      assert.match(text(), /2 novas sugestões/); assert.equal(calls.length, 1);
+    });
     await t.test("summaries identify client, count, available metadata; no detail request on dashboard", async () => { fill(2); calls.length = 0; await mount(); assert.match(text(), /2 novas sugestões/); assert.match(text(), /Cliente A/); assert.match(text(), /Cliente B/); assert.match(text(), /92%/); assert.doesNotMatch(text(), /Conceito específico/); assert.equal(calls.filter((call) => /clients/.test(call.url)).length, 0); });
+    await t.test("poll failure is visible and preserves summaries; next successful poll clears it", async () => {
+      listFailure = true;
+      await act(async () => { for (const poll of polls.values()) poll(); }); await flush();
+      assert.match(document.querySelector('[role="alert"]')!.textContent!, /Listagem indisponível/);
+      assert.equal(document.querySelectorAll(".radar-suggestions-list article").length, 2);
+      listFailure = false;
+      await act(async () => { for (const poll of polls.values()) poll(); }); await flush();
+      assert.equal(document.querySelector('[role="alert"]'), null);
+    });
+    await t.test("polling pauses while a suggestion is being reviewed", async () => {
+      await click("Ler mais"); calls.length = 0;
+      await act(async () => { for (const poll of polls.values()) poll(); }); await flush();
+      assert.equal(calls.length, 0); assert.ok(document.querySelector('[role="dialog"]'));
+      await click("Fechar sugestão");
+    });
     await t.test("Ler mais requests correct client/id and renders complete nontechnical evidence", async () => { await click("Ler mais"); assert.ok(document.querySelector('[role="dialog"]')); assert.match(text(), /Conceito específico/); assert.match(text(), /Legenda sugerida/); assert.match(text(), /Baseado em: Pilar Observação · Tom humano · Público tutores/); assert.ok(calls.some((call) => call.url === "/api/clients/client-a/radar-suggestions/suggestion-0")); assert.equal(document.querySelector('.radar-review-source a')!.getAttribute("href"), "https://example.org/study"); await click("Fechar sugestão"); assert.equal(document.body.style.overflow, ""); });
     await t.test("detail failure leaves summary visible and drawer closable", async () => { detailFailure = true; await click("Ler mais"); assert.match(text(), /Detalhe indisponível/); assert.equal(document.querySelectorAll(".radar-suggestions-list article").length, 2); await click("Fechar sugestão"); detailFailure = false; });
     await t.test("acceptance failure keeps item and shows an error; no optimistic removal", async () => { failure = true; await click("Adicionar ao banco"); assert.equal(all[0].status, "pending"); assert.equal(document.querySelectorAll(".radar-suggestions-list article").length, 2); assert.match(text(), /Não foi possível salvar/); failure = false; });
-    await t.test("double-click issues one decision request and updates only after server confirmation", async () => { calls.length = 0; releaseDecision = () => {}; const button = buttons("Adicionar ao banco")[0]; await act(async () => { button.click(); button.click(); }); await flush(); assert.equal(calls.filter((call) => call.method === "POST").length, 1); assert.equal(document.querySelectorAll(".radar-suggestions-list article").length, 2); const release = releaseDecision; releaseDecision = null; await act(async () => release!()); await flush(); assert.equal(all[0].status, "accepted"); assert.equal(document.querySelectorAll(".radar-suggestions-list article").length, 1); });
+    await t.test("double-click issues one decision request and updates only after server confirmation", async () => { calls.length = 0; releaseDecision = () => {}; const button = buttons("Adicionar ao banco")[0]; await act(async () => { button.click(); button.click(); }); await flush(); assert.equal(calls.filter((call) => call.method === "POST").length, 1); assert.equal(document.querySelectorAll(".radar-suggestions-list article").length, 2); const beforePoll = calls.length; await act(async () => { for (const poll of polls.values()) poll(); }); await flush(); assert.equal(calls.length, beforePoll, "no polling during a pending decision"); const release = releaseDecision; releaseDecision = null; await act(async () => release!()); await flush(); assert.equal(all[0].status, "accepted"); assert.equal(document.querySelectorAll(".radar-suggestions-list article").length, 1); });
     await t.test("reload/remount does not bring back accepted suggestions", async () => { await mount(); assert.equal(document.querySelectorAll(".radar-suggestions-list article").length, 1); assert.doesNotMatch(text(), /Sugestão 0/); });
     await t.test("dismissal failure keeps item; successful dismissal hides widget when all resolved", async () => { failure = true; await click("Descartar"); assert.ok(document.querySelector(".radar-suggestions-widget")); assert.equal(all[1].status, "pending"); failure = false; await click("Descartar"); assert.equal(all[1].status, "dismissed"); assert.equal(document.querySelector(".radar-suggestions-widget"), null); await mount(); assert.equal(document.querySelector(".radar-suggestions-widget"), null); });
     await t.test("new session displays only authorized pending clients", async () => { fill(2); allowed = ["client-b"]; await mount(); assert.doesNotMatch(text(), /Cliente A/); assert.match(text(), /Cliente B/); assert.equal(document.querySelectorAll(".radar-suggestions-list article").length, 1); allowed = ["client-a", "client-b"]; });
     await t.test("more suggestions are paginated without loading full content", async () => { fill(4); await mount(); assert.equal(document.querySelectorAll(".radar-suggestions-list article").length, 3); assert.match(text(), /4 novas sugestões/); await click("Ver mais sugestões"); assert.equal(document.querySelectorAll(".radar-suggestions-list article").length, 4); assert.equal(buttons("Ver mais sugestões").length, 0); });
+    await t.test("background refresh preserves an expanded page", async () => {
+      await act(async () => { for (const poll of polls.values()) poll(); }); await flush();
+      assert.equal(document.querySelectorAll(".radar-suggestions-list article").length, 4);
+      assert.equal(new URL(calls.at(-1)!.url, "http://localhost").searchParams.get("limit"), "4");
+    });
     assert.ok(calls.every((call) => !/openai|brand-brain-ai|cards|send|publish/i.test(call.url)));
-  } finally { await act(async () => root.unmount()); await server.close(); dom.window.close(); Object.assign(globalThis, saved); }
+  } finally { await act(async () => root.unmount()); assert.equal(polls.size, 0); await server.close(); dom.window.close(); Object.assign(globalThis, saved); }
 });

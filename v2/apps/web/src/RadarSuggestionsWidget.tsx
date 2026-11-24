@@ -47,19 +47,29 @@ export function RadarSuggestionsWidget() {
   const [busy, setBusy] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const active = useRef(true), decision = useRef(false), detailRequest = useRef(0), listRequest = useRef(0);
-  const refresh = async () => {
+  const reviewing = useRef(false), paging = useRef(false), refreshing = useRef(0);
+  const visibleCount = useRef(3);
+  const refresh = async (preservePage = false) => {
     const request = ++listRequest.current;
-    try { const result = await loadRadarSuggestions(); if (!active.current || request !== listRequest.current) return; setItems(result.items); setTotal(result.total); setHasMore(result.hasMore); setError(""); }
+    ++refreshing.current;
+    try { const result = await loadRadarSuggestions(0, preservePage ? visibleCount.current : 3); if (!active.current || request !== listRequest.current) return; visibleCount.current = Math.max(3, result.items.length); setItems(result.items); setTotal(result.total); setHasMore(result.hasMore); setError(""); }
     catch (caught) { if (active.current && request === listRequest.current) setError(message(caught)); }
+    finally { --refreshing.current; }
   };
   useEffect(() => {
     active.current = true; void refresh();
-    const focus = () => { if (!decision.current) void refresh(); };
-    window.addEventListener("focus", focus);
-    return () => { active.current = false; ++listRequest.current; ++detailRequest.current; window.removeEventListener("focus", focus); };
+    // Only refresh summaries: receiving a discovery must never trigger AI or a decision.
+    const refreshVisible = () => {
+      if (document.visibilityState === "visible" && !decision.current && !reviewing.current && !paging.current && !refreshing.current) void refresh(true);
+    };
+    const interval = window.setInterval(refreshVisible, 60_000);
+    window.addEventListener("focus", refreshVisible);
+    document.addEventListener("visibilitychange", refreshVisible);
+    return () => { active.current = false; ++listRequest.current; ++detailRequest.current; window.clearInterval(interval); window.removeEventListener("focus", refreshVisible); document.removeEventListener("visibilitychange", refreshVisible); };
   }, []);
-  const close = () => { ++detailRequest.current; setSelected(null); setDetail(null); setDetailError(""); };
+  const close = () => { reviewing.current = false; ++detailRequest.current; setSelected(null); setDetail(null); setDetailError(""); };
   const open = async (summary: RadarSuggestionSummary) => {
+    reviewing.current = true;
     const request = ++detailRequest.current;
     setSelected(summary); setDetail(null); setDetailError("");
     try { const result = await loadRadarSuggestion(summary.clientAccountId, summary.id); if (active.current && request === detailRequest.current) setDetail(result.suggestion); }
@@ -80,11 +90,12 @@ export function RadarSuggestionsWidget() {
     finally { decision.current = false; if (active.current) setBusy(false); }
   };
   const more = async () => {
-    if (loadingMore || decision.current) return;
+    if (paging.current || decision.current) return;
+    paging.current = true;
     setLoadingMore(true); const request = ++listRequest.current;
-    try { const result = await loadRadarSuggestions(items.length); if (active.current && request === listRequest.current) { setItems((current) => [...current, ...result.items.filter((next) => !current.some((item) => item.id === next.id))]); setTotal(result.total); setHasMore(result.hasMore); } }
+    try { const result = await loadRadarSuggestions(items.length); if (active.current && request === listRequest.current) { visibleCount.current = Math.min(100, Math.max(3, items.length + result.items.filter((next) => !items.some((item) => item.id === next.id)).length)); setItems((current) => [...current, ...result.items.filter((next) => !current.some((item) => item.id === next.id))]); setTotal(result.total); setHasMore(result.hasMore); } }
     catch (caught) { if (active.current) setError(message(caught)); }
-    finally { if (active.current) setLoadingMore(false); }
+    finally { paging.current = false; if (active.current) setLoadingMore(false); }
   };
   if (!items.length) return error ? <p className="radar-review-error" role="alert">Radar de Pautas · {error}</p> : null;
   return <><section className="dashboard-tasks-widget radar-suggestions-widget" aria-label="Radar de Pautas"><header><h3>✦ Radar de Pautas</h3><span>{total} {total === 1 ? "nova sugestão" : "novas sugestões"}</span></header>

@@ -1,5 +1,9 @@
 # Checkpoint 4 — Radar + Brand Brain AI + MCP
 
+> Registro histórico. As instruções de scopes/consentimento abaixo foram
+> substituídas pelo [contrato atual de conexão](../v2/docs/chatgpt-mcp-connection.md).
+> `radar:suggest` sozinho não habilita o Radar na versão atual.
+
 Branch: `codex/radar-suggestions-foundation`. Base aprovada: `59cf9f31c2d3499db52175736a4cd4ea1e3f0195`.
 
 ## Fluxo implementado

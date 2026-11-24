@@ -1,5 +1,9 @@
 # Checkpoint 5 — validação final e plano de deploy
 
+> Registro histórico, não um procedimento atual de implantação. Os passos OAuth
+> abaixo foram substituídos pelo [contrato atual](../v2/docs/chatgpt-mcp-connection.md).
+> Não executar o smoke test de produção para um diagnóstico sem escrita.
+
 Data: 07/10/2026. Branch: `codex/radar-suggestions-foundation`.
 Código validado: `c26cddcd66e020beaa2e514e982b59af031c77b7` (Checkpoint 4 aprovado).
 
