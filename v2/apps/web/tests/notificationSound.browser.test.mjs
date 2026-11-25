@@ -47,9 +47,12 @@ test('one louder ding, new events only, visual notifications independent of soun
       return page;
     };
     const starts = page => page.evaluate(() => window.soundStarts.length);
-    const tick = async (page, ms = 5000) => {
+    const tick = async (page, ms = 30_000) => {
       const before = await page.evaluate(() => window.notificationFixture.inboxRequests);
       await page.clock.fastForward(ms);
+      // A returning active user resumes the inbox after the idle cutoff.
+      await page.evaluate(() => window.dispatchEvent(new Event("pointermove")));
+      await page.clock.runFor(1);
       await page.waitForFunction(before => window.notificationFixture.inboxRequests > before, before);
       // Flush fetch/React work without advancing the polling clock again.
       await page.evaluate(() => new Promise(resolve => requestAnimationFrame(resolve)));
@@ -116,7 +119,7 @@ test('one louder ding, new events only, visual notifications independent of soun
         await page.evaluate(() => { window.notificationFixture.failInbox = true; });
         await tick(page);
         await page.evaluate(() => { window.notificationFixture.failInbox = false; });
-        await tick(page); assert.equal(await starts(page), 1);
+        await tick(page, 60_000); assert.equal(await starts(page), 1);
         await page.evaluate(() => {
           window.removedMessage = window.notificationFixture.items.pop();
           window.notificationFixture.items.push({ ...window.removedMessage, id: 'historical', createdAt: '2000-01-01T00:00:00Z' });

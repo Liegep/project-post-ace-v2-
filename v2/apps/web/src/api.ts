@@ -571,24 +571,27 @@ const adminQuickLinks = [
 
 const adminQuickApps = ["Recados", "Rascunhos", "Links", "Rapidos"];
 
-let adminClientsCache: { expiresAt: number; data: { items: AdminClientOption[] } } | null = null;
-let adminClientsRequest: Promise<{ items: AdminClientOption[] }> | null = null;
+let adminClientsCache: { authKey: string; expiresAt: number; data: { items: AdminClientOption[] } } | null = null;
+let adminClientsRequest: { authKey: string; promise: Promise<{ items: AdminClientOption[] }> } | null = null;
 let portalAccountsCache: { authKey: string; expiresAt: number; data: { items: ApiPortalAccountItem[] } } | null = null;
 let portalAccountsRequest: { authKey: string; promise: Promise<{ items: ApiPortalAccountItem[] }> } | null = null;
 
 async function getAdminClients() {
-  if (adminClientsCache && adminClientsCache.expiresAt > Date.now()) {
+  const authKey = getAccessToken();
+  if (adminClientsCache?.authKey === authKey && adminClientsCache.expiresAt > Date.now()) {
     return adminClientsCache.data;
   }
-  if (!adminClientsRequest) {
-    adminClientsRequest = fetchJson<{ items: AdminClientOption[] }>("/api/clients")
-      .then((data) => {
-        adminClientsCache = { data, expiresAt: Date.now() + 60_000 };
-        return data;
-      })
-      .finally(() => { adminClientsRequest = null; });
-  }
-  return adminClientsRequest;
+  if (adminClientsRequest?.authKey === authKey) return adminClientsRequest.promise;
+  const promise = fetchJson<{ items: AdminClientOption[] }>("/api/clients")
+    .then((data) => {
+      if (getAccessToken() === authKey) adminClientsCache = { authKey, data, expiresAt: Date.now() + 60_000 };
+      return data;
+    })
+    .finally(() => {
+      if (adminClientsRequest?.promise === promise) adminClientsRequest = null;
+    });
+  adminClientsRequest = { authKey, promise };
+  return promise;
 }
 
 async function getPortalAccounts() {

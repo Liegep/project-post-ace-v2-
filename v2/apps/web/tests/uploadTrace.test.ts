@@ -48,3 +48,21 @@ test("old diagnostics remain technical only; normal error messages never expose 
   }
   assert.equal(getUploadTraces()[0].id, old.id);
 });
+
+test("PNG upload preserves 503/challenge evidence and never automatically repeats a POST", async () => {
+  for (const [status, body, outcome] of [
+    [503, JSON.stringify({ message: "Service unavailable" }), "http_error"],
+    [503, "<html>Service unavailable</html>", "http_error"],
+    [403, "<html>Checking your browser</html>", "http_error"],
+    [200, "<html>Checking your browser</html>", "invalid_response"],
+  ] as const) {
+    let calls = 0;
+    await assert.rejects(tracedUpload(file, "/api/uploads", new Headers(), async () => {
+      calls++;
+      return new Response(body, { status });
+    }));
+    assert.equal(calls, 1);
+    assert.equal(getUploadTraces().at(-1)?.status, status);
+    assert.equal(getUploadTraces().at(-1)?.outcome, outcome);
+  }
+});
