@@ -1,3 +1,4 @@
+import { useInternalApprovalInbox } from "./useInternalApprovalInbox";
 import { PublicPremiumProposalPage } from "./PublicPremiumProposalPage";
 import { CardTransferDialog } from "./CardTransferDialog";
 import { prepareAdminDownload } from "./adminMediaDownload";
@@ -6,7 +7,7 @@ import { FloatingRailIcon } from "./FloatingRailIcon";
 import { useNotificationSound } from "./useNotificationSound";
 import { DashboardInternalMessagesWidget } from "./DashboardInternalMessagesWidget";
 import { useModalFocus } from "./useModalFocus";
-import { listInternalApprovalInbox, listInternalApprovalReviewersBySlug, sendInternalApprovalBySlug, type InternalApprovalReviewer, type InternalApprovalRecord } from "./api";
+import { listInternalApprovalReviewersBySlug, sendInternalApprovalBySlug, type InternalApprovalReviewer, type InternalApprovalRecord } from "./api";
 import { AdminEditorialBrief } from "./AdminEditorialBrief";
 import { sendAdminPautaForApprovalBySlug } from "./api";
 import { EditorialBrief, ApprovalBriefSnapshot, clientEditorialBrief, usesEditorialPautaLayout, type EditorialBriefData } from "./EditorialBrief";
@@ -630,43 +631,29 @@ type PageMetric = { label: string; value: string | number; note: string; icon: R
 
 function WorkspaceNavbar({ session, onLogout, clientKanban = false, workspaceContext, utilityAction }: { session: SessionUser; onLogout: () => void; clientKanban?: boolean; workspaceContext?: ReactNode; utilityAction?: ReactNode }) {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const [messages, setMessages] = useState<InternalApprovalRecord[]>([]);
+  const inboxSnapshot = useInternalApprovalInbox(session);
+  const messages = inboxSnapshot ?? [];
   const [readNotificationIds, setReadNotificationIds] = useState<string[]>(() => { try { return JSON.parse(window.localStorage.getItem(`designhub-v2-read-notifications:${session.id}`) ?? "[]") as string[]; } catch { return []; } });
   const notificationMenuRef = useRef<HTMLDivElement>(null);
   const { sound, muted, setMuted } = useNotificationSound(session.id);
   const unreadMessages = messages.filter((item) => !readNotificationIds.includes(item.id));
   useEffect(() => {
-    let active = true;
-    let syncing = false;
-    const observeSound = sound.observer("internal-approval");
-    setMessages([]);
     if (session.role === "client") return;
-
-    const sync = async () => {
-      if (syncing) return;
-      syncing = true;
-      let nextMessages: InternalApprovalRecord[];
-      try { nextMessages = (await listInternalApprovalInbox()).items; } catch { return; }
-      finally { syncing = false; }
-      if (!active) return;
-      observeSound(nextMessages.map(item => ({ id: item.id, createdAt: item.createdAt })));
-      setMessages(nextMessages);
+    // Storage events only update local read state; the shared feed owns HTTP.
+    const syncRead = () => {
       try {
         setReadNotificationIds(JSON.parse(window.localStorage.getItem(`designhub-v2-read-notifications:${session.id}`) ?? "[]") as string[]);
-      } catch {
-        setReadNotificationIds([]);
-      }
+      } catch { setReadNotificationIds([]); }
     };
-
-    void sync();
-    window.addEventListener("storage", sync);
-    const timer = window.setInterval(sync, 5_000);
-    return () => {
-      active = false;
-      window.removeEventListener("storage", sync);
-      window.clearInterval(timer);
-    };
-  }, [session.id, session.role, sound]);
+    syncRead();
+    window.addEventListener("storage", syncRead);
+    return () => window.removeEventListener("storage", syncRead);
+  }, [session.id, session.role]);
+  const observeInternalSound = useMemo(() => sound.observer("internal-approval"), [sound]);
+  useEffect(() => {
+    if (inboxSnapshot === null) return;
+    observeInternalSound(inboxSnapshot.map(item => ({ id: item.id, createdAt: item.createdAt })));
+  }, [inboxSnapshot, observeInternalSound]);
   useEffect(() => { const close = (event: MouseEvent) => { if (!notificationMenuRef.current?.contains(event.target as Node)) setNotificationsOpen(false); }; const escape = (event: KeyboardEvent) => { if (event.key === "Escape") setNotificationsOpen(false); }; document.addEventListener("mousedown", close); document.addEventListener("keydown", escape); return () => { document.removeEventListener("mousedown", close); document.removeEventListener("keydown", escape); }; }, []);
   const markNotificationRead = (id: string) => { setReadNotificationIds((current) => { if (current.includes(id)) return current; const next = [...current, id]; window.localStorage.setItem(`designhub-v2-read-notifications:${session.id}`, JSON.stringify(next)); return next; }); };
   return <div className={`dashboard-nav workspace-navbar${clientKanban ? " client-kanban-navbar" : ""}`}>
@@ -1966,7 +1953,7 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
   const [clientActivities, setClientActivities] = useState<DashboardClientActivity[]>([]);
   const [approvedPautas, setApprovedPautas] = useState<DashboardApprovedPauta[]>([]);
   const [statistics, setStatistics] = useState<DashboardStatistics>(EMPTY_DASHBOARD_STATISTICS);
-  const [internalMessages, setInternalMessages] = useState<InternalApprovalRecord[]>([]);
+  const internalMessages = useInternalApprovalInbox(session) ?? [];
   const [scheduleActivity, setScheduleActivity] = useState<DashboardClientActivity | null>(null);
   const [scheduledNotice, setScheduledNotice] = useState<{ title: string; clientName: string } | null>(null);
   const [loading, setLoading] = useState(true);
@@ -2139,14 +2126,6 @@ function DashboardPage({ session, onLogout }: { session: SessionUser; onLogout: 
       document.removeEventListener("visibilitychange", refreshOnVisibility);
     };
   }, [dashboardSound, session.id]);
-  useEffect(() => {
-    let active = true;
-    setInternalMessages([]);
-    const sync = () => listInternalApprovalInbox().then(({ items }) => { if (active) setInternalMessages(items); }).catch(() => undefined);
-    void sync();
-    const timer = window.setInterval(sync, 5_000);
-    return () => { active = false; window.clearInterval(timer); };
-  }, [session.id]);
 
   const updateForm = (key: keyof typeof form, value: string) => {
     setForm((current) => ({

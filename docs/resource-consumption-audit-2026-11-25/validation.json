@@ -1,0 +1,41 @@
+{
+  "date": "2026-11-25",
+  "auditedBase": "770cc38c3e4a4a574164c625a8823568392dfd85",
+  "runtime": {
+    "node": "22.23.5",
+    "chromium": "151.0.7922.34"
+  },
+  "scope": "local synthetic HTTP fixtures; no production access",
+  "baselineComparison": [
+    {
+      "version": "baseline",
+      "initialRequests": 2,
+      "requestsAfterTenSecondsHidden": 6
+    },
+    {
+      "version": "corrected",
+      "initialRequests": 1,
+      "requestsAfterTenSecondsHidden": 1
+    }
+  ],
+  "checks": {
+    "typecheck": "passed",
+    "apiAndWebBuild": "passed, existing chunk size warning",
+    "apiSuite": {
+      "passed": 730,
+      "failed": 0,
+      "skipped": 0
+    },
+    "resourcePollingChromium": {
+      "scenariosPassed": 8,
+      "includingParentTest": 9,
+      "failed": 0
+    },
+    "notificationSound": {
+      "unitTestsPassed": 7,
+      "chromiumScenariosPassed": 5,
+      "failed": 0
+    }
+  },
+  "productionNprocCulprit": "not determined; process/thread telemetry required"
+}

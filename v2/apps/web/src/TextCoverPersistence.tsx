@@ -1,3 +1,4 @@
+import { listAdminClients } from "./api";
 import { useEffect, useRef } from "react";
 import { ACCESS_TOKEN_KEY } from "./authApi";
 
@@ -59,7 +60,7 @@ async function listAccounts(role: StoredSession["role"]): Promise<Account[]> {
     const response = await requestJson<{ items?: Array<{ clientAccountId: string; clientSlug: string }> }>("/api/portal/accounts");
     return (response.items ?? []).map((item) => ({ id: item.clientAccountId, slug: item.clientSlug, portal: true }));
   }
-  const response = await requestJson<{ items?: Array<{ id: string; slug: string }> }>("/api/clients");
+  const response = await listAdminClients();
   return (response.items ?? []).map((item) => ({ id: item.id, slug: item.slug, portal: false }));
 }
 
@@ -82,17 +83,18 @@ async function saveCover(account: Account, textId: string, url: string) {
 export function TextCoverPersistence() {
   const accountsRef = useRef<Map<string, Account>>(new Map());
   const knownDbCoverRef = useRef<Map<string, string | null>>(new Map());
-  const syncingRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
+    let syncing = false;
+    let persisting = false;
     let reloadTimer: number | null = null;
 
     const sync = async () => {
-      if (syncingRef.current) return;
+      if (cancelled || syncing || persisting || document.visibilityState !== "visible" || !currentClientSlug()) return;
       const session = readSession();
       if (!session || session.source !== "api" || !session.role) return;
-      syncingRef.current = true;
+      syncing = true;
 
       try {
         const accounts = await listAccounts(session.role);
@@ -104,10 +106,12 @@ export function TextCoverPersistence() {
         let needsReload = false;
 
         for (const account of targets) {
+          if (cancelled || document.visibilityState !== "visible") return;
           const items = await listTexts(account);
           if (cancelled) return;
 
           for (const text of items) {
+            if (cancelled || document.visibilityState !== "visible") return;
             const key = coverKey(account.slug, text.id);
             const localCover = window.localStorage.getItem(key);
             const knownBefore = knownDbCoverRef.current.get(key);
@@ -151,28 +155,32 @@ export function TextCoverPersistence() {
         // Banner persistence is additive; a temporary API failure must never
         // interfere with the rest of the application.
       } finally {
-        syncingRef.current = false;
+        syncing = false;
       }
     };
 
     const persistLocalChanges = async () => {
       const slug = currentClientSlug();
-      if (!slug) return;
+      if (cancelled || syncing || persisting || document.visibilityState !== "visible" || !slug) return;
       const account = accountsRef.current.get(slug);
       if (!account || account.portal) return;
 
-      for (const [key, knownCover] of knownDbCoverRef.current.entries()) {
-        if (!key.startsWith(`${COVER_PREFIX}${slug}:`)) continue;
-        const localCover = window.localStorage.getItem(key);
-        if (!localCover || localCover === knownCover) continue;
-        const textId = key.slice(`${COVER_PREFIX}${slug}:`.length);
-        try {
-          await saveCover(account, textId, localCover);
-          knownDbCoverRef.current.set(key, localCover);
-        } catch {
-          // Retry automatically on the next interval/focus.
+      persisting = true;
+      try {
+        for (const [key, knownCover] of knownDbCoverRef.current.entries()) {
+          if (cancelled || document.visibilityState !== "visible") return;
+          if (!key.startsWith(`${COVER_PREFIX}${slug}:`)) continue;
+          const localCover = window.localStorage.getItem(key);
+          if (!localCover || localCover === knownCover) continue;
+          const textId = key.slice(`${COVER_PREFIX}${slug}:`.length);
+          try {
+            await saveCover(account, textId, localCover);
+            knownDbCoverRef.current.set(key, localCover);
+          } catch {
+            // Retry automatically on the next interval/focus.
+          }
         }
-      }
+      } finally { persisting = false; }
     };
 
     void sync();
@@ -182,6 +190,7 @@ export function TextCoverPersistence() {
     const onHashChange = () => { void sync(); };
     window.addEventListener("focus", onFocus);
     window.addEventListener("hashchange", onHashChange);
+    document.addEventListener("visibilitychange", onFocus);
 
     return () => {
       cancelled = true;
@@ -190,6 +199,7 @@ export function TextCoverPersistence() {
       if (reloadTimer !== null) window.clearTimeout(reloadTimer);
       window.removeEventListener("focus", onFocus);
       window.removeEventListener("hashchange", onHashChange);
+      document.removeEventListener("visibilitychange", onFocus);
     };
   }, []);
 
