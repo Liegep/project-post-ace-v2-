@@ -2,7 +2,7 @@ import {
   ProposalPaymentBlock,
   paymentBlockLabels,
 } from "./ProposalPaymentText";
-import { hasProposalPackages } from "./proposalDocument";
+import { hasProposalPackages, proposalTimelineStages } from "./proposalDocument";
 import { useProposalReveal } from "./useProposalReveal";
 import { premiumCopy, proposalTypeLabel } from "./proposalPremiumCopy";
 import "./proposalPremium.css";
@@ -163,6 +163,14 @@ export function ProposalClientPreview({
   onSelectOption?: (id: string) => void;
 }) {
   const doc = proposal.document;
+  const stages = proposalTimelineStages(doc).filter(
+    (stage) => stage.title.trim() || stage.description.trim() || stage.value,
+  );
+  const hasTimeline = !!(
+    stages.length ||
+    doc?.timelineStart.trim() ||
+    doc?.timelineNotes.trim()
+  );
   const copy = getProposalLocale(proposal.locale),
     extra = premiumCopy(proposal.locale);
   const paymentLabels = paymentBlockLabels(proposal.locale);
@@ -306,13 +314,13 @@ export function ProposalClientPreview({
                         <span>
                           {extra.option} {String(index + 1).padStart(2, "0")}
                         </span>
-                        {option.badge?.trim() && (
-                          <b>{option.badge.trim()}</b>
-                        )}
+                        {option.badge?.trim() && <b>{option.badge.trim()}</b>}
                       </div>
                       <h3>{option.name}</h3>
                       {option.subtitle?.trim() && (
-                        <p className="proposal-package-subtitle">{option.subtitle.trim()}</p>
+                        <p className="proposal-package-subtitle">
+                          {option.subtitle.trim()}
+                        </p>
                       )}
                       {text(option.description)}
                     </div>
@@ -393,21 +401,44 @@ export function ProposalClientPreview({
                   </li>
                 ))}
             </ul>,
-            doc?.timelineValue ? "proposal-paired-section" : "",
+            hasTimeline ? "proposal-paired-section" : "",
           )}
-        {doc?.timelineValue &&
+        {doc &&
+          hasTimeline &&
           section(
             doc.timelineTitle || extra.timeline,
             <>
-              <p className="proposal-timeline-value">
-                {doc.timelineUnit === "date"
-                  ? new Date(
-                      doc.timelineValue + "T12:00:00",
-                    ).toLocaleDateString(copy.code)
-                  : `${doc.timelineValue} ${doc.timelineUnit === "business" ? extra.business : extra.calendar}`}
-              </p>
-              {text(doc.timelineStart)}
-              {text(doc.timelineNotes)}
+              {stages.length > 0 && (
+                <ol className="proposal-timeline-stages">
+                  {stages.map((stage, index) => (
+                    <li key={stage.id}>
+                      <span
+                        className="proposal-timeline-marker"
+                        aria-hidden="true"
+                      >
+                        {String(index + 1).padStart(2, "0")}
+                      </span>
+                      <div className="proposal-timeline-stage-content">
+                        {stage.title.trim() && <h3>{stage.title}</h3>}
+                        {stage.value && (
+                          <p className="proposal-timeline-value">
+                            {stage.unit === "date"
+                              ? new Date(
+                                  stage.value + "T12:00:00",
+                                ).toLocaleDateString(copy.code)
+                              : `${stage.value} ${stage.unit === "business" ? extra.business : extra.calendar}`}
+                          </p>
+                        )}
+                        {text(stage.description)}
+                      </div>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              <div className="proposal-timeline-general">
+                {text(doc.timelineStart)}
+                {text(doc.timelineNotes)}
+              </div>
             </>,
             doc.deliverables.some((item) => item.name.trim())
               ? "proposal-paired-section"

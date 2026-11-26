@@ -3,6 +3,8 @@ import React from "react";
 import type { ProposalRecord } from "./api";
 import {
   emptyProposalDocument,
+  proposalTimelineStages,
+  type ProposalTimelineStage,
   type ProposalDocument,
 } from "./proposalDocument";
 import {
@@ -19,6 +21,7 @@ export function ProposalPremiumEditor({
   update: (patch: Partial<ProposalRecord>) => void;
 }) {
   const doc = draft.document ?? emptyProposalDocument();
+  const stages = proposalTimelineStages(doc);
   const change = (patch: Partial<ProposalDocument>) =>
     update({ document: { ...doc, ...patch }, revision: draft.revision ?? 0 });
   const field = (
@@ -554,34 +557,125 @@ export function ProposalPremiumEditor({
         "Cronograma",
         <>
           {field("Título da seção", "timelineTitle", false)}
-          <div className="proposal-fields two">
-            <label>
-              Prazo estimado
-              <input
-                type={doc.timelineUnit === "date" ? "date" : "number"}
-                min="0"
-                value={doc.timelineValue}
-                onChange={(e) => change({ timelineValue: e.target.value })}
-              />
-            </label>
-            <label>
-              Unidade
-              <select
-                value={doc.timelineUnit}
-                onChange={(e) =>
-                  change({
-                    timelineUnit: e.target
-                      .value as ProposalDocument["timelineUnit"],
-                    timelineValue: "",
-                  })
-                }
-              >
-                <option value="business">Dias úteis</option>
-                <option value="calendar">Dias corridos</option>
-                <option value="date">Data específica</option>
-              </select>
-            </label>
+          <div className="proposal-timeline-editor-list">
+            {stages.map((stage, index) => {
+              const edit = (patch: Partial<ProposalTimelineStage>) =>
+                change({
+                  timelineStages: stages.map((item, i) =>
+                    i === index ? { ...item, ...patch } : item,
+                  ),
+                });
+              const move = (offset: number) => {
+                const next = [...stages];
+                [next[index], next[index + offset]] = [
+                  next[index + offset],
+                  next[index],
+                ];
+                change({ timelineStages: next });
+              };
+              return (
+                <fieldset
+                  className="proposal-premium-item proposal-timeline-editor-stage"
+                  key={stage.id}
+                >
+                  <legend>Etapa {index + 1}</legend>
+                  <label>
+                    Título da etapa
+                    <input
+                      maxLength={255}
+                      value={stage.title}
+                      onChange={(e) => edit({ title: e.target.value })}
+                    />
+                  </label>
+                  <label>
+                    Descrição da etapa
+                    <textarea
+                      value={stage.description}
+                      onChange={(e) => edit({ description: e.target.value })}
+                    />
+                  </label>
+                  <div className="proposal-fields two">
+                    <label>
+                      Prazo estimado
+                      <input
+                        type={stage.unit === "date" ? "date" : "number"}
+                        min="0"
+                        step="1"
+                        value={stage.value}
+                        onChange={(e) => edit({ value: e.target.value })}
+                      />
+                    </label>
+                    <label>
+                      Unidade
+                      <select
+                        value={stage.unit}
+                        onChange={(e) =>
+                          edit({
+                            unit: e.target
+                              .value as ProposalTimelineStage["unit"],
+                            value: "",
+                          })
+                        }
+                      >
+                        <option value="business">Dias úteis</option>
+                        <option value="calendar">Dias corridos</option>
+                        <option value="date">Data específica</option>
+                      </select>
+                    </label>
+                  </div>
+                  <div className="proposal-item-actions">
+                    <button
+                      type="button"
+                      disabled={index === 0}
+                      aria-label={`Mover etapa ${index + 1} para cima`}
+                      onClick={() => move(-1)}
+                    >
+                      Mover para cima
+                    </button>
+                    <button
+                      type="button"
+                      disabled={index === stages.length - 1}
+                      aria-label={`Mover etapa ${index + 1} para baixo`}
+                      onClick={() => move(1)}
+                    >
+                      Mover para baixo
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Remover etapa ${index + 1}`}
+                      onClick={() =>
+                        change({
+                          timelineStages: stages.filter((_, i) => i !== index),
+                        })
+                      }
+                    >
+                      Remover etapa
+                    </button>
+                  </div>
+                </fieldset>
+              );
+            })}
           </div>
+          <button
+            type="button"
+            disabled={stages.length >= 100}
+            onClick={() =>
+              change({
+                timelineStages: [
+                  ...stages,
+                  {
+                    id: crypto.randomUUID(),
+                    title: "",
+                    description: "",
+                    value: "",
+                    unit: "business",
+                  },
+                ],
+              })
+            }
+          >
+            + Adicionar etapa
+          </button>
           {field("Condições de início do prazo", "timelineStart")}
           {field("Observações adicionais", "timelineNotes")}
         </>,

@@ -477,6 +477,10 @@ test("all premium fields persist through create, update and reload without chang
     included: "Design\nTypography",
     excluded: "Printing",
     clientMaterials: "Final images",
+    timelineStages: [
+      { id: "77777777-7777-4777-8777-777777777777", title: "Discovery", description: "Project brief", value: "3", unit: "business" as const },
+      { id: "88888888-8888-4888-8888-888888888888", title: "Design", description: "Visual exploration", value: "7", unit: "calendar" as const },
+    ],
     timelineNotes: "Subject to feedback",
     deliverablesTitle: "Final files",
     timelineTitle: "Schedule",
@@ -493,6 +497,7 @@ test("all premium fields persist through create, update and reload without chang
   const changed = {
     ...fullDocument,
     title: "Updated title",
+    timelineStages: [...fullDocument.timelineStages].reverse().map((stage, index) => index === 0 ? { ...stage, description: "Revised exploration", value: "8" } : stage),
     options: [...options].reverse(),
   };
   await updateProposal(db, saved!.id, { document: changed, revision: 1 });
@@ -506,6 +511,12 @@ test("all premium fields persist through create, update and reload without chang
     /outra sessão/,
   );
   assert.deepEqual(stored, changed);
+  await updateProposal(db, saved!.id, { document: { ...changed, timelineStages: [] }, revision: 2 });
+  const removed = await findProposal(db, saved!.id);
+  assert.deepEqual(removed!.document!.timelineStages, []);
+  assert.equal(removed!.document!.timelineValue, fullDocument.timelineValue);
+  assert.equal(removed!.document!.approvalText, fullDocument.approvalText);
+  assert.deepEqual(removed!.services, saved!.services);
 });
 test("single package and optional package metadata preserve compatibility without migration", () => {
   const option = {

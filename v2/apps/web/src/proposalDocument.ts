@@ -1,3 +1,11 @@
+export type ProposalTimelineStage = {
+  id: string;
+  title: string;
+  description: string;
+  value: string;
+  unit: "business" | "calendar" | "date";
+};
+
 export type ProposalOption = {
   id: string;
   name: string;
@@ -20,6 +28,7 @@ export type ProposalDocument = {
   options: ProposalOption[];
   deliverablesTitle: string;
   deliverables: Array<{ name: string; description: string }>;
+  timelineStages?: ProposalTimelineStage[];
   timelineTitle: string;
   timelineValue: string;
   timelineUnit: "business" | "calendar" | "date";
@@ -66,3 +75,23 @@ export const emptyProposalDocument = (): ProposalDocument => ({
 
 export const hasProposalPackages = (document?: ProposalDocument | null) =>
   document?.mode === "packages" || document?.mode === "alternatives";
+
+// Absence means legacy data; an explicit empty list means the user removed it.
+// Reading a proposal never rewrites its historical document or acceptance snapshot.
+export function proposalTimelineStages(
+  document?: ProposalDocument | null,
+): ProposalTimelineStage[] {
+  if (!document) return [];
+  if (document.timelineStages !== undefined) return document.timelineStages;
+  return document.timelineValue
+    ? [
+        {
+          id: "00000000-0000-4000-8000-000000000001",
+          title: "",
+          description: "",
+          value: document.timelineValue,
+          unit: document.timelineUnit,
+        },
+      ]
+    : [];
+}
