@@ -12,6 +12,31 @@ const optionSchema = z.object({
   excludedItems: z.array(text).max(100).optional(),
   badge: z.string().max(80).optional(),
 });
+const deadlineIsValid = (value: string, unit: string) => {
+  if (!value) return true; // Drafts may have an estimate pending.
+  if (unit !== "date") return /^\d+$/.test(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(value + "T12:00:00Z");
+  return (
+    Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value
+  );
+};
+const timelineStageSchema = z
+  .object({
+    id: z.string().uuid(),
+    title: z.string().max(255),
+    description: text,
+    value: z.string().max(100),
+    unit: z.enum(["business", "calendar", "date"]),
+  })
+  .superRefine((stage, ctx) => {
+    if (!deadlineIsValid(stage.value, stage.unit))
+      ctx.addIssue({
+        code: "custom",
+        message: "Informe um prazo válido.",
+        path: ["value"],
+      });
+  });
 export const proposalDocumentSchema = z
   .object({
     title: text,
@@ -24,6 +49,7 @@ export const proposalDocumentSchema = z
     options: z.array(optionSchema).max(20),
     deliverablesTitle: text,
     deliverables: z.array(z.object({ name: text, description: text })).max(100),
+    timelineStages: z.array(timelineStageSchema).max(100).optional(),
     timelineTitle: text,
     timelineValue: z.string().max(100),
     timelineUnit: z.enum(["business", "calendar", "date"]),
@@ -72,6 +98,16 @@ export const proposalDocumentSchema = z
         code: "custom",
         message: "Informe um prazo válido.",
         path: ["timelineValue"],
+      });
+    if (
+      doc.timelineStages &&
+      new Set(doc.timelineStages.map((stage) => stage.id)).size !==
+        doc.timelineStages.length
+    )
+      ctx.addIssue({
+        code: "custom",
+        message: "As etapas devem ter identificadores únicos.",
+        path: ["timelineStages"],
       });
     if (new Set(doc.options.map((o) => o.id)).size !== doc.options.length)
       ctx.addIssue({

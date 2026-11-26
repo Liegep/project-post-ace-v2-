@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "preview": "vite preview",
+    "test:proposal-timeline": "tsx --test tests/proposalTimeline.test.tsx tests/proposalPremium.test.tsx",
+    "test:proposal-timeline:browser": "node tests/proposalTimeline.browser.mjs",
     "test:rail": "tsx --test tests/floatingRail.test.tsx",
     "test:rail:browser": "node tests/floatingRail.browser.mjs",
     "test:seasonal": "tsx --test tests/seasonalWorkspace.test.tsx",

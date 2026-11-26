@@ -1439,3 +1439,54 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/* Ordered project stages share the proposal's editorial rhythm on every screen. */
+.proposal-document-mockup .proposal-timeline-stages {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.proposal-timeline-stages > li {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  gap: 1rem;
+  position: relative;
+  padding-bottom: 1.75rem;
+  break-inside: avoid;
+}
+.proposal-timeline-stages > li:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: 2.5rem;
+  bottom: .35rem;
+  left: 1.25rem;
+  width: 1px;
+  background: #deded9;
+}
+.proposal-timeline-marker {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 1px solid #deded9;
+  border-radius: 50%;
+  color: #68685e;
+  font-size: .75rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.proposal-timeline-stage-content { min-width: 0; overflow-wrap: anywhere; }
+.proposal-timeline-stage-content h3 { margin: .15rem 0 .5rem; font-size: 1.05rem; }
+.proposal-document-mockup .proposal-timeline-stage-content .proposal-timeline-value {
+  margin: 0 0 .65rem;
+  font-size: .9rem;
+  font-weight: 500;
+}
+.proposal-timeline-general { display: grid; gap: .75rem; }
+.proposal-timeline-editor-list { display: grid; gap: 1rem; min-width: 0; }
+.proposal-timeline-editor-stage { min-width: 0; margin: 0; }
+.proposal-timeline-editor-stage legend { padding: 0 .4rem; font-weight: 600; }
+@media (max-width: 600px) {
+  .proposal-timeline-stages > li { gap: .75rem; }
+  .proposal-timeline-editor-stage .proposal-item-actions { display: flex; flex-wrap: wrap; gap: .5rem; }
+}
